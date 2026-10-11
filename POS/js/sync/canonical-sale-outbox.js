@@ -199,6 +199,16 @@
     })();
     try { return await syncing; } finally { syncing = null; }
   }
+  async function withCashCloseBarrier(close) {
+    if (typeof close !== 'function') fail('INVALID_CASH_CLOSE_CALLBACK');
+    return withLock(async function () {
+      var outcome = await syncLocked();
+      if (snapshot().intents.length) fail('CASH_CLOSE_PENDING_SALES');
+      // enqueue and sync share this lock across tabs. Keep it until the close
+      // ACK (or uncertainty) so no durable sale is stranded in the gap.
+      return close(outcome.processed);
+    });
+  }
   function start() {
     if (started) return;
     started = true;
@@ -338,5 +348,5 @@
       return { status: 'REJECTED_TEST_INTENT', operation_id: operationId };
     });
   }
-  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
+  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
 })(globalThis);

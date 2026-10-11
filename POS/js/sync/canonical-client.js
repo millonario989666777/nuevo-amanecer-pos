@@ -1104,7 +1104,7 @@
     durableJournal(record);
     var response, result;
     try {
-      var payment = record.command === 'payment.create' || record.command === 'payment.batch';
+      var payment = record.command === 'payment.create' || record.command === 'payment.batch' || record.command === 'cash.close';
       var requestOptions = {
         method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
         headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.token },
@@ -1304,6 +1304,29 @@
       var record = journal();
       if (!record || record.state !== 'PENDING') fail('NO_CANONICAL_FINANCIAL_PENDING');
       return sendPending(record);
+    });
+  }
+  async function releaseRejectedCashClose() {
+    return withWriterLock(function () {
+      var record = journal();
+      // Only this explicit business rejection proves that no closure committed.
+      // Unknown ACKs, 5xx, other commands and authority changes must retain their intent.
+      if (!record || record.state !== 'PENDING' || record.command !== 'cash.close' ||
+          record.last_status !== 409 || record.last_error !== 'stale_session') return null;
+      assertAction('cash.close');
+      assertBinding(record.binding);
+      var session = (data.cashSessions || []).find(function (item) { return item.session_id === record.payload.session_id; });
+      if (!session || !['OPEN', 'CLOSED'].includes(session.status)) fail('INVALID_CANONICAL_CASH_SESSION');
+      var key = 'na_canonical_cash_close_rejections', archive = stored(key);
+      if (archive === null) archive = [];
+      if (!Array.isArray(archive)) fail('INVALID_CANONICAL_CASH_ARCHIVE');
+      if (!archive.some(function (item) { return item && item.payload && item.payload.operation_id === record.payload.operation_id; })) archive.push(copy(record));
+      var raw = JSON.stringify(archive);
+      root.localStorage.setItem(key, raw);
+      if (root.localStorage.getItem(key) !== raw) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      root.localStorage.removeItem(JOURNAL);
+      if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      return { session_id: session.session_id, status: session.status };
     });
   }
   async function discardRejectedPayment() {
@@ -1544,7 +1567,7 @@
   root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; } });
   root.addEventListener('offline', function () { ready = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale,
     createProduct: createProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);
