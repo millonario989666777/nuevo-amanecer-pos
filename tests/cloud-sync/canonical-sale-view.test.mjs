@@ -204,3 +204,42 @@ test('authoritative sales and clients renderers emit post-render lifecycle event
   assert.doesNotMatch(script,/root\[name\]\s*=/);
   assert.doesNotMatch(script,/installRenderHooks/);
 });
+
+
+test('mobile pending sales are grouped into cards with Peru-local timestamps and no raw ISO', () => {
+  const sale = intent('V-091', 1, {
+    created_at:'2026-10-11T00:14:31.535Z',
+    payment_method:'credito', customer_id:'c1', credit_due:'2026-10-11',
+    total_cents:500
+  });
+  const h = harness({ intents:[sale] });
+  h.run();
+  const panel = h.nodes.get('ventasContent').children[0];
+  const card = panel.children.find(node => node.tagName === 'ARTICLE');
+  assert.ok(card);
+  assert.equal(card.className, 'na-canonical-pending-item');
+  assert.equal(card.children[0].className, 'na-canonical-pending-item-top');
+  assert.match(card.textContent, /S\/ 5\.00/);
+  assert.match(card.textContent, /Pendiente de sincronización/);
+  const time = h.descendants(card).find(node => node.tagName === 'TIME');
+  assert.ok(time);
+  assert.match(time.textContent, /10\/10\/2026/);
+  assert.doesNotMatch(time.textContent, /2026-10-11T/);
+
+  const creditPanel = h.nodes.get('cliList').children[0];
+  const creditCard = creditPanel.children.find(node => node.tagName === 'ARTICLE');
+  const due = h.descendants(creditCard).find(node => node.tagName === 'TIME');
+  assert.equal(due.textContent, '11/10/2026', 'credit due is a local calendar date, never converted from UTC');
+});
+
+test('the canonical pending-card stylesheet is loaded by the active POS document', () => {
+  const css = fs.readFileSync(new URL('../../POS/css/experience-v2/pages/ventas.css', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8');
+  assert.match(html, /css\/experience-v2\/pages\/ventas\.css/);
+  for (const cls of ['na-canonical-pending', 'na-canonical-pending-item',
+                     'na-canonical-pending-item-top', 'na-canonical-pending-status',
+                     'na-canonical-conflict']) {
+    assert.ok(css.includes(cls), cls + ' must have presentation rules');
+  }
+  assert.match(css, /overflow-wrap:\s*anywhere/);
+});
