@@ -385,6 +385,13 @@
         }
         var replica = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
         if (!replica || replica.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
+        // Absence is proven by operation_id alone: a server row with the same
+        // operation_id under another sale number is the same sale, never "absent".
+        var twin = ((canonical.snapshot() || {}).sales || []).find(function (sale) { return sale.operation_id === operationId; });
+        if (twin) {
+          entry.status = 'CONFIRMED_REMOTE'; entry.remote_sale_id = twin.sale_id || twin.id; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+          return { status: 'CONFIRMED_REMOTE', sale_id: entry.intent.sale_id, remote_sale_id: entry.remote_sale_id, operation_id: operationId };
+        }
         entry.verified_absent_at = new Date().toISOString(); writeQuarantine(q);
         return { status: 'NOT_REGISTERED', sale_id: entry.intent.sale_id, operation_id: operationId };
       }
@@ -407,6 +414,7 @@
         if (!entry.verified_absent_at) fail('QUARANTINE_VERIFY_FIRST');
         var state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
         if (!state || state.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
+        if (((canonical.snapshot() || {}).sales || []).some(function (sale) { return sale.operation_id === operationId; })) fail('QUARANTINE_OPERATION_EXISTS_ON_SERVER');
         entry.status = 'ARCHIVED_NO_CHARGE'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
         return { status: 'ARCHIVED_NO_CHARGE', sale_id: entry.intent.sale_id, operation_id: operationId };
       }
