@@ -118,6 +118,19 @@
       if (pending) {
         var payload = pending.payload;
         if (pending.command !== 'sale.create' || !payload || payload.operation_id !== head.operation_id || payload.sale_id !== head.sale_id) return result('BLOCKED_FOREIGN_PENDING', processed, current.intents.length, 'FOREIGN_PENDING');
+        if (pending.last_error && (pending.last_status === 429 || pending.last_status >= 500)) {
+          // A 429/5xx is not evidence that the sale did not commit. The
+          // previous acknowledgement may be lost: retry only the exact
+          // durable operation_id and rely on the server idempotency contract.
+          try { await canonical.retryPending(); }
+          catch (error) {
+            return result('WAITING', processed, current.intents.length,
+              String(error && (error.code || error.message) || 'RETRY_FAILED'));
+          }
+          if (!matching(canonical.receiptSnapshot(), head))
+            return result('WAITING', processed, current.intents.length, 'RECEIPT_NOT_CONFIRMED');
+          removeHead(head); processed += 1; continue;
+        }
         if (pending.last_error) {
           // Safe sale rejects (409/400) prove no D1 commit. Clear journal and
           // rebuild createSale with fresh ESR (same operation_id), or drop the
@@ -193,9 +206,12 @@
   var resumeOutbox = null;
   var resuming = false;
   function scheduleResume() {
-    if (!started || retryTimer !== null || root.navigator.onLine === false || retryCount >= 3 || typeof root.setTimeout !== 'function') return;
-    retryCount += 1;
-    retryTimer = root.setTimeout(function () { retryTimer = null; return resumeOutbox(); }, 1000 * Math.pow(2, retryCount - 1));
+    if (!started || retryTimer !== null || root.navigator.onLine === false || typeof root.setTimeout !== 'function') return;
+    // Do not abandon durable sales after three failures. Retry at a bounded
+    // rate while the page is alive, without creating new operation IDs.
+    var delay = Math.min(60000, 1000 * Math.pow(2, Math.min(retryCount, 6)));
+    retryCount = Math.min(retryCount + 1, 7);
+    retryTimer = root.setTimeout(function () { retryTimer = null; return resumeOutbox(); }, delay);
   }
   async function sync() {
     if (syncing) return result('WAITING', 0, snapshot().intents.length, 'BUSY');
@@ -210,16 +226,17 @@
             .catch(function (error) { if (root.console) root.console.warn('[Venta CANON] Confirmada; reconciliación pendiente', error.code || error.message); });
         }
         if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection'));
-        if (started && outcome.status === 'WAITING' && outcome.reason !== 'BUSY' && root.navigator.onLine !== false && retryCount < 3) {
-          var pending = root.NuevoAmanecerCanonical.pendingSnapshot();
-          if (!pending || !pending.last_error) {
-            retryCount += 1;
-            if (retryTimer === null) retryTimer = root.setTimeout(function () { retryTimer = null; return resumeOutbox(); }, 1000 * Math.pow(2, retryCount - 1));
-          }
-        } else if (outcome.status === 'DRAINED' || outcome.status === 'EMPTY') retryCount = 0;
+        if (outcome.status === 'WAITING' && outcome.reason !== 'BUSY') scheduleResume();
+        else if (outcome.status === 'DRAINED' || outcome.status === 'EMPTY') retryCount = 0;
         return outcome;
       }
-      catch (error) { if (error && error.code === 'BUSY') return result('WAITING', 0, snapshot().intents.length, 'BUSY'); throw error; }
+      catch (error) {
+        if (error && error.code === 'BUSY') {
+          scheduleResume();
+          return result('WAITING', 0, snapshot().intents.length, 'BUSY');
+        }
+        throw error;
+      }
     })();
     try { return await syncing; } finally { syncing = null; }
   }
@@ -255,7 +272,7 @@
             try { await canonical.refresh(); state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null; }
             catch (_) { scheduleResume(); return; }
           }
-          if (!state || state.validation !== 'current') return;
+          if (!state || state.validation !== 'current') { scheduleResume(); return; }
         }
       }
       try { if (!snapshot().intents.length) return; } catch (_) { return; }
@@ -279,6 +296,11 @@
         return resume();
       });
       root.addEventListener('na:canonical-updated', resume);
+    }
+    if (root.document && typeof root.document.addEventListener === 'function') {
+      root.document.addEventListener('visibilitychange', function () {
+        if (!root.document.hidden) resume();
+      });
     }
     return resume();
   }
