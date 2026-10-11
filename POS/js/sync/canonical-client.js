@@ -38,6 +38,25 @@
     } catch (_) {}
     return false;
   }
+  // Page size for canonical collection reads. A Worker that supports larger pages
+  // advertises page_limit_max in /read/canonical/status; it is remembered so the
+  // next reload can use it without waiting for status. Never above CLIENT_PAGE_MAX.
+  var DEFAULT_PAGE_LIMIT = 100, CLIENT_PAGE_MAX = 250, PAGE_LIMIT_KEY = 'na_canon_read_page_limit';
+  function readPageLimit() {
+    try {
+      var stored = Number(root.localStorage && root.localStorage.getItem(PAGE_LIMIT_KEY));
+      if (Number.isSafeInteger(stored) && stored >= DEFAULT_PAGE_LIMIT && stored <= CLIENT_PAGE_MAX) return stored;
+    } catch (_) {}
+    return DEFAULT_PAGE_LIMIT;
+  }
+  function rememberPageLimit(meta) {
+    try {
+      var advertised = meta && Number(meta.page_limit_max);
+      var value = Number.isSafeInteger(advertised) && advertised >= DEFAULT_PAGE_LIMIT ? Math.min(advertised, CLIENT_PAGE_MAX) : DEFAULT_PAGE_LIMIT;
+      if (value === DEFAULT_PAGE_LIMIT) root.localStorage.removeItem(PAGE_LIMIT_KEY);
+      else root.localStorage.setItem(PAGE_LIMIT_KEY, String(value));
+    } catch (_) {}
+  }
   var SNAPSHOT_KEYS = ['products','customers','credits','credit_payments','credit_accounts','sales','sale_items','inventory_movements','cash_movements','cash_sessions','financial_events','expenses'];
 
   function copy(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -237,6 +256,7 @@
       });
     });
   }
+  var pageLimitRetried = false;
   async function refresh() {
     if (loading) return loading;
     if (!data) ready = false;
@@ -298,20 +318,32 @@
         }
       }
 
+      var pageLimit = readPageLimit(), deferredPageMetas = null;
       async function readEntry(entry) {
         var route = entry[0], name = entry[1], cursor = null, seen = new Set(), items = [], digest = null;
         do {
           if (binding && !changed) assertBinding(expected);
-          var response = await readFetch(endpoint + '/read/canonical/' + route + '?limit=100' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {
+          var response = await readFetch(endpoint + '/read/canonical/' + route + '?limit=' + pageLimit + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {
             credentials: 'omit', redirect: 'error', cache: 'no-store', headers: authHeaders
           });
+          if (response.status === 400 && pageLimit !== DEFAULT_PAGE_LIMIT && !cursor) {
+            // A Worker without large pages rejects the limit: forget it and restart this refresh with 100.
+            try { root.localStorage.removeItem(PAGE_LIMIT_KEY); } catch (_) {}
+            fail('CANONICAL_PAGE_LIMIT_RETRY');
+          }
           if (!response.ok) fail('CANONICAL_READ_' + response.status);
           var meta = await response.json(); verify(meta, expected);
           if (meta.mode === 'ACTIVE' && !uint(meta.financial_revision)) fail('STALE_AUTHORITY_BINDING');
-          if (statusMeta && meta.mode === 'ACTIVE' && meta.financial_revision !== statusMeta.financial_revision) fail('STALE_AUTHORITY_BINDING');
           var routeDigest = meta.canonical_digest || meta.revision_digest || meta.digest;
-          if (statusDigest && routeDigest && routeDigest !== statusDigest) fail('STALE_AUTHORITY_BINDING');
-          if (JSON.stringify([meta.mode, meta.read_only, meta.minimum_client_contract, meta.mode === 'ACTIVE' ? meta.financial_revision : null]) !== expectedPageMeta) fail('STALE_AUTHORITY_BINDING');
+          var pageMeta = JSON.stringify([meta.mode, meta.read_only, meta.minimum_client_contract, meta.mode === 'ACTIVE' ? meta.financial_revision : null]);
+          if (deferredPageMetas) {
+            // Status runs in parallel with this wave: the same fence is checked once status arrives.
+            deferredPageMetas.push({ meta: pageMeta, digest: routeDigest || null });
+          } else {
+            if (statusMeta && meta.mode === 'ACTIVE' && meta.financial_revision !== statusMeta.financial_revision) fail('STALE_AUTHORITY_BINDING');
+            if (statusDigest && routeDigest && routeDigest !== statusDigest) fail('STALE_AUTHORITY_BINDING');
+            if (pageMeta !== expectedPageMeta) fail('STALE_AUTHORITY_BINDING');
+          }
           if (!Array.isArray(meta.items)) fail('INVALID_CANONICAL_PAGE');
           if (routeDigest) digest = routeDigest;
           items.push.apply(items, meta.items); cursor = meta.next_cursor;
@@ -330,22 +362,42 @@
       var activeEntries = [['cash-sessions', 'cashSessions'], ['financial-events', 'financialEvents'], ['expenses', 'expenses'], ['sales', 'sales'], ['sale-items', 'saleItems'], ['inventory-movements', 'inventoryMovements'], ['cash-movements', 'cashMovements']];
 
       if (!bulkApplied) {
+      // The last validated replica was ACTIVE: start the full wave together with status
+      // instead of after it (one round trip less). The fence is identical: every page
+      // must carry exactly the status meta/digest, otherwise the refresh fails closed.
+      var parallelWave = null;
+      if (cache && cache.mode === 'ACTIVE') {
+        deferredPageMetas = [];
+        parallelWave = Promise.all(coreEntries.concat(activeEntries).map(readEntry));
+        parallelWave.catch(function () {});
+      }
       var status = await readFetch(endpoint + '/read/canonical/status', {
         credentials: 'omit', redirect: 'error', cache: 'no-store', headers: authHeaders
       });
       if (!status.ok) fail('CANONICAL_READ_' + status.status);
       statusMeta = await status.json();
       verify(statusMeta, expected);
+      rememberPageLimit(statusMeta);
       statusDigest = statusMeta && (statusMeta.canonical_digest || statusMeta.revision_digest || statusMeta.digest);
       if (statusMeta && statusMeta.mode === 'ACTIVE' && !uint(statusMeta.financial_revision)) fail('STALE_AUTHORITY_BINDING');
       if (binding && !changed) assertBinding(expected);
       notifyConnectionVerified();
       expectedPageMeta = JSON.stringify([statusMeta.mode, statusMeta.read_only, statusMeta.minimum_client_contract, statusMeta.mode === 'ACTIVE' ? statusMeta.financial_revision : null]);
       if (statusDigest) next.canonical_digest = statusDigest;
-      if (statusMeta.mode === 'ACTIVE') {
+      if (statusMeta.mode === 'ACTIVE' && parallelWave) {
+        var waveResults = await parallelWave;
+        var pendingMetas = deferredPageMetas; deferredPageMetas = null;
+        pendingMetas.forEach(function (page) {
+          if (page.meta !== expectedPageMeta) fail('STALE_AUTHORITY_BINDING');
+          if (statusDigest && page.digest && page.digest !== statusDigest) fail('STALE_AUTHORITY_BINDING');
+        });
+        applyEntries(waveResults);
+      } else if (statusMeta.mode === 'ACTIVE') {
         // FASE6 path: one parallel wave after status (13 routes total with status).
         applyEntries(await Promise.all(coreEntries.concat(activeEntries).map(readEntry)));
       } else {
+        // Predicted ACTIVE but the authority is not: discard the speculative wave.
+        if (parallelWave) { deferredPageMetas = null; await parallelWave.catch(function () {}); }
         applyEntries(await Promise.all(coreEntries.map(readEntry)));
         var operationalSeed = operationalBootstrapSeed(data, statusMeta);
         next.sales = operationalSeed.sales; next.saleItems = operationalSeed.saleItems; next.inventoryMovements = operationalSeed.inventoryMovements;
@@ -375,7 +427,12 @@
       if (!same && typeof root._naWriteCanonicalReplica === 'function') await root._naWriteCanonicalReplica(incoming);
       replicaState.validation = 'current'; notifyReplicaUpdate(); return snapshot();
     })();
-    try { return await loading; } catch (error) { ready = false; replicaState.validation = root.navigator.onLine === false ? 'offline' : (data ? 'stale' : 'unavailable'); notifyReplicaUpdate(); throw error; } finally { loading = null; }
+    try { return await loading; } catch (error) {
+      if (error && error.message === 'CANONICAL_PAGE_LIMIT_RETRY' && !pageLimitRetried) {
+        pageLimitRetried = true; loading = null;
+        try { return await refresh(); } finally { pageLimitRetried = false; }
+      }
+      ready = false; replicaState.validation = root.navigator.onLine === false ? 'offline' : (data ? 'stale' : 'unavailable'); notifyReplicaUpdate(); throw error; } finally { loading = null; }
   }
   function snapshot() { return copy(data || { products: [], customers: [], credits: [], payments: [], creditAccounts: [], sales: [], saleItems: [], inventoryMovements: [], cashMovements: [], cashSessions: [], financialEvents: [], expenses: [] }); }
   function sourceState() { return copy(replicaState); }
