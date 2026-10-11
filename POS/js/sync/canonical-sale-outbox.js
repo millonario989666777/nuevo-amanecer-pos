@@ -74,7 +74,21 @@
     var out = { status: status, processed: processed, remaining: remaining };
     if (reason) out.reason = reason;
     if (head) { out.sale_id = head.sale_id; out.operation_id = head.operation_id; }
+    if (status === 'BLOCKED_PENDING_REJECTED' && head) notifyReview(head, reason);
     return out;
+  }
+  // Tell the cashier once per operation_id (durable across reloads) that a
+  // locally registered sale was rejected and is held for review. Never advise
+  // charging again: the intent and its journal are preserved.
+  var REVIEW_KEY = KEY + '_review_notified';
+  function notifyReview(head, reason) {
+    var seen = [];
+    try { seen = JSON.parse(root.localStorage.getItem(REVIEW_KEY) || '[]'); if (!Array.isArray(seen)) seen = []; } catch (_) { seen = []; }
+    if (seen.indexOf(head.operation_id) !== -1) return;
+    try { root.localStorage.setItem(REVIEW_KEY, JSON.stringify(seen.concat([head.operation_id]).slice(-200))); } catch (_) {}
+    var runtime = root.NuevoAmanecerCanonicalUIAdapter && root.NuevoAmanecerCanonicalUIAdapter.runtime;
+    if (runtime && typeof runtime.notify === 'function') runtime.notify('Venta ' + head.sale_id + ' en revisión: CANON la rechazó (' + reason +
+      '). No la cobres de nuevo y no entregues el crédito hasta resolverla.', 'error');
   }
   // Server-side proof only: the refreshed replica already holds this exact
   // operation_id + sale_id. Missing API or failed refresh = not proven.
