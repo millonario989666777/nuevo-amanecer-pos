@@ -288,3 +288,39 @@ test('schema probe is per request: an additive migration is visible on the next 
   const second = JSON.parse((await w.read('status')).text);
   assert.equal(second.financial_revision, first.financial_revision + 2);
 });
+
+// Prod-like volume (~480 products, ~39 customers, ~93 sales): a full reload with the
+// canonical page size (250) needs fewer Worker requests than with 100 and each request
+// keeps the same per-request Turso budget.
+async function reloadCost(w, limit) {
+  let requests = 1, maxCalls = (await w.read('status')).calls, pages = {};
+  for (const route of ROUTES.filter((r) => r !== 'status' && r !== 'snapshot')) {
+    let cursor = null; pages[route] = 0;
+    do {
+      const r = await w.read(`${route}?limit=${limit}${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`);
+      assert.equal(r.status, 200, `${route}: ${r.text.slice(0, 120)}`);
+      for (const sql of r.sql) assert.match(sql.trim(), /^SELECT\b/i);
+      requests += 1; pages[route] += 1; maxCalls = Math.max(maxCalls, r.calls);
+      cursor = JSON.parse(r.text).next_cursor;
+    } while (cursor);
+  }
+  return { requests, maxCalls, pages };
+}
+
+test('prod-like volume: 250-row pages cut reload requests and stay within the per-request budget', async (t) => {
+  const f = await activeFixture(t, { seeded: false });
+  seed(f, { products: 480, customers: 39, credits: 60, credit_payments: 80, canonical_sale_context: 93, sales: 93, sale_items: 93,
+    cash_movements: 93, inventory_movements: 150, canonical_inventory_effects: 150, canonical_financial_operations: 40,
+    canonical_financial_events: 40, canonical_expenses: 10, canonical_expense_operations: 10 });
+  const w = await tursoWorker(f);
+  const before = await reloadCost(w, 100);
+  const after = await reloadCost(w, 250);
+  assert.equal(before.pages.products, 6);
+  assert.equal(after.pages.products, 3);
+  assert.ok(after.requests < before.requests, JSON.stringify({ before, after }));
+  assert.ok(after.maxCalls <= BUDGET, `max ${after.maxCalls} Turso calls per request (budget ${BUDGET})`);
+  assert.equal(after.maxCalls, before.maxCalls, 'larger pages must not add subrequests');
+  const status = JSON.parse((await w.read('status')).text);
+  assert.equal(status.page_limit_max, 250);
+  assert.equal((await w.read('products?limit=251')).status, 400);
+});
