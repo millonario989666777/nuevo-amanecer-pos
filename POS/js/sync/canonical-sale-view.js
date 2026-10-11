@@ -13,6 +13,19 @@
   function validBase(base) {
     return !!(base && Array.isArray(base.products) && Array.isArray(base.customers) && Array.isArray(base.credits));
   }
+  // canonical.snapshot() returns an empty placeholder until the first replica
+  // (cache or remote) is published, and legacySnapshot() throws until then.
+  // At boot this view's DOMContentLoaded hook runs before startPOS() finishes,
+  // so treat "not loaded yet" as nothing to rebuild; na:canonical-updated
+  // rebuilds once the replica is published.
+  function replicaLoaded(canonical) {
+    if (typeof canonical.sourceState !== 'function') return true;
+    var state = canonical.sourceState();
+    return !!(state && state.source && state.source !== 'none');
+  }
+  function failureCode(error) {
+    return error && (error.code || error.message) || 'CANONICAL_VIEW_REBUILD_FAILED';
+  }
   function projectionBase(snapshot) {
     return { products: snapshot.products, customers: snapshot.customers, credits: snapshot.credits, sales: Array.isArray(snapshot.sales) ? snapshot.sales : [] };
   }
@@ -216,6 +229,7 @@
       var projector = root.NuevoAmanecerCanonicalSaleProjection;
       if (typeof canonical.snapshot !== 'function' || typeof canonical.legacySnapshot !== 'function' ||
           !outbox || typeof outbox.snapshot !== 'function' || !projector || typeof projector.project !== 'function') throw new Error('CANONICAL_VIEW_UNAVAILABLE');
+      if (!replicaLoaded(canonical)) return null;
       var base = canonical.snapshot();
       reconcileConfirmedReceipts(base);
       var legacy = canonical.legacySnapshot();
@@ -254,7 +268,7 @@
       pendingCredits(last);
       return copy(last);
     } catch (error) {
-      if (root.console && typeof root.console.error === 'function') root.console.error('[Vista de ventas canónicas]', error && error.code || 'CANONICAL_VIEW_REBUILD_FAILED');
+      if (root.console && typeof root.console.error === 'function') root.console.error('[Vista de ventas canónicas]', failureCode(error));
       return null;
     }
   }
@@ -281,10 +295,10 @@
   if (root.document && typeof root.document.addEventListener === 'function') {
     root.document.addEventListener('DOMContentLoaded', function () {
       var canonical = root.NuevoAmanecerCanonical;
-      if (!enabled(canonical) || typeof canonical.snapshot !== 'function') return;
+      if (!enabled(canonical) || typeof canonical.snapshot !== 'function' || !replicaLoaded(canonical)) return;
       try { if (validBase(canonical.snapshot())) rebuild(); }
       catch (error) {
-        if (root.console && typeof root.console.error === 'function') root.console.error('[Vista de ventas canónicas]', error && error.code || 'CANONICAL_VIEW_REBUILD_FAILED');
+        if (root.console && typeof root.console.error === 'function') root.console.error('[Vista de ventas canónicas]', failureCode(error));
       }
     });
   }
