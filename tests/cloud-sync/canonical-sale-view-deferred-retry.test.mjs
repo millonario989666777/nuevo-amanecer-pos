@@ -96,9 +96,9 @@ test('mobile pending sales are grouped into cards with Peru-local timestamps and
 });
 
 test('the canonical pending-card stylesheet is loaded by the active POS document', () => {
-  const css = fs.readFileSync(new URL('../../POS/css/experience-v2/pages/ventas.css', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../../POS/css/canon-pending-sales.css', import.meta.url), 'utf8');
   const html = fs.readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8');
-  assert.match(html, /css\/experience-v2\/pages\/ventas\.css/);
+  assert.match(html, /css\/canon-pending-sales\.css/);
   for (const cls of ['na-canonical-pending', 'na-canonical-pending-item',
                      'na-canonical-pending-item-top', 'na-canonical-pending-status',
                      'na-canonical-conflict']) {
