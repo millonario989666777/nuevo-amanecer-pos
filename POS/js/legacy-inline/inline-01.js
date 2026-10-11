@@ -828,7 +828,8 @@ function _baseCliRender(){
     }).join('');
 }
 function toggleCliCard(id){document.getElementById(`cc-${id}`).classList.toggle('open');}
-function abrirModalCli(){document.getElementById('mCliTitle').textContent='➕ Nuevo cliente';['cNombre','cDni','cTel','cDir'].forEach(id=>document.getElementById(id).value='');document.getElementById('mCli').classList.add('open');}
+function _naResetClienteForm(){['cNombre','cDni','cTel','cDir','cLinea'].forEach(id=>{const input=document.getElementById(id);if(input)input.value='';});}
+function abrirModalCli(){document.getElementById('mCliTitle').textContent='➕ Nuevo cliente';_naResetClienteForm();document.getElementById('mCli').classList.add('open');}
 
 
 function abrirCred(cliId){cliCredId=cliId;const c=clientes.find(x=>x.id===cliId),score=calcularScoreCredito(cliId);document.getElementById('mCredAv').style.background=colorFor(c.color);document.getElementById('mCredAv').textContent=initials(c.nombre);document.getElementById('mCredNom').innerHTML=`${_naEsc(c.nombre)}<br><small style="color:var(--slate);font-size:11px">Score: ${score.score} | Línea máx: S/ ${score.lineaMaxima}</small>`;['crDesc','crMonto','crVence'].forEach(id=>document.getElementById(id).value='');document.getElementById('mCred').classList.add('open');}

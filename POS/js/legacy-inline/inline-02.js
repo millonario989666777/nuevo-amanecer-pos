@@ -736,13 +736,17 @@ guardarCli=async function(){
   if(btnOk){btnOk.disabled=true;btnOk.textContent='Procesando…';}
   try{
     const name=_naClean(document.getElementById('cNombre').value),dni=_naClean(document.getElementById('cDni').value);
+    const lineRaw=_naClean(document.getElementById('cLinea')?.value||'').replace(',','.'),line=lineRaw===''?null:Number(lineRaw);
     if(!name){toast('El nombre es obligatorio','error');return;}
+    if(line!==null&&!(Number.isFinite(line)&&line>=0&&line<=1e6)){toast('Línea de crédito inválida (0 a S/ 1,000,000)','error');return;}
     if(dni&&clientes.some(c=>c.dni===dni)){toast('Ya existe un cliente con ese DNI','error');return;}
     const backup=_naClone(clientes);
-    clientes.push({id:Date.now(),color:clientes.length%8,nombre:name,dni,tel:_naClean(document.getElementById('cTel').value),dir:_naClean(document.getElementById('cDir').value),totalCompras:0});
+    const record={id:Date.now(),color:clientes.length%8,nombre:name,dni,tel:_naClean(document.getElementById('cTel').value),dir:_naClean(document.getElementById('cDir').value),totalCompras:0};
+    if(line!==null){const who=_naCashierSnapshot(cajEstado?.cajeroId||appConfig.activeCashierId);Object.assign(record,{lineaCreditoManualActiva:true,lineaCreditoManual:_naRoundMoney(line),lineaCreditoManualMotivo:'Línea inicial al registrar cliente',lineaCreditoManualAt:new Date().toISOString(),lineaCreditoManualPor:who.nombre||'Propietario',lineaCreditoManualPorId:who.id||''});}
+    clientes.push(record);
     const persistResult=await saveAllData();
     if(!_naWasPersisted(persistResult)){clientes=backup;await saveAllData();cliRender();toast('No se guardó el cliente porque no existe almacenamiento permanente verificado','error');return;}
-    cerrarModal('mCli');cliRender();toast('Cliente registrado','success');
+    cerrarModal('mCli');if(typeof _naResetClienteForm==='function')_naResetClienteForm();cliRender();toast('Cliente registrado','success');
   }finally{if(btnOk){btnOk.disabled=false;btnOk.textContent=btnText;}}
 };
 guardarCred=async function(){
