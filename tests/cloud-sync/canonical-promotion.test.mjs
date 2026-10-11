@@ -391,7 +391,9 @@ test('seguridad lecturas: READ_TOKEN o sesión writer activa, cursor/limit invá
     assert.equal(options.status, 204);
     assert.match(options.headers.get('access-control-allow-headers'), /x-read-token/i);
   }
-  for (const query of ['?limit=0','?limit=101','?limit=1.1','?limit=NaN','?cursor=!!!','?cursor=e30']) await response(await f.read('products', query), 400);
+  // Canonical collection pages accept up to 250 rows (admin/export pages stay at 100).
+  for (const query of ['?limit=0','?limit=251','?limit=1.1','?limit=NaN','?cursor=!!!','?cursor=e30']) await response(await f.read('products', query), 400);
+  await response(await f.read('products', '?limit=250'), 200);
   f.revoke();
   await response(await f.read('products'), 200);
   await response(await f.export(f.request.promotion_id, 'products'), 403);

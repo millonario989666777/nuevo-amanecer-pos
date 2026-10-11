@@ -460,7 +460,7 @@ export async function canonicalRead(url,db,json,options={}){
   if(type==='status'){
     const counts=await statusCounts(db,before,plan.schema);
     const after=await plan.current();
-    if(!sameControl(before,after))return json({error:'authority_changed'},409);return json({...readMeta(before),counts});
+    if(!sameControl(before,after))return json({error:'authority_changed'},409);return json({...readMeta(before),counts,page_limit_max:CANONICAL_READ_PAGE_MAX});
   }
   const page=parsePage(url.searchParams,before);if(page.error)return json({error:page.error},400);
   const sqlName=type.replaceAll('-','_');
@@ -732,8 +732,12 @@ async function readProvenance(promotionId,url,db,json){
   const source=rows.results??[],selected=source.slice(0,page.limit),last=selected.at(-1);return json({promotion_id:promotionId,status:promotion.status,entity_type:type,items:selected,next_cursor:source.length>page.limit?encodeCursor({promotion_id:promotionId,entity_type:type,name:last.source_name,row:Number(last.source_row),key:last.source_key}):null,limit:page.limit});
 }
 
-function pageLimit(params){const raw=params.get('limit');if(raw!==null&&!/^\d+$/.test(raw))return null;const limit=raw===null?25:Number(raw);return Number.isSafeInteger(limit)&&limit>=1&&limit<=100?limit:null;}
-function parsePage(params,controlRow){const limit=pageLimit(params);if(limit===null)return{error:'invalid_limit'};const token=params.get('cursor');if(token===null)return{limit,key:''};try{const c=decodeCursor(token);if(c.promotion_id!==controlRow.active_promotion_id||c.authority_epoch!==Number(controlRow.authority_epoch)||c.revision!==Number(controlRow.revision)||(controlRow.mode==='ACTIVE'&&c.financial_revision!==controlRow.financial_revision)||typeof c.key!=='string'||c.key.length>512)return{error:'stale_cursor'};return{limit,key:c.key};}catch{return{error:'invalid_cursor'};}}
+// Canonical collection pages may be larger than admin pages: fewer sequential round
+// trips per reload with the same 5 Turso subrequests per request. 250 keeps the
+// heaviest page (products) far from the Workers Free CPU limit (measured ~6.6 ms).
+const CANONICAL_READ_PAGE_MAX=250;
+function pageLimit(params,max=100){const raw=params.get('limit');if(raw!==null&&!/^\d+$/.test(raw))return null;const limit=raw===null?25:Number(raw);return Number.isSafeInteger(limit)&&limit>=1&&limit<=max?limit:null;}
+function parsePage(params,controlRow){const limit=pageLimit(params,CANONICAL_READ_PAGE_MAX);if(limit===null)return{error:'invalid_limit'};const token=params.get('cursor');if(token===null)return{limit,key:''};try{const c=decodeCursor(token);if(c.promotion_id!==controlRow.active_promotion_id||c.authority_epoch!==Number(controlRow.authority_epoch)||c.revision!==Number(controlRow.revision)||(controlRow.mode==='ACTIVE'&&c.financial_revision!==controlRow.financial_revision)||typeof c.key!=='string'||c.key.length>512)return{error:'stale_cursor'};return{limit,key:c.key};}catch{return{error:'invalid_cursor'};}}
 function parseAdminPage(params,promotionId,type){const limit=pageLimit(params);if(limit===null)return{error:'invalid_limit'};const token=params.get('cursor');if(token===null)return{limit,name:'',row:0,key:''};try{const c=decodeCursor(token);if(!plainExact(c,['promotion_id','entity_type','name','row','key'])||c.promotion_id!==promotionId||c.entity_type!==type||typeof c.name!=='string'||c.name.length>240||!Number.isSafeInteger(c.row)||c.row<1||typeof c.key!=='string'||c.key.length>240)throw new Error();return{limit,name:c.name,row:c.row,key:c.key};}catch{return{error:'invalid_cursor'};}}
 function encodeCursor(value){const bytes=new TextEncoder().encode(JSON.stringify(value));let binary='';for(const b of bytes)binary+=String.fromCharCode(b);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 function decodeCursor(value){if(value.length>8192||!/^[A-Za-z0-9_-]+$/.test(value))throw new Error();const s=value.replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s+'='.repeat((4-s.length%4)%4)),(c)=>c.charCodeAt(0))));}
