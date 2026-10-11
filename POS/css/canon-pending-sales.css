@@ -1,0 +1,64 @@
+/* CANON: pendientes locales de ventas y créditos. Presentación, nunca persistencia. */
+#pageVentas .na-canonical-pending,
+#pageClientes .na-canonical-pending {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 18px 0 24px;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+#pageVentas .na-canonical-pending > h3,
+#pageClientes .na-canonical-pending > h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+  line-height: 1.35;
+  color: #203345;
+  font-weight: 800;
+}
+#pageVentas .na-canonical-pending-item,
+#pageClientes .na-canonical-pending-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #dce8e9;
+  border-left: 3px solid #159c96;
+  border-radius: 12px;
+  background: #fff;
+  color: #233647;
+}
+.na-canonical-pending-item-top,
+.na-canonical-pending-item-detail {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  min-width: 0;
+}
+.na-canonical-pending-item-top { justify-content: space-between; }
+.na-canonical-pending-item-top strong { font-size: 14px; overflow-wrap: anywhere; }
+.na-canonical-pending-amount { color: #098d85; font-size: 16px !important; white-space: nowrap; }
+.na-canonical-pending-item-detail { color: #64788a; font-size: 12px; }
+.na-canonical-pending-item-detail > * { max-width: 100%; overflow-wrap: anywhere; }
+.na-canonical-pending-status,
+.na-canonical-conflict {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #fff6dc;
+  color: #7b5506;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.na-canonical-conflict { background: #ffebeb; color: #a02b33; }
+@media (max-width: 480px) {
+  #pageVentas .na-canonical-pending,
+  #pageClientes .na-canonical-pending { padding: 0 6px; }
+  #pageVentas .na-canonical-pending-item,
+  #pageClientes .na-canonical-pending-item { padding: 11px 12px; }
+}
