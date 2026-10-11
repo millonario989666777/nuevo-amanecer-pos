@@ -204,3 +204,42 @@ test('authoritative sales and clients renderers emit post-render lifecycle event
   assert.doesNotMatch(script,/root\[name\]\s*=/);
   assert.doesNotMatch(script,/installRenderHooks/);
 });
+
+test('boot before the canonical replica is published logs no rebuild failure and keeps pending sales', () => {
+  // Mirrors the real client at DOMContentLoaded: snapshot() is an empty placeholder
+  // (valid shape), sourceState().source is 'none' and legacySnapshot() throws a
+  // plain Error without .code until startPOS() publishes cache or remote data.
+  const pending = intent('V-BOOT', 2);
+  const h = harness({ intents: [pending] });
+  const errors = [];
+  h.globals.console.error = (...args) => errors.push(args.join(' '));
+  const canonical = h.globals.NuevoAmanecerCanonical;
+  const loadedSnapshot = canonical.snapshot, loadedLegacy = canonical.legacySnapshot;
+  let published = false;
+  canonical.sourceState = () => ({ source: published ? 'remote' : 'none', cache: null, validation: published ? 'current' : 'pending' });
+  canonical.snapshot = () => published ? loadedSnapshot() : { products: [], customers: [], credits: [], sales: [] };
+  canonical.legacySnapshot = () => { if (!published) throw new Error('CANONICAL_SNAPSHOT_UNAVAILABLE'); return loadedLegacy(); };
+
+  h.listeners.get('DOMContentLoaded')();
+  assert.equal(h.run(), null, 'nothing to rebuild before the replica exists');
+  assert.deepEqual(errors, [], 'boot race must not log CANONICAL_VIEW_REBUILD_FAILED');
+  assert.equal(h.globals.calls.pos, 0);
+  assert.equal(h.nodes.get('ventasContent').children.length, 0);
+
+  published = true;
+  h.globals.dispatchEvent({ type: 'na:canonical-updated' });
+  assert.deepEqual(errors, []);
+  assert.equal(h.globals.productos[0].stock, 8, 'pending outbox sale still reserves stock once loaded');
+  assert.match(h.nodes.get('ventasContent').children[0].textContent, /V-BOOT[\s\S]*Pendiente de sincronización/);
+  assert.equal(h.globals.NuevoAmanecerCanonicalSaleOutbox.snapshot().intents.length, 1, 'pending sale is never dropped');
+});
+
+test('a real rebuild failure still logs a specific code instead of the generic one', () => {
+  const h = harness();
+  const errors = [];
+  h.globals.console.error = (...args) => errors.push(args.join(' '));
+  h.globals.NuevoAmanecerCanonical.sourceState = () => ({ source: 'remote' });
+  h.globals.NuevoAmanecerCanonical.legacySnapshot = () => { throw new Error('CANONICAL_UI_ADAPTER_UNAVAILABLE'); };
+  assert.equal(h.run(), null);
+  assert.deepEqual(errors, ['[Vista de ventas canónicas] CANONICAL_UI_ADAPTER_UNAVAILABLE']);
+});
