@@ -1104,7 +1104,8 @@
     durableJournal(record);
     var response, result;
     try {
-      var payment = record.command === 'payment.create' || record.command === 'payment.batch' || record.command === 'cash.close';
+      var payment = record.command === 'payment.create' || record.command === 'payment.batch' ||
+        ['cash.close','adjustment.create','expense.create','compensation.create'].includes(record.command);
       var requestOptions = {
         method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
         headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.token },

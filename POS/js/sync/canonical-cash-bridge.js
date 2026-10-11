@@ -296,6 +296,43 @@
     return record && record.command === 'cash.close' ? record : null;
   }
 
+  function closeStatus(message) {
+    var node = root.document.getElementById('cajCloseStatus');
+    if (!node) {
+      var body = root.document.querySelector('#mCierre .mbody');
+      if (!body) return;
+      node = root.document.createElement('div');
+      node.id = 'cajCloseStatus';
+      node.setAttribute('role', 'alert');
+      node.style.cssText = 'padding:10px;margin:10px 0;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:13px;overflow-wrap:anywhere';
+      body.insertBefore(node, body.querySelector('.mbtns'));
+    }
+    node.textContent = message || '';
+    node.hidden = !message;
+  }
+
+  function closeFailure(error) {
+    var code = clean(error && error.message), record;
+    try { record = api().pendingSnapshot(); } catch (_) {}
+    if (record) return 'Operación pendiente: ' + clean(record.command) +
+      (record.last_status ? ' · HTTP ' + record.last_status : '') +
+      (record.last_error ? ' · ' + clean(record.last_error) : ' · sin confirmación del servidor') +
+      '. Se conservó el registro. Revisa esta operación antes de cerrar. ' + code;
+    if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.';
+    return 'No se pudo cerrar la caja CANON: ' + code;
+  }
+
+  async function settleOtherFinancialPending(client) {
+    var record = typeof client.pendingSnapshot === 'function' ? client.pendingSnapshot() : null;
+    if (!record || record.command === 'cash.close' || record.command === 'sale.create') return;
+    // Finish only the exact durable financial operation previously authorized.
+    // Definitive rejects need their own module; never discard/rebuild them here.
+    if (!['payment.create','payment.batch','adjustment.create','expense.create','compensation.create'].includes(record.command) ||
+        (record.last_status && record.last_status < 500 && record.last_status !== 429)) throw new Error('CANONICAL_FINANCIAL_PENDING');
+    await client.retryPending();
+    await refreshCanonical();
+  }
+
   async function settlePendingClose(client) {
     var record = pendingClose(client);
     if (!record) return null;
@@ -321,6 +358,7 @@
       var open = (client.snapshot().cashSessions || []).filter(function (item) { return item.status === 'OPEN'; });
       if (open.length === 1) sessionId = open[0].session_id;
     }
+    await settleOtherFinancialPending(client);
     // Do not strand durable local sales by closing their cash session first.
     var outbox = root.NuevoAmanecerCanonicalSaleOutbox;
     async function submit(processed) {
@@ -348,6 +386,7 @@
   root.cerrarCaja = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
     if (closingBusy) return false;
+    closeStatus('');
     if (!authorizeClose()) return false;
 
     var countedCents = cents(root.document.getElementById('cajContado')?.value);
@@ -372,10 +411,9 @@
           ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : ''), 'success');
       return true;
     } catch (error) {
-      var code = clean(error && error.message);
-      notify(code === 'CASH_CLOSE_PENDING_SALES' ? 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' :
-        code === 'CANONICAL_FINANCIAL_PENDING' ? 'Hay una operación financiera pendiente de confirmar. Se conservó el registro; la caja sigue abierta.' :
-        'No se pudo cerrar la caja CANON: ' + code, 'error');
+      var message = closeFailure(error);
+      closeStatus(message);
+      notify(message, 'error');
       return false;
     } finally {
       closingBusy = false;
