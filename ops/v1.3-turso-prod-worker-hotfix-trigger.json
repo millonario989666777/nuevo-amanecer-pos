@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "El owner reportó que Clientes y Créditos sigue mostrando S/0 y pidió corregirlo. Diagnóstico productivo confirmó Turso S/23,684.95 pero canonical-ui-adapter proyecta S/0 por pérdida del alias original_amount_cents en /read/canonical/credits. Desplegar únicamente el fix de aliases sobre el Worker Turso.",
-  "target_commit": "72b2ed6354c336cf7d41ec1b4c5f81c608795af4",
-  "rollback_ref": "73c8420ab41c7f16c9aab6acd377978354f6b848",
+  "authorization_context": "Owner authorized emergency deploy of fix/canon-status-subrequest-budget (PR #520, merged as c979d64) after /read/canonical/status returned 500 internal_error for every device. Turso-only Worker redeploy, no schema changes, no live sale. Rollback to 1dcd5cc (pre-#520 tip).",
+  "target_commit": "c979d644b0fb5c7b0ebfc8b0d02024a6c183b4aa",
+  "rollback_ref": "1dcd5cc17a74ae742bbdd7b9203d656f467e2eb4",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 7,
-  "previous_run_id": 36946311501,
-  "previous_run_outcome": "UI_PROJECTION_GATE_CONFIRMED_ZERO_BEFORE_DEPLOY",
-  "optimization": "FIX_RECONCILED_CREDIT_READMODEL_SQL_ALIASES"
+  "attempt": 8,
+  "previous_run_id": null,
+  "previous_run_outcome": "STATUS_500_INTERNAL_ERROR_ALL_DEVICES",
+  "optimization": "REDUCE_CANONICAL_STATUS_TURSO_SUBREQUESTS"
 }
