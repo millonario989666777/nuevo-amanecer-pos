@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Cierre de caja: recuperación verificable de stale_session, ACK idempotente y barrera compartida con ventas pendientes.",
-  "retry_attempt": 111,
-  "retry_reason": "Publicar corrección focalizada de cierre tras CANON Critical CI, E2E Smoke CI y revisión independiente; solo frontend.",
-  "requested_at_utc": "2026-10-11T12:24:32.473Z",
-  "approved_base": "89d3b36e91e1ff2d7d12ccdd2fabd35d8d06f56f"
+  "note": "Cierre de caja: recuperar ACK incierto de pagos/movimientos sin duplicados y conservar diagnóstico dentro del modal.",
+  "retry_attempt": 112,
+  "retry_reason": "Frontend verificado con 629 regresiones cloud, 183 negocio/respaldo, E2E Smoke CI y revisión independiente; recuperación exacta de pendientes financieros.",
+  "requested_at_utc": "2026-10-11T12:55:07.345Z",
+  "approved_base": "25d0303ab57a973fa21d303cf7ad19a974057dce"
 }
