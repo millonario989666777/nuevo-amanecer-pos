@@ -1,0 +1,21 @@
+/* CANON: sub-pestañas de Ventas en teléfono. Las cinco pestañas (Hoy, Semana,
+   Historial, Top prods., Reportes) miden ~471px y en pantallas de ~400px la fila
+   quedaba desplazada horizontalmente: al elegir Reportes, "Hoy" salía por la
+   izquierda sin ninguna pista visual. En móvil la fila se ajusta y, si no cabe,
+   pasa a una segunda línea; ninguna pestaña queda fuera de pantalla. */
+@media (max-width: 600px) {
+  #pageVentas .tabs-wrap {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    overflow-x: visible;
+  }
+  #pageVentas .tabs-wrap > .tab {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+    gap: 3px;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 11px;
+  }
+}
