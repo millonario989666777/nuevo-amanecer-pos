@@ -241,3 +241,33 @@ test('recoverable queue keeps retrying after three failures, bounded at 60s, and
   assert.ok(delays.every(delay => delay <= 60000), 'backoff must stay bounded');
   assert.equal(timers.length, 0);
 });
+
+
+test('fresh 429 defers replay until a later sync pass, preserving the same intent', async () => {
+  const sale = makeIntent('RATE-DEFER');
+  const canonical = {
+    pending: null,
+    createSale(i) {
+      canonical.pending = {
+        state: 'PENDING', command: 'sale.create', payload: copy(i),
+        last_error: 'rate_limited', last_status: 429
+      };
+      throw Error('CANONICAL_FINANCIAL_REJECTED_429');
+    },
+    retryPending() {
+      assert.equal(canonical.pending.payload.operation_id, sale.operation_id);
+      canonical.pending = null;
+      canonical.receipt = { operation_id: sale.operation_id, sale_id: sale.sale_id };
+    }
+  };
+  const f = fixture({ canonical });
+  await f.api.enqueue(sale);
+  const first = await f.api.sync();
+  assert.equal(first.status, 'WAITING');
+  assert.equal(first.reason, 'rate_limited');
+  assert.deepEqual(copy(f.api.snapshot().intents), [sale]);
+  assert.equal(f.calls.filter(x => x === 'retryPending').length, 0, 'no immediate rate-limit replay');
+  assert.equal((await f.api.sync()).status, 'DRAINED');
+  assert.equal(f.calls.filter(x => x === 'retryPending').length, 1);
+  assert.equal(f.calls.filter(x => Array.isArray(x) && x[0] === 'createSale').length, 1);
+});
