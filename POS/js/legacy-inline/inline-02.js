@@ -692,7 +692,10 @@ guardarProd=async function(){
   cerrarModal('mProd');invRender();posRender();toast(invEditId?'Producto actualizado':'Producto agregado','success');
   }finally{if(btnOk){btnOk.disabled=false;btnOk.textContent=btnText;}}
 };
-abrirMovInv=function(id,tipo){if(isModuleLocked('productos')){toast('Módulo de productos bloqueado','error');return;}invMovId=id;invMovT=tipo;const p=productos.find(x=>String(x.id)===String(id));if(!p)return;if(!_naTracksStock(p)){toast('Este producto no controla inventario','error');return;}document.getElementById('mMovIcon').textContent=p.icon;document.getElementById('mMovNombre').textContent=p.name;document.getElementById('mMovStock').textContent=`Stock actual: ${p.stock} ${_naCategoryTitle(p.unidad||'unidad').toLowerCase()}`;document.getElementById('mMovCant').value='';document.querySelectorAll('.mov-type-btn').forEach(b=>{b.classList.remove('active');if(b.dataset.type===tipo)b.classList.add('active');});document.getElementById('mMovInv').classList.add('open');};
+// CANON: stock in/out is saved only through canonical inventory.adjust (NuevoAmanecerCanonicalInventoryBridge), so the
+// opener is a canonical product UI; user/master/read-only locks still apply (isModuleLocked + bridge.userLocked).
+function _naCanonicalInventoryUi(){const bridge=globalThis.NuevoAmanecerCanonicalInventoryBridge;try{return !!(bridge&&typeof bridge.enabled==='function'&&bridge.enabled()&&typeof bridge.save==='function');}catch(_){return false;}}
+abrirMovInv=function(id,tipo){if(isModuleLocked('productos',{canonicalProductUi:_naCanonicalInventoryUi()})){toast('Módulo de productos bloqueado','error');return;}invMovId=id;invMovT=tipo;const p=productos.find(x=>String(x.id)===String(id));if(!p)return;if(!_naTracksStock(p)){toast('Este producto no controla inventario','error');return;}document.getElementById('mMovIcon').textContent=p.icon;document.getElementById('mMovNombre').textContent=p.name;document.getElementById('mMovStock').textContent=`Stock actual: ${p.stock} ${_naCategoryTitle(p.unidad||'unidad').toLowerCase()}`;document.getElementById('mMovCant').value='';document.querySelectorAll('.mov-type-btn').forEach(b=>{b.classList.remove('active');if(b.dataset.type===tipo)b.classList.add('active');});document.getElementById('mMovInv').classList.add('open');};
 guardarMovInv=async function(){if(isModuleLocked('productos')){toast('Módulo de productos bloqueado','error');return;}const qty=_naInt(document.getElementById('mMovCant').value);if(qty<=0){toast('Ingresa una cantidad válida','error');return;}const p=productos.find(x=>String(x.id)===String(invMovId));if(!p)return;if(invMovT==='salida'&&qty>p.stock){toast(`Stock insuficiente (${p.stock} disponibles)`,'error');return;}p.stock=invMovT==='entrada'?p.stock+qty:Math.max(0,p.stock-qty);cerrarModal('mMovInv');invRender();posRender();await _naFinalizeOperationPersistence(`${invMovT==='entrada'?'📥 Entrada':'📤 Salida'} de ${qty} unidades`,'No se pudo guardar el movimiento de inventario');};
 
 // Clientes y créditos
@@ -736,13 +739,17 @@ guardarCli=async function(){
   if(btnOk){btnOk.disabled=true;btnOk.textContent='Procesando…';}
   try{
     const name=_naClean(document.getElementById('cNombre').value),dni=_naClean(document.getElementById('cDni').value);
+    const lineRaw=_naClean(document.getElementById('cLinea')?.value||'').replace(',','.'),line=lineRaw===''?null:Number(lineRaw);
     if(!name){toast('El nombre es obligatorio','error');return;}
+    if(line!==null&&!(Number.isFinite(line)&&line>=0&&line<=1e6)){toast('Línea de crédito inválida (0 a S/ 1,000,000)','error');return;}
     if(dni&&clientes.some(c=>c.dni===dni)){toast('Ya existe un cliente con ese DNI','error');return;}
     const backup=_naClone(clientes);
-    clientes.push({id:Date.now(),color:clientes.length%8,nombre:name,dni,tel:_naClean(document.getElementById('cTel').value),dir:_naClean(document.getElementById('cDir').value),totalCompras:0});
+    const record={id:Date.now(),color:clientes.length%8,nombre:name,dni,tel:_naClean(document.getElementById('cTel').value),dir:_naClean(document.getElementById('cDir').value),totalCompras:0};
+    if(line!==null){const who=_naCashierSnapshot(cajEstado?.cajeroId||appConfig.activeCashierId);Object.assign(record,{lineaCreditoManualActiva:true,lineaCreditoManual:_naRoundMoney(line),lineaCreditoManualMotivo:'Línea inicial al registrar cliente',lineaCreditoManualAt:new Date().toISOString(),lineaCreditoManualPor:who.nombre||'Propietario',lineaCreditoManualPorId:who.id||''});}
+    clientes.push(record);
     const persistResult=await saveAllData();
     if(!_naWasPersisted(persistResult)){clientes=backup;await saveAllData();cliRender();toast('No se guardó el cliente porque no existe almacenamiento permanente verificado','error');return;}
-    cerrarModal('mCli');cliRender();toast('Cliente registrado','success');
+    cerrarModal('mCli');if(typeof _naResetClienteForm==='function')_naResetClienteForm();cliRender();toast('Cliente registrado','success');
   }finally{if(btnOk){btnOk.disabled=false;btnOk.textContent=btnText;}}
 };
 guardarCred=async function(){
