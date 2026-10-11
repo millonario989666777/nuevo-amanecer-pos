@@ -165,7 +165,13 @@
         if (afterFailure && afterFailure.command === 'sale.create' && afterFailure.payload && afterFailure.payload.operation_id === head.operation_id && afterFailure.payload.sale_id === head.sale_id) {
           // Safe 409/400 rejects leave last_error; loop again so discard+retry
           // runs in this same syncLocked pass instead of freezing until next sync.
-          if (afterFailure.last_error) continue;
+          if (afterFailure.last_error) {
+            // Do not immediately replay an uncertain 429/5xx inside the same
+            // drain pass: let the bounded backoff schedule the next safe retry.
+            if (afterFailure.last_status === 429 || afterFailure.last_status >= 500)
+              return result('WAITING', processed, parseStored().intents.length, String(afterFailure.last_error));
+            continue;
+          }
           return result('WAITING', processed, parseStored().intents.length, String(error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'));
         }
         if (afterFailure && (afterFailure.command !== 'sale.create' || !afterFailure.payload || afterFailure.payload.operation_id !== head.operation_id || afterFailure.payload.sale_id !== head.sale_id)) return result('BLOCKED_FOREIGN_PENDING', processed, parseStored().intents.length, 'FOREIGN_PENDING');
