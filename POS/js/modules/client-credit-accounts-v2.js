@@ -1509,10 +1509,39 @@ function labCreditDisplayMoment(cr, fallbackDate) {
     '</div>';
   }
 
+  function labPaymentLocalTime(pay) {
+    var raw = pay && pay.timestamp ? String(pay.timestamp) : '';
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(raw)) return '';
+    var at = new Date(raw);
+    if (!isFinite(at.getTime())) return '';
+    return String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0');
+  }
+
+  var LAB_PAYMENT_METHOD_LABELS = { efectivo:'Efectivo', yape:'Yape', plin:'Plin', transferencia:'Transferencia', mixto:'Mixto' };
+
+  function labPaymentMethodLabel(pay) {
+    var method = String(pay && pay.metodo || '').toLowerCase();
+    return LAB_PAYMENT_METHOD_LABELS[method] || (method ? method.charAt(0).toUpperCase() + method.slice(1) : 'Método no registrado');
+  }
+
   function labFormatPaymentMoment(pay) {
     var date = pay && (pay.fecha || (pay.timestamp ? String(pay.timestamp).slice(0,10) : '')) || 'Fecha no registrada';
-    var time = pay && (pay.hora || pay.hora24 || '') || '';
-    return date + (time ? ' · ' + time : '');
+    var time = pay && (pay.hora || pay.hora24 || labPaymentLocalTime(pay)) || '';
+    return date + (time ? ' · ' + time : '') + ' · ' + labPaymentMethodLabel(pay) +
+      (pay && (pay.operacion || pay.numeroOperacion) ? ' · Op. ' + String(pay.operacion || pay.numeroOperacion) : '');
+  }
+
+  // Historial de pagos: cada abono con fecha/hora, método y monto (antes solo había un conteo).
+  function labPaymentDetailRows(credits) {
+    var rows = [];
+    credits.forEach(function (cr) {
+      labEffectivePayments(cr).forEach(function (pay) { rows.push({ cr:cr, pay:pay, key:String(pay.timestamp || pay.fecha || '') }); });
+    });
+    rows.sort(function (a, b) { return b.key.localeCompare(a.key); });
+    return rows.map(function (row) {
+      return '<div class="na-receipt-payment-row na-v2-payment-detail"><span><strong>' + labMoney(row.pay.monto || row.pay.montoPagado || 0) + '</strong><small>' +
+        labEsc(labFormatPaymentMoment(row.pay)) + '</small><small>' + labEsc(row.cr.desc || 'Crédito') + '</small></span></div>';
+    }).join('');
   }
 
   function labCreditHistoryHtml(client, cr) {
@@ -1546,7 +1575,7 @@ function labCreditDisplayMoment(cr, fallbackDate) {
               var count = labEffectivePayments(cr).length;
               return '<button type="button" class="na-v2-row" onclick="naCanonOpenCreditHistory(\'' + labEsc(String(cr.id)) + '\')"><span><strong>' + labEsc(cr.desc || 'Crédito') + '</strong><small>' + count + ' cuotas canceladas</small></span><b>›</b></button>';
             }).join('');
-        return '<section class="na-v2-section"><h3>' + labEsc(group.category.name).toUpperCase() + '</h3><div class="na-v2-list">' + content + '</div></section>';
+        return '<section class="na-v2-section"><h3>' + labEsc(group.category.name).toUpperCase() + '</h3><div class="na-v2-list">' + content + labPaymentDetailRows(group.credits) + '</div></section>';
       }).join('') : '<div class="na-v2-empty">Todavía no hay pagos registrados.</div>') +
     '</div>';
   }
@@ -1803,7 +1832,10 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       });
     };
 
-    if (!page || !page.classList.contains('active') || naClientReducedMotion()) {
+    // Mientras se escribe en la búsqueda, la lista debe reflejar cada tecla al instante:
+    // la animación de salida (850 ms) dejaba la lista una tecla atrás.
+    var searching = document.activeElement && document.activeElement.id === 'cliSearch';
+    if (!page || !page.classList.contains('active') || naClientReducedMotion() || searching) {
       clearTimeout(naClientListMotionTimer);
       naClientListMotionTimer = 0;
       page && page.classList.remove('na-client-refresh-out','na-client-refresh-in');
