@@ -291,6 +291,60 @@
     }
   };
 
+  function pendingClose(client) {
+    var record = typeof client.pendingSnapshot === 'function' ? client.pendingSnapshot() : null;
+    return record && record.command === 'cash.close' ? record : null;
+  }
+
+  async function settlePendingClose(client) {
+    var record = pendingClose(client);
+    if (!record) return null;
+    if (!(record.last_status === 409 && record.last_error === 'stale_session')) {
+      // Lost acknowledgements replay the original amount and operation ID.
+      try { return { receipt: await client.retryPending() }; }
+      catch (error) {
+        record = pendingClose(client);
+        if (!record || record.last_status !== 409 || record.last_error !== 'stale_session') throw error;
+      }
+    }
+    await refreshCanonical();
+    var recovered = await client.releaseRejectedCashClose();
+    if (!recovered) throw new Error('CANONICAL_FINANCIAL_PENDING');
+    return recovered;
+  }
+
+  async function closeCanonicalCash(countedCents) {
+    var client = api(), recovered = await settlePendingClose(client);
+    if (recovered && (recovered.receipt || recovered.status === 'CLOSED')) return recovered;
+    var sessionId = recovered && recovered.session_id;
+    if (!sessionId && typeof client.snapshot === 'function') {
+      var open = (client.snapshot().cashSessions || []).filter(function (item) { return item.status === 'OPEN'; });
+      if (open.length === 1) sessionId = open[0].session_id;
+    }
+    // Do not strand durable local sales by closing their cash session first.
+    var outbox = root.NuevoAmanecerCanonicalSaleOutbox;
+    async function submit(processed) {
+      if (processed > 0) await refreshCanonical();
+      await prepare('cash.close');
+      var input = { counted_cents: countedCents };
+      if (sessionId) input.session_id = sessionId;
+      try { return { receipt: await client.closeCash(input) }; }
+      catch (error) {
+        var record = pendingClose(client);
+        if (!record || record.last_status !== 409 || record.last_error !== 'stale_session') throw error;
+        // One bounded recovery, never an unlimited retry loop.
+        recovered = await settlePendingClose(client);
+        if (recovered.status === 'CLOSED') return recovered;
+        input.session_id = recovered.session_id;
+        return { receipt: await client.closeCash(input) };
+      }
+    }
+    if (outbox && typeof outbox.withCashCloseBarrier === 'function') return outbox.withCashCloseBarrier(submit);
+    // Compatibility for a runtime that has not loaded the updated outbox yet.
+    if (outbox && outbox.snapshot().intents.length) throw new Error('CASH_CLOSE_PENDING_SALES');
+    return submit(0);
+  }
+
   root.cerrarCaja = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
     if (closingBusy) return false;
@@ -308,15 +362,20 @@
     if (button) { button.disabled = true; button.textContent = 'Procesando…'; }
 
     try {
-      await prepare('cash.close');
-      await api().closeCash({ counted_cents: countedCents });
+      var outcome = await closeCanonicalCash(countedCents);
       refreshAfterReceipt();
       closeModal('mCierre');
       renderCash();
-      notify('Caja CANON cerrada correctamente', 'success');
+      var actualCount = outcome.receipt && outcome.receipt.counted_cents;
+      notify(outcome.status === 'CLOSED' ? 'Esta caja ya estaba cerrada. Estado actualizado.' :
+        'Caja CANON cerrada correctamente' + (Number.isSafeInteger(actualCount) && actualCount !== countedCents
+          ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : ''), 'success');
       return true;
     } catch (error) {
-      notify('No se pudo cerrar la caja CANON: ' + clean(error && error.message), 'error');
+      var code = clean(error && error.message);
+      notify(code === 'CASH_CLOSE_PENDING_SALES' ? 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' :
+        code === 'CANONICAL_FINANCIAL_PENDING' ? 'Hay una operación financiera pendiente de confirmar. Se conservó el registro; la caja sigue abierta.' :
+        'No se pudo cerrar la caja CANON: ' + code, 'error');
       return false;
     } finally {
       closingBusy = false;
