@@ -52,3 +52,33 @@ test('missing canonical metadata never falls back to a stale full snapshot',()=>
  let snapshots=0;const ctx={NuevoAmanecerCanonical:{enabled:()=>true,sourceState:()=>({cache:null}),snapshot:()=>{snapshots++;return {promotion_id:'old'};}}};
  vm.runInNewContext(source,ctx);assert.equal(ctx.NuevoAmanecerImageBatch.source(p),null);assert.equal(snapshots,0);
 });
+
+async function hydrated(catalog,entries){
+ const node={style:{},classList:{add(){}},textContent:''};
+ const ctx={productos:catalog,document:{addEventListener(){},getElementById(){return node;}},indexedDB:{open(){
+  const request={result:{close(){},transaction(){return {objectStore(){return {get(){const r={result:{entries}};queueMicrotask(()=>r.onsuccess());return r;}};}};}}};
+  queueMicrotask(()=>request.onsuccess());return request;
+ }}};
+ vm.runInNewContext(source,ctx);await ctx.NuevoAmanecerImageBatch.open();return ctx;
+}
+test('render-local photo index is equivalent to fail-closed independent resolution',async()=>{
+ const catalog=[p,{...p,id:'p2',sku:'two',barcode:'02',codigosAlternativos:['shared']},{...p,id:'p3',sku:'three',barcode:'03',codigosAlternativos:['shared']}];
+ for(const entries of [[{codes:['12345'],image,targetId:'p1'}],[{codes:['shared'],image}],[{codes:['01'],image},{codes:['12345'],image}],[{codes:['01'],image,targetId:'wrong'}],[{codes:['01','02'],image}],[]]){
+  const ctx=await hydrated(catalog,entries),api=ctx.NuevoAmanecerImageBatch;
+  const expected=catalog.map(x=>api.resolve(x,entries,catalog));
+  assert.deepEqual(Array.from(api.withSources(()=>catalog.map(x=>api.source(x)))),expected);
+ }
+});
+test('photo index is rebuilt after in-place code edits and cleared after render errors',async()=>{
+ const catalog=[{...p}, {...p,id:'p2',sku:'other',barcode:'02',codigosAlternativos:[]}],entries=[{codes:['01'],image}],ctx=await hydrated(catalog,entries),api=ctx.NuevoAmanecerImageBatch;
+ assert.equal(api.withSources(()=>api.source(catalog[0])),image);
+ catalog[1].barcode='01';assert.equal(api.withSources(()=>api.source(catalog[0])),null);
+ catalog[1].barcode='02';assert.throws(()=>api.withSources(()=>{assert.equal(api.source(catalog[0]),image);throw Error('render failed');}));
+ catalog[1].barcode='01';assert.equal(api.withSources(()=>api.source(catalog[0])),null);
+});
+test('408 render photo lookups read catalog codes linearly',async()=>{
+ let reads=0;const catalog=Array.from({length:408},(_,i)=>({id:i,barcode:'b'+i,get sku(){reads++;return 's'+i;}}));
+ const entries=catalog.map(x=>({codes:[x.sku],image})),ctx=await hydrated(catalog,entries);reads=0;
+ ctx.NuevoAmanecerImageBatch.withSources(()=>{for(const x of catalog)assert.equal(ctx.NuevoAmanecerImageBatch.source(x),image);});
+ assert.ok(reads<=catalog.length*3,`catalog reads ${reads} must be bounded`);
+});

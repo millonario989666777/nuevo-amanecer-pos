@@ -23,6 +23,20 @@
     const targets=matches(found[0],products);
     return targets.length===1&&identity(targets[0])===identity(product)?found[0].image:null;
   }
+  function indexSources(entries,catalog){
+    const byCode=new Map(),byEntryCode=new Map(),result=new Map();
+    catalog.forEach((p,index)=>{for(const code of codes(p)){if(!byCode.has(code))byCode.set(code,new Set());byCode.get(code).add(index);}});
+    for(const entry of entries){for(const code of entry.codes){if(!byEntryCode.has(code))byEntryCode.set(code,new Set());byEntryCode.get(code).add(entry);}}
+    const targets=new Map();
+    for(const entry of entries){const ids=new Set();for(const code of entry.codes)for(const index of byCode.get(code)||[])ids.add(index);targets.set(entry,ids);}
+    for(const p of catalog){const found=new Set();for(const code of codes(p))for(const entry of byEntryCode.get(code)||[])found.add(entry);
+      const entry=found.size===1?[...found][0]:null,ids=entry?targets.get(entry):null;
+      result.set(p,entry&&(!entry.targetId||entry.targetId===identity(p))&&ids.size===1&&identity(catalog[[...ids][0]])===identity(p)?entry.image:null);
+    }
+    return result;
+  }
+  let sourceDepth=0,sourceIndex=null;
+  function withSources(callback){sourceDepth++;try{return callback();}finally{if(--sourceDepth===0)sourceIndex=null;}}
   function plan(entries,products,stored,replace=false){
     const rows=validate(entries).map(entry=>{
       const found=matches(entry,products),p=found[0];
@@ -55,7 +69,7 @@
   async function write(key,record,expected){const db=await database();try{await new Promise((resolve,reject)=>{const tx=db.transaction('catalogs','readwrite');const store=tx.objectStore('catalogs'),r=store.get(key);r.onsuccess=()=>{if(JSON.stringify(r.result||{entries:[]})!==JSON.stringify(expected)){tx.abort();return;}store.put(record,key);};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Otro proceso cambió las fotos. Vuelve a seleccionar el lote'));});}finally{db.close();}const verified=await read(key);if(JSON.stringify(verified)!==JSON.stringify(record))throw Error('No se pudo verificar el guardado');}
   function render(){for(const name of ['posRender','invRender','posUpdateCart'])if(typeof root[name]==='function')root[name]();}
   async function hydrate(force=false){const key=scope();if(!force&&loadedScope===key)return;if(pending)return pending;pending=(async()=>{const record=await read(key);cache=validate(record.entries);loadedScope=key;render();})().finally(()=>{pending=null;});return pending;}
-  function source(p){try{if(loadedScope!==scope()){hydrate().catch(()=>{});return null;}return resolve(p,cache,products());}catch{return null;}}
+  function source(p){try{if(loadedScope!==scope()){sourceIndex=null;hydrate().catch(()=>{});return null;}if(sourceDepth){if(!sourceIndex)sourceIndex=indexSources(cache,products());return sourceIndex.get(p)||null;}return resolve(p,cache,products());}catch{return null;}}
   function authorized(){return !(typeof isModuleLocked==='function'&&isModuleLocked('productos',{canonicalProductUi:true}))&&(typeof _naAuthorize!=='function'||_naAuthorize('importar','Cargar fotos de productos'));}
   function message(text){root.document.getElementById('productImageBatchStatus').textContent=text;}
   function controls(value){busy=value;root.document.querySelectorAll('#productImageBatchModal button,#productImageBatchModal input').forEach(n=>n.disabled=value);}
@@ -71,6 +85,6 @@
   async function open(){if(!authorized())return;root.document.getElementById('productImageBatchModal').style.display='flex';root.document.getElementById('productImageBatchModal').classList.add('open');try{await hydrate(true);message('Selecciona un JSON de lote o fotos cuyo nombre sea el código del producto. Las fotos son locales a este dispositivo.');}catch(e){message(e.message);}}
   async function exportBatch(){try{await hydrate();const blob=new root.Blob([JSON.stringify({version:1,entries:cache})],{type:'application/json'}),url=root.URL.createObjectURL(blob),a=root.document.createElement('a');a.href=url;a.download='fotos-productos.json';a.click();root.setTimeout(()=>root.URL.revokeObjectURL(url),1000);}catch(e){message(e.message);}}
   async function undo(){if(busy||!authorized())return;controls(true);try{const key=scope(),record=await read(key);if(!Array.isArray(record.previous))throw Error('No hay lote anterior');const entries=validate(record.previous);await write(key,{entries},record);cache=entries;loadedScope=key;preview=null;render();message('Se restauró el catálogo visual anterior');}catch(e){message(e.message);}finally{controls(false);}}
-  root.NuevoAmanecerImageBatch=Object.freeze({plan,resolve,source,open});
+  root.NuevoAmanecerImageBatch=Object.freeze({plan,resolve,source,open,withSources});
   if(root.document)root.document.addEventListener('DOMContentLoaded',()=>{root.document.getElementById('productImageBatchFiles').addEventListener('change',filesSelected);root.document.getElementById('productImageBatchApply').addEventListener('click',apply);root.document.getElementById('productImageBatchExport').addEventListener('click',exportBatch);root.document.getElementById('productImageBatchUndo').addEventListener('click',undo);root.document.getElementById('productImageBatchReplace').addEventListener('change',()=>{if(selectedEntries.length)reprocessSelected();else{preview=null;message('Selecciona primero un lote para actualizar la vista previa');}});hydrate().catch(()=>{});});
 })(globalThis);

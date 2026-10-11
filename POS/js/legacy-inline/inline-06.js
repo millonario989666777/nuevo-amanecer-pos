@@ -7,8 +7,8 @@ function _naF9PurchaseUnitLabel(value){return({unidad:'unidades',caja:'cajas',pa
 function _naF9SaleDate(sale){return _naF9Date(sale?.fecha)||(()=>{const d=new Date(sale?.timestamp||'');return Number.isNaN(d.getTime())?null:d;})();}
 function _naF9ProductSales(product,historyDays){const today=_naF9Date(obtenerHoy()),cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-historyDays+1);let units=0,transactions=0,first=null,last=null;for(const sale of ventas){if(sale?.anulada)continue;const date=_naF9SaleDate(sale);if(!date||date<cutoff||date>today)continue;let found=false;for(const item of Array.isArray(sale.items)?sale.items:[]){const id=item?.productoId??item?.id,match=String(id)===String(product.id)||(!id&&_naClean(item?.sku).toLowerCase()===_naClean(product.sku).toLowerCase());if(!match)continue;units+=_naUnitsSold(item);found=true;}if(found){transactions++;if(!first||date<first)first=date;if(!last||date>last)last=date;}}const observed=first?Math.max(14,Math.min(historyDays,_naF9DaysBetween(first,today)+1)):historyDays;return{units:Number(units.toFixed(3)),transactions,first,last,observedDays:observed,avgDaily:units/Math.max(1,observed)};}
 function _naF9Rotation(avgDaily){const monthly=avgDaily*30;if(monthly>=30)return{key:'alta',label:'Alta rotación',className:'good'};if(monthly>=8)return{key:'media',label:'Rotación media',className:'soon'};if(monthly>0)return{key:'baja',label:'Baja rotación',className:'review'};return{key:'sin_historial',label:'Sin historial',className:'review'};}
-function _naF9AnalyzeProduct(product){
-  const cfg=_naF9Settings(),sales=_naF9ProductSales(product,cfg.historyDays),stock=_naNumber(product.stock),availableStock=Math.max(0,stock),stockMin=Math.max(0,_naNumber(product.stockMin)),avg=sales.avgDaily,coverage=avg>0?availableStock/avg:null,expiry=diasHasta(product.venc),rotation=_naF9Rotation(avg),unitPurchase=_naClean(product.unidadCompra||(product.unidCaja?'caja':'unidad'))||'unidad',factor=unitPurchase==='unidad'?1:Math.max(.001,_naNumber(product.factorCompra,product.unidCaja||1)),target=Math.max(stockMin,avg*(cfg.coverageDays+cfg.safetyDays));
+function _naF9AnalyzeProduct(product,salesSummary=null){
+  const cfg=_naF9Settings(),sales=salesSummary||_naF9ProductSales(product,cfg.historyDays),stock=_naNumber(product.stock),availableStock=Math.max(0,stock),stockMin=Math.max(0,_naNumber(product.stockMin)),avg=sales.avgDaily,coverage=avg>0?availableStock/avg:null,expiry=diasHasta(product.venc),rotation=_naF9Rotation(avg),unitPurchase=_naClean(product.unidadCompra||(product.unidCaja?'caja':'unidad'))||'unidad',factor=unitPurchase==='unidad'?1:Math.max(.001,_naNumber(product.factorCompra,product.unidCaja||1)),target=Math.max(stockMin,avg*(cfg.coverageDays+cfg.safetyDays));
   let rawNeed=Math.max(0,target-stock),maxSafeAdd=Infinity,expiryRisk=false;
   if(expiry!==null){const safeDays=Math.max(0,expiry-cfg.safetyDays),safeInventory=avg>0?avg*safeDays:0;maxSafeAdd=Math.max(0,safeInventory-stock);if(rawNeed>maxSafeAdd){rawNeed=maxSafeAdd;expiryRisk=true;}}
   if(avg<=0||expiry!==null&&expiry<0)rawNeed=0;
@@ -25,7 +25,33 @@ function _naF9AnalyzeProduct(product){
   else if(expiryRisk){priority='review';priorityLabel='Compra limitada';reason='La fecha de vencimiento limita la cantidad segura a comprar.';}
   return{product,cfg,sales,stock,stockMin,avg,coverage,expiry,rotation,unitPurchase,factor,suggestedUnits,packages,investment,potentialRevenue,potentialProfit,daysToSellSuggested,overstock,expiryRisk,need,priority,priorityLabel,reason};
 }
-function _naF9All(){return productos.filter(_naTracksStock).map(_naF9AnalyzeProduct);}
+// This index lives for one calculation only: in-place edits and new sales are
+// always visible on the next render, without persistent cache invalidation.
+function _naF9SalesIndex(products,historyDays){
+  const today=_naF9Date(obtenerHoy()),cutoff=new Date(today),byId=new Map(),bySku=new Map(),stats=new Map();
+  cutoff.setDate(cutoff.getDate()-historyDays+1);
+  function add(map,key,p){if(!map.has(key))map.set(key,[]);map.get(key).push(p);}
+  for(const p of products){add(byId,String(p.id),p);add(bySku,_naClean(p.sku).toLowerCase(),p);stats.set(p,{units:0,transactions:0,first:null,last:null});}
+  for(const sale of ventas){
+    if(sale?.anulada)continue;const date=_naF9SaleDate(sale);if(!date||date<cutoff||date>today)continue;
+    const touched=new Set();
+    for(const item of Array.isArray(sale.items)?sale.items:[]){
+      const id=item?.productoId??item?.id,targets=new Set(byId.get(String(id))||[]);
+      if(!id)for(const p of bySku.get(_naClean(item?.sku).toLowerCase())||[])targets.add(p);
+      for(const p of targets){stats.get(p).units+=_naUnitsSold(item);touched.add(p);}
+    }
+    for(const p of touched){const s=stats.get(p);s.transactions++;if(!s.first||date<s.first)s.first=date;if(!s.last||date>s.last)s.last=date;}
+  }
+  for(const s of stats.values()){const observed=s.first?Math.max(14,Math.min(historyDays,_naF9DaysBetween(s.first,today)+1)):historyDays;s.avgDaily=s.units/Math.max(1,observed);s.units=Number(s.units.toFixed(3));s.observedDays=observed;}
+  return stats;
+}
+let _naF9RenderAnalysis=null,_naF9RenderDepth=0;
+function _naF9All(){
+  if(_naF9RenderAnalysis)return _naF9RenderAnalysis;
+  const tracked=productos.filter(_naTracksStock),stats=_naF9SalesIndex(tracked,_naF9Settings().historyDays),all=tracked.map(p=>_naF9AnalyzeProduct(p,stats.get(p)));
+  if(_naF9RenderDepth)_naF9RenderAnalysis=all;
+  return all;
+}
 function _naF9Visible(){const q=sinTildes((document.getElementById('invSearch')?.value||'').toLowerCase()),cat=document.getElementById('invCat')?.value||'';return _naF9All().filter(a=>a.need&&(!cat||a.product.cat===cat)&&(!q||[a.product.name,a.product.sku,a.product.barcode,a.product.marca].some(v=>sinTildes(String(v||'').toLowerCase()).includes(q)))).sort((a,b)=>{const rank={urgent:0,soon:1,review:2,ok:3};return rank[a.priority]-rank[b.priority]||b.avg-a.avg||b.potentialProfit-a.potentialProfit;});}
 function _naF9Summary(rows){return{urgent:rows.filter(r=>r.priority==='urgent').length,high:rows.filter(r=>r.rotation.key==='alta').length,risk:rows.filter(r=>r.overstock||r.expiryRisk).length,investment:rows.reduce((s,r)=>s+r.investment,0)};}
 function _naF9Card(a){const p=a.product,idToken=encodeURIComponent(String(p.id)).replace(/'/g,'%27'),stockLabel=`${Number(a.stock.toFixed(3))} ${_naCategoryTitle(p.unidad||'unidad').toLowerCase()}`,coverage=a.coverage===null?'Sin historial':`${a.coverage.toFixed(1)} días`,expiry=a.expiry===null?'Sin fecha':a.expiry<0?`Vencido ${Math.abs(a.expiry)}d`:a.expiry===0?'Vence hoy':`${a.expiry} días`,purchaseLabel=a.suggestedUnits>0?`${Number(a.packages.toFixed(2))} ${_naF9PurchaseUnitLabel(a.unitPurchase)} · ${Number(a.suggestedUnits.toFixed(2))} unidades`:'No comprar automáticamente',icon=p.imagen?`<img src="${_naEsc(p.imagen)}" alt="">`:_naEsc(p.icon||'📦');return`<article class="purchase-card ${a.priority==='urgent'?'urgent':a.overstock||a.expiryRisk?'risk':a.priority==='ok'?'good':''}"><div class="purchase-head"><div class="purchase-icon">${icon}</div><div><div class="purchase-name">${_naEsc(p.name)}</div><div class="purchase-meta">${_naEsc(p.sku)} · ${_naEsc(_naCategoryLabel(p.cat))} · ${_naEsc(a.rotation.label)}</div></div><span class="purchase-priority ${a.priority}">${_naEsc(a.priorityLabel)}</span></div><div class="purchase-metrics"><div class="purchase-metric"><span>Stock</span><strong>${_naEsc(stockLabel)}</strong></div><div class="purchase-metric"><span>Venta diaria</span><strong>${a.avg.toFixed(2)}</strong></div><div class="purchase-metric"><span>Cobertura</span><strong>${_naEsc(coverage)}</strong></div></div><div class="purchase-recommend"><strong>${_naEsc(purchaseLabel)}</strong><p>${_naEsc(a.reason)}${a.suggestedUnits>0?` Inversión estimada: ${fmt(a.investment)}.`:''}</p></div><div class="purchase-card-actions"><button class="purchase-detail-btn" onclick="_naF9OpenDetail('${idToken}')">📊 Evaluar compra</button><button class="purchase-edit-btn" onclick="_naF9EditProduct('${idToken}')">✏️ Producto</button></div></article>`;}
@@ -39,7 +65,11 @@ function _naF9Export(){const rows=_naF9Visible().map(a=>({Producto:a.product.nam
 const _naF9BaseInvBadges=invBadges;
 invBadges=function(){_naF9BaseInvBadges();const badge=document.getElementById('invB4');if(badge)badge.textContent=_naF9All().filter(a=>a.need).length;};
 const _naF9BaseInvRender=invRender;
-invRender=function(){renderCategorySelects();if(invTab==='sugerencia'){invBadges();_naF9RenderSuggestions();return;}return _naF9BaseInvRender();};
+invRender=function(){
+  _naF9RenderDepth++;
+  try{const render=()=>{renderCategorySelects();if(invTab==='sugerencia'){invBadges();_naF9RenderSuggestions();return;}return _naF9BaseInvRender();};return window.NuevoAmanecerImageBatch?.withSources?window.NuevoAmanecerImageBatch.withSources(render):render();}
+  finally{if(--_naF9RenderDepth===0)_naF9RenderAnalysis=null;}
+};
 // MEJORA FASE 9: normalizar la presentación de compra en datos antiguos sin borrar campos.
 const _naF9BaseNormalizeData=_naNormalizeData;
 _naNormalizeData=function(){_naF9BaseNormalizeData();productos=productos.map(p=>({...p,unidadCompra:_naClean(p.unidadCompra||(p.unidCaja?'caja':'unidad'))||'unidad',factorCompra:Math.max(.001,_naNumber(p.factorCompra,p.unidCaja||1))}));_naF9Settings();};
