@@ -40,6 +40,18 @@ function _naProductImageSource(product){
   const mapped=window.NuevoAmanecerProductImageOverlay?.[name];
   return _naSafeOverlayProductImageSource(mapped);
 }
+// Display-only URLs keep raster bytes out of HTML. Export and persistence retain base64.
+const _naInventoryImageDisplay=(function(){
+  const urls=new Map();
+  function source(product){
+    const data=_naProductImageSource(product);if(!data||!data.startsWith('data:'))return data;
+    if(urls.has(data))return urls.get(data);
+    if(typeof URL.createObjectURL!=='function')return data;
+    try{const split=data.indexOf(','),raw=atob(data.slice(split+1)),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);const url=URL.createObjectURL(new Blob([bytes],{type:data.slice(5,data.indexOf(';'))}));urls.set(data,url);return url;}catch{return data;}
+  }
+  function prune(){const active=new Set(Array.from(document.querySelectorAll('#invBody img'),img=>img.getAttribute('src')));for(const [data,url] of urls)if(!active.has(url)){URL.revokeObjectURL(url);urls.delete(data);}}
+  return Object.freeze({source,prune});
+})();
 function _naSafeSetProductPreview(source,altText){
   const preview=document.getElementById('imgPreview');
   if(!preview)return;
