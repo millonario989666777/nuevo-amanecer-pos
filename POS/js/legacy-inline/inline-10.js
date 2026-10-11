@@ -1,3 +1,5 @@
+// A VARIOS line already shows the VARIOS badge; its default name 'VARIOS' must not be repeated ('VARIOSVARIOS').
+function _naSaleItemTitle(item){const name=String(item?.name||item?.nombre||'').trim();if(item?.ventaLibre&&(!name||name.toUpperCase()==='VARIOS'))return'';return name||'Producto';}
 
 // Seguridad: las ventas restauradas o importadas se representan con nodos DOM.
 function _naSecElement(tag,className,text){
@@ -89,7 +91,9 @@ function _naSecRenderSaleCard(list,sale,index){
     if(item.ventaLibre)_naSecAppend(itemsText,'span','sale-special-badge free','VARIOS');
     else if(item.ventaSinStock)_naSecAppend(itemsText,'span','sale-special-badge shortage','SIN STOCK');
     const prefix=_naNumber(item.qty??item.cantidad)>1?`${_naNumber(item.qty??item.cantidad)}x `:'';
-    itemsText.appendChild(document.createTextNode(`${prefix}${item.name||item.nombre||'Producto'}`));
+    const itemName=_naSaleItemTitle(item);
+    if(item.ventaLibre||item.ventaSinStock)itemsText.appendChild(document.createTextNode(' '));
+    if(prefix||itemName)itemsText.appendChild(document.createTextNode(`${prefix}${itemName}`.trim()));
   });
   const meta=_naSecAppend(info,'div','v-meta');
   _naSecAppend(meta,'span','',`${sale.fecha||''} ${sale.hora24||sale.hora||''}`.trim());
@@ -107,7 +111,7 @@ function _naSecRenderSaleCard(list,sale,index){
   (Array.isArray(sale.items)?sale.items:[]).forEach(item=>{
     const row=_naSecAppend(detail,'div','det-row'),label=_naSecAppend(row,'span');
     label.style.fontWeight='700';
-    label.appendChild(document.createTextNode(`${item.icon||'📦'} ${item.name||item.nombre||'Producto'} `));
+    label.appendChild(document.createTextNode(`${item.icon||'📦'} ${_naSaleItemTitle(item)} `.replace(/\s+$/,' ')));
     if(item.ventaLibre)_naSecAppend(label,'span','sale-special-badge free','VARIOS');
     else if(item.ventaSinStock)_naSecAppend(label,'span','sale-special-badge shortage','SIN STOCK');
     const quantity=_naSecAppend(label,'span','',` x${_naNumber(item.qty??item.cantidad)}`);
