@@ -148,7 +148,9 @@
     var out = { status: status, processed: processed, remaining: remaining };
     if (reason) out.reason = reason;
     if (head) { out.sale_id = head.sale_id; out.operation_id = head.operation_id; }
-    if (status === 'BLOCKED_PENDING_REJECTED' && head) notifyReview(head, reason);
+    // Only sale-specific rejections are 'held for review'; system/session
+    // reasons keep the sale in the queue and must not claim CANON rejected it.
+    if (status === 'BLOCKED_PENDING_REJECTED' && head && (SALE_REJECTIONS.indexOf(reason) !== -1 || DETERMINISTIC.indexOf(reason) !== -1)) notifyReview(head, reason);
     return out;
   }
   // Tell the cashier once per operation_id (durable across reloads) that a
@@ -380,7 +382,7 @@
       return close(outcome.processed);
     });
   }
-  async function resolveQuarantined(operationId, action) {
+  async function resolveQuarantined(operationId, action, meta) {
     return withLock(async function () {
       var q = readQuarantine();
       var entry = q.entries.find(function (item) { return item.status === 'QUARANTINED' && item.intent.operation_id === operationId; });
@@ -425,7 +427,7 @@
         var state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
         if (!state || state.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
         if (((canonical.snapshot() || {}).sales || []).some(function (sale) { return sale.operation_id === operationId; })) fail('QUARANTINE_OPERATION_EXISTS_ON_SERVER');
-        entry.status = 'ARCHIVED_NO_CHARGE'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+        entry.status = 'ARCHIVED_NO_CHARGE'; entry.resolved_at = new Date().toISOString(); entry.resolved_by = meta && meta.by != null ? String(meta.by) : null; writeQuarantine(q);
         return { status: 'ARCHIVED_NO_CHARGE', sale_id: entry.intent.sale_id, operation_id: operationId };
       }
       fail('QUARANTINE_ACTION_INVALID');

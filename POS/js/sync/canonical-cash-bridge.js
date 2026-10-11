@@ -371,9 +371,11 @@
           return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';
         });
         if (entry.verified_absent_at && typeof outbox.quarantineAnnullable === 'function' && outbox.quarantineAnnullable(entry)) action('Anular venta no registrada', 'archive', async function () {
-          if (typeof root._naAuthorize === 'function' && root._naAuthorize('cerrarCaja', 'Anular venta no registrada') === false) return 'Anulación cancelada.';
-          if (typeof root.confirm === 'function' && !root.confirm('¿Anular ' + clean(intent.sale_id) + '? No está en el servidor. El registro se conserva archivado.')) return 'Anulación cancelada.';
-          await outbox.resolveQuarantined(intent.operation_id, 'archive');
+          if (typeof root._naAuthorize === 'function' && !root._naAuthorize('anularVenta', 'Anular venta no registrada ' + clean(intent.sale_id))) return 'Anulación cancelada.';
+          if (typeof root.confirm !== 'function' || !root.confirm('¿Anular ' + clean(intent.sale_id) + '? No está en el servidor. El registro se conserva archivado.')) return 'Anulación cancelada.';
+          var who = root.cajEstado && (root.cajEstado.cajero || root.cajEstado.cashier_id) || null;
+          await outbox.resolveQuarantined(intent.operation_id, 'archive', { by: who });
+          if (typeof root._naAudit === 'function') root._naAudit('Anulación de venta no registrada', clean(intent.sale_id) + ' · ' + clean(intent.operation_id));
           return 'Venta ' + clean(intent.sale_id) + ' anulada como no registrada (registro conservado).';
         });
         box.appendChild(row);
