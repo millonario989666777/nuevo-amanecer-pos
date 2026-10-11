@@ -52,6 +52,7 @@
 
   function renderCash() {
     // cajRender already updates the dashboard. Only fall back if unavailable.
+    try { keepReviewVisible(); } catch (_) {}
     if (typeof root.cajRender === 'function') root.cajRender();
     else if (typeof root.updateDashboard === 'function') root.updateDashboard();
     try { renderReview(); } catch (_) {}
@@ -383,9 +384,30 @@
       host.insertBefore && host.firstChild ? host.insertBefore(box, host.firstChild) : host.appendChild(box);
     });
   }
+  // Caja is redrawn by cajRender (reassigned by several legacy scripts that
+  // load after this one), which wipes #cajContent. Keep the review block
+  // alive: wrap the final cajRender lazily and, in browsers, watch the node.
+  var observing = false;
+  function keepReviewVisible() {
+    var current = root.cajRender;
+    if (typeof current === 'function' && !current.__naReview) {
+      var wrapped = function () { try { return current.apply(this, arguments); } finally { try { renderReview(); } catch (_) {} } };
+      wrapped.__naReview = true;
+      root.cajRender = wrapped;
+    }
+    var host = root.document && root.document.getElementById && root.document.getElementById('cajContent');
+    if (!observing && host && typeof root.MutationObserver === 'function') {
+      observing = true;
+      new root.MutationObserver(function () {
+        if (!root.document.getElementById('cajContentReview')) { try { renderReview(); } catch (_) {} }
+      }).observe(host, { childList: true });
+    }
+  }
+  function refreshReview() { try { keepReviewVisible(); renderReview(); } catch (_) {} }
   if (typeof root.addEventListener === 'function') {
-    root.addEventListener('na:canonical-sale-projection', function () { try { renderReview(); } catch (_) {} });
-    root.addEventListener('na:canonical-updated', function () { try { renderReview(); } catch (_) {} });
+    root.addEventListener('na:canonical-sale-projection', refreshReview);
+    root.addEventListener('na:canonical-updated', refreshReview);
+    root.addEventListener('load', refreshReview);
   }
 
   function closeFailure(error) {
