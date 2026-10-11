@@ -143,6 +143,39 @@
     if (typeof root.ventasRender === 'function') return root.ventasRender();
   }
 
+  function pendingDate(value) {
+    // A credit due date is a calendar day, not a UTC instant.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) {
+      var parts = String(value).split('-');
+      return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+    var date = new Date(String(value || ''));
+    if (!Number.isFinite(date.getTime())) return String(value || '');
+    try {
+      return new Intl.DateTimeFormat('es-PE', {
+        timeZone: 'America/Lima', year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true
+      }).format(date);
+    } catch (_) { return String(value || ''); }
+  }
+  function pendingAmount(cents) { return 'S/ ' + (Number(cents) / 100).toFixed(2); }
+  function pendingCard(panel, title, amount, method, when, status) {
+    var card = root.document.createElement('article');
+    card.className = 'na-canonical-pending-item';
+    var top = root.document.createElement('div');
+    top.className = 'na-canonical-pending-item-top';
+    text(top, 'strong', title);
+    text(top, 'strong', pendingAmount(amount), 'na-canonical-pending-amount');
+    card.appendChild(top);
+    var detail = root.document.createElement('div');
+    detail.className = 'na-canonical-pending-item-detail';
+    text(detail, 'span', method);
+    text(detail, 'time', pendingDate(when));
+    card.appendChild(detail);
+    text(card, 'p', status, 'na-canonical-pending-status');
+    panel.appendChild(card);
+    return card;
+  }
   function pendingSales(view) {
     var confirmedOps = confirmedOperationIds(), confirmedSales = confirmedSaleIds();
     var sales = (view.sales || []).filter(function (sale) {
@@ -153,15 +186,9 @@
     var panel = section('ventasContent', 'naCanonicalPendingSales', 'Ventas pendientes');
     if (!panel) return;
     sales.forEach(function (sale) {
-      var card = root.document.createElement('article');
-      card.className = 'na-canonical-pending-item';
-      text(card, 'strong', sale.sale_id || sale.id || '');
-      text(card, 'span', 'S/ ' + (Number(sale.total_cents) / 100).toFixed(2));
-      text(card, 'span', sale.payment_method || '');
-      text(card, 'time', sale.created_at || '');
-      text(card, 'p', 'Pendiente de sincronización');
+      var card = pendingCard(panel, String(sale.sale_id || sale.id || ''), sale.total_cents,
+        sale.payment_method || '', sale.created_at, 'Pendiente de sincronización · guardada localmente');
       if (sale.conflict === true) text(card, 'p', 'Conflicto pendiente: ' + String(sale.reason || 'CONFLICT'), 'na-canonical-conflict');
-      panel.appendChild(card);
     });
   }
   function pendingCredits(view) {
@@ -173,14 +200,9 @@
     var panel = section('cliList', 'naCanonicalPendingCredits', 'Créditos pendientes');
     if (!panel) return;
     credits.forEach(function (credit) {
-      var card = root.document.createElement('article');
-      card.className = 'na-canonical-pending-item';
-      text(card, 'strong', credit.sale_id || '');
-      text(card, 'span', credit.customer_id || '');
-      text(card, 'span', 'S/ ' + (Number(credit.amount_cents) / 100).toFixed(2));
-      text(card, 'time', credit.due || '');
-      text(card, 'p', 'Crédito pendiente de sincronización');
-      panel.appendChild(card);
+      pendingCard(panel, String(credit.sale_id || ''), credit.amount_cents,
+        'Cliente: ' + String(credit.customer_id || ''), credit.due,
+        'Crédito pendiente de sincronización');
     });
   }
   function rebuild() {
