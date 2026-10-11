@@ -1,0 +1,33 @@
+/* CANON-only: correcciones UX de la ronda 2 de QA. No existe en LAB. */
+
+/* D: un modal cerrado no debe quedar en el árbol de accesibilidad ni recibir foco o clics.
+   visibility se aplica al instante al abrir y con retardo al cerrar (respeta la animación). */
+.modal-overlay:not(.open){visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
+.modal-overlay.open{visibility:visible;transition:opacity .2s,visibility 0s linear 0s}
+#securityLockScreen:not(.open){visibility:hidden}
+
+/* 10: objetivos táctiles de al menos 40 px en pantallas táctiles/móviles. */
+@media (pointer:coarse),(max-width:700px){
+  .btn-close-m{min-width:40px;min-height:40px;width:40px;height:40px;font-size:16px}
+  #btnEditorToggle{min-height:40px;padding-left:12px;padding-right:12px}
+}
+
+/* 5: el aviso de actualización no tapa contenido en móvil. */
+@media (max-width:700px){
+  .pwa-update-prompt{left:8px;right:8px;gap:8px;padding:9px 10px;border-radius:14px;bottom:max(8px,env(safe-area-inset-bottom))}
+  .pwa-update-icon{width:30px;height:30px;font-size:15px;border-radius:10px}
+  .pwa-update-copy span{display:none}
+  .pwa-update-action{min-height:40px}
+  body:has(#pwaUpdatePrompt:not([hidden])){padding-bottom:132px}
+}
+@media (min-width:701px){
+  body:has(#pwaUpdatePrompt:not([hidden])){padding-bottom:96px}
+}
+
+/* B: una venta a crédito no es ingreso de caja. */
+.mov-ic.credito{background:#ede9fe}
+.mov-amt.credito{color:#7c3aed;font-size:13px}
+.cjsg-sub{font-size:10px;font-weight:700;color:var(--slate,#64748b);margin-top:2px;line-height:1.25}
+
+/* I: detalle de cada abono en el historial de pagos. */
+.na-v2-payment-detail small{display:block}
