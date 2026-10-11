@@ -99,6 +99,15 @@
   // catches up, stock arrives, or the missing customer/product is registered.
   var RETRYABLE = DETERMINISTIC.concat(['insufficient_stock', 'customer_not_found', 'product_not_found']);
   function retryable(reason) { return RETRYABLE.indexOf(reason) !== -1; }
+  // Annul only when the absence proof can see the sale: the quarantined
+  // command must carry a journal bound to the promotion that is active now
+  // (the replica only lists that promotion's sales). No journal: no annul.
+  function boundPromotion(entry) { var j = entry && entry.journal; return j && ((j.binding && j.binding.promotion_id) || (j.payload && j.payload.promotion_id)) || null; }
+  function annullable(entry, canonical) {
+    if (!entry || CONFLICTS.indexOf(entry.reason) !== -1) return false;
+    var bound = boundPromotion(entry), snap = canonical && typeof canonical.snapshot === 'function' ? canonical.snapshot() || {} : {};
+    return !!bound && bound === snap.promotion_id;
+  }
   function quarantinedOperation(operationId) {
     return readQuarantine().entries.some(function (entry) { return entry.status === 'QUARANTINED' && entry.intent.operation_id === operationId; });
   }
@@ -412,6 +421,7 @@
         }
         if (CONFLICTS.indexOf(entry.reason) !== -1) fail('QUARANTINE_CONFLICT_NEEDS_SERVER_CHECK');
         if (!entry.verified_absent_at) fail('QUARANTINE_VERIFY_FIRST');
+        if (!annullable(entry, canonical)) fail('QUARANTINE_ANNUL_NEEDS_PROMOTION_PROOF');
         var state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
         if (!state || state.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
         if (((canonical.snapshot() || {}).sales || []).some(function (sale) { return sale.operation_id === operationId; })) fail('QUARANTINE_OPERATION_EXISTS_ON_SERVER');
@@ -566,5 +576,5 @@
       return { status: 'REJECTED_TEST_INTENT', operation_id: operationId };
     });
   }
-  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, quarantineRetryable: retryable, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
+  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
 })(globalThis);

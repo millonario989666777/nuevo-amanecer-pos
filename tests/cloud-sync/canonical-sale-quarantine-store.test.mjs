@@ -61,7 +61,7 @@ test('retry resends the same operation_id once and then the cash close succeeds 
  assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107450);
 });
 
-test('credit sale with a customer missing on the server never blocks the queue; close waits for reconciliation; record kept',async t=>{
+test('credit sale with a customer missing on the server never blocks the queue; close waits for reconciliation; never annullable without journal; record kept',async t=>{
  const {f,d,outbox,build}=await setup(t);
  await outbox.enqueue(build(credit('V-087','cliente-solo-local'))); await outbox.enqueue(build(cash('V-088')));
  const [bad,good]=outbox.snapshot().intents;
@@ -73,10 +73,11 @@ test('credit sale with a customer missing on the server never blocks the queue; 
  assert.equal(await d.context.cerrarCaja(),false,'any unreconciled sale blocks this close');
  assert.ok(d.el('cajCloseStatus').textContent.includes('Venta bloqueante: '+bad.sale_id));
  assert.equal((await outbox.resolveQuarantined(bad.operation_id,'verify')).status,'NOT_REGISTERED');
- assert.equal((await outbox.resolveQuarantined(bad.operation_id,'archive')).status,'ARCHIVED_NO_CHARGE');
- assert.equal(await d.context.cerrarCaja(),true);
- assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107450,'amounts unchanged');
- assert.equal(outbox.quarantine().entries.length,1,'record kept archived');
+ await assert.rejects(outbox.resolveQuarantined(bad.operation_id,'archive'),/QUARANTINE_ANNUL_NEEDS_PROMOTION_PROOF/,'no journal: absence cannot be proven, no annul');
+ assert.equal(outbox.quarantineAnnullable(outbox.quarantine().entries[0]),false);
+ assert.equal(await d.context.cerrarCaja(),false,'still waits for reconciliation');
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0,'amounts untouched');
+ assert.equal(outbox.quarantine().entries[0].status,'QUARANTINED','record kept');
 });
 
 test('annul needs verify proving absence first, never applies to conflicts, and keeps the record',async t=>{

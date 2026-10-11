@@ -370,7 +370,7 @@
           var outcome = await outbox.sync();
           return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';
         });
-        if (entry.verified_absent_at && ['operation_id_conflict', 'sale_id_conflict'].indexOf(entry.reason) === -1) action('Anular venta no registrada', 'archive', async function () {
+        if (entry.verified_absent_at && typeof outbox.quarantineAnnullable === 'function' && outbox.quarantineAnnullable(entry)) action('Anular venta no registrada', 'archive', async function () {
           if (typeof root._naAuthorize === 'function' && root._naAuthorize('cerrarCaja', 'Anular venta no registrada') === false) return 'Anulación cancelada.';
           if (typeof root.confirm === 'function' && !root.confirm('¿Anular ' + clean(intent.sale_id) + '? No está en el servidor. El registro se conserva archivado.')) return 'Anulación cancelada.';
           await outbox.resolveQuarantined(intent.operation_id, 'archive');
