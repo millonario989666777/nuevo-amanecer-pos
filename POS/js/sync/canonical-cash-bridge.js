@@ -311,16 +311,23 @@
     node.hidden = !message;
   }
 
+  function blockingSale(error, record) {
+    var saleId = error && error.sale_id || record && record.command === 'sale.create' && record.payload && record.payload.sale_id;
+    if (!saleId) return '';
+    var reason = error && error.reason || record && record.last_error;
+    return ' Venta bloqueante: ' + clean(saleId) + (reason ? ' · ' + clean(reason) : '') +
+      (error && error.remaining > 1 ? ' (+' + (error.remaining - 1) + ' detrás)' : '') + '. No la cobres de nuevo.';
+  }
+
   function closeFailure(error) {
     var code = clean(error && error.message), record;
     try { record = api().pendingSnapshot(); } catch (_) {}
     if (record) return 'Operación pendiente: ' + clean(record.command) +
       (record.last_status ? ' · HTTP ' + record.last_status : '') +
       (record.last_error ? ' · ' + clean(record.last_error) : ' · sin confirmación del servidor') +
-      '. Se conservó el registro. Revisa esta operación antes de cerrar. ' + code;
+      '. Se conservó el registro. Revisa esta operación antes de cerrar.' + blockingSale(error, record) + ' ' + code;
     if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' +
-      (error && error.sale_id ? ' Venta bloqueante: ' + clean(error.sale_id) + (error.reason ? ' · ' + clean(error.reason) : '') +
-        (error.remaining > 1 ? ' (+' + (error.remaining - 1) + ' detrás)' : '') + '. No la cobres de nuevo.' : '');
+      blockingSale(error, null);
     return 'No se pudo cerrar la caja CANON: ' + code;
   }
 
