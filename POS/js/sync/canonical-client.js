@@ -1406,6 +1406,19 @@
       return true;
     });
   }
+  // The durable intent and a full copy of this journal were already saved in
+  // the sale quarantine. Free the single financial slot for a definitive 4xx
+  // (never 429/5xx, never another operation) so the POS keeps working.
+  async function releaseRejectedSaleJournal(operationId) {
+    return withWriterLock(function () {
+      var record = journal();
+      if (!record || record.state !== 'PENDING' || record.command !== 'sale.create' || !record.payload || record.payload.operation_id !== operationId) return false;
+      if (!(record.last_status >= 400 && record.last_status < 500 && record.last_status !== 429) || !record.last_error) return false;
+      root.localStorage.removeItem(JOURNAL);
+      if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      return true;
+    });
+  }
   function renderCredits(container) {
     container.replaceChildren(); container.style.overflowWrap = 'anywhere';
     var current = snapshot();
@@ -1568,7 +1581,7 @@
   root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; } });
   root.addEventListener('offline', function () { ready = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal,
     createProduct: createProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);

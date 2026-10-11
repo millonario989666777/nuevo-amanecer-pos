@@ -23,11 +23,11 @@ test('journal branch: 409 quarantine message shows sale_id, reason, queue size a
  const head=outbox.snapshot().intents[0].sale_id;
  assert.equal(await d.context.cerrarCaja(),false);
  const text=d.el('cajCloseStatus').textContent;
- assert.match(text,/sale\.create.*409.*product_not_found/);
+ assert.match(text,/product_not_found/);
  assert.ok(text.includes('Venta bloqueante: '+head),text);
  assert.match(text,/\(\+1 detrás\)/);
  assert.match(text,/No la cobres de nuevo/);
- assert.equal(outbox.snapshot().intents.length,2);
+ assert.equal(outbox.snapshot().intents.length+outbox.quarantine().entries.length,2,'both sales kept');
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });
 test('empty-journal branch: pre-POST credit failure shows sale_id, reason and no-recharge warning',async t=>{
@@ -40,6 +40,6 @@ test('empty-journal branch: pre-POST credit failure shows sale_id, reason and no
  assert.ok(text.includes('Venta bloqueante: '+head),text);
  assert.match(text,/INVALID_CANONICAL_CUSTOMER/);
  assert.match(text,/No la cobres de nuevo/);
- assert.equal(outbox.snapshot().intents.length,1);
+ assert.equal(outbox.snapshot().intents.length+outbox.quarantine().entries.length,1,'sale kept');
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });

@@ -61,6 +61,68 @@
     });
   }
   function snapshot() { var current = parseStored(); return clone(current); }
+  // Sale quarantine: rejected or undeliverable sales leave the FIFO only after a
+  // full durable copy is saved here. Entries are never deleted; they only
+  // change status (QUARANTINED -> REQUEUED | CONFIRMED_REMOTE | ARCHIVED_NO_CHARGE).
+  var QKEY = KEY + '_quarantine';
+  var DETERMINISTIC = ['INVALID_CANONICAL_CUSTOMER', 'INVALID_CANONICAL_CREDIT', 'INVALID_CANONICAL_PRODUCT', 'INVALID_CANONICAL_ITEM',
+    'INVALID_CANONICAL_GENERIC_LINE', 'INVALID_CANONICAL_TOTAL', 'UNSAFE_CANONICAL_TOTAL', 'INVALID_CANONICAL_PAYMENT', 'INVALID_CANONICAL_INTENT'];
+  var CONFLICTS = ['operation_id_conflict', 'sale_id_conflict'];
+  // Only rejections about THIS sale move it aside. System/session/cash-state
+  // answers (401, 403, canonical_not_active, stale_authority, cash_session_*)
+  // and unknown reasons keep the head in place and stop the drain (fail-closed).
+  var SALE_REJECTIONS = ['product_not_found', 'insufficient_stock', 'invalid_sale_request', 'customer_not_found',
+    'sale_id_conflict', 'operation_id_conflict', 'canonical_sale_conflict'];
+  function readQuarantine() {
+    var raw;
+    try { raw = root.localStorage.getItem(QKEY); } catch (_) { fail('QUARANTINE_STORAGE_READ_FAILED'); }
+    if (raw === null) return { version: VERSION, entries: [] };
+    var data;
+    try { data = JSON.parse(raw); } catch (_) { fail('QUARANTINE_CORRUPT'); }
+    if (!data || data.version !== VERSION || !Array.isArray(data.entries)) fail('QUARANTINE_CORRUPT');
+    return data;
+  }
+  function writeQuarantine(data) {
+    var serialized = JSON.stringify(data);
+    try { root.localStorage.setItem(QKEY, serialized); } catch (_) { fail('QUARANTINE_STORAGE_WRITE_FAILED'); }
+    if (root.localStorage.getItem(QKEY) !== serialized) fail('QUARANTINE_STORAGE_NOT_DURABLE');
+  }
+  function quarantineSnapshot() { return clone(readQuarantine()); }
+  // Owner rule: any unresolved quarantined sale keeps the cash close blocked
+  // until it is reconciled (confirmed on the server or annulled as unregistered).
+  // It never blocks sales, payments or expenses.
+  function cashOf(intent) { return Number(intent && intent.payment && intent.payment.cash_cents) || 0; }
+  function blockingQuarantine() { return readQuarantine().entries.filter(function (entry) { return entry.status === 'QUARANTINED'; }); }
+  // Safe retry (same operation_id) only where the cause can clear by itself or
+  // after a data fix; never for conflicts or malformed requests.
+  function retryable(reason) { return CONFLICTS.indexOf(reason) === -1 && reason !== 'invalid_sale_request' && reason !== 'canonical_sale_conflict'; }
+  function quarantinedOperation(operationId) {
+    return readQuarantine().entries.some(function (entry) { return entry.status === 'QUARANTINED' && entry.intent.operation_id === operationId; });
+  }
+  async function quarantineHead(canonical, head, reason, status) {
+    // Needs the client release; older runtimes keep the sale blocked in place.
+    if (typeof canonical.releaseRejectedSaleJournal !== 'function') return false;
+    var pending = canonical.pendingSnapshot();
+    var own = pending && pending.payload && pending.payload.operation_id === head.operation_id ? pending : null;
+    var q = readQuarantine();
+    if (!q.entries.some(function (entry) { return entry.intent.operation_id === head.operation_id && entry.status === 'QUARANTINED'; })) {
+      q.entries = q.entries.filter(function (entry) { return !(entry.intent.operation_id === head.operation_id && entry.status === 'REQUEUED'); })
+        .concat(q.entries.filter(function (entry) { return entry.intent.operation_id === head.operation_id && entry.status === 'REQUEUED'; })
+          .map(function (entry) { entry.status = 'RETRY_REJECTED'; return entry; }));
+      q.entries.push({ intent: clone(head), reason: String(reason), last_status: status || (own && own.last_status) || null, journal: own ? clone(own) : null,
+        status: 'QUARANTINED', quarantined_at: new Date().toISOString() });
+      writeQuarantine(q);
+    }
+    if (own) {
+      var released = false;
+      try { released = await canonical.releaseRejectedSaleJournal(head.operation_id); } catch (_) { released = false; }
+      if (!released) return false;
+    }
+    removeHead(head);
+    notifyReview(head, reason);
+    if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection'));
+    return true;
+  }
   function matching(value, intent) { return !!value && value.operation_id === intent.operation_id && value.sale_id === intent.sale_id; }
   function removeHead(expected) {
     var current = parseStored();
@@ -103,11 +165,16 @@
     return sales.some(function (sale) { return sale.operation_id === head.operation_id && (sale.sale_id || sale.id) === head.sale_id; });
   }
   async function syncLocked() {
-    var processed = 0;
+    var processed = 0, refreshedFor = {};
     while (true) {
       var current = parseStored();
       if (!current.intents.length) return result(processed ? 'DRAINED' : 'EMPTY', processed, 0);
       var head = current.intents[0];
+      if (quarantinedOperation(head.operation_id)) {
+        // Crash between the quarantine copy and the FIFO removal: finish it.
+        var stillOwn = root.NuevoAmanecerCanonical && typeof root.NuevoAmanecerCanonical.pendingSnapshot === 'function' && root.NuevoAmanecerCanonical.pendingSnapshot();
+        if (!stillOwn || !stillOwn.payload || stillOwn.payload.operation_id !== head.operation_id) { removeHead(head); continue; }
+      }
       if (current.intents.some(function (item, index) { return index > 0 && item.sale_id === head.sale_id; }))
         return result('BLOCKED_DUPLICATE_SALE_ID', processed, current.intents.length, 'DUPLICATE_SALE_ID');
       var canonical = root.NuevoAmanecerCanonical;
@@ -148,6 +215,7 @@
               if (!cleared) return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason, head);
               removeHead(head); processed += 1; continue;
             }
+            if (SALE_REJECTIONS.indexOf(rejectReason) !== -1 && await quarantineHead(canonical, head, rejectReason, pending.last_status)) continue;
             return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason, head);
           }
           var discarded = false;
@@ -166,6 +234,7 @@
                 // The retry was rejected again. Keep intent + journal (same
                 // operation_id); never ask the cashier to charge again here.
                 var definitive = [400, 404, 409].indexOf(afterRetry.last_status) !== -1;
+                if (definitive && SALE_REJECTIONS.indexOf(String(afterRetry.last_error)) !== -1 && await quarantineHead(canonical, head, String(afterRetry.last_error), afterRetry.last_status)) continue;
                 return result(definitive ? 'BLOCKED_PENDING_REJECTED' : 'WAITING', processed, parseStored().intents.length,
                   String(afterRetry.last_error || error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'), head);
               }
@@ -199,6 +268,18 @@
           return result('WAITING', processed, parseStored().intents.length, String(error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'));
         }
         if (afterFailure && (afterFailure.command !== 'sale.create' || !afterFailure.payload || afterFailure.payload.operation_id !== head.operation_id || afterFailure.payload.sale_id !== head.sale_id)) return result('BLOCKED_FOREIGN_PENDING', processed, parseStored().intents.length, 'FOREIGN_PENDING');
+        var failureCode = String(error && (error.code || error.message) || '');
+        if (!afterFailure && DETERMINISTIC.indexOf(failureCode) !== -1 && typeof canonical.sourceState === 'function') {
+          // The replica may simply be behind: refresh once and try again. Only a
+          // second identical failure on a current replica moves it aside.
+          if (!refreshedFor[head.operation_id]) {
+            refreshedFor[head.operation_id] = true;
+            try { await canonical.refresh(); } catch (_) { return result('WAITING', processed, parseStored().intents.length, failureCode, head); }
+            continue;
+          }
+          var replica = canonical.sourceState();
+          if (replica && replica.validation === 'current' && await quarantineHead(canonical, head, failureCode, null)) continue;
+        }
         return result('WAITING', processed, parseStored().intents.length, String(error && (error.code || error.message) || 'CREATE_FAILED'));
       }
       if (!matching(canonical.receiptSnapshot(), head)) return result('WAITING', processed, parseStored().intents.length, 'RECEIPT_NOT_CONFIRMED');
@@ -260,9 +341,73 @@
         blocked.remaining = left.length;
         throw blocked;
       }
+      var held = blockingQuarantine();
+      if (held.length) {
+        var canonical = root.NuevoAmanecerCanonical, q = readQuarantine(), changed = false;
+        for (var i = 0; i < q.entries.length; i++) {
+          var entry = q.entries[i];
+          if (entry.status === 'QUARANTINED' && canonical && await confirmedRemotely(canonical, entry.intent)) {
+            entry.status = 'CONFIRMED_REMOTE'; entry.resolved_at = new Date().toISOString(); changed = true;
+          }
+        }
+        if (changed) writeQuarantine(q);
+        held = blockingQuarantine();
+      }
+      if (held.length) {
+        var review = new Error('CASH_CLOSE_QUARANTINED_SALES');
+        review.code = 'CASH_CLOSE_QUARANTINED_SALES';
+        review.sale_id = held[0].intent.sale_id;
+        review.operation_id = held[0].intent.operation_id;
+        review.reason = held[0].reason;
+        review.remaining = held.length;
+        review.cash_cents = held.reduce(function (sum, entry) { return sum + cashOf(entry.intent); }, 0);
+        throw review;
+      }
       // enqueue and sync share this lock across tabs. Keep it until the close
       // ACK (or uncertainty) so no durable sale is stranded in the gap.
       return close(outcome.processed);
+    });
+  }
+  async function resolveQuarantined(operationId, action) {
+    return withLock(async function () {
+      var q = readQuarantine();
+      var entry = q.entries.find(function (item) { return item.status === 'QUARANTINED' && item.intent.operation_id === operationId; });
+      if (!entry) fail('QUARANTINE_ENTRY_NOT_FOUND');
+      var canonical = root.NuevoAmanecerCanonical;
+      if (action === 'verify') {
+        if (!canonical || typeof canonical.snapshot !== 'function') fail('CANONICAL_API_UNAVAILABLE');
+        if (await confirmedRemotely(canonical, entry.intent)) {
+          entry.status = 'CONFIRMED_REMOTE'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+          return { status: 'CONFIRMED_REMOTE', sale_id: entry.intent.sale_id, operation_id: operationId };
+        }
+        var replica = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
+        if (!replica || replica.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
+        entry.verified_absent_at = new Date().toISOString(); writeQuarantine(q);
+        return { status: 'NOT_REGISTERED', sale_id: entry.intent.sale_id, operation_id: operationId };
+      }
+      if (action === 'retry') {
+        if (!retryable(entry.reason)) fail('QUARANTINE_RETRY_NOT_SAFE');
+        // Same operation_id and sale_id: the Worker answers already_processed
+        // if it ever committed, so a retry can never charge twice.
+        var current = parseStored();
+        if (!current.intents.some(function (item) { return item.operation_id === operationId; })) { current.intents.push(clone(entry.intent)); write(current); }
+        entry.status = 'REQUEUED'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+        return { status: 'REQUEUED', sale_id: entry.intent.sale_id, operation_id: operationId };
+      }
+      if (action === 'archive') {
+        if (!canonical || typeof canonical.snapshot !== 'function') fail('CANONICAL_API_UNAVAILABLE');
+        if (await confirmedRemotely(canonical, entry.intent)) {
+          entry.status = 'CONFIRMED_REMOTE'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+          return { status: 'CONFIRMED_REMOTE', sale_id: entry.intent.sale_id, operation_id: operationId };
+        }
+        if (CONFLICTS.indexOf(entry.reason) !== -1) fail('QUARANTINE_CONFLICT_NEEDS_SERVER_CHECK');
+        if (!entry.verified_absent_at) fail('QUARANTINE_VERIFY_FIRST');
+        var state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
+        if (!state || state.validation !== 'current') fail('QUARANTINE_REMOTE_NOT_VERIFIED');
+        entry.status = 'ARCHIVED_NO_CHARGE'; entry.resolved_at = new Date().toISOString(); writeQuarantine(q);
+        return { status: 'ARCHIVED_NO_CHARGE', sale_id: entry.intent.sale_id, operation_id: operationId };
+      }
+      fail('QUARANTINE_ACTION_INVALID');
     });
   }
   function start() {
@@ -318,7 +463,8 @@
       var canonical = root.NuevoAmanecerCanonical;
       var confirmed = canonical && typeof canonical.snapshot === 'function' ? canonical.snapshot().sales || [] : [];
       var receipt = canonical && typeof canonical.receiptSnapshot === 'function' ? canonical.receiptSnapshot() : null;
-      var reserved = confirmed.concat(current.intents, receipt ? [receipt] : []);
+      var held = []; try { held = readQuarantine().entries.map(function (entry) { return entry.intent; }); } catch (_) {}
+      var reserved = confirmed.concat(current.intents, held, receipt ? [receipt] : []);
       var match = /^V-(\d+)$/.exec(intent.sale_id);
       var max = reserved.reduce(function (value, sale) {
         var number = /^V-(\d+)$/.exec(String(sale.sale_id || sale.id || ''));
@@ -409,5 +555,5 @@
       return { status: 'REJECTED_TEST_INTENT', operation_id: operationId };
     });
   }
-  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
+  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, quarantineRetryable: retryable, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent });
 })(globalThis);

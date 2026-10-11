@@ -54,6 +54,7 @@
     // cajRender already updates the dashboard. Only fall back if unavailable.
     if (typeof root.cajRender === 'function') root.cajRender();
     else if (typeof root.updateDashboard === 'function') root.updateDashboard();
+    try { renderReview(); } catch (_) {}
   }
 
   async function refreshCanonical() {
@@ -319,6 +320,72 @@
       (error && error.remaining > 1 ? ' (+' + (error.remaining - 1) + ' detrás)' : '') + '. No la cobres de nuevo.';
   }
 
+  // Compact review list inside Caja (and the close dialog). Nothing is deleted.
+  // Verify asks the server; retry resends the same operation_id (only for
+  // causes that can clear); annul appears only after the server confirms the
+  // sale is not registered, and keeps the record archived.
+  function renderReview() {
+    var outbox = root.NuevoAmanecerCanonicalSaleOutbox, doc = root.document;
+    if (!doc || !outbox || typeof outbox.quarantine !== 'function') return;
+    var entries = [];
+    try { entries = outbox.quarantine().entries.filter(function (entry) { return entry.status === 'QUARANTINED'; }); } catch (_) { return; }
+    ['cajContent', 'cajCloseStatus'].forEach(function (hostId) {
+      var host = doc.getElementById(hostId);
+      if (!host || typeof host.appendChild !== 'function') return;
+      var old = doc.getElementById(hostId + 'Review');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      if (!entries.length) return;
+      var box = doc.createElement('div');
+      box.id = hostId + 'Review';
+      box.style.cssText = 'margin:8px;padding:10px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px';
+      var title = doc.createElement('div');
+      title.style.fontWeight = '800';
+      title.textContent = '⚠ Ventas en revisión (' + entries.length + '). No las cobres de nuevo. La caja no se cierra hasta conciliarlas.';
+      box.appendChild(title);
+      entries.forEach(function (entry) {
+        var intent = entry.intent, row = doc.createElement('div');
+        row.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
+        var info = doc.createElement('span');
+        info.textContent = clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
+          ' · motivo: ' + clean(entry.reason) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
+        row.appendChild(info);
+        function action(label, kind, run) {
+          var el = doc.createElement('button');
+          el.type = 'button'; el.className = 'btn'; el.textContent = label;
+          el.setAttribute('data-review', kind + ':' + intent.operation_id);
+          el.onclick = async function () {
+            el.disabled = true;
+            try { closeStatus(await run()); } catch (failure) { closeStatus('No se pudo resolver ' + clean(intent.sale_id) + ': ' + clean(failure && (failure.code || failure.message))); }
+            finally { el.disabled = false; renderReview(); }
+          };
+          row.appendChild(el);
+        }
+        action('Verificar en servidor', 'verify', async function () {
+          var done = await outbox.resolveQuarantined(intent.operation_id, 'verify');
+          return done.status === 'CONFIRMED_REMOTE' ? 'Venta ' + clean(intent.sale_id) + ' ya está registrada en el servidor. Conciliada.'
+            : 'Venta ' + clean(intent.sale_id) + ' NO está registrada en el servidor. No la cobres de nuevo sin hablar con el cliente.';
+        });
+        if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action('Reintentar', 'retry', async function () {
+          await outbox.resolveQuarantined(intent.operation_id, 'retry');
+          var outcome = await outbox.sync();
+          return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';
+        });
+        if (entry.verified_absent_at && ['operation_id_conflict', 'sale_id_conflict'].indexOf(entry.reason) === -1) action('Anular venta no registrada', 'archive', async function () {
+          if (typeof root._naAuthorize === 'function' && root._naAuthorize('cerrarCaja', 'Anular venta no registrada') === false) return 'Anulación cancelada.';
+          if (typeof root.confirm === 'function' && !root.confirm('¿Anular ' + clean(intent.sale_id) + '? No está en el servidor. El registro se conserva archivado.')) return 'Anulación cancelada.';
+          await outbox.resolveQuarantined(intent.operation_id, 'archive');
+          return 'Venta ' + clean(intent.sale_id) + ' anulada como no registrada (registro conservado).';
+        });
+        box.appendChild(row);
+      });
+      host.insertBefore && host.firstChild ? host.insertBefore(box, host.firstChild) : host.appendChild(box);
+    });
+  }
+  if (typeof root.addEventListener === 'function') {
+    root.addEventListener('na:canonical-sale-projection', function () { try { renderReview(); } catch (_) {} });
+    root.addEventListener('na:canonical-updated', function () { try { renderReview(); } catch (_) {} });
+  }
+
   function closeFailure(error) {
     var code = clean(error && error.message), record;
     try { record = api().pendingSnapshot(); } catch (_) {}
@@ -326,6 +393,8 @@
       (record.last_status ? ' · HTTP ' + record.last_status : '') +
       (record.last_error ? ' · ' + clean(record.last_error) : ' · sin confirmación del servidor') +
       '. Se conservó el registro. Revisa esta operación antes de cerrar.' + blockingSale(error, record) + ' ' + code;
+    if (code === 'CASH_CLOSE_QUARANTINED_SALES') return 'Hay ventas en revisión que impiden cerrar esta caja hasta conciliarlas. Las demás ventas, abonos y egresos siguen funcionando.' +
+      blockingSale(error, null);
     if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' +
       blockingSale(error, null);
     return 'No se pudo cerrar la caja CANON: ' + code;
@@ -422,6 +491,7 @@
     } catch (error) {
       var message = closeFailure(error);
       closeStatus(message);
+      if (error && error.code === 'CASH_CLOSE_QUARANTINED_SALES') { try { renderReview(); } catch (_) {} }
       notify(message, 'error');
       return false;
     } finally {
