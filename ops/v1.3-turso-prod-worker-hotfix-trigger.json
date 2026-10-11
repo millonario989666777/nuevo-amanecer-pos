@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized emergency deploy of fix/canon-status-subrequest-budget (PR #520, merged as c979d64) after /read/canonical/status returned 500 internal_error for every device. Turso-only Worker redeploy, no schema changes, no live sale. Rollback to 1dcd5cc (pre-#520 tip).",
-  "target_commit": "c979d644b0fb5c7b0ebfc8b0d02024a6c183b4aa",
-  "rollback_ref": "1dcd5cc17a74ae742bbdd7b9203d656f467e2eb4",
+  "authorization_context": "Owner authorized in 1:1 (2026-10-11 23:29 UTC) merging #525 and publishing Worker and app to CANON: canonical collection reads accept 250-row pages and status advertises page_limit_max (same Turso subrequests per request). Turso-only Worker redeploy, no schema changes, no live sale. Rollback to c979d64 (current live Worker source).",
+  "target_commit": "a36551e408e27de310b1cd6a787cb68fcca6a6fe",
+  "rollback_ref": "c979d644b0fb5c7b0ebfc8b0d02024a6c183b4aa",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 8,
-  "previous_run_id": null,
-  "previous_run_outcome": "STATUS_500_INTERNAL_ERROR_ALL_DEVICES",
-  "optimization": "REDUCE_CANONICAL_STATUS_TURSO_SUBREQUESTS"
+  "attempt": 9,
+  "previous_run_id": 38169603181,
+  "previous_run_outcome": "SUCCESS",
+  "optimization": "CANONICAL_READ_PAGE_LIMIT_250_FAST_RELOAD"
 }
