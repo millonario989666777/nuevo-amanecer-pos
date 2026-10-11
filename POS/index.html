@@ -56,6 +56,7 @@
     <link rel="stylesheet" href="css/canon-desktop-dashboard.css">
     <link rel="stylesheet" href="css/mobile-inventory.css">
     <link id="naMobileHomeBaseStyles" rel="stylesheet" href="css/canon-mobile-home.css">
+    <link rel="stylesheet" href="css/canon-ux-fixes.css">
     <script>
       // The mobile enhancement must never leave a usable home permanently hidden.
       window.addEventListener('DOMContentLoaded', function () {
@@ -1057,9 +1058,13 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       action.disabled = buttonEnabled === false;
     }
 
-    function markVersionPending(message) {
+    function markVersionPending(message, downloading) {
       if (!hadController) return;
-      setUpdateUi(message || 'Lista para actualizar.', 'ready', 'Actualizar ahora', true);
+      if (updateBusy) return;
+      // Mientras se descarga, el botón no acepta clics: antes el primer clic esperaba la
+      // instalación (hasta 15 s) y parecía no responder.
+      if (downloading) setUpdateUi(message || 'Descargando la versión nueva…', 'working', 'Descargando…', false);
+      else setUpdateUi(message || 'Lista para actualizar.', 'ready', 'Actualizar ahora', true);
       try { window.dispatchEvent(new CustomEvent('na:version-update-pending')); } catch (_) {}
     }
 
@@ -1103,7 +1108,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
           return;
         }
         worker.addEventListener('statechange', inspect);
-        timer = window.setTimeout(function () { finish(false); }, 15000);
+        timer = window.setTimeout(function () { finish(false); }, 120000);
       });
     }
 
@@ -1127,8 +1132,18 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.addEventListener('controllerchange', scheduleReload);
 
     if (action) {
-      action.addEventListener('click', async function () {
-        if (updateBusy || !pwaRegistration) return;
+      action.addEventListener('click', runPwaUpdate);
+    }
+
+    var pwaUpdateQueued = false;
+    async function runPwaUpdate() {
+        if (updateBusy) return;
+        if (!pwaRegistration) {
+          // El registro aún no terminó: se recuerda el clic y se aplica al registrarse.
+          pwaUpdateQueued = true;
+          setUpdateUi('Preparando la actualización…', 'working', 'Actualizando…', false);
+          return;
+        }
         updateBusy = true;
         window.clearTimeout(updateFallbackTimer);
         setUpdateUi('Buscando la versión nueva…', 'working', 'Actualizando…', false);
@@ -1160,18 +1175,18 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
           setUpdateUi('No se pudo actualizar. Comprueba internet y vuelve a intentar.', 'error', 'Reintentar', true);
           console.warn('No se pudo aplicar la nueva versión del POS.', error);
         }
-      });
     }
 
     navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(function (registration) {
       pwaRegistration = registration;
       enableManualUpdateMode();
+      if (pwaUpdateQueued) { pwaUpdateQueued = false; runPwaUpdate(); }
 
       if (registration.waiting) markVersionPending();
       if (typeof registration.addEventListener === 'function') {
         registration.addEventListener('updatefound', function () {
           if (!registration.installing || !hadController) return;
-          markVersionPending('Descargando la versión nueva…');
+          markVersionPending('Descargando la versión nueva…', true);
           var installing = registration.installing;
           if (typeof installing.addEventListener === 'function') {
             installing.addEventListener('statechange', function () {

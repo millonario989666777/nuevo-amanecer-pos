@@ -521,6 +521,7 @@
     var credits = (Array.isArray(data.credits) ? data.credits : []).map(function (c) {
       return uiCredit(c, customerById, paymentsByCredit);
     });
+    var creditById = new Map(credits.map(function (c) { return [String(c.id), c]; }));
     var products = (Array.isArray(data.products) ? data.products : []).map(uiProduct);
     var productById = new Map(products.map(function (p) { return [String(p.id), p]; }));
     var itemsBySale = groupBy(data.saleItems, 'sale_id');
@@ -534,7 +535,19 @@
     var expenses = (Array.isArray(data.expenses) ? data.expenses : []).map(uiExpense);
     var expenseCashMovements = (Array.isArray(data.expenses) ? data.expenses : []).map(uiExpenseCashMovement).filter(Boolean);
     var cashMovements = (Array.isArray(data.cashMovements) ? data.cashMovements : []).map(uiSaleCashMovement)
-      .concat((Array.isArray(data.financialEvents) ? data.financialEvents : []).map(uiFinancialMovement))
+      .concat((Array.isArray(data.financialEvents) ? data.financialEvents : []).map(function (event) {
+        // Un cobro apunta a un crédito; se muestra a qué cliente pertenece (antes la fila salía sin cliente).
+        var movement = uiFinancialMovement(event);
+        if (movement.creditoId != null) {
+          var credit = creditById.get(String(movement.creditoId));
+          if (credit && credit.clienteNombre) {
+            movement.clienteId = credit.clienteId;
+            movement.clienteNombre = credit.clienteNombre;
+            if (movement.tipo === 'cob') movement.desc = 'Cobro de crédito · ' + credit.clienteNombre;
+          }
+        }
+        return movement;
+      }))
       .concat(expenseCashMovements)
       .sort(function (a, b) { return text(a.timestamp).localeCompare(text(b.timestamp)); });
     return {

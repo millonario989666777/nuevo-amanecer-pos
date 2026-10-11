@@ -229,6 +229,8 @@
     if (drawer) {
       drawer.classList.remove('is-open');
       drawer.setAttribute('aria-hidden', 'true');
+      // Cerrado = fuera de pantalla: sin foco ni clics accidentales.
+      drawer.inert = true;
     }
     if (overlay) overlay.classList.remove('is-open');
     if (toggle) {
@@ -246,6 +248,7 @@
     if (!drawer || !overlay) return;
     refreshMobileProfile();
     updateDrawerSelection();
+    drawer.inert = false;
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
     overlay.classList.add('is-open');
@@ -566,6 +569,7 @@
       drawer.setAttribute('role', 'dialog');
       drawer.setAttribute('aria-modal', 'true');
       drawer.setAttribute('aria-hidden', 'true');
+      drawer.inert = true;
 
       var drawerHead = node('div', 'na-mobile-drawer-head');
       drawerHead.appendChild(node('div', 'na-mobile-drawer-brand-icon'));
