@@ -70,10 +70,23 @@
     current.intents.shift();
     write(current);
   }
-  function result(status, processed, remaining, reason) {
+  function result(status, processed, remaining, reason, head) {
     var out = { status: status, processed: processed, remaining: remaining };
     if (reason) out.reason = reason;
+    if (head) { out.sale_id = head.sale_id; out.operation_id = head.operation_id; }
     return out;
+  }
+  // Server-side proof only: the refreshed replica already holds this exact
+  // operation_id + sale_id. Missing API or failed refresh = not proven.
+  async function confirmedRemotely(canonical, head) {
+    if (typeof canonical.snapshot !== 'function' || typeof canonical.discardRejectedSale !== 'function') return false;
+    try { await canonical.refresh(); } catch (_) { return false; }
+    if (typeof canonical.sourceState === 'function') {
+      var state = canonical.sourceState();
+      if (!state || state.validation !== 'current') return false;
+    }
+    var sales = (canonical.snapshot() || {}).sales || [];
+    return sales.some(function (sale) { return sale.operation_id === head.operation_id && (sale.sale_id || sale.id) === head.sale_id; });
   }
   async function syncLocked() {
     var processed = 0;
@@ -96,13 +109,26 @@
           // rebuild createSale with fresh ESR (same operation_id), or drop the
           // head when the Worker still rejects — never freeze the whole drain.
           var rejectReason = String(pending.last_error);
+          var recoverable = rejectReason === 'stale_stock' || rejectReason === 'stock_revision_conflict';
+          if (!recoverable) {
+            // Owner rule 1: a non-stock rejection never removes the durable
+            // intent nor its journal. Only a server-side record of this exact
+            // operation_id may settle it; otherwise the head stays quarantined
+            // in place and keeps blocking cash close with its real reason.
+            if (await confirmedRemotely(canonical, head)) {
+              var cleared = false;
+              try { cleared = await canonical.discardRejectedSale(); } catch (_) { cleared = false; }
+              if (!cleared) return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason, head);
+              removeHead(head); processed += 1; continue;
+            }
+            return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason, head);
+          }
           var discarded = false;
           if (typeof canonical.discardRejectedSale === 'function') {
             try { discarded = await canonical.discardRejectedSale(); } catch (_) { discarded = false; }
           }
-          if (!discarded) return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason);
-          var recoverable = rejectReason === 'stale_stock' || rejectReason === 'stock_revision_conflict';
-          if (recoverable) {
+          if (!discarded) return result('BLOCKED_PENDING_REJECTED', processed, current.intents.length, rejectReason, head);
+          {
             try {
               if (typeof canonical.refresh === 'function') await canonical.refresh();
               await canonical.createSale(head);
@@ -110,33 +136,17 @@
               var afterRetry = canonical.pendingSnapshot();
               if (afterRetry && afterRetry.command === 'sale.create' && afterRetry.payload &&
                   afterRetry.payload.operation_id === head.operation_id && afterRetry.payload.sale_id === head.sale_id && afterRetry.last_error) {
-                var retryDiscarded = false;
-                try {
-                  if (typeof canonical.discardRejectedSale === 'function') retryDiscarded = await canonical.discardRejectedSale();
-                } catch (_) { retryDiscarded = false; }
-                // Only a definitive allowlisted rejection may remove the durable
-                // intent. 5xx/429/unknown ACK remains pending with the same
-                // operation_id so a later replay cannot lose or duplicate a sale.
-                if (!retryDiscarded) {
-                  return result('WAITING', processed, parseStored().intents.length,
-                    String(afterRetry.last_error || error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'));
-                }
-                removeHead(head);
-                var runtime = root.NuevoAmanecerCanonicalUIAdapter && root.NuevoAmanecerCanonicalUIAdapter.runtime;
-                if (runtime && typeof runtime.notify === 'function') runtime.notify('Venta ' + head.sale_id + ' rechazada por CANON (' + rejectReason + '). No se descontó stock; vuelve a cobrarla.', 'error');
-                if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection'));
-                continue;
+                // The retry was rejected again. Keep intent + journal (same
+                // operation_id); never ask the cashier to charge again here.
+                var definitive = [400, 404, 409].indexOf(afterRetry.last_status) !== -1;
+                return result(definitive ? 'BLOCKED_PENDING_REJECTED' : 'WAITING', processed, parseStored().intents.length,
+                  String(afterRetry.last_error || error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'), head);
               }
               return result('WAITING', processed, parseStored().intents.length, String(error && (error.code || error.message) || 'CREATE_UNACKNOWLEDGED'));
             }
             if (!matching(canonical.receiptSnapshot(), head)) return result('WAITING', processed, parseStored().intents.length, 'RECEIPT_NOT_CONFIRMED');
             removeHead(head); processed += 1; continue;
           }
-          removeHead(head);
-          var runtimeDrop = root.NuevoAmanecerCanonicalUIAdapter && root.NuevoAmanecerCanonicalUIAdapter.runtime;
-          if (runtimeDrop && typeof runtimeDrop.notify === 'function') runtimeDrop.notify('Venta ' + head.sale_id + ' rechazada por CANON (' + rejectReason + '). No se descontó stock.', 'error');
-          if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection'));
-          continue;
         }
         try { await canonical.retryPending(); } catch (error) { return result('WAITING', processed, parseStored().intents.length, String(error && (error.code || error.message) || 'RETRY_FAILED')); }
         if (!matching(canonical.receiptSnapshot(), head)) return result('WAITING', processed, parseStored().intents.length, 'RECEIPT_NOT_CONFIRMED');
@@ -203,7 +213,16 @@
     if (typeof close !== 'function') fail('INVALID_CASH_CLOSE_CALLBACK');
     return withLock(async function () {
       var outcome = await syncLocked();
-      if (snapshot().intents.length) fail('CASH_CLOSE_PENDING_SALES');
+      var left = snapshot().intents;
+      if (left.length) {
+        var blocked = new Error('CASH_CLOSE_PENDING_SALES');
+        blocked.code = 'CASH_CLOSE_PENDING_SALES';
+        blocked.sale_id = outcome.sale_id || left[0].sale_id;
+        blocked.operation_id = outcome.operation_id || left[0].operation_id;
+        blocked.reason = outcome.reason || outcome.status;
+        blocked.remaining = left.length;
+        throw blocked;
+      }
       // enqueue and sync share this lock across tabs. Keep it until the close
       // ACK (or uncertainty) so no durable sale is stranded in the gap.
       return close(outcome.processed);

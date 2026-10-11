@@ -318,7 +318,9 @@
       (record.last_status ? ' · HTTP ' + record.last_status : '') +
       (record.last_error ? ' · ' + clean(record.last_error) : ' · sin confirmación del servidor') +
       '. Se conservó el registro. Revisa esta operación antes de cerrar. ' + code;
-    if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.';
+    if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' +
+      (error && error.sale_id ? ' Venta bloqueante: ' + clean(error.sale_id) + (error.reason ? ' · ' + clean(error.reason) : '') +
+        (error.remaining > 1 ? ' (+' + (error.remaining - 1) + ' detrás)' : '') + '. No la cobres de nuevo.' : '');
     return 'No se pudo cerrar la caja CANON: ' + code;
   }
 
