@@ -52,15 +52,80 @@ test('lost closure ACK replays the original operation without using a changed co
  assert.equal(first.api.receiptSnapshot().operation_id,operationId);
 });
 test('foreign financial pending stays intact and prevents cash closure',async t=>{
- let lose=true;
  const {f,first}=await fixture(t,{onFetch:async(url,options,run)=>{
-  if(url.endsWith('/commands/adjustment.create')&&lose){lose=false;throw Error('transport unavailable');}
+  if(url.endsWith('/commands/adjustment.create'))throw Error('transport unavailable');
  }});
  await assert.rejects(first.api.createAdjustment({amount_cents:100,reason:'Synthetic pending adjustment'}),/PENDING/);
  const before=JSON.stringify(first.api.pendingSnapshot());
  assert.equal(await first.context.cerrarCaja(),false);
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+ assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create/);
+ assert.match(first.el('cajCloseStatus').textContent,/pendiente/i);
+});
+test('cash closure confirms an uncertain adjustment with its exact original operation before closing',async t=>{
+ let unavailable=true;
+ const {f,first}=await fixture(t,{onFetch:async(url)=>{
+  if(url.endsWith('/commands/adjustment.create')&&unavailable)throw Error('temporary transport failure');
+ }});
+ await assert.rejects(first.api.createAdjustment({amount_cents:100,reason:'Synthetic pending adjustment'}),/PENDING/);
+ const original=first.api.pendingSnapshot().payload;
+ unavailable=false;
+ assert.equal(await first.context.cerrarCaja(),true);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+ assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107350);
+ const adjustmentPosts=first.fetchLog.filter(x=>x.url.endsWith('/commands/adjustment.create'));
+ assert.equal(adjustmentPosts.length,2);
+ assert.deepEqual(JSON.parse(adjustmentPosts[1].body),JSON.parse(JSON.stringify(original)));
+ assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='ADJUSTMENT'").n,1);
+});
+test('cash closure replays a lost adjustment ACK without duplicating its cash effect',async t=>{
+ let lose=true;
+ const {f,first}=await fixture(t,{onFetch:async(url,options,run)=>{
+  if(url.endsWith('/commands/adjustment.create')&&lose){lose=false;await run();throw Error('lost ACK');}
+ }});
+ await assert.rejects(first.api.createAdjustment({amount_cents:100,reason:'Synthetic committed adjustment'}),/PENDING/);
+ assert.equal(await first.context.cerrarCaja(),true);
+ assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='ADJUSTMENT'").n,1);
+ assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107350);
+});
+test('a definitive foreign rejection remains durable and displays its real reason inside the close form',async t=>{
+ const {f,first,second}=await fixture(t);
+ await second.api.createAdjustment({amount_cents:100,reason:'Synthetic competing adjustment'});
+ await assert.rejects(first.api.createAdjustment({amount_cents:200,reason:'Synthetic rejected adjustment'}),/REJECTED_409/);
+ const before=JSON.stringify(first.api.pendingSnapshot());
+ assert.equal(await first.context.cerrarCaja(),false);
+ assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
+ assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create.*409.*stale_session/);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+});
+test('a previously committed cash payment with lost ACK is counted only once before closure',async t=>{
+ let lose=true;
+ const {f,first}=await fixture(t,{onFetch:async(url,options,run)=>{
+  if(url.endsWith('/commands/payment.create')&&lose){lose=false;await run();throw Error('lost payment ACK');}
+ }});
+ const credit=first.api.snapshot().credits.find(x=>x.current_balance_cents>=100);
+ assert.ok(credit);
+ await assert.rejects(first.api.createPayment({credit_id:credit.credit_id,amount_cents:100,payment_method:'efectivo'}),/PENDING/);
+ const original=first.api.pendingSnapshot().payload;
+ assert.equal(await first.context.cerrarCaja(),true);
+ assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n,1);
+ assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107350);
+ const posts=first.fetchLog.filter(x=>x.url.endsWith('/commands/payment.create'));
+ assert.deepEqual(JSON.parse(posts[1].body),JSON.parse(JSON.stringify(original)));
+});
+test('an unresponsive pending movement times out without clearing it or closing the cash',async t=>{
+ let hang=false;
+ const {f,first}=await fixture(t,{globals:{setTimeout(fn,ms){return setTimeout(fn,Math.min(ms,100));}},onFetch:async(url)=>{
+  if(url.endsWith('/commands/adjustment.create')&&hang)return new Promise(()=>{});
+ }});
+ hang=true;
+ await assert.rejects(first.api.createAdjustment({amount_cents:100,reason:'Synthetic unresponsive movement'}),/PENDING/);
+ const before=JSON.stringify(first.api.pendingSnapshot());
+ assert.equal(await first.context.cerrarCaja(),false);
+ assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+ assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create/);
 });
 test('cash remains open while unsynchronized sales cannot drain',async t=>{
  const {f,first}=await fixture(t,{globals:{NuevoAmanecerCanonicalSaleOutbox:{snapshot(){return {intents:[{operation_id:'unsent-sale'}]};},async sync(){return {status:'WAITING',remaining:1};}}}});
