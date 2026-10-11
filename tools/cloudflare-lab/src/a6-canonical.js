@@ -446,50 +446,26 @@ async function rollback(body,deviceId,credentialHash,manifest,db,json){
   return json(result,201);
 }
 
-async function canonicalRead(url,db,json){
+export async function canonicalRead(url,db,json,options={}){
   const type=url.pathname.slice('/read/canonical/'.length);if(!READ_TABLES.has(type)&&type!=='status'&&type!=='snapshot')return json({error:'not_found'},404);
-  const initial=await control(db);if(!initial||!['CANONICAL_READ_ONLY','ACTIVE'].includes(initial.mode)||!initial.active_promotion_id)return json({error:'canonical_not_published'},409);
-  const before=initial.mode==='ACTIVE'?await readControl(db):initial;
+  // Subrequest budget: with Turso every statement is one external fetch, so the
+  // read plan probes the schema once and reads authority in one statement.
+  const plan=await readPlan(db,options);
+  const initial=plan.schema?await plan.current():await control(db);if(!initial||!['CANONICAL_READ_ONLY','ACTIVE'].includes(initial.mode)||!initial.active_promotion_id)return json({error:'canonical_not_published'},409);
+  const before=plan.schema?initial:initial.mode==='ACTIVE'?await readControl(db):initial;
   if(!sameControl({...initial,financial_revision:before?.financial_revision},before))return json({error:'authority_changed'},409);
   if(['cash-sessions','financial-events'].includes(type)&&before.mode!=='ACTIVE')return json({error:'canonical_not_active'},409);
   // FASE7 LAB: additive bulk snapshot under ONE financial_revision fence.
-  if(type==='snapshot')return canonicalSnapshot(db,json,before);
+  if(type==='snapshot')return canonicalSnapshot(db,json,before,plan);
   if(type==='status'){
-    const counts={};for(const table of Object.keys(TABLES))counts[table]=Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE promotion_id=?1`).bind(before.active_promotion_id).first()).count);
-    if(before.mode==='ACTIVE'){
-      const liveProductsReady=await liveProductSchemaAvailable(db);
-      counts.imported_products=counts.products;
-      counts.live_products=liveProductsReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_live_products WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
-      counts.products+=counts.live_products;
-      const liveCustomersReady=await customerSchemaAvailable(db);
-      counts.imported_customers=counts.customers;
-      counts.live_customers=liveCustomersReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_live_customers WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
-      counts.customers+=counts.live_customers;
-      counts.imported_credits=counts.credits;
-      counts.live_credits=Number((await db.prepare('SELECT COUNT(*) AS count FROM live_credits WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
-      const reconciliationReady=await debtReconciliationSchemaAvailable(db);
-      counts.reconciliation_credits=reconciliationReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_reconciliation_credits WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
-      counts.credits+=counts.live_credits+counts.reconciliation_credits;
-      counts.credit_payments+=Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_financial_events WHERE promotion_id=?1 AND credit_id IS NOT NULL').bind(before.active_promotion_id).first()).count);
-      for(const [name,sql] of Object.entries({sales:'canonical_sale_context x',sale_items:'canonical_sale_context x JOIN sale_items r ON r.sale_id=x.sale_id',cash_movements:'canonical_sale_context x JOIN cash_movements r ON r.sale_id=x.sale_id'}))
-        counts[name]=Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${sql} WHERE x.promotion_id=?1`).bind(before.active_promotion_id).first()).count);
-      const inventoryAdjustReady=await inventoryLedgerAvailable(db);
-      counts.inventory_movements=liveProductsReady
-        ?Number((await db.prepare(`SELECT COUNT(*) AS count FROM (
-          SELECT movement_id FROM canonical_inventory_effects WHERE promotion_id=?1
-          UNION ALL SELECT movement_id FROM canonical_live_inventory_effects WHERE promotion_id=?1
-        )`).bind(before.active_promotion_id).first()).count)
-        :Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_inventory_effects WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
-      if(inventoryAdjustReady)counts.inventory_movements+=Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_manual_inventory_movements WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
-      counts.expenses=await expenseLedgerCount(db,before.active_promotion_id);
-    }
-    const afterControl=await control(db),after=afterControl?.mode==='ACTIVE'?await readControl(db):afterControl;
+    const counts=await statusCounts(db,before,plan.schema);
+    const after=await plan.current();
     if(!sameControl(before,after))return json({error:'authority_changed'},409);return json({...readMeta(before),counts});
   }
   const page=parsePage(url.searchParams,before);if(page.error)return json({error:page.error},400);
   const sqlName=type.replaceAll('-','_');
-  const rows=await loadCollectionRows(db,type,before,page);
-  const afterControl=await control(db),after=afterControl?.mode==='ACTIVE'?await readControl(db):afterControl;
+  const rows=await loadCollectionRows(db,type,before,page,plan.schema);
+  const after=await plan.current();
   if(!sameControl(before,after))return json({error:'authority_changed'},409);
   const source=rows.results??[],selected=source.slice(0,page.limit),last=selected.at(-1);let lastKey=null;if(last)lastKey=last.read_key??(sqlName==='sale_items'?`${last.sale_id}\0${String(last.line_number).padStart(20,'0')}`:last[TABLES[sqlName]?.[0]??(sqlName==='sales'?'sale_id':'movement_id')]);
   for(const item of selected){
@@ -500,9 +476,9 @@ async function canonicalRead(url,db,json){
   return json({...readMeta(before),items:selected,next_cursor:source.length>page.limit?encodeCursor({promotion_id:before.active_promotion_id,authority_epoch:Number(before.authority_epoch),revision:Number(before.revision),...(before.mode==='ACTIVE'?{financial_revision:before.financial_revision}:{}),key:lastKey}):null,limit:page.limit});
 }
 
-async function loadCollectionRows(db,type,before,page){
+async function loadCollectionRows(db,type,before,page,schema=null){
   const sqlName=type.replaceAll('-','_');let rows;
-  if(sqlName==='products'&&before.mode==='ACTIVE'&&await liveProductSchemaAvailable(db)){
+  if(sqlName==='products'&&before.mode==='ACTIVE'&&await liveProductSchemaAvailable(db,schema)){
     rows=await db.prepare(`SELECT * FROM (
       SELECT 'I:' || product_id AS read_key,${TABLES.products.join(',')},'IMPORT' AS provenance,NULL AS operation_id,NULL AS created_at
         FROM products WHERE promotion_id=?1
@@ -510,9 +486,9 @@ async function loadCollectionRows(db,type,before,page){
       SELECT 'L:' || product_id AS read_key,${TABLES.products.join(',')},'LIVE' AS provenance,operation_id,created_at
         FROM canonical_live_products WHERE promotion_id=?1
     ) WHERE read_key>?2 ORDER BY read_key LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
-  } else if(sqlName==='customers'&&before.mode==='ACTIVE'&&await customerSchemaAvailable(db)){
+  } else if(sqlName==='customers'&&before.mode==='ACTIVE'&&await customerSchemaAvailable(db,schema)){
     const liveCustomerFields={customer_id:'l.customer_id',name:'l.name',document:'l.document',phone:'l.phone',address:'l.address',color:'l.color',total_purchases_cents:'l.total_purchases_cents'};
-    const policyReady=await customerCreditPolicySchemaAvailable(db);
+    const policyReady=await customerCreditPolicySchemaAvailable(db,schema);
     if(policyReady){
       const policyColumns=`p.mode AS credit_policy_mode,p.manual_limit_cents AS credit_policy_manual_limit_cents,
         p.reason AS credit_policy_reason,p.administrator_id AS credit_policy_administrator_id,
@@ -545,7 +521,7 @@ async function loadCollectionRows(db,type,before,page){
           ORDER BY customer_id,account_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all()
       : {results:[]};
   } else if(sqlName==='credits'&&before.mode==='ACTIVE'){
-    const reconciliationReady=await debtReconciliationSchemaAvailable(db);
+    const reconciliationReady=await debtReconciliationSchemaAvailable(db,schema);
     const importFields=TABLES.credits.map(column=>{
       if(column==='current_balance_cents')return'b.current_balance_cents AS current_balance_cents';
       if(column==='opening_balance_cents')return reconciliationReady?'b.opening_balance_cents AS opening_balance_cents':'c.opening_balance_cents';
@@ -600,7 +576,7 @@ async function loadCollectionRows(db,type,before,page){
       SELECT 'L:' || event_id AS read_key,${TABLES.credit_payments.map(c=>fields[c]??'NULL').join(',')},'LIVE',operation_id,credit_provenance,credit_delta_cents,cash_delta_cents,session_id,reason,compensates_operation_id FROM canonical_financial_events WHERE promotion_id=?1 AND credit_id IS NOT NULL)
       WHERE read_key>?2 ORDER BY read_key LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='expenses'){
-    const expenseReady=await expenseLedgerAvailable(db);
+    const expenseReady=await expenseLedgerAvailable(db,schema);
     rows=before.mode==='ACTIVE'&&expenseReady
       ? await db.prepare(`SELECT expense_id AS read_key,expense_id,operation_id,promotion_id,session_id,amount_cents,cash_delta_cents,
           concept,category,payment_method,expense_date,note,created_at
@@ -615,7 +591,7 @@ async function loadCollectionRows(db,type,before,page){
     rows=await db.prepare(`SELECT event_id AS read_key,event_id,operation_id,promotion_id,event_type,session_id,credit_id,credit_provenance,
       credit_delta_cents,cash_delta_cents,payment_method,reference,reason,compensates_operation_id,created_at FROM canonical_financial_events
       WHERE promotion_id=?1 AND event_id>?2 ORDER BY event_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
-  } else if(sqlName==='sale_items'&&before.mode==='ACTIVE'&&await genericSaleSchemaAvailable(db)){
+  } else if(sqlName==='sale_items'&&before.mode==='ACTIVE'&&await genericSaleSchemaAvailable(db,schema)){
     const keyExpr="r.sale_id || char(0) || printf('%020d',r.line_number)";
     rows=await db.prepare(`SELECT ${keyExpr} AS read_key,
       r.sale_id,r.line_number,r.operation_id,r.product_id,r.quantity,r.unit_price_cents,r.line_total_cents,r.created_at,
@@ -629,8 +605,8 @@ async function loadCollectionRows(db,type,before,page){
       ORDER BY r.sale_id,r.line_number LIMIT ?3`)
       .bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='inventory_movements'&&before.mode==='ACTIVE'){
-    const liveProductsReady=await liveProductSchemaAvailable(db);
-    const inventoryAdjustReady=await inventoryLedgerAvailable(db);
+    const liveProductsReady=await liveProductSchemaAvailable(db,schema);
+    const inventoryAdjustReady=await inventoryLedgerAvailable(db,schema);
     if(inventoryAdjustReady){
       const saleEffects=liveProductsReady
         ?`SELECT movement_id,promotion_id FROM canonical_inventory_effects
@@ -660,7 +636,7 @@ async function loadCollectionRows(db,type,before,page){
   } else if(TABLES[sqlName]){const key=TABLES[sqlName][0];rows=await db.prepare(`SELECT ${TABLES[sqlName].join(',')} FROM ${sqlName} WHERE promotion_id=?1 AND ${key}>?2 ORDER BY ${key} LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();}
   else if(before.mode==='ACTIVE'){
     const key=sqlName==='sale_items'?"r.sale_id || char(0) || printf('%020d',r.line_number)":sqlName==='sales'?'r.sale_id':'r.movement_id';
-    const liveProductsReady=sqlName==='inventory_movements'?await liveProductSchemaAvailable(db):false;
+    const liveProductsReady=sqlName==='inventory_movements'?await liveProductSchemaAvailable(db,schema):false;
     const join=sqlName==='inventory_movements'?(liveProductsReady?`(
       SELECT movement_id,promotion_id FROM canonical_inventory_effects
       UNION ALL SELECT movement_id,promotion_id FROM canonical_live_inventory_effects
@@ -672,7 +648,7 @@ async function loadCollectionRows(db,type,before,page){
     rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName].split(',').map(c=>'r.'+c).join(',')}${context}${cashSession} FROM ${join} WHERE x.promotion_id=?1 AND ${key}>?2 ORDER BY ${key} LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   }
   else {const key=sqlName==='sale_items'?"sale_id || char(0) || printf('%020d',line_number)":sqlName==='sales'?'sale_id':'movement_id';rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName]} FROM ${sqlName} WHERE ${key}>?1 ORDER BY ${key} LIMIT ?2`).bind(page.key,page.limit+1).all();}
-  if(sqlName==='customers'&&before.mode==='ACTIVE'&&await customerContactSchemaAvailable(db)){
+  if(sqlName==='customers'&&before.mode==='ACTIVE'&&await customerContactSchemaAvailable(db,schema)){
     const selected=rows.results??[];
     if(selected.length){
       const ids=selected.map(item=>item.customer_id);
@@ -710,7 +686,7 @@ const SNAPSHOT_COLLECTIONS=[
  * Pagination: pages under the same fence until complete; lab dataset fits ≤100/page.
  * On mid-read drift → 409 entire response (ZERO partial payload).
  */
-async function canonicalSnapshot(db,json,before){
+async function canonicalSnapshot(db,json,before,plan){
   if(!before||!['CANONICAL_READ_ONLY','ACTIVE'].includes(before.mode)||!before.active_promotion_id)return json({error:'canonical_not_published'},409);
   const payload={};
   for(const [type,key] of SNAPSHOT_COLLECTIONS){
@@ -722,7 +698,7 @@ async function canonicalSnapshot(db,json,before){
       pages+=1;
       if(pages>50)return json({error:'snapshot_pagination_overflow',collection:key},500);
       const page={limit:100,key:pageKey};
-      const rows=await loadCollectionRows(db,type,before,page);
+      const rows=await loadCollectionRows(db,type,before,page,plan.schema);
       const source=rows.results??[];
       const selected=source.slice(0,page.limit);
       const last=selected.at(-1);
@@ -734,7 +710,7 @@ async function canonicalSnapshot(db,json,before){
         if(sqlName==='credit_payments'&&item.provenance==='IMPORT')for(const field of ['provenance','operation_id','credit_provenance','credit_delta_cents','cash_delta_cents','session_id','reason','compensates_operation_id'])delete item[field];
       }
       items.push(...selected);
-      const midControl=await control(db),mid=midControl?.mode==='ACTIVE'?await readControl(db):midControl;
+      const mid=await plan.current();
       if(!sameControl(before,mid))return json({error:'authority_changed'},409);
       if(source.length<=page.limit)break;
       if(lastKey==null)return json({error:'snapshot_pagination_key_missing',collection:key},500);
@@ -742,7 +718,7 @@ async function canonicalSnapshot(db,json,before){
     }
     payload[key]=items;
   }
-  const afterControl=await control(db),after=afterControl?.mode==='ACTIVE'?await readControl(db):afterControl;
+  const after=await plan.current();
   if(!sameControl(before,after))return json({error:'authority_changed'},409);
   // Flatten: meta + exact 12 keys (empty arrays never omitted). Additive lab endpoint.
   return json({...readMeta(before),lab_snapshot:true,...payload});
@@ -766,7 +742,8 @@ function sameControl(a,b){return b&&a.mode===b.mode&&a.active_promotion_id===b.a
 function readMeta(c){return{authority:'canonical',promotion_id:c.active_promotion_id,authority_epoch:Number(c.authority_epoch),revision:Number(c.revision),...(c.mode==='ACTIVE'?{financial_revision:c.financial_revision}:{}),read_only:c.mode!=='ACTIVE',mode:c.mode,minimum_client_contract:c.minimum_client_contract};}
 // One SQL snapshot binds authority and the append-only commit count. Counts do
 // not change on replay, and a rolled-back batch cannot advance the read version.
-async function expenseLedgerAvailable(db){
+async function expenseLedgerAvailable(db,schema=null){
+  if(schema)return hasAll(schema,EXPENSE_SCHEMA_TABLES);
   const row=await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_expenses'").first();
   return row?.ok===1;
 }
@@ -784,17 +761,20 @@ async function productLedgerCount(db,promotionId){
   const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_product_operations WHERE promotion_id=?1').bind(promotionId).first();
   return Number(row?.count)||0;
 }
-async function liveProductSchemaAvailable(db){
+async function liveProductSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,LIVE_PRODUCT_SCHEMA_TABLES);
   const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
     WHERE type='table' AND name IN ('canonical_product_operations','canonical_live_products','canonical_live_inventory_effects')`).first();
   return Number(row?.count)===3;
 }
-async function inventoryLedgerAvailable(db){
+async function inventoryLedgerAvailable(db,schema=null){
+  if(schema)return hasAll(schema,INVENTORY_SCHEMA_TABLES);
   const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
     WHERE type='table' AND name IN ('canonical_inventory_operations','canonical_manual_inventory_movements')`).first();
   return Number(row?.count)===2;
 }
-async function genericSaleSchemaAvailable(db){
+async function genericSaleSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,GENERIC_SALE_SCHEMA_TABLES);
   const row=await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_generic_sale_lines'").first();
   return row?.ok===1;
 }
@@ -803,7 +783,8 @@ async function inventoryLedgerCount(db,promotionId){
   const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_inventory_operations WHERE promotion_id=?1').bind(promotionId).first();
   return Number(row?.count)||0;
 }
-async function customerSchemaAvailable(db){
+async function customerSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,CUSTOMER_SCHEMA_TABLES);
   const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
     WHERE type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers')`).first();
   return Number(row?.count)===3;
@@ -813,7 +794,8 @@ async function customerLedgerCount(db,promotionId){
   const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_customer_operations WHERE promotion_id=?1').bind(promotionId).first();
   return Number(row?.count)||0;
 }
-async function customerCreditPolicySchemaAvailable(db){
+async function customerCreditPolicySchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,CREDIT_POLICY_SCHEMA_TABLES);
   const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
     WHERE type='table' AND name IN ('canonical_customer_credit_policy_operations','canonical_customer_credit_policies')`).first();
   return Number(row?.count)===2;
@@ -823,7 +805,8 @@ async function customerCreditPolicyLedgerCount(db,promotionId){
   const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_customer_credit_policy_operations WHERE promotion_id=?1').bind(promotionId).first();
   return Number(row?.count)||0;
 }
-async function debtReconciliationSchemaAvailable(db){
+async function debtReconciliationSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,DEBT_RECONCILIATION_SCHEMA_TABLES);
   const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
     WHERE type='table' AND name IN ('canonical_reconciliation_credits','canonical_credit_baseline_adjustments')`).first();
   return Number(row?.count)===2;
@@ -835,7 +818,8 @@ async function debtReconciliationLedgerCount(db,promotionId){
     (SELECT COUNT(*) FROM canonical_credit_baseline_adjustments WHERE promotion_id=?1) AS count`).bind(promotionId).first();
   return Number(row?.count)||0;
 }
-async function customerContactSchemaAvailable(db){
+async function customerContactSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,CUSTOMER_CONTACT_SCHEMA_TABLES);
   const row=await db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='canonical_customer_contacts'").first();return Number(row?.n)===1;
 }
 async function customerContactLedgerCount(db,promotionId){
@@ -850,6 +834,156 @@ async function readControl(db){
     ELSE NULL END AS financial_revision FROM canonical_control c WHERE c.id=1`).first();
   if(row?.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+await expenseLedgerCount(db,row.active_promotion_id)+await productLedgerCount(db,row.active_promotion_id)+await inventoryLedgerCount(db,row.active_promotion_id)+await customerLedgerCount(db,row.active_promotion_id)+await customerCreditPolicyLedgerCount(db,row.active_promotion_id)+await debtReconciliationLedgerCount(db,row.active_promotion_id)+await customerContactLedgerCount(db,row.active_promotion_id);
   return row;
+}
+// ---------------------------------------------------------------------------
+// Read plan (subrequest budget). With DB_PROVIDER=turso every statement is one
+// external HTTP fetch and Workers Free allows 50 per invocation. The legacy
+// read path issued 53 statements for an ACTIVE /read/canonical/status. The plan
+// below keeps identical response bodies with: one sqlite_master probe per
+// request, one statement per authority read (control + financial_revision
+// ledger sums) and one statement for all status counts. Every statement is a
+// plain SELECT: no BEGIN, no write lock. The schema probe is request scoped on
+// purpose (never cached on the isolate) so a later additive migration is seen
+// by the next request exactly as the legacy per-call probes saw it.
+const CONTROL_SCHEMA_TABLES=['canonical_control','canonical_sale_context','canonical_financial_operations'];
+const EXPENSE_SCHEMA_TABLES=['canonical_expenses'];
+const PRODUCT_LEDGER_SCHEMA_TABLES=['canonical_product_operations'];
+const LIVE_PRODUCT_SCHEMA_TABLES=['canonical_product_operations','canonical_live_products','canonical_live_inventory_effects'];
+const INVENTORY_SCHEMA_TABLES=['canonical_inventory_operations','canonical_manual_inventory_movements'];
+const GENERIC_SALE_SCHEMA_TABLES=['canonical_generic_sale_lines'];
+const CUSTOMER_SCHEMA_TABLES=['canonical_customer_operations','canonical_customer_registry','canonical_live_customers'];
+const CREDIT_POLICY_SCHEMA_TABLES=['canonical_customer_credit_policy_operations','canonical_customer_credit_policies'];
+const DEBT_RECONCILIATION_SCHEMA_TABLES=['canonical_reconciliation_credits','canonical_credit_baseline_adjustments'];
+const CUSTOMER_CONTACT_SCHEMA_TABLES=['canonical_customer_contacts'];
+const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES])];
+// Same order and conditions as the legacy readControl ledger additions.
+const LEDGER_REVISION_TERMS=[
+  [EXPENSE_SCHEMA_TABLES,['canonical_expense_operations']],
+  [PRODUCT_LEDGER_SCHEMA_TABLES,['canonical_product_operations']],
+  [INVENTORY_SCHEMA_TABLES,['canonical_inventory_operations']],
+  [CUSTOMER_SCHEMA_TABLES,['canonical_customer_operations']],
+  [CREDIT_POLICY_SCHEMA_TABLES,['canonical_customer_credit_policy_operations']],
+  [DEBT_RECONCILIATION_SCHEMA_TABLES,['canonical_reconciliation_credits','canonical_credit_baseline_adjustments']],
+  [CUSTOMER_CONTACT_SCHEMA_TABLES,['canonical_customer_contacts']],
+];
+function hasAll(schema,tables){return tables.every((name)=>schema.has(name));}
+async function loadReadSchema(db){
+  const rows=await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (${READ_PLAN_SCHEMA_TABLES.map((name)=>`'${name}'`).join(',')})`).all();
+  return new Set((rows.results??[]).map((row)=>row.name));
+}
+async function readPlan(db,options={}){
+  const legacy={schema:null,current:async()=>{const c=await control(db);return c?.mode==='ACTIVE'?await readControl(db):c;}};
+  if(options.legacy===true)return legacy;
+  const schema=await loadReadSchema(db);
+  // A database without the authority tables keeps the exact legacy behaviour.
+  if(!hasAll(schema,CONTROL_SCHEMA_TABLES))return legacy;
+  return {schema,current:()=>readControlSnapshot(db,schema)};
+}
+// One statement equivalent to control() followed (when ACTIVE) by readControl().
+// Non-ACTIVE rows carry financial_revision:null, which readMeta/sameControl/
+// parsePage/encodeCursor ignore exactly as they ignore the missing key.
+async function readControlSnapshot(db,schema){
+  const terms=[];
+  for(const [required,tables] of LEDGER_REVISION_TERMS){
+    if(hasAll(schema,required))for(const table of tables)terms.push(`(SELECT COUNT(*) FROM ${table} WHERE promotion_id=c.active_promotion_id)`);
+  }
+  const ledger=terms.length?terms.join('+'):'0';
+  const row=await db.prepare(`SELECT c.mode,c.active_promotion_id,c.revision,c.authority_epoch,
+    c.minimum_client_contract,c.first_live_operation_id,CASE WHEN c.mode='ACTIVE' THEN
+    (SELECT COUNT(*) FROM canonical_sale_context WHERE promotion_id=c.active_promotion_id)+
+    (SELECT COUNT(*) FROM canonical_financial_operations WHERE promotion_id=c.active_promotion_id)
+    ELSE NULL END AS financial_revision,
+    CASE WHEN c.mode='ACTIVE' THEN CASE WHEN c.active_promotion_id IS NULL OR c.active_promotion_id='' THEN 0 ELSE ${ledger} END
+    ELSE NULL END AS na_ledger_revision FROM canonical_control c WHERE c.id=1`).first();
+  if(!row)return row;
+  if(row.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+(Number(row.na_ledger_revision)||0);
+  delete row.na_ledger_revision;
+  return row;
+}
+async function statusCounts(db,before,schema){
+  if(!schema)return legacyStatusCounts(db,before);
+  const count=(source,where='promotion_id=?1')=>`(SELECT COUNT(*) FROM ${source} WHERE ${where})`;
+  const columns=Object.keys(TABLES).map((table)=>`${count(table)} AS t_${table}`);
+  const active=before.mode==='ACTIVE';
+  const liveProductsReady=active&&hasAll(schema,LIVE_PRODUCT_SCHEMA_TABLES);
+  const liveCustomersReady=active&&hasAll(schema,CUSTOMER_SCHEMA_TABLES);
+  const reconciliationReady=active&&hasAll(schema,DEBT_RECONCILIATION_SCHEMA_TABLES);
+  const inventoryAdjustReady=active&&hasAll(schema,INVENTORY_SCHEMA_TABLES);
+  const expenseReady=active&&hasAll(schema,EXPENSE_SCHEMA_TABLES);
+  if(active){
+    columns.push(
+      `${liveProductsReady?count('canonical_live_products'):'0'} AS live_products`,
+      `${liveCustomersReady?count('canonical_live_customers'):'0'} AS live_customers`,
+      `${count('live_credits')} AS live_credits`,
+      `${reconciliationReady?count('canonical_reconciliation_credits'):'0'} AS reconciliation_credits`,
+      `${count('canonical_financial_events','promotion_id=?1 AND credit_id IS NOT NULL')} AS live_credit_payments`,
+      `${count('canonical_sale_context x','x.promotion_id=?1')} AS sales`,
+      `${count('canonical_sale_context x JOIN sale_items r ON r.sale_id=x.sale_id','x.promotion_id=?1')} AS sale_items`,
+      `${count('canonical_sale_context x JOIN cash_movements r ON r.sale_id=x.sale_id','x.promotion_id=?1')} AS cash_movements`,
+      `${liveProductsReady
+        ?`(SELECT COUNT(*) FROM (
+          SELECT movement_id FROM canonical_inventory_effects WHERE promotion_id=?1
+          UNION ALL SELECT movement_id FROM canonical_live_inventory_effects WHERE promotion_id=?1
+        ))`
+        :count('canonical_inventory_effects')} AS inventory_movements`,
+      `${inventoryAdjustReady?count('canonical_manual_inventory_movements'):'0'} AS manual_inventory_movements`,
+      `${expenseReady?count('canonical_expense_operations'):'0'} AS expenses`,
+    );
+  }
+  const row=await db.prepare(`SELECT ${columns.join(',')}`).bind(before.active_promotion_id).first();
+  // Same keys, same insertion order and same arithmetic as legacyStatusCounts.
+  const counts={};for(const table of Object.keys(TABLES))counts[table]=Number(row[`t_${table}`]);
+  if(active){
+    counts.imported_products=counts.products;
+    counts.live_products=liveProductsReady?Number(row.live_products):0;
+    counts.products+=counts.live_products;
+    counts.imported_customers=counts.customers;
+    counts.live_customers=liveCustomersReady?Number(row.live_customers):0;
+    counts.customers+=counts.live_customers;
+    counts.imported_credits=counts.credits;
+    counts.live_credits=Number(row.live_credits);
+    counts.reconciliation_credits=reconciliationReady?Number(row.reconciliation_credits):0;
+    counts.credits+=counts.live_credits+counts.reconciliation_credits;
+    counts.credit_payments+=Number(row.live_credit_payments);
+    for(const name of ['sales','sale_items','cash_movements'])counts[name]=Number(row[name]);
+    counts.inventory_movements=Number(row.inventory_movements);
+    if(inventoryAdjustReady)counts.inventory_movements+=Number(row.manual_inventory_movements);
+    counts.expenses=before.active_promotion_id&&expenseReady?Number(row.expenses)||0:0;
+  }
+  return counts;
+}
+// Legacy statement-per-count path, kept verbatim for databases without the
+// authority tables and as the parity oracle in tests.
+async function legacyStatusCounts(db,before){
+    const counts={};for(const table of Object.keys(TABLES))counts[table]=Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE promotion_id=?1`).bind(before.active_promotion_id).first()).count);
+    if(before.mode==='ACTIVE'){
+      const liveProductsReady=await liveProductSchemaAvailable(db);
+      counts.imported_products=counts.products;
+      counts.live_products=liveProductsReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_live_products WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
+      counts.products+=counts.live_products;
+      const liveCustomersReady=await customerSchemaAvailable(db);
+      counts.imported_customers=counts.customers;
+      counts.live_customers=liveCustomersReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_live_customers WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
+      counts.customers+=counts.live_customers;
+      counts.imported_credits=counts.credits;
+      counts.live_credits=Number((await db.prepare('SELECT COUNT(*) AS count FROM live_credits WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
+      const reconciliationReady=await debtReconciliationSchemaAvailable(db);
+      counts.reconciliation_credits=reconciliationReady?Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_reconciliation_credits WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count):0;
+      counts.credits+=counts.live_credits+counts.reconciliation_credits;
+      counts.credit_payments+=Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_financial_events WHERE promotion_id=?1 AND credit_id IS NOT NULL').bind(before.active_promotion_id).first()).count);
+      for(const [name,sql] of Object.entries({sales:'canonical_sale_context x',sale_items:'canonical_sale_context x JOIN sale_items r ON r.sale_id=x.sale_id',cash_movements:'canonical_sale_context x JOIN cash_movements r ON r.sale_id=x.sale_id'}))
+        counts[name]=Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${sql} WHERE x.promotion_id=?1`).bind(before.active_promotion_id).first()).count);
+      const inventoryAdjustReady=await inventoryLedgerAvailable(db);
+      counts.inventory_movements=liveProductsReady
+        ?Number((await db.prepare(`SELECT COUNT(*) AS count FROM (
+          SELECT movement_id FROM canonical_inventory_effects WHERE promotion_id=?1
+          UNION ALL SELECT movement_id FROM canonical_live_inventory_effects WHERE promotion_id=?1
+        )`).bind(before.active_promotion_id).first()).count)
+        :Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_inventory_effects WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
+      if(inventoryAdjustReady)counts.inventory_movements+=Number((await db.prepare('SELECT COUNT(*) AS count FROM canonical_manual_inventory_movements WHERE promotion_id=?1').bind(before.active_promotion_id).first()).count);
+      counts.expenses=await expenseLedgerCount(db,before.active_promotion_id);
+    }
+    return counts;
 }
 async function zeroTraffic(db){const row=await db.prepare('SELECT (SELECT COUNT(*) FROM sales) sales,(SELECT COUNT(*) FROM sale_items) sale_items,(SELECT COUNT(*) FROM cash_movements) cash_movements,(SELECT COUNT(*) FROM inventory_movements) inventory_movements,(SELECT COUNT(*) FROM sync_operations) sync_operations').first();return Object.fromEntries(Object.entries(row).map(([k,v])=>[k,Number(v)]));}
 async function candidateCount(db,id){let total=0;for(const table of Object.keys(TABLES))total+=Number((await db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE promotion_id=?1`).bind(id).first()).count);return total;}
