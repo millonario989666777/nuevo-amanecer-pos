@@ -95,7 +95,10 @@
   function blockingQuarantine() { return readQuarantine().entries.filter(function (entry) { return entry.status === 'QUARANTINED'; }); }
   // Safe retry (same operation_id) only where the cause can clear by itself or
   // after a data fix; never for conflicts or malformed requests.
-  function retryable(reason) { return CONFLICTS.indexOf(reason) === -1 && reason !== 'invalid_sale_request' && reason !== 'canonical_sale_conflict'; }
+  // Explicit allowlist (fail-closed): causes that clear when the replica
+  // catches up, stock arrives, or the missing customer/product is registered.
+  var RETRYABLE = DETERMINISTIC.concat(['insufficient_stock', 'customer_not_found', 'product_not_found']);
+  function retryable(reason) { return RETRYABLE.indexOf(reason) !== -1; }
   function quarantinedOperation(operationId) {
     return readQuarantine().entries.some(function (entry) { return entry.status === 'QUARANTINED' && entry.intent.operation_id === operationId; });
   }
