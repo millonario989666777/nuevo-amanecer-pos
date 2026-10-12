@@ -98,3 +98,9 @@
   .na-receipt-download{min-height:44px;padding:0 12px}
   #backBtn{min-width:44px;min-height:44px}
 }
+
+/* Etapa 2: título "Venta actual" en tamaño normal y sin selección por doble toque. */
+@media(min-width:701px){#pagePOS .cart-head-title{font-size:16px!important;font-weight:800!important;letter-spacing:0!important;line-height:1.2!important}}
+#pagePOS .cart-head-title,#pagePOS button,#pagePOS .product-card,#pagePOS .p-stock-badge{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+/* Etapa 2: Caja centrada en tablet y PC, igual que los demás módulos. */
+@media(min-width:701px){#cajContent>*{width:100%;max-width:900px;margin-left:auto!important;margin-right:auto!important;box-sizing:border-box}}

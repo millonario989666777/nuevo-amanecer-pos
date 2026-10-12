@@ -18,7 +18,7 @@ body.na-module-scroll-linked #pageInventario.inv-mobile-simple .na-scroll-second
 #pageInventario.inv-mobile-simple .inv-menu-content{position:absolute;right:0;top:100%;z-index:80;background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px;box-shadow:0 8px 22px #0f172a24;width:min(290px,calc(100vw - 36px));max-height:65vh;overflow-y:auto;font-size:12px}
 #pageInventario.inv-mobile-simple .ocr-purchase-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px}
 #pageInventario.inv-mobile-simple .ocr-purchase-actions button{width:100%;font-size:13px;text-align:left}
-#pageInventario.inv-mobile-simple .ocr-purchase-status{font-size:12px;padding:8px 0}
+#pageInventario.inv-mobile-simple .ocr-purchase-status{font-size:12px;padding:8px 12px}
 #pageInventario.inv-mobile-simple .inv-summary>summary{justify-content:flex-start;font-weight:700}
 #pageInventario.inv-mobile-simple .stats-strip{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0}
 #pageInventario.inv-mobile-simple .stats-strip .ss{min-height:55px;padding:8px}
