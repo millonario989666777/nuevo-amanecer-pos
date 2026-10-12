@@ -14,6 +14,37 @@ const id = v => typeof v === 'string' && v.length > 0 && v.length <= 160 && !/[\
 const uint = v => Number.isSafeInteger(v) && v >= 0;
 const text = v => typeof v === 'string' && v.trim().length > 0 && v.length <= 500 && !/[\x00-\x1f\x7f]/.test(v);
 
+// P1-1: a digital voucher (Yape/Plin/transferencia operation number) settles debt only once per
+// promotion. Same rule as migration 0021: trim, no whitespace, ASCII lower-case.
+export function normalizePaymentReference(value) {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g,'').replace(/[A-Z]/g, c => c.toLowerCase()) : '';
+}
+let paymentReferencesTable = false; // cached only once seen: a missing table is re-probed every time
+async function paymentReferenceGuard(db, promotionId, method, reference) {
+  if (method === 'efectivo') return null;
+  const norm = normalizePaymentReference(reference);
+  if (!norm) return null;
+  if (!paymentReferencesTable) {
+    // Enforcement starts once migration 0021 is applied; before that the legacy behaviour stays.
+    const table = await db.prepare(`SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='canonical_payment_references'`).first();
+    if (!table) return null;
+    paymentReferencesTable = true;
+  }
+  let row;
+  try { row = await db.prepare('SELECT operation_id FROM canonical_payment_references WHERE promotion_id=?1 AND reference_norm=?2').bind(promotionId,norm).first(); }
+  catch (error) {
+    if (/no such table/i.test(String(error?.message))) { paymentReferencesTable = false; return null; }
+    throw error;
+  }
+  return { norm, usedBy: row ? row.operation_id : null };
+}
+async function referenceTakenBy(db, guard, operationId) {
+  if (!guard) return false;
+  const row = await db.prepare('SELECT operation_id FROM canonical_payment_references WHERE promotion_id=?1 AND reference_norm=?2')
+    .bind(guard.promotionId,guard.norm).first().catch(() => null);
+  return !!(row && row.operation_id !== operationId);
+}
+
 function validate(command, b) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return 'invalid_body';
   if (Object.keys(b).some(k => ![...COMMON,...FIELDS[command]].includes(k))) return 'unexpected_field';
@@ -67,6 +98,9 @@ export async function createCanonicalFinancial(command, request, env, auth, json
   if (denied) return json({error:denied},409);
   const previous = await replay();
   if (previous) return previous;
+  const referenceGuard = command === 'payment.create' ? await paymentReferenceGuard(db,body.promotion_id,body.payment_method,body.reference) : null;
+  if (referenceGuard) referenceGuard.promotionId = body.promotion_id;
+  if (referenceGuard && referenceGuard.usedBy) return json({error:'reference_already_used',reference:body.reference},409);
 
   const token = crypto.randomUUID();
   const assertions = [];
@@ -125,6 +159,8 @@ export async function createCanonicalFinancial(command, request, env, auth, json
       VALUES(?1,?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`)
       .bind(body.operation_id,body.promotion_id,command==='payment.create'?'PAYMENT':command==='adjustment.create'?'ADJUSTMENT':'COMPENSATION',
         body.session_id??null,creditId??null,credit?.provenance??null,creditDelta,cashDelta,method,body.reference??null,body.reason??null,body.compensates_operation_id??null,body.created_at));
+    if (referenceGuard) effects.push(db.prepare(`INSERT INTO canonical_payment_references(promotion_id,reference_norm,operation_id,created_at)
+      VALUES(?1,?2,?3,?4)`).bind(body.promotion_id,referenceGuard.norm,body.operation_id,body.created_at));
   }
   const receipt = db.prepare(`INSERT INTO canonical_financial_operations(operation_id,command,request_hash,result_json,promotion_id,
     authority_epoch,control_revision,client_contract,device_id,credential_hash,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`)
@@ -147,6 +183,7 @@ export async function createCanonicalFinancial(command, request, env, auth, json
   catch (error) {
     const recovered = await replay();
     if (recovered) return recovered;
+    if (await referenceTakenBy(db,referenceGuard,body.operation_id)) return json({error:'reference_already_used',reference:body.reference},409);
     // Storage/transport failures are not disguised as business conflicts or success.
     const conflict = /constraint|conflict|stale_authority|gate_p_control|invalid_|forbidden/i.test(String(error?.message));
     return json({error:conflict?'financial_conflict':'financial_storage_error',operation_id:body.operation_id,retry_same_operation_id:true},conflict?409:503);
@@ -295,6 +332,10 @@ export async function createCanonicalPaymentBatch(request, env, auth, json) {
   }
 
   if (creditRows.length !== payments.length) return json({error:'credit_not_found'},409);
+  // The whole batch shares one reference and counts as ONE use of it.
+  const referenceGuard = await paymentReferenceGuard(db,body.promotion_id,method,payments[0].reference);
+  if (referenceGuard) referenceGuard.promotionId = body.promotion_id;
+  if (referenceGuard && referenceGuard.usedBy) return json({error:'reference_already_used',reference:payments[0].reference},409);
   const creditById = new Map(creditRows.map(row => [row.credit_id,row]));
 
   if (method === 'efectivo' && (!session || session.status !== 'OPEN')) {
@@ -374,6 +415,9 @@ export async function createCanonicalPaymentBatch(request, env, auth, json) {
         -payment.amount_cents,method==='efectivo'?payment.amount_cents:0,method,payment.reference??null,payment.created_at));
   }
 
+  if (referenceGuard) statements.push(db.prepare(`INSERT INTO canonical_payment_references(promotion_id,reference_norm,operation_id,created_at)
+    VALUES(?1,?2,?3,?4)`).bind(body.promotion_id,referenceGuard.norm,body.operation_id,body.created_at));
+
   statements.push(db.prepare(`UPDATE canonical_control SET first_live_operation_id=COALESCE(first_live_operation_id,?1)
     WHERE id=1 AND mode='ACTIVE' AND active_promotion_id=?2 AND authority_epoch=?3 AND revision=?4
       AND EXISTS(SELECT 1 FROM canonical_write_guards WHERE operation_id=?1 AND commit_token=?5)`)
@@ -404,6 +448,7 @@ export async function createCanonicalPaymentBatch(request, env, auth, json) {
         promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:true,receipts
       },200);
     }
+    if (await referenceTakenBy(db,referenceGuard,body.operation_id)) return json({error:'reference_already_used',reference:payments[0].reference},409);
     const conflict = /constraint|conflict|stale_authority|gate_p_control|invalid_|forbidden/i.test(String(error?.message));
     return json({error:conflict?'payment_batch_conflict':'payment_batch_storage_error',operation_id:body.operation_id,retry_same_operation_id:true},conflict?409:503);
   }

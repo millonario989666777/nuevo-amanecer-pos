@@ -152,17 +152,40 @@
     return true;
   }
 
+  // Plain-language reasons for definitive Worker rejections (nothing was charged).
+  var FRIENDLY_REJECTIONS = {
+    reference_already_used: 'Ese número de operación ya fue usado en otro abono. Revisa el voucher.',
+    stale_credit: 'El saldo de este crédito cambió en otro equipo. Se actualizó la pantalla: revisa el saldo y vuelve a confirmar.',
+    credit_balance_conflict: 'El monto supera el saldo pendiente actual del crédito. Se actualizó la pantalla: revisa el saldo.',
+    stale_session: 'La caja cambió (se cerró o se movió en otro equipo). Revisa la caja y vuelve a confirmar.'
+  };
   function describePendingFailure(error) {
     var pending = pendingRecord();
     var code = clean(error && error.message);
     if (pending && pending.command === 'payment.create' && !pending.invalid) {
       if (pending.last_error) {
+        var friendly = FRIENDLY_REJECTIONS[clean(pending.last_error)];
+        if (friendly) return friendly + ' No se registró ningún abono.';
         return 'CANON rechazó el pago (' + clean(pending.last_error) + '). No se registró ningún abono.';
       }
       return 'El pago se envió pero CANON no confirmó la recepción (' + code + '). NO lo registres de nuevo con otro monto: ' +
         'pulsa Confirmar otra vez para reintentar la MISMA operación.';
     }
     return 'No se registró el pago CANON' + (code ? ': ' + code : '');
+  }
+
+  // P2-3: a definitive, well-understood rejection (nothing was charged) frees the
+  // payment slot and refreshes the balances right away, so the cashier does not
+  // need a second tap. Unknown errors and lost ACKs keep the pending operation.
+  async function releaseDefinitiveRejection(client) {
+    var pending = pendingRecord();
+    if (!pending || pending.command !== 'payment.create' || pending.invalid || !FRIENDLY_REJECTIONS[clean(pending.last_error)]) return false;
+    if (!client || typeof client.discardRejectedPayment !== 'function') return false;
+    try {
+      if (!await client.discardRejectedPayment()) return false;
+    } catch (_) { return false; }
+    try { await refreshCanonical(); } catch (_) {}
+    return true;
   }
 
   async function confirm() {
@@ -319,6 +342,7 @@
         receipt = await client.createPayment(input);
       } catch (error) {
         notify(describePendingFailure(error), 'error');
+        await releaseDefinitiveRejection(client);
         return false;
       }
       try { root.NAReceiptShare?.onPayment(credit,receipt,amountCents,method,reference,client.pendingSnapshot?.()?.payload?.created_at||new Date().toISOString()); } catch(_){}

@@ -348,7 +348,7 @@
         row.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
         var info = doc.createElement('span');
         info.textContent = clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
-          ' · motivo: ' + clean(entry.reason) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
+          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
         row.appendChild(info);
         function action(label, kind, run) {
           var el = doc.createElement('button');

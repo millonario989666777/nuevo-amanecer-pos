@@ -815,7 +815,7 @@ function cliSetTab(btn,tab){document.querySelectorAll('#pageClientes .tab').forE
 function _baseCliRender(){
     const venc=clientes.filter(c=>statusCli(c)==='vencido').length,prox=clientes.filter(c=>statusCli(c)==='proximo').length,vig=clientes.filter(c=>statusCli(c)==='vigente').length;
     document.getElementById('cliB0').textContent=clientes.length;document.getElementById('cliB1').textContent=venc;document.getElementById('cliB2').textContent=prox;document.getElementById('cliB3').textContent=vig;
-    const totD=clientes.reduce((a,c)=>a+deudaT(c),0);document.getElementById('cliS0').textContent=clientes.length;document.getElementById('cliS1').textContent=`S/${totD.toFixed(0)}`;document.getElementById('cliS2').textContent=venc;document.getElementById('cliS3').textContent=`S/${cobradoHoy.toFixed(0)}`;
+    const totD=clientes.reduce((a,c)=>a+deudaT(c),0);document.getElementById('cliS0').textContent=clientes.length;document.getElementById('cliS1').textContent=`S/${totD.toFixed(0)}`;document.getElementById('cliS2').textContent=venc;document.getElementById('cliS3').textContent=`S/${cobradoHoy.toFixed(2)}`;
     const s=sinTildes(document.getElementById('cliSearch').value.toLowerCase()),sort=document.getElementById('cliSort').value;
     let list=clientes.filter(c=>{const m=sinTildes(c.nombre.toLowerCase()).includes(s)||(c.dni||'').includes(s);if(cliTab==='vencidos')return m&&statusCli(c)==='vencido';if(cliTab==='proximos')return m&&statusCli(c)==='proximo';if(cliTab==='vigentes')return m&&statusCli(c)==='vigente';return m;});
     if(sort==='deuda')list.sort((a,b)=>deudaT(b)-deudaT(a));else list.sort((a,b)=>a.nombre.localeCompare(b.nombre));

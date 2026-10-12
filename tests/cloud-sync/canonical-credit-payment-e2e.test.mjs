@@ -269,7 +269,7 @@ test('committed payment whose post-commit refresh fails is reported as CONFIRMED
   assert.equal(tab.api.receiptSnapshot().status, 'created');
 });
 
-test('server rejection is definitive; the next explicit tap safely starts a new operation instead of staying blocked', async (t) => {
+test('server rejection is definitive; the slot is released at once (friendly message) and the next tap starts a new operation', async (t) => {
   const f = await activeCanon(t);
   const tab = await device(f, {
     token: 'device-a-token', deviceId: 'device-a', scripts,
@@ -284,19 +284,19 @@ test('server rejection is definitive; the next explicit tap safely starts a new 
 
   assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
   assert.equal(receiptEvents.length,0,'rejected command must never project a confirmed payment');
-  assert.ok(tab.toasts.some(([m]) => /rechazó el pago \(stale_credit\)/.test(m)));
-  const firstPending=tab.api.pendingSnapshot();
-  assert.equal(firstPending.last_error,'stale_credit');
-  assert.equal(firstPending.last_status,409);
-  const before = tab.fetchLog.filter((x) => x.url.endsWith('/commands/payment.create')).length;
+  // P2-3: plain-language message, and the definitive 409 frees the slot immediately.
+  assert.ok(tab.toasts.some(([m]) => /El saldo de este crédito cambió en otro equipo.*No se registró ningún abono/.test(m)));
+  assert.ok(!tab.toasts.some(([m]) => /rechazó el pago \(stale_credit\)/.test(m)));
+  assert.equal(tab.api.pendingSnapshot(),null,'the definitively rejected journal is released without a second tap');
+  const firstOperations=tab.fetchLog.filter((x) => x.url.endsWith('/commands/payment.create')).map(x=>JSON.parse(x.body||'{}').operation_id);
+  const before = firstOperations.length;
 
   assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
-  const after = tab.fetchLog.filter((x) => x.url.endsWith('/commands/payment.create')).length;
-  assert.equal(after, before + 1,'a second explicit tap may create one fresh intent after the rejected journal is safely released');
-  const secondPending=tab.api.pendingSnapshot();
-  assert.equal(secondPending.last_error,'stale_credit');
-  assert.equal(secondPending.last_status,409);
-  assert.notEqual(secondPending.payload.operation_id,firstPending.payload.operation_id,'a definitively rejected intent must never be replayed as if its outcome were uncertain');
+  const calls = tab.fetchLog.filter((x) => x.url.endsWith('/commands/payment.create'));
+  assert.equal(calls.length, before + 1,'the next explicit tap creates exactly one fresh intent');
+  const secondOperation=JSON.parse(calls.at(-1).body||'{}').operation_id;
+  assert.ok(secondOperation&&!firstOperations.includes(secondOperation),'a definitively rejected intent must never be replayed as if its outcome were uncertain');
+  assert.equal(tab.api.pendingSnapshot(),null);
   assert.equal(receiptEvents.length,0,'neither rejected intent may project success');
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events").n, 0,'409 rejections must leave D1 financial state unchanged');
 });
@@ -309,10 +309,15 @@ test('second device with an old credit revision cannot overwrite the new balance
   assert.equal(await first.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), true);
   fill(second, { amount: '1', method: 'transferencia', reference: 'DEVICE-B-1' });
   assert.equal(await second.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
-  assert.equal(second.api.pendingSnapshot().last_error, 'stale_credit');
+  assert.ok(second.toasts.some(([m]) => /El saldo de este crédito cambió en otro equipo/.test(m)));
+  assert.equal(second.api.pendingSnapshot(), null, 'stale_credit is definitive: released and refreshed at once (P2-3)');
   assert.deepEqual(second.context.__closed, []);
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n, 1);
   assert.equal(f.sql('SELECT current_balance_cents b FROM canonical_credit_balances WHERE credit_id=?', CREDIT).b, 600);
+  // The refreshed replica carries the new revision: one more tap registers the (different) voucher.
+  assert.equal(await second.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), true);
+  assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n, 2);
+  assert.equal(f.sql('SELECT current_balance_cents b FROM canonical_credit_balances WHERE credit_id=?', CREDIT).b, 500);
 });
 
 test('reference dedupe matches legacy scope (sales) and ignores payments reversed by COMPENSATION', async (t) => {

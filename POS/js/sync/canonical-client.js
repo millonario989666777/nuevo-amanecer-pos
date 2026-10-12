@@ -1589,7 +1589,7 @@
       // 400/409 are definitive Worker rejections. D1 sale.create is atomic, so
       // these statuses prove this pending intent did not commit a sale/mov/stock.
       // Transport uncertainty (5xx / lost ACK) must stay pending for same operation_id replay.
-      var safeErrors = ['stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed'];
+      var safeErrors = ['stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed', 'credit_limit_exceeded'];
       if (![400, 404, 409].includes(record.last_status) || !safeErrors.includes(record.last_error)) return false;
       root.localStorage.removeItem(JOURNAL);
       if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');

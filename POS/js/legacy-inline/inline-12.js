@@ -117,7 +117,7 @@ function _naSecClientCard(parent,client){
 }
 _baseCliRender=function(){
   const expired=clientes.filter(client=>statusCli(client)==='vencido').length,soon=clientes.filter(client=>statusCli(client)==='proximo').length,current=clientes.filter(client=>statusCli(client)==='vigente').length;
-  [['cliB0',clientes.length],['cliB1',expired],['cliB2',soon],['cliB3',current],['cliS0',clientes.length],['cliS1',`S/${clientes.reduce((sum,client)=>sum+_naClientDebtFast(client),0).toFixed(0)}`],['cliS2',expired],['cliS3',`S/${cobradoHoy.toFixed(0)}`]].forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.textContent=String(value);});
+  [['cliB0',clientes.length],['cliB1',expired],['cliB2',soon],['cliB3',current],['cliS0',clientes.length],['cliS1',`S/${clientes.reduce((sum,client)=>sum+_naClientDebtFast(client),0).toFixed(0)}`],['cliS2',expired],['cliS3',`S/${cobradoHoy.toFixed(2)}`]].forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.textContent=String(value);});{const _naPaidLbl=document.getElementById('cliS3')?.parentElement?.querySelector('.ss-lbl');if(_naPaidLbl)_naPaidLbl.textContent='Cobrado hoy (todos los medios)';}
   const search=sinTildes((document.getElementById('cliSearch')?.value||'').toLowerCase()),sort=document.getElementById('cliSort')?.value||'';
   let rows=clientes.filter(client=>{
     const matches=sinTildes((client.nombre||'').toLowerCase()).includes(search)||(client.dni||'').includes(search),status=statusCli(client);

@@ -431,7 +431,7 @@ test('T15 — cobro de crédito y reversal el mismo día dejan cobradoHoy neto e
   await revertPayment(sb, json(sb, 'String(creditos[0].id)'), pagoId);
   sb.run('cliRender()');
   assert.equal(json(sb, 'cobradoHoy'), 0, 'el flujo diario suma +100 y -100');
-  assert.equal(sb.el('cliS3').textContent, 'S/0', 'el winner visible muestra el neto');
+  assert.equal(sb.el('cliS3').textContent, 'S/0.00', 'el winner visible muestra el neto');
   assert.equal(json(sb, 'cajMovs.filter(move=>move.tipo==="cob").length'), 1, 'el cobro original sigue trazable');
 });
 
@@ -448,7 +448,7 @@ test('T16 — reversal de venta y otros egresos no reducen cobradoHoy de crédit
     cliRender();
   `);
   assert.equal(json(sb, 'cobradoHoy'), 100, 'solo cuenta el cobro de crédito; no descuenta movimientos ajenos');
-  assert.equal(sb.el('cliS3').textContent, 'S/100');
+  assert.equal(sb.el('cliS3').textContent, 'S/100.00');
 });
 
 test('T17 — pago y reversal en fechas distintas afectan solo el día correspondiente', async () => {

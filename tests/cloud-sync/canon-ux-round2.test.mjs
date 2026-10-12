@@ -93,7 +93,7 @@ test('CSS CANON de la ronda 2 está enlazado y precacheado', () => {
   assert.match(css, /#securityLockScreen:not\(\.open\)\{visibility:hidden\}/);
   assert.match(css, /\.btn-close-m\{min-width:40px;min-height:40px/);
   assert.match(css, /\.mov-amt\.credito/);
-  assert.match(read('js/legacy-inline/inline-11.js'), /'Cobros en caja'/);
+  assert.match(read('js/legacy-inline/inline-11.js'), /'Cobros en efectivo'/);
 });
 
 test('10: el menú lateral cerrado es inert', () => {
