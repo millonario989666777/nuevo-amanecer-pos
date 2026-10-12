@@ -174,6 +174,8 @@
       set: function (c, v) { c.business = Object.assign(c.business || {}, v); } },
     'pos.flags': { get: function (c) { return { igvActive: !!c.igvActive, margenActive: !!c.margenActive, stockAlertActive: !!c.stockAlertActive, printAuto: !!c.printAuto, mayoristaActive: !!c.mayoristaActive, alertsEnabled: c.alertsEnabled !== false, stockMin: c.stockMin }; },
       set: function (c, v) { Object.keys(v || {}).forEach(function (k) { c[k] = v[k]; }); } },
+    // Línea de crédito inicial, reglas y días para pagar (30 por defecto): una sola política para todos los aparatos.
+    'pos.credit': { get: function (c) { return Object.assign({}, c.creditPolicy || {}); }, set: function (c, v) { c.creditPolicy = Object.assign(c.creditPolicy || {}, v); } },
     'pos.ticket': { get: function (c) { return Object.assign({}, c.ticket || {}); }, set: function (c, v) { c.ticket = Object.assign(c.ticket || {}, v); } }
   };
   var CACHE_KEY = 'na_pos_settings_cache_v1';
