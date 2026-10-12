@@ -337,10 +337,10 @@ test('phone overflow preserves original sale actions in sale and checkout, then 
  await page.evaluate(()=>window.eval(`closeCartMenu();cart=[{id:'MENU-PRODUCT',name:'Prueba',precio:7.7,qty:1}];posPayM='efectivo';document.getElementById('mCobroTotal').textContent='S/ 7.70';document.getElementById('mMontoRec').value='7.70';_naRenderCashQuickOptions(7.7);calcCambio();document.getElementById('mCobro').classList.add('open');`));
  await expect(page.locator('#mCobro .pay-modal-head #btnCartMenu')).toBeVisible();
  await page.locator('#btnCartMenu').click();await expect(page.locator('#cartMenuDropdown')).toBeVisible();
- const discountPrompt=page.waitForEvent('dialog');
- page.once('dialog',dialog=>dialog.dismiss());
  await page.locator('#cartMenuDropdown button').filter({hasText:'Aplicar descuento'}).click();
- expect((await discountPrompt).message()).toContain('Descuento global');
+ await expect(page.locator('#naDiscountSheet')).toContainText('Descuento a la venta');
+ await page.locator('#naDiscountSheet .na-ds-cancel').click();
+ await expect(page.locator('#naDiscountSheet')).toHaveCount(0);
  await expect(page.locator('#mCobro')).not.toHaveClass(/open/);
  await expect(page.locator('#mCobro')).toHaveCSS('opacity','0');
  await expect(page.locator('#mCobro')).toHaveCSS('pointer-events','none');
