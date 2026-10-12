@@ -6,13 +6,15 @@ const PIN_RE = /^\d{4,8}$/;
 export const PIN_ITERATIONS = 20000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60 * 1000;
+const GLOBAL_MAX_FAILURES = 20; // tope entre todos los aparatos en 15 min
+const WINDOW_MS = 15 * 60 * 1000;
 const APPROVAL_MS = 5 * 60 * 1000;
 const PAIRING_MS = 15 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const OWNER_COMMANDS = new Set(['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set']);
 const APPROVAL_ACTIONS = new Set([...OWNER_COMMANDS, 'settings.set', 'reset', 'discount', 'sale.annul']);
 const SETTING_KEY = /^[a-z][a-z0-9_.-]{0,59}$/;
-export const ROLE_PATHS = new Set(['/auth/me', '/auth/owner-pin', '/auth/owner-approval', '/auth/pairing-code', '/auth/pair', '/auth/devices', '/auth/devices/revoke', '/settings']);
+export const ROLE_PATHS = new Set(['/auth/reviews', '/auth/reviews/resolve', '/auth/me', '/auth/owner-pin', '/auth/owner-approval', '/auth/pairing-code', '/auth/pair', '/auth/devices', '/auth/devices/revoke', '/settings']);
 
 const now = () => new Date().toISOString();
 const later = ms => new Date(Date.now() + ms).toISOString();
@@ -55,15 +57,36 @@ async function pinRow(db) {
 }
 
 // Devuelve null si el PIN es correcto, o {error,status,...}.
-export async function verifyOwnerPin(db, pin) {
+// Fallos por aparato (5 = 15 min) y tope global de 20 fallos en 15 min: un empleado no puede
+// bloquear el PIN del dueño en los demás aparatos. Sin la migración 0025 se usa el conteo antiguo.
+export async function verifyOwnerPin(db, pin, deviceId) {
   const row = await pinRow(db);
   if (!row) return { error: 'owner_pin_not_set', status: 409 };
-  if (row.locked_until && row.locked_until > now()) return { error: 'owner_pin_locked', status: 429, locked_until: row.locked_until };
+  let perDevice = true, dev = null;
+  const since = new Date(Date.now() - WINDOW_MS).toISOString();
+  try {
+    const g = await db.prepare('SELECT COALESCE(SUM(failed_count),0) AS n FROM pos_pin_failures WHERE window_start>?1').bind(since).first();
+    if (Number(g?.n || 0) >= GLOBAL_MAX_FAILURES) return { error: 'owner_pin_locked', status: 429, scope: 'global' };
+    dev = await db.prepare('SELECT failed_count,window_start,locked_until FROM pos_pin_failures WHERE device_id=?1').bind(String(deviceId || 'unknown')).first();
+  } catch (e) { if (!missingTable(e)) throw e; perDevice = false; }
+  if (!perDevice && row.locked_until && row.locked_until > now()) return { error: 'owner_pin_locked', status: 429, locked_until: row.locked_until };
+  if (dev?.locked_until && dev.locked_until > now()) return { error: 'owner_pin_locked', status: 429, locked_until: dev.locked_until };
   if (!PIN_RE.test(String(pin ?? ''))) return { error: 'owner_pin_invalid', status: 403 };
   const ok = equalHex(await hashPin(String(pin), row.salt_hex, Number(row.iterations)), row.hash_hex);
   if (ok) {
-    if (Number(row.failed_count) || row.locked_until) await db.prepare('UPDATE pos_owner_pin SET failed_count=0,locked_until=NULL WHERE id=1').run();
+    if (perDevice) { if (dev) await db.prepare('DELETE FROM pos_pin_failures WHERE device_id=?1').bind(String(deviceId || 'unknown')).run(); }
+    else if (Number(row.failed_count) || row.locked_until) await db.prepare('UPDATE pos_owner_pin SET failed_count=0,locked_until=NULL WHERE id=1').run();
     return null;
+  }
+  if (perDevice) {
+    const fresh = !dev || dev.window_start <= since;
+    const failures = fresh ? 1 : Number(dev.failed_count) + 1;
+    const until = failures >= MAX_FAILURES ? later(LOCK_MS) : null;
+    await db.prepare(`INSERT INTO pos_pin_failures(device_id,failed_count,window_start,locked_until) VALUES(?1,?2,?3,?4)
+      ON CONFLICT(device_id) DO UPDATE SET failed_count=excluded.failed_count,window_start=CASE WHEN ?5 THEN excluded.window_start ELSE pos_pin_failures.window_start END,locked_until=excluded.locked_until`)
+      .bind(String(deviceId || 'unknown'), failures, now(), until, fresh ? 1 : 0).run();
+    if (until) return { error: 'owner_pin_locked', status: 429, locked_until: until };
+    return { error: 'owner_pin_invalid', status: 403, attempts_left: MAX_FAILURES - failures };
   }
   const failures = Number(row.failed_count) + 1;
   if (failures >= MAX_FAILURES) {
@@ -75,6 +98,44 @@ export async function verifyOwnerPin(db, pin) {
   return { error: 'owner_pin_invalid', status: 403, attempts_left: MAX_FAILURES - failures };
 }
 
+// Revisiones del dueño. Nunca editan la venta ni la caja: solo dejan constancia.
+export async function flagReview(db, flag) {
+  try {
+    await db.prepare(`INSERT OR IGNORE INTO pos_review_flags(flag_id,kind,ref_id,device_id,amount_cents,detail_json,status,created_at)
+      VALUES(?1,?2,?3,?4,?5,?6,'pendiente',?7)`).bind(flag.kind + ':' + flag.ref_id, flag.kind, flag.ref_id, flag.device_id,
+      Math.trunc(Number(flag.amount_cents) || 0), JSON.stringify(flag.detail || {}).slice(0, 4000), now()).run();
+    return true;
+  } catch (e) { if (missingTable(e)) return false; throw e; }
+}
+// Venta de un aparato empleado por debajo del precio del catálogo: nunca se rechaza (las ventas
+// sin internet no se pierden); queda «descuento por autorizar» para el dueño.
+export async function flagSaleDiscount(db, deviceId, saleId) {
+  if (!saleId || (await posRoleFor(db, deviceId)) !== 'empleado') return false;
+  // Precio vigente = última revisión (product.update) o el del producto importado / creado en vivo.
+  const field = (col, rev) => `COALESCE(${rev ? `(SELECT r.${col} FROM canonical_product_revisions r WHERE r.product_id=i.product_id ORDER BY r.revision DESC LIMIT 1),` : ''}
+      (SELECT p.${col} FROM products p WHERE p.product_id=i.product_id),(SELECT l.${col} FROM canonical_live_products l WHERE l.product_id=i.product_id))`;
+  const query = rev => `SELECT i.line_number,i.product_id,i.quantity,i.unit_price_cents,i.line_total_cents,
+      ${field('price_cents', rev)} AS price_cents,${field('box_price_cents', rev)} AS box_price_cents,${field('name', rev)} AS name,
+      (SELECT -SUM(m.quantity) FROM inventory_movements m WHERE m.sale_id=i.sale_id AND m.line_number=i.line_number) AS inv_qty
+    FROM sale_items i WHERE i.sale_id=?1 AND i.product_id IS NOT NULL`;
+  let rows;
+  try { rows = (await db.prepare(query(true)).bind(saleId).all()).results || []; }
+  catch (e) { if (!missingTable(e)) throw e; rows = (await db.prepare(query(false)).bind(saleId).all()).results || []; }
+  rows = rows.filter(r => r.price_cents != null);
+  const lines = [];
+  let total = 0;
+  for (const r of rows) {
+    const units = Number(r.inv_qty) > 0 ? Number(r.inv_qty) : Number(r.quantity);
+    const unitCatalog = Number(r.price_cents) * units;
+    const boxCatalog = r.box_price_cents != null ? Number(r.box_price_cents) * Number(r.quantity) : null;
+    const catalog = boxCatalog != null && units !== Number(r.quantity) ? Math.min(unitCatalog, boxCatalog) : unitCatalog;
+    const charged = Number(r.line_total_cents);
+    if (Number.isFinite(catalog) && charged < catalog) { lines.push({ linea: r.line_number, producto: r.name, catalogo_cents: catalog, cobrado_cents: charged }); total += catalog - charged; }
+  }
+  if (!lines.length) return false;
+  return flagReview(db, { kind: 'discount', ref_id: saleId, device_id: deviceId, amount_cents: total, detail: { lineas: lines.slice(0, 20) } });
+}
+
 async function body(request) {
   try { const b = await request.json(); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; }
 }
@@ -82,10 +143,10 @@ function pinFailure(json, failure) {
   const { status, ...rest } = failure; return json(rest, status);
 }
 // Si ya hay PIN, una acción sensible del dueño lo exige; sin PIN el aparato dueño sigue permitido.
-async function requirePinIfSet(db, pin) {
+async function requirePinIfSet(db, pin, deviceId) {
   const row = await pinRow(db);
   if (!row) return null;
-  return verifyOwnerPin(db, pin);
+  return verifyOwnerPin(db, pin, deviceId);
 }
 
 // Puerta para comandos del dueño. null = permitido.
@@ -131,6 +192,13 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
       const rows = (await db.prepare('SELECT key,value_json,revision,updated_at FROM pos_settings ORDER BY key').all()).results || [];
       return json({ settings: rows.map(r => ({ key: r.key, value: JSON.parse(r.value_json), revision: Number(r.revision), updated_at: r.updated_at })) });
     }
+    if (path === '/auth/reviews' && request.method === 'GET') {
+      // Todos ven lo pendiente (aviso «Cierre pendiente de aprobación del dueño»); el dueño ve también lo resuelto.
+      const all = role === 'owner' && url.searchParams.get('status') === 'todos';
+      const rows = (await db.prepare(`SELECT flag_id,kind,ref_id,device_id,amount_cents,detail_json,status,shortage_cents,note,created_at,resolved_at
+        FROM pos_review_flags ${all ? '' : "WHERE status='pendiente'"} ORDER BY created_at DESC LIMIT 200`).all()).results || [];
+      return json({ reviews: rows.map(r => ({ ...r, detail: JSON.parse(r.detail_json), detail_json: undefined })) });
+    }
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     const b = await body(request);
     if (path === '/auth/owner-approval') {
@@ -138,7 +206,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
       if (!APPROVAL_ACTIONS.has(action)) return json({ error: 'invalid_action' }, 400);
       const operationId = b.operation_id == null ? null : String(b.operation_id);
       if (OWNER_COMMANDS.has(action) && (!operationId || operationId.length > 200)) return json({ error: 'operation_id_required' }, 400);
-      const failure = await verifyOwnerPin(db, b.pin);
+      const failure = await verifyOwnerPin(db, b.pin, auth.principalId);
       if (failure) return pinFailure(json, failure);
       const approvalId = 'apr-' + randomHex(16);
       const expires = later(APPROVAL_MS);
@@ -150,7 +218,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
     if (path === '/auth/owner-pin') {
       const next = String(b.new_pin ?? '');
       if (!PIN_RE.test(next)) return json({ error: 'pin_format', detail: 'PIN de 4 a 8 dígitos' }, 400);
-      const failure = await requirePinIfSet(db, b.current_pin);
+      const failure = await requirePinIfSet(db, b.current_pin, auth.principalId);
       if (failure) return pinFailure(json, failure);
       const salt = randomHex(16);
       const hash = await hashPin(next, salt, PIN_ITERATIONS);
@@ -161,7 +229,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
       return json({ status: 'pin_saved' });
     }
     if (path === '/auth/pairing-code') {
-      const failure = await requirePinIfSet(db, b.pin);
+      const failure = await requirePinIfSet(db, b.pin, auth.principalId);
       if (failure) return pinFailure(json, failure);
       const code = pairingCode();
       const expires = later(PAIRING_MS);
@@ -180,7 +248,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
       const target = String(b.device_id || '');
       if (!/^session:[^\s]{1,152}$/.test(target)) return json({ error: 'invalid_device' }, 400);
       if (target === auth.principalId) return json({ error: 'cannot_revoke_self' }, 409);
-      const failure = await requirePinIfSet(db, b.pin);
+      const failure = await requirePinIfSet(db, b.pin, auth.principalId);
       if (failure) return pinFailure(json, failure);
       const sessionId = target.slice('session:'.length);
       await db.batch([
@@ -188,6 +256,19 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
         db.prepare("UPDATE auth_sessions SET status='revoked' WHERE session_id=?1").bind(sessionId),
       ]);
       return json({ status: 'revoked', device_id: target });
+    }
+    if (path === '/auth/reviews/resolve') {
+      const flagId = String(b.flag_id || '');
+      const decision = b.decision === 'aprobado' ? 'aprobado' : b.decision === 'rechazado' ? 'rechazado' : null;
+      if (!flagId || flagId.length > 200 || !decision) return json({ error: 'invalid_review' }, 400);
+      const flag = await db.prepare('SELECT kind,amount_cents,status FROM pos_review_flags WHERE flag_id=?1').bind(flagId).first();
+      if (!flag) return json({ error: 'not_found' }, 404);
+      if (flag.status !== 'pendiente') return json({ status: flag.status, flag_id: flagId, idempotent: true });
+      // Rechazar un descuento deja el faltante del cajero; la venta nunca se cambia.
+      const shortage = decision === 'rechazado' && flag.kind === 'discount' ? Math.max(0, Number(flag.amount_cents)) : 0;
+      await db.prepare(`UPDATE pos_review_flags SET status=?2,shortage_cents=?3,note=?4,resolved_at=?5,resolved_by=?6 WHERE flag_id=?1 AND status='pendiente'`)
+        .bind(flagId, decision, shortage, b.note ? String(b.note).slice(0, 200) : null, now(), auth.principalId).run();
+      return json({ status: decision, flag_id: flagId, shortage_cents: shortage });
     }
     if (path === '/settings') {
       const key = String(b.key || '');

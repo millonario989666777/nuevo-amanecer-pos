@@ -112,3 +112,44 @@ test('owner lists and revokes devices (PIN when set); settings revisioned; expir
   assert.equal((await call(f, '/auth/pair', null, { code: code.body.code })).status, 401);
   assert.equal((await call(f, '/auth/pair', null, { code: 'AAAAA-AAAAA' })).status, 401);
 });
+
+const reviews = read('0025_pos_reviews_pin_failures.sql');
+
+test('0025: PIN failures lock only the failing device; global cap 20 in 15 min', async t => {
+  const f = await setup(t);
+  f.database.exec(reviews);
+  assert.equal((await call(f, '/auth/owner-pin', 'owner-token', { new_pin: '4821' })).status, 200);
+  const emp = await employee(f, '4821');
+  for (let i = 0; i < 4; i++) assert.equal((await call(f, '/auth/owner-approval', emp, { pin: '0000', action: 'discount' })).status, 403);
+  assert.equal((await call(f, '/auth/owner-approval', emp, { pin: '0000', action: 'discount' })).status, 429);
+  assert.equal((await call(f, '/auth/owner-approval', emp, { pin: '4821', action: 'discount' })).status, 429, 'employee device stays locked');
+  assert.equal((await call(f, '/auth/owner-approval', 'owner-token', { pin: '4821', action: 'reset' })).status, 201, 'owner device is not locked by the employee');
+  f.exec(`INSERT INTO pos_pin_failures(device_id,failed_count,window_start) VALUES('x1',10,'${new Date().toISOString()}'),('x2',10,'${new Date().toISOString()}')`);
+  const g = await call(f, '/auth/owner-approval', 'owner-token', { pin: '4821', action: 'reset' });
+  assert.deepEqual([g.status, g.body.scope], [429, 'global']);
+});
+
+test('0025: reviews list and owner resolution never edit the sale; rejection records shortage', async t => {
+  const f = await setup(t);
+  f.database.exec(reviews);
+  assert.equal((await call(f, '/auth/owner-pin', 'owner-token', { new_pin: '4821' })).status, 200);
+  const emp = await employee(f, '4821');
+  const { flagReview } = await import('../../tools/cloudflare-lab/src/pos-roles.js');
+  const db = { prepare(sql) { return { sql, args: [], bind(...a) { this.args = a; return this; }, async run() { f.database.prepare(sql).run(...this.args); return {}; } }; } };
+  assert.equal(await flagReview(db, { kind: 'discount', ref_id: 'S-1', device_id: 'session:x', amount_cents: 150, detail: { lineas: [] } }), true);
+  assert.equal(await flagReview(db, { kind: 'discount', ref_id: 'S-1', device_id: 'session:x', amount_cents: 999 }), true, 'idempotent');
+  const list = await call(f, '/auth/reviews', emp);
+  assert.deepEqual([list.status, list.body.reviews.length, list.body.reviews[0].amount_cents], [200, 1, 150]);
+  assert.equal((await call(f, '/auth/reviews/resolve', emp, { flag_id: 'discount:S-1', decision: 'rechazado' })).status, 403);
+  const res = await call(f, '/auth/reviews/resolve', 'owner-token', { flag_id: 'discount:S-1', decision: 'rechazado' });
+  assert.deepEqual([res.status, res.body.shortage_cents], [200, 150]);
+  assert.equal((await call(f, '/auth/reviews', emp)).body.reviews.length, 0);
+  assert.equal((await call(f, '/auth/reviews/resolve', 'owner-token', { flag_id: 'discount:S-1', decision: 'aprobado' })).body.idempotent, true);
+});
+
+test('worker wires review flags for employee sales and cash close without changing responses', () => {
+  const w = readFileSync(new URL('../../tools/cloudflare-lab/src/worker.js', import.meta.url), 'utf8');
+  assert.match(w, /await reviewSale\(request, env, auth, saleResponse, ctx\);\n\s+return saleResponse;/);
+  assert.match(w, /if \(closeBody\) await reviewCashClose\(env, auth, financialResponse, closeBody\);\n\s+return financialResponse;/);
+  assert.match(w, /if \(auth\.principalId\) \{ if \(auth\.posRole === 'empleado'\) await run\(\); return; \}/, 'owner sales add no round trip');
+});
