@@ -13,48 +13,52 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js" defer></script>
+    <!-- Arranque: la fuente (display=swap) y las hojas que no pintan Inicio ni Nueva venta no bloquean el primer pintado.
+         Las hojas diferidas conservan su posición en el documento, así que la cascada final es idéntica. -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <!-- SheetJS solo al exportar/importar Excel (js/core/lazy-assets.js). -->
+    <script type="text/x-na-lazy" data-na-lazy="sheetjs" src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/responsive.css">
-    <link rel="stylesheet" href="css/print.css">
+    <link rel="stylesheet" href="css/responsive.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/print.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="css/motion/motion.css">
     <link rel="stylesheet" href="css/motion/transitions.css">
-    <link rel="stylesheet" href="css/motion/modals.css">
-    <link rel="stylesheet" href="css/motion/notifications.css">
-    <link rel="stylesheet" href="css/client-credit-accounts-v2.css">
-    <link rel="stylesheet" href="css/receipt-share.css">
+    <link rel="stylesheet" href="css/motion/modals.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/motion/notifications.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/client-credit-accounts-v2.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/receipt-share.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="css/experience-v2/tokens.css">
-    <link rel="stylesheet" href="css/experience-v2/layout.css">
-    <link rel="stylesheet" href="css/experience-v2/responsive.css">
-    <link rel="stylesheet" href="css/experience-v2/components/buttons.css">
-    <link rel="stylesheet" href="css/experience-v2/components/cards.css">
-    <link rel="stylesheet" href="css/experience-v2/components/tables.css">
-    <link rel="stylesheet" href="css/experience-v2/components/forms.css">
-    <link rel="stylesheet" href="css/experience-v2/components/modals.css">
-    <link rel="stylesheet" href="css/experience-v2/components/navigation.css">
+    <link rel="stylesheet" href="css/experience-v2/layout.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/responsive.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/buttons.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/cards.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/tables.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/forms.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/modals.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/components/navigation.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="css/experience-v2/pages/menu.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/pos.css">
+    <link rel="stylesheet" href="css/experience-v2/pages/pos.css" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="css/canon-pos-reference-ui.css">
 <link rel="stylesheet" href="css/canon-phone-sale.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/inventario.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/clientes.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/caja.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/ventas.css">
-    <link rel="stylesheet" href="css/canon-pending-sales.css">
-    <link rel="stylesheet" href="css/canon-ventas-tabs.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/gastos.css">
-    <link rel="stylesheet" href="css/experience-v2/pages/configuracion.css">
+    <link rel="stylesheet" href="css/experience-v2/pages/inventario.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/pages/clientes.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/pages/caja.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/pages/ventas.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/canon-pending-sales.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/canon-ventas-tabs.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/pages/gastos.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/pages/configuracion.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="css/experience-v2/animations/motion.css">
     <link rel="stylesheet" href="css/experience-v2/animations/transitions.css">
-    <link rel="stylesheet" href="css/experience-v2/animations/menu.css">
-    <link rel="stylesheet" href="css/experience-v2/animations/pos.css">
-    <link rel="stylesheet" href="css/experience-v2/animations/modals.css">
-    <link rel="stylesheet" href="css/experience-v2/animations/notifications.css">
+    <link rel="stylesheet" href="css/experience-v2/animations/menu.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/animations/pos.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/animations/modals.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="css/experience-v2/animations/notifications.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="css/canon-desktop-dashboard.css">
-    <link rel="stylesheet" href="css/mobile-inventory.css">
+    <link rel="stylesheet" href="css/mobile-inventory.css" media="print" onload="this.media='all'">
     <link id="naMobileHomeBaseStyles" rel="stylesheet" href="css/canon-mobile-home.css">
     <link rel="stylesheet" href="css/canon-ux-fixes.css">
     <script>
@@ -79,6 +83,7 @@
         <span id="pwaUpdateStatus">Lista para actualizar.</span>
     </div>
     <button class="pwa-update-action" id="pwaUpdateAction" type="button">Actualizar ahora</button>
+    <button class="pwa-update-later" id="pwaUpdateLater" type="button" aria-label="Actualizar más tarde">Más tarde</button>
 </aside>
 <div class="g-topbar">
     <div class="g-logo"><div class="g-logo-icon">🌅</div><div><div class="g-logo-text" id="topBusinessName">Nuevo Amanecer</div><div class="g-logo-sub" id="topBusinessSub">Puerto Súngaro · Multiservicios</div></div></div>
@@ -1026,17 +1031,19 @@
 <script src="js/canon-pos-reference-ui.js"></script>
 <script src="js/canon-phone-sale.js"></script>
 <script src="js/canon-desktop-dashboard.js"></script>
-<script src="js/ocr/vendor/tesseract-6.0.1/tesseract.min.js"></script>
-<script src="js/catalog/reference-catalog-data.js"></script>
-<script src="js/catalog/reference-catalog.js"></script>
-<script src="js/ocr/ocr-extract.js"></script>
-<script src="js/ocr/ocr-document-extract.js"></script>
-<script src="js/ocr/ocr-parse.js"></script>
-<script src="js/ocr/ocr-reference-matcher.js"></script>
-<script src="js/ocr/ocr-purchase-engine.js"></script>
-<script src="js/ocr/ocr-purchase-review.js"></script>
-<script src="js/ocr/ocr-purchase-apply.js"></script>
-<script src="js/ocr/ocr-purchase-integration.js"></script>
+<script src="js/core/lazy-assets.js"></script>
+<!-- OCR de compras y catálogo de referencia (~900 KB): mismo código, cargado al usar "OCR compras" (js/core/lazy-assets.js). -->
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/vendor/tesseract-6.0.1/tesseract.min.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/catalog/reference-catalog-data.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/catalog/reference-catalog.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-extract.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-document-extract.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-parse.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-reference-matcher.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-purchase-engine.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-purchase-review.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-purchase-apply.js"></script>
+<script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/ocr-purchase-integration.js"></script>
 <script>
 // CANON-PWA-UPDATE-001: actualización visible, accionable y de recarga única.
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -1049,24 +1056,65 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     var prompt = document.getElementById('pwaUpdatePrompt');
     var status = document.getElementById('pwaUpdateStatus');
     var action = document.getElementById('pwaUpdateAction');
+    var later = document.getElementById('pwaUpdateLater');
+    // "Más tarde": el aviso se oculta (el punto del encabezado sigue avisando) y vuelve al regresar a Inicio.
+    var updateSnoozed = false;
+    var versionPending = false;
+    var saleWaitTimer = 0;
 
-    function setUpdateUi(message, state, buttonLabel, buttonEnabled) {
+    function setUpdateUi(message, state, buttonLabel, buttonEnabled, passive) {
       if (!prompt || !status || !action) return;
-      prompt.hidden = false;
       prompt.dataset.state = state || 'ready';
       status.textContent = String(message || '');
       action.textContent = buttonLabel || 'Actualizar ahora';
       action.disabled = buttonEnabled === false;
+      if (passive && updateSnoozed) return;
+      prompt.hidden = false;
+    }
+
+    // Una venta en curso (carrito con productos o cobro guardándose) nunca se pierde por actualizar:
+    // la recarga espera a que el carrito quede vacío y el cobro termine.
+    function saleInProgress() {
+      try { if (typeof posProc !== 'undefined' && posProc) return true; } catch (_) {}
+      try { if (typeof cart !== 'undefined' && cart && cart.length > 0) return true; } catch (_) {}
+      return false;
+    }
+
+    function afterSaleFinishes(callback) {
+      if (!saleInProgress()) { callback(); return; }
+      if (saleWaitTimer || typeof window.setInterval !== 'function') return;
+      saleWaitTimer = window.setInterval(function () {
+        if (saleInProgress()) return;
+        window.clearInterval(saleWaitTimer);
+        saleWaitTimer = 0;
+        callback();
+      }, 1000);
     }
 
     function markVersionPending(message, downloading) {
       if (!hadController) return;
       if (updateBusy) return;
+      versionPending = true;
       // Mientras se descarga, el botón no acepta clics: antes el primer clic esperaba la
       // instalación (hasta 15 s) y parecía no responder.
-      if (downloading) setUpdateUi(message || 'Descargando la versión nueva…', 'working', 'Descargando…', false);
-      else setUpdateUi(message || 'Lista para actualizar.', 'ready', 'Actualizar ahora', true);
+      if (downloading) setUpdateUi(message || 'Descargando la versión nueva…', 'working', 'Descargando…', false, true);
+      else setUpdateUi(message || 'Lista para actualizar.', 'ready', 'Actualizar ahora', true, true);
       try { window.dispatchEvent(new CustomEvent('na:version-update-pending')); } catch (_) {}
+    }
+
+    if (later) {
+      later.addEventListener('click', function () {
+        updateSnoozed = true;
+        if (prompt) prompt.hidden = true;
+      });
+    }
+    var home = document.getElementById('pageMenu');
+    if (home && typeof MutationObserver === 'function') {
+      new MutationObserver(function () {
+        if (!updateSnoozed || !versionPending || updateBusy || !home.classList.contains('active') || saleInProgress()) return;
+        updateSnoozed = false;
+        if (prompt) prompt.hidden = false;
+      }).observe(home, { attributes: true, attributeFilter: ['class'] });
     }
 
     function activateWorker(registration, worker) {
@@ -1124,10 +1172,15 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       if (!hadController || reloadingForWorkerUpdate) return;
       reloadingForWorkerUpdate = true;
       window.clearTimeout(updateFallbackTimer);
-      setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false);
-      window.setTimeout(function () {
-        window.location.reload();
-      }, 80);
+      if (saleInProgress()) {
+        setUpdateUi('Actualización lista. Se aplicará al terminar la venta en curso.', 'working', 'Esperando la venta…', false);
+      }
+      afterSaleFinishes(function () {
+        setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false);
+        window.setTimeout(function () {
+          window.location.reload();
+        }, 80);
+      });
     }
 
     navigator.serviceWorker.addEventListener('controllerchange', scheduleReload);
@@ -1139,6 +1192,11 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     var pwaUpdateQueued = false;
     async function runPwaUpdate() {
         if (updateBusy) return;
+        if (saleInProgress()) {
+          setUpdateUi('Termina o vacía la venta en curso: la app se actualizará sola después.', 'working', 'Esperando la venta…', false);
+          afterSaleFinishes(runPwaUpdate);
+          return;
+        }
         if (!pwaRegistration) {
           // El registro aún no terminó: se recuerda el clic y se aplica al registrarse.
           pwaUpdateQueued = true;
@@ -1178,7 +1236,32 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
         }
     }
 
-    navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(function (registration) {
+    // El shell PWA se registra cuando la app ya puede vender (o como máximo a los 6 s): en la primera
+    // apertura su precarga ya no compite con el arranque, y tras un deploy la descarga de la versión
+    // nueva empieza con la venta ya disponible.
+    function whenReadyToSell(start) {
+      var started = false;
+      function go() {
+        if (started) return;
+        started = true;
+        if (typeof window.removeEventListener === 'function') window.removeEventListener('na:canonical-updated', check);
+        if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(start, { timeout: 1500 });
+        else start();
+      }
+      function check() {
+        try {
+          var canonical = window.NuevoAmanecerCanonical;
+          var state = canonical && typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
+          // 'pending'/'validating' = todavía no se puede vender; cualquier estado final libera el registro.
+          if (state && /^(?:current|remote-older|offline|stale|unavailable)$/.test(String(state.validation))) go();
+        } catch (_) { go(); }
+      }
+      window.addEventListener('na:canonical-updated', check);
+      check();
+      window.setTimeout(go, 6000);
+    }
+
+    whenReadyToSell(function () { navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(function (registration) {
       pwaRegistration = registration;
       enableManualUpdateMode();
       if (pwaUpdateQueued) { pwaUpdateQueued = false; runPwaUpdate(); }
@@ -1207,7 +1290,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       return registration.update().catch(function () {});
     }).catch(function (error) {
       console.warn('No se pudo registrar el shell PWA.', error);
-    });
+    }); });
   });
 }
 </script>

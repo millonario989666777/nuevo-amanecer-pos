@@ -145,6 +145,8 @@
   .na-landscape-flowers {right:0;bottom:3px;width:72px;height:12px;opacity:0;background-image:radial-gradient(circle at 15% 45%,#e1b0be 0 2px,transparent 3px),radial-gradient(circle at 52% 20%,#ead3ab 0 2px,transparent 3px),radial-gradient(circle at 80% 60%,#e1b0be 0 2px,transparent 3px)}
   .na-mobile-landscape[data-season='spring'] .na-landscape-flowers {opacity:.8}
   .na-mobile-landscape[data-motion='paused'] .na-landscape-cloud {animation-play-state:paused}
+  /* Fuera de Inicio (o antes del primer pintado del paisaje) no hay transiciones de 5 s pendientes. */
+  .na-mobile-landscape[data-motion='paused'] span,.na-mobile-landscape:not([data-landscape-ready]) span {transition:none}
   @keyframes na-cloud-drift {from {translate:-6px 0} to {translate:12px 0}}
 }
 @media (max-width:359px) {

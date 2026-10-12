@@ -2,6 +2,10 @@ const CACHE_PREFIX = 'nuevo-amanecer-pos-shell-';
 const CACHE_NAME = `${CACHE_PREFIX}__BUILD_HASH__`;
 const VENDOR_CACHE_NAME = 'nuevo-amanecer-pos-vendor-tesseract-6.0.1';
 const MANUAL_UPDATE_MARKER_CACHE = 'nuevo-amanecer-pos-manual-update-v1';
+// OCR de compras y catálogo de referencia: no se precargan (no sirven para vender). Se guardan en una
+// caché de la misma generación la primera vez que se usan, así nunca se mezclan con otro build.
+const LAZY_CACHE_PREFIX = 'nuevo-amanecer-pos-lazy-';
+const LAZY_CACHE_NAME = LAZY_CACHE_PREFIX + CACHE_NAME.slice(CACHE_PREFIX.length);
 const PRECACHE_URLS = [
   './index.html',
   './manifest.webmanifest',
@@ -108,6 +112,9 @@ const PRECACHE_URLS = [
   './js/canon-pos-reference-ui.js',
   './js/canon-phone-sale.js',
   './js/canon-desktop-dashboard.js',
+  './js/core/lazy-assets.js'
+];
+const LAZY_URLS = [
   './js/catalog/reference-catalog-data.js',
   './js/catalog/reference-catalog.js',
   './js/ocr/ocr-extract.js',
@@ -146,6 +153,7 @@ const VENDOR_URLS = [
 ];
 const PRECACHE_URLS_ABSOLUTE = new Set(PRECACHE_URLS.map((url) => new URL(url, self.registration.scope).href));
 const VENDOR_URLS_ABSOLUTE = new Set(VENDOR_URLS.map((url) => new URL(url, self.registration.scope).href));
+const LAZY_URLS_ABSOLUTE = new Set(LAZY_URLS.map((url) => new URL(url, self.registration.scope).href));
 const START_URL = new URL('./index.html', self.registration.scope).href;
 const START_PATH = new URL(START_URL).pathname;
 
@@ -160,15 +168,50 @@ function isExcluded(request, url) {
     || request.headers.has('x-read-token')
     || (request.mode === 'navigate'
       ? url.pathname !== START_PATH
-      : !PRECACHE_URLS_ABSOLUTE.has(url.href) && !VENDOR_URLS_ABSOLUTE.has(url.href));
+      : !PRECACHE_URLS_ABSOLUTE.has(url.href) && !VENDOR_URLS_ABSOLUTE.has(url.href) && !LAZY_URLS_ABSOLUTE.has(url.href));
+}
+
+// Un deploy cambia pocos archivos: cada recurso que ya está en una generación anterior se revalida con
+// su ETag (304 = mismo contenido) y se copia; solo se descarga lo que cambió. Sin ETag o ante cualquier
+// duda se descarga completo como antes (cache: 'reload'). La generación se escribe solo cuando TODOS
+// los recursos llegaron (todo o nada, como addAll); si alguno falla la versión actual sigue intacta.
+async function previousShellCaches() {
+  const names = (await caches.keys()).filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
+  return Promise.all(names.reverse().map((name) => caches.open(name)));
+}
+
+async function stagedShellEntry(previousCaches, url) {
+  let previous = null;
+  for (const cache of previousCaches) {
+    const cached = await cache.match(url).catch(() => null);
+    if (cached && cached.ok && cached.headers.get('etag')) { previous = cached; break; }
+  }
+  if (previous) {
+    try {
+      const revalidated = await fetch(new Request(url, { cache: 'no-store', headers: { 'If-None-Match': previous.headers.get('etag') } }));
+      if (revalidated.status === 304) return [url, previous];
+      if (revalidated.ok) return [url, revalidated];
+    } catch (_) {}
+  }
+  const response = await fetch(new Request(url, { cache: 'reload' }));
+  if (!response.ok) throw new TypeError('PRECACHE_FAILED');
+  return [url, response];
+}
+
+async function stageShell(cache) {
+  const requests = [...PRECACHE_URLS_ABSOLUTE];
+  const previousCaches = await previousShellCaches().catch(() => []);
+  if (!previousCaches.length) {
+    return cache.addAll(requests.map((url) => new Request(url, { cache: 'reload' })));
+  }
+  const entries = await Promise.all(requests.map((url) => stagedShellEntry(previousCaches, url)));
+  await Promise.all(entries.map(([url, response]) => cache.put(url, response)));
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(
-        [...PRECACHE_URLS_ABSOLUTE].map((url) => new Request(url, { cache: 'reload' }))
-      ))
+      .then((cache) => stageShell(cache))
       .then(() => caches.has(MANUAL_UPDATE_MARKER_CACHE))
       .then((manualModeEnabled) => manualModeEnabled ? undefined : self.skipWaiting())
   );
@@ -179,7 +222,7 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((names) => Promise.all(
         names
-          .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+          .filter((name) => (name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME) || (name.startsWith(LAZY_CACHE_PREFIX) && name !== LAZY_CACHE_NAME))
           .map((name) => caches.delete(name))
       ))
       .then(() => self.clients.claim())
@@ -230,6 +273,20 @@ self.addEventListener('fetch', (event) => {
         .then((cache) => cache.match(request).then((cached) => {
           if (cached) return cached;
           return fetch(request).then((response) => {
+            if (response && response.ok) cache.put(request, response.clone());
+            return response;
+          });
+        }))
+    );
+    return;
+  }
+
+  if (LAZY_URLS_ABSOLUTE.has(request.url)) {
+    event.respondWith(
+      caches.open(LAZY_CACHE_NAME)
+        .then((cache) => cache.match(request).then((cached) => {
+          if (cached) return cached;
+          return fetch(new Request(request, { cache: 'no-store' })).then((response) => {
             if (response && response.ok) cache.put(request, response.clone());
             return response;
           });

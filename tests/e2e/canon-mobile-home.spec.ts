@@ -22,7 +22,8 @@ test('phone uses one drawer for actions and genuine empty activity', async ({ pa
   await drawer.getByRole('button', { name: 'Nueva venta', exact: true }).click();
   await expect(page.locator('#pagePOS')).toHaveClass(/active/);
   await expect(drawer).not.toHaveClass(/is-open/);
-  await page.locator('#backBtn').click();
+  // P1-4: en Nueva venta (teléfono) ☰ es el único botón de navegación; "← Menú" ya no se superpone.
+  await expect(page.locator('#backBtn')).toBeHidden();
   await page.locator('#naMobileMenuToggle').click();
   await page.keyboard.press('Escape');
   await expect(page.locator('#naMobileMenuToggle')).toBeFocused();

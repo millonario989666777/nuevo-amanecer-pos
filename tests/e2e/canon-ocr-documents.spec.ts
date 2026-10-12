@@ -22,6 +22,8 @@ for(const file of ['purchase.pdf','purchase.docx','purchase.png','scan.pdf','hyb
 
 test('DOCX table keeps product quantity and cost on the same line',async({page})=>{
  await page.goto('/index.html');
+ // OCR se carga a pedido (P0-2): igual que el botón "OCR compras".
+ await page.evaluate(()=>NuevoAmanecerLazyAssets.load('ocr'));
  const rows=await page.evaluate(async bytes=>{const file=new File([new Uint8Array(bytes)],'table.docx',{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});const result=await extractPurchaseDocument(file);return parsePurchaseText(result.rawText);},Array.from(await (await import('node:fs/promises')).readFile('tests/ocr/fixtures/table.docx')));
  expect(rows).toHaveLength(1);expect(rows[0].qty).toBe(2);expect(rows[0].unitPrice).toBe(3.5);
 });

@@ -382,6 +382,11 @@
     if (scene) scene.setAttribute('data-motion', running ? 'running' : 'paused');
     if (!running) return;
     updateMobileLandscape();
+    // Los colores iniciales se aplican sin transición; las de 5 s quedan para los cambios de hora.
+    if (scene && !scene.hasAttribute('data-landscape-ready')) {
+      var raf = typeof root.requestAnimationFrame === 'function' ? root.requestAnimationFrame.bind(root) : function (cb) { return root.setTimeout(cb, 16); };
+      raf(function () { raf(function () { scene.setAttribute('data-landscape-ready', ''); }); });
+    }
     landscapeTimer = root.setInterval(updateMobileLandscape, 60000);
   }
 

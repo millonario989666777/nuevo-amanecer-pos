@@ -54,6 +54,9 @@
   // the remaining collections are skipped when everything matches. A full re-read still runs
   // in the background once the last full validation is older than this.
   var FULL_REVALIDATE_MS = 10 * 60 * 1000, PREFETCH_MAX_AGE_MS = 15000;
+  // After a deploy the shortcut still applies (the authority fence decides data validity), and one
+  // complete read follows in the background once the app can already sell.
+  var DEPLOY_FULL_REVALIDATE_DELAY_MS = 30000;
   function readPageLimit() {
     try {
       var stored = Number(root.localStorage && root.localStorage.getItem(PAGE_LIMIT_KEY));
@@ -302,22 +305,42 @@
     return value;
   }
   var REPLICA_COLLECTIONS = ['products', 'customers', 'credits', 'credit_payments', 'credit_accounts', 'cash_sessions', 'financial_events', 'expenses', 'sales', 'sale_items', 'inventory_movements', 'cash_movements'];
-  // The re-confirmation shortcut is bound to the app build (service-worker shell caches change on
-  // every deploy) and to the session that performed the complete read. Any difference -> full read.
+  // The re-confirmation shortcut is bound to the client contract, to the shape of the stored replica
+  // and to the session that performed the complete read. Data validity never depends on the app
+  // build: the authority fence (status meta + financial_revision + digest + credit-accounts) decides.
+  // Bump REPLICA_SHAPE when a build changes which columns/collections the replica must carry.
+  var REPLICA_SHAPE = 'replica-shape-1';
   async function replicaContext(endpoint, token) {
-    var build = 'no-cache-api', session = 'unknown';
-    try {
-      if (root.caches && typeof root.caches.keys === 'function') {
-        build = (await root.caches.keys()).filter(function (name) { return /^nuevo-amanecer-pos-shell-/.test(name); }).sort().join(',') || 'no-shell-cache';
-      }
-    } catch (_) {}
+    var session = 'unknown';
     try {
       if (root.crypto && root.crypto.subtle && typeof root.TextEncoder === 'function') {
         var digest = new Uint8Array(await root.crypto.subtle.digest('SHA-256', new root.TextEncoder().encode(endpoint + '\n' + token)));
         session = Array.prototype.map.call(digest.slice(0, 12), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
       }
     } catch (_) {}
-    return JSON.stringify([CONTRACT, build, session]);
+    return JSON.stringify([CONTRACT, REPLICA_SHAPE, session]);
+  }
+  // App build (service-worker shell generation). Informational only: a different build schedules a
+  // background complete read, it never blocks the re-confirmation.
+  async function replicaBuild() {
+    var build = 'no-cache-api';
+    try {
+      if (root.caches && typeof root.caches.keys === 'function') {
+        build = (await root.caches.keys()).filter(function (name) { return /^nuevo-amanecer-pos-shell-/.test(name); }).sort().join(',') || 'no-shell-cache';
+      }
+    } catch (_) {}
+    return build;
+  }
+  // Stamps written before REPLICA_SHAPE existed carried [contract, build, session]; same contract and
+  // session means the same replica shape (replica-shape-1), so they stay valid across this deploy.
+  function contextMatches(stored, current) {
+    if (typeof stored !== 'string' || typeof current !== 'string') return false;
+    if (stored === current) return true;
+    try {
+      var a = JSON.parse(stored), b = JSON.parse(current);
+      return Array.isArray(a) && Array.isArray(b) && a.length === 3 && b.length === 3 && a[0] === b[0] && a[2] === b[2] &&
+        typeof a[1] === 'string' && !/^replica-shape-/.test(a[1]) && b[1] === 'replica-shape-1';
+    } catch (_) { return false; }
   }
   function fullyValidatedAt(replica) {
     var at = replica && typeof replica.remote_validated_at === 'string' ? Date.parse(replica.remote_validated_at) : NaN;
@@ -326,7 +349,7 @@
   // Only a replica written by a complete authority read (never a local projection) can be
   // re-confirmed without re-reading its collections.
   function fastRevalidationCandidate(cache, expected, context) {
-    return !!(cache && fullyValidatedAt(cache) !== null && typeof context === 'string' && cache.remote_validated_context === context && cache.mode === 'ACTIVE' && cache.read_only === false && cache.minimum_client_contract === CONTRACT &&
+    return !!(cache && fullyValidatedAt(cache) !== null && contextMatches(cache.remote_validated_context, context) && cache.mode === 'ACTIVE' && cache.read_only === false && cache.minimum_client_contract === CONTRACT &&
       cache.promotion_id === expected.promotion_id && cache.authority_epoch === expected.authority_epoch && cache.revision === expected.revision &&
       uint(cache.financial_revision) && REPLICA_COLLECTIONS.every(function (key) { return Array.isArray(cache[key]); }));
   }
@@ -365,7 +388,7 @@
       var statusRequest = bulkWanted ? null : (prefetched ? prefetched.status : readFetch(endpoint + '/read/canonical/status', readOptions(session.token)));
       var accountsRequest = bulkWanted ? null : (prefetched ? prefetched.accounts : readFetch(endpoint + '/read/canonical/credit-accounts?limit=' + routePageLimit('credit-accounts', pageLimit), readOptions(session.token)));
       if (statusRequest) { statusRequest.catch(function () {}); accountsRequest.catch(function () {}); }
-      var contextRequest = replicaContext(endpoint, session.token);
+      var contextRequest = replicaContext(endpoint, session.token), buildRequest = replicaBuild();
       var cache = bootCache || await localReplica(); bootCache = null;
 
       // FASE7 LAB: optional 1-request bulk snapshot (meta + 12 collections, one FR fence).
@@ -511,6 +534,7 @@
             if (binding && !changed) assertBinding(expected);
             promotePublishedReplica(cache); notifyReplicaUpdate();
             if (Date.now() - fullyValidatedAt(cache) > FULL_REVALIDATE_MS) scheduleFullRevalidation(2000);
+            else if (cache.remote_validated_build !== await buildRequest) scheduleFullRevalidation(DEPLOY_FULL_REVALIDATE_DELAY_MS);
             return snapshot();
           }
           // Something changed: read every other collection under the status already verified.
@@ -550,6 +574,7 @@
       // Marks a replica written from a complete authority read (see fastRevalidationCandidate).
       incoming.remote_validated_at = new Date().toISOString();
       incoming.remote_validated_context = await contextRequest;
+      incoming.remote_validated_build = await buildRequest;
       if (cache && cacheIsNewer(cache, incoming)) {
         publishReplica(cache, 'cache'); replicaState.validation = 'remote-older'; notifyReplicaUpdate(); return snapshot();
       }
@@ -558,7 +583,8 @@
         JSON.stringify([cache.products,cache.customers,cache.credits,cache.credit_payments,cache.credit_accounts||[],cache.sales||[],cache.sale_items||[],cache.inventory_movements||[],cache.cash_movements||[],cache.cash_sessions||[],cache.financial_events||[],cache.expenses||[],cache.digests||{}]) ===
         JSON.stringify([incoming.products,incoming.customers,incoming.credits,incoming.credit_payments,incoming.credit_accounts||[],incoming.sales||[],incoming.sale_items||[],incoming.inventory_movements||[],incoming.cash_movements||[],incoming.cash_sessions||[],incoming.financial_events||[],incoming.expenses||[],incoming.digests||{}]);
       var cacheValidatedAt = cache ? fullyValidatedAt(cache) : null;
-      var stampStale = cacheValidatedAt === null || Date.now() - cacheValidatedAt > FULL_REVALIDATE_MS / 2 || cache.remote_validated_context !== incoming.remote_validated_context;
+      var stampStale = cacheValidatedAt === null || Date.now() - cacheValidatedAt > FULL_REVALIDATE_MS / 2 ||
+        cache.remote_validated_context !== incoming.remote_validated_context || cache.remote_validated_build !== incoming.remote_validated_build;
       publishReplica(incoming, 'remote');
       if ((!same || stampStale) && typeof root._naWriteCanonicalReplica === 'function') await root._naWriteCanonicalReplica(incoming);
       replicaState.validation = 'current'; notifyReplicaUpdate(); return snapshot();

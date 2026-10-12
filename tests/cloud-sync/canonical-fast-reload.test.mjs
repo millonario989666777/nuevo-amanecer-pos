@@ -241,27 +241,78 @@ test('la vista ya pintada se reutiliza solo cuando la autoridad reconfirma filas
   assert.match(inline02, /const boot=_naBootStorageReads;_naBootStorageReads=null;/);
 });
 
-test('otro build (cachés del service worker) u otra sesión invalidan la reconfirmación: lectura completa', async (t) => {
+// P1-3 (velocidad móvil): tras un deploy cambia el build (cachés del service worker) pero no los datos.
+// La validez de la réplica la decide la valla de la autoridad (status meta + financial_revision + digest
+// + credit-accounts), no el build: se reconfirma con 2 lecturas, se puede vender al instante y una
+// lectura completa queda en segundo plano para re-sellar con el build nuevo. Otra sesión o un cambio de
+// datos sí obligan a la lectura completa antes de vender.
+test('otro build reconfirma con status + credit-accounts y relee todo en segundo plano; otra sesión obliga a lectura completa', async (t) => {
   const { webcrypto, randomUUID } = await import('node:crypto');
   const cryptoGlobal = { subtle: webcrypto.subtle, getRandomValues: (a) => webcrypto.getRandomValues(a), randomUUID };
   const f = await canon(t);
   const replica = replicaStore();
   const ls = storage();
   let shells = ['nuevo-amanecer-pos-shell-aaa'];
-  const globals = { ...replica.globals, crypto: cryptoGlobal, caches: { keys: async () => [...shells, 'nuevo-amanecer-pos-vendor-x'] } };
+  const timers = [];
+  const globals = {
+    ...replica.globals, crypto: cryptoGlobal, caches: { keys: async () => [...shells, 'nuevo-amanecer-pos-vendor-x'] },
+    setTimeout: (fn, ms) => { if (ms === 30000) { timers.push(fn); return 1; } return setTimeout(fn, ms); },
+  };
   await device(f, { token: TOKEN, deviceId: 'fast-9', localStorage: ls, globals });
+  assert.equal(replica.value.remote_validated_build, 'nuevo-amanecer-pos-shell-aaa');
   const same = await device(f, { token: TOKEN, localStorage: ls, globals });
   assert.deepEqual(readsOf(same), ['status', 'credit-accounts']);
-  shells = ['nuevo-amanecer-pos-shell-bbb'];
+  assert.equal(timers.length, 0, 'same build: nothing scheduled');
+
+  // Deploy: new shell cache (and the old one still present while the new worker waits).
+  shells = ['nuevo-amanecer-pos-shell-aaa', 'nuevo-amanecer-pos-shell-bbb'];
   const deployed = await device(f, { token: TOKEN, localStorage: ls, globals });
-  assert.equal(readsOf(deployed).length, 13, 'new build -> complete read');
+  assert.deepEqual(readsOf(deployed), ['status', 'credit-accounts'], 'new build -> still only the authority fence');
+  assert.equal(deployed.api.sourceState().validation, 'current');
+  assert.equal(deployed.api.assertAction('sale.create'), true, 'can sell right after a deploy');
+  assert.equal(timers.length, 1, 'one background complete read is scheduled after a deploy');
+  timers.shift()();
+  for (let i = 0; i < 100 && deployed.api.sourceState().source !== 'remote'; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(readsOf(deployed).length, 2 + 13, readsOf(deployed).join(','));
+  assert.equal(replica.value.remote_validated_build, 'nuevo-amanecer-pos-shell-aaa,nuevo-amanecer-pos-shell-bbb', 'complete read re-stamps the new build');
   const again = await device(f, { token: TOKEN, localStorage: ls, globals });
-  assert.deepEqual(readsOf(again), ['status', 'credit-accounts'], 'the complete read re-binds the stamp to the new build');
+  assert.deepEqual(readsOf(again), ['status', 'credit-accounts']);
+  assert.equal(timers.length, 0, 're-stamped build: nothing scheduled');
+
   f.addDevice('fast-9-b', 'writer', 'active', 'fast-9-b-token');
   const creds = JSON.parse(ls.getItem('na_cloud_sync_credentials'));
   ls.setItem('na_cloud_sync_credentials', JSON.stringify({ ...creds, token: 'fast-9-b-token' }));
   const otherSession = await device(f, { token: 'fast-9-b-token', localStorage: ls, globals });
   assert.equal(readsOf(otherSession).length, 13, 'another session -> complete read');
+});
+
+test('sello escrito por builds anteriores ([contrato, build, sesión]) sigue siendo válido: sin relectura completa por este deploy', async (t) => {
+  const { webcrypto, randomUUID } = await import('node:crypto');
+  const cryptoGlobal = { subtle: webcrypto.subtle, getRandomValues: (a) => webcrypto.getRandomValues(a), randomUUID };
+  const f = await canon(t);
+  const replica = replicaStore();
+  const ls = storage();
+  const timers = [];
+  const globals = {
+    ...replica.globals, crypto: cryptoGlobal, caches: { keys: async () => ['nuevo-amanecer-pos-shell-new'] },
+    setTimeout: (fn, ms) => { if (ms === 30000) { timers.push(fn); return 1; } return setTimeout(fn, ms); },
+  };
+  await device(f, { token: TOKEN, deviceId: 'fast-12', localStorage: ls, globals });
+  const [contract, shape, session] = JSON.parse(replica.value.remote_validated_context);
+  assert.equal(shape, 'replica-shape-1');
+  const stored = replica.value;
+  stored.remote_validated_context = JSON.stringify([contract, 'nuevo-amanecer-pos-shell-old', session]);
+  delete stored.remote_validated_build;
+  await replica.globals._naWriteCanonicalReplica(stored);
+  const tab = await device(f, { token: TOKEN, localStorage: ls, globals });
+  assert.deepEqual(readsOf(tab), ['status', 'credit-accounts']);
+  assert.equal(tab.api.assertAction('sale.create'), true);
+  assert.equal(timers.length, 1, 'the legacy stamp is refreshed by one background complete read');
+  // A legacy stamp from another session is not accepted.
+  stored.remote_validated_context = JSON.stringify([contract, 'nuevo-amanecer-pos-shell-old', 'other-session']);
+  await replica.globals._naWriteCanonicalReplica(stored);
+  const other = await device(f, { token: TOKEN, localStorage: ls, globals });
+  assert.equal(readsOf(other).length, 13, 'legacy stamp from another session -> complete read');
 });
 
 test('antes de la confirmación las escrituras se rechazan; si la revalidación falla siguen bloqueadas y la cola local no se toca', async (t) => {
