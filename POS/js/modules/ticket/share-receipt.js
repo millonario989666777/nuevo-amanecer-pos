@@ -290,7 +290,7 @@
     if(!credit||!receipt?.operation_id)return;
     const balance=receipt.balance_cents??receipt.current_balance_cents;
     const date=dateFields(createdAt);
-    const pay={id:receipt.operation_id,monto:amountCents/100,metodo:method,numeroOperacion:reference,...date,saldoAntes:Number(credit.saldo),saldoDespues:known(balance)?Number(balance)/100:Number(credit.saldo)-amountCents/100};
+    const pay={id:receipt.operation_id,monto:amountCents/100,metodo:method,numeroOperacion:reference,...date,saldoAntes:Number(credit.saldo),saldoDespues:known(balance)?Number(balance)/100:Number(credit.saldo)-amountCents/100};let comentario='';try{comentario=root.__naPayNoteTake?.([{receipt}])||'';}catch(_){}pay.comentario=comentario;pay.cajeroNombre=root.__naCashierLabel?.()||'';
     safely({kind:'payment',credit,payment:pay,sale:sales().find(s=>String(s.id)===String(credit.ventaId)),customer:customerFor(credit.cliId||credit.clienteId)});
   }
   function onPayments(entries,method,reference,createdAt){
