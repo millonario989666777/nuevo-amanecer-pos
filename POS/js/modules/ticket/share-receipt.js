@@ -19,6 +19,83 @@
   function known(value){return value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value));}
   function dateFields(timestamp){if(!timestamp)return{fecha:'',hora:''};const d=new Date(timestamp);if(!Number.isFinite(d.getTime()))return{fecha:'',hora:''};const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);const part=k=>parts.find(p=>p.type===k).value;return{fecha:part('year')+'-'+part('month')+'-'+part('day'),hora:d.toLocaleTimeString('es-PE',{timeZone:'America/Lima',hour12:true})};}
   function itemsFromCredit(cr){return(Array.isArray(cr.items)?cr.items:[]).map(i=>({...i,name:i.name||i.nombre||'Concepto',qty:Number(i.qty??i.cantidad??1),precio:Number(i.precio??i.precioUnitario??0)}));}
+  // ---- Estado de cuenta del cliente (solo lectura, presentación) ----------
+  // Deuda total = créditos abiertos confirmados en la réplica canónica + ventas
+  // a crédito aún en la cola local. Cada crédito se cuenta una sola vez: la
+  // venta de este comprobante se excluye de la lista y se suma aparte, y una
+  // venta pendiente deja de contarse como pendiente en cuanto llega a CANON.
+  const GENERIC_CUSTOMER=/^(consumidor final|cliente gen[eé]rico|cliente general|p[uú]blico general|varios|sin cliente)$/i;
+  const toCents=value=>Math.round(Number(value)*100);
+  const centsMoney=c=>money(c/100);
+  function creditCustomerId(cr){const id=cr?.cliId??cr?.clienteId??cr?.customer_id;return id===null||id===undefined||id===''?'':String(id);}
+  function creditSaleId(cr){const id=cr?.ventaId??cr?.sale_id;return id===null||id===undefined||id===''?'':String(id);}
+  function creditVoided(cr){if(!cr||cr.anulado===true)return true;const st=String(cr.status||cr.estado||'').toLowerCase();return st==='anulado'||st==='void'||st==='voided';}
+  function openCents(cr){
+    if(creditVoided(cr))return 0;
+    let c;
+    if(known(cr.saldo))c=toCents(cr.saldo);
+    else if(known(cr.balance_cents))c=Math.round(Number(cr.balance_cents));
+    else if(known(cr.current_balance_cents))c=Math.round(Number(cr.current_balance_cents));
+    else if(known(cr.monto))c=toCents(Number(cr.monto)-Number(cr.pagado||0));
+    else return 0;
+    return c>0?c:0;
+  }
+  function pendingOutboxCredits(){
+    // Credits of sales still in the local outbox (not yet in `creditos`).
+    try{const p=root.NuevoAmanecerCanonicalSaleIntegration?.lastProjection?.();return(Array.isArray(p?.credits)?p.credits:[]).filter(cr=>cr&&(cr.status==='PENDING_SYNC'||cr.source==='CANONICAL_OUTBOX'));}catch(_){return[];}
+  }
+  function nowLabel(){const l=new Date(Date.now()-5*60*60*1000),p=v=>String(v).padStart(2,'0');return l.getUTCFullYear()+'-'+p(l.getUTCMonth()+1)+'-'+p(l.getUTCDate())+' '+p(l.getUTCHours())+':'+p(l.getUTCMinutes());}
+  function accountSummary(data,sale,cr){
+    const customer=data.customer||{};
+    const isCredit=data.kind==='credit'||sale.metodo==='credito'||sale.metodoPago==='credito';
+    if(!isCredit)return null;
+    const customerId=String(customer.id??customer.customer_id??sale.clienteId??sale.customer_id??creditCustomerId(cr)??'');
+    if(!customerId||customerId==='null'||customerId==='undefined')return null;
+    const name=String(customer.nombre||customer.name||sale.clienteNombre||'').trim();
+    if(customer.generico===true||customer.generic===true||GENERIC_CUSTOMER.test(name))return null;
+    const thisSaleId=data.kind==='credit'?creditSaleId(cr):String(sale.id||'');
+    const thisCreditId=cr&&cr.id!==undefined&&cr.id!==null?String(cr.id):'';
+    const isThis=row=>{const sid=creditSaleId(row),id=row?.id===undefined||row?.id===null?'':String(row.id);return(thisSaleId&&(sid===thisSaleId||id==='pending:'+thisSaleId))||(thisCreditId&&id===thisCreditId);};
+    const confirmed=credits().filter(row=>row&&creditCustomerId(row)===customerId);
+    const confirmedSales=new Set(confirmed.map(creditSaleId).filter(Boolean));
+    const confirmedThis=confirmed.find(isThis);
+    // Pending outbox credits that already reached CANON are counted once (as confirmed).
+    const pending=pendingOutboxCredits().filter(row=>creditCustomerId(row)===customerId&&!confirmedSales.has(creditSaleId(row)));
+    const seen=new Set();let previous=0,openCount=0,pendingOthers=0;
+    for(const row of confirmed.concat(pending)){
+      if(isThis(row))continue;
+      const key=row.id!==undefined&&row.id!==null?'id:'+row.id:'sale:'+creditSaleId(row);if(seen.has(key))continue;seen.add(key);
+      const c=openCents(row);if(c<=0)continue;previous+=c;openCount++;if(!confirmed.includes(row))pendingOthers++;
+    }
+    // Balance of this sale/credit: the receipt's own figure, else the replica's.
+    let current=null;
+    if(known(cr.saldo))current=Math.max(0,toCents(cr.saldo));
+    else if(confirmedThis)current=openCents(confirmedThis);
+    else if(data.fresh||data.pendingSync){const total=(sale.items||[]).reduce((s,i)=>s+Number(i.qty||0)*Number(i.precio||0),0);const amount=known(cr.monto)?Number(cr.monto):total;current=Math.max(0,toCents(amount)-(known(cr.pagoInicial)?toCents(cr.pagoInicial):0));}
+    else{const p=pendingOutboxCredits().find(isThis);if(p)current=openCents(p);}
+    if(current===null)return null;
+    if(current>0)openCount++;
+    const thisPending=!confirmedThis&&(data.pendingSync===true||String(sale.status||'')==='PENDING_SYNC'||pendingOutboxCredits().some(isThis));
+    const total=previous+current;
+    let line=null,available=null;
+    const record=customers().find(c=>String(c.id)===customerId)||customer;
+    if(record.lineaCreditoManualActiva===true&&known(record.lineaCreditoManual)&&Number(record.lineaCreditoManual)>0){line=toCents(record.lineaCreditoManual);available=Math.max(0,line-total);}
+    return{customerId,kind:data.kind==='credit'?'credit':'sale',previousCents:previous,currentCents:current,totalCents:total,openCount,pendingOthers,thisPending,lineCents:line,availableCents:available,asOf:nowLabel()};
+  }
+  function accountLines(summary,width){
+    const out=['-'.repeat(width),'ESTADO DE CUENTA DEL CLIENTE'];
+    const field=(label,value)=>{const text=label+': '+value;for(let start=0;start<text.length;start+=width)out.push(text.slice(start,start+width));};
+    if(summary.asOf)field('Al',summary.asOf+' (Lima)');
+    field('Deuda anterior',centsMoney(summary.previousCents));
+    field(summary.kind==='credit'?'Este crédito':'Esta venta',centsMoney(summary.currentCents));
+    field('Deuda total',centsMoney(summary.totalCents));
+    field('Créditos abiertos',String(summary.openCount));
+    if(summary.lineCents!==null){field('Línea de crédito',centsMoney(summary.lineCents));field('Línea disponible',centsMoney(summary.availableCents));}
+    if(summary.thisPending)out.push(...wrap('(incluye esta venta, pendiente de sincronizar)',width));
+    if(summary.pendingOthers>0)out.push(...wrap('(incluye '+summary.pendingOthers+' venta'+(summary.pendingOthers===1?'':'s')+' anterior'+(summary.pendingOthers===1?'':'es')+' pendiente'+(summary.pendingOthers===1?'':'s')+' de sincronizar)',width));
+    return out;
+  }
+  function wrap(text,width){const out=[];let line='';for(const word of String(text).split(/\s+/).filter(Boolean)){if(!line)line=word;else if((line+' '+word).length<=width)line+=' '+word;else{out.push(line);line=word;}}if(line)out.push(line);return out.flatMap(l=>{const parts=[];for(let i=0;i<l.length;i+=width)parts.push(l.slice(i,i+width));return parts;});}
   function build(input){
     const data=copy(input),customer=data.customer||{},cr=data.credit||{},pay=data.payment||{};
     if(pay.saldoAntes===undefined)pay.saldoAntes=pay.saldoAnterior;if(pay.saldoDespues===undefined)pay.saldoDespues=pay.saldoActual;
@@ -30,7 +107,8 @@
     if(!sale.cajeroNombre&&!sale.cajero)sale.cajero='No registrado';
     const generator=root._naBuildThermalTicket;
     if(typeof generator!=='function')throw new Error('Generador de ticket no disponible');
-    const built=generator(sale,false);let lines=built.lines.slice();const width=built.width||42;
+    // The share receipt appends its own account block after the credit fields.
+    const built=generator({...sale,_naSkipAccountSummary:true},false);let lines=built.lines.slice();const width=built.width||42;
     const field=(label,value)=>{const text=label+': '+value;for(let start=0;start<text.length;start+=width)lines.push(text.slice(start,start+width));};
     if(data.kind==='payment'){
       // Payment receipt contains the original purchase, explicitly labeled;
@@ -59,6 +137,7 @@
       if(cr.vence||data.due||sale.credit_due)field('Vencimiento',cr.vence||data.due||sale.credit_due);
     }
     if(data.pendingSync)field('Estado','Guardado local · pendiente de sincronización');
+    if(data.kind!=='payment'){const summary=accountSummary(data,sale,cr);if(summary)accountLines(summary,width).forEach(line=>lines.push(line));}
     return{kind:data.kind,id:String((data.kind==='payment'&&(pay.id||pay.pagoId||pay.operation_id))||sale.id||cr.id||'comprobante'),customerName:sale.clienteNombre||'Sin cliente',phone:normalizePhone(customer.tel||customer.phone||''),lines,text:lines.join('\n'),width,mm:built.mm||80};
   }
   function pdf(pages){
@@ -190,5 +269,26 @@
   function installTicketButton(){
     const footer=root.document.querySelector('#mTicket .mfooter')||root.document.querySelector('#mTicket .mbtns')||root.document.querySelector('#mTicket .modal');if(!footer||root.document.getElementById('naTicketShare'))return;const button=el('button','na-receipt-history','Compartir comprobante');button.id='naTicketShare';button.type='button';button.onclick=()=>{let sale;try{sale=tkCurrentVenta;}catch(_){sale=root.tkCurrentVenta;}if(sale)open(saleInput(sale));};footer.append(button);
   }
-  root.NAReceiptShare=Object.freeze({onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
+  // Printed / previewed ticket (Ver ticket, imprimir, ESC/POS): same account
+  // block after the footer, for credit sales of an identified customer only.
+  function installPrintedAccountSummary(){
+    const base=root._naBuildThermalTicket;
+    if(typeof base!=='function'||base._naAccountSummary)return false;
+    const wrapped=function(v,fromDom){
+      const built=base.apply(this,arguments);
+      try{
+        if(!v||v._naSkipAccountSummary||!built||!Array.isArray(built.lines))return built;
+        if(v.metodo!=='credito'&&v.metodoPago!=='credito')return built;
+        const credit=credits().find(cr=>creditSaleId(cr)===String(v.id))||{};
+        const summary=accountSummary({kind:'sale',sale:v,credit,customer:customerFor(v.clienteId??v.customer_id??v.cliente?.id)||{},pendingSync:String(v.status||'')==='PENDING_SYNC'},v,credit);
+        if(!summary)return built;
+        const width=built.width||42,ascii=typeof root._naTicketAscii==='function'?root._naTicketAscii:(x=>x);
+        const lines=built.lines.concat(accountLines(summary,width).map(line=>ascii(line)));
+        return{...built,lines,text:lines.join('\n')};
+      }catch(error){root.console?.warn?.('[Ticket estado de cuenta]',error.message);return built;}
+    };
+    wrapped._naAccountSummary=true;root._naBuildThermalTicket=wrapped;return true;
+  }
+  installPrintedAccountSummary();
+  root.NAReceiptShare=Object.freeze({accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
 })(globalThis);

@@ -74,9 +74,12 @@
   }
   function localParts(value) {
     var raw = String(value || ''), parsed = raw ? new Date(raw) : null;
-    if (!parsed || !Number.isFinite(parsed.getTime())) return { date:raw.slice(0,10), time:raw.slice(11,16), timestamp:raw || null };
+    var zoned = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(raw);
+    if (!parsed || !Number.isFinite(parsed.getTime()) || !zoned) return { date:raw.slice(0,10), time:raw.slice(11,16), timestamp:raw || null };
     function pad(v) { return String(v).padStart(2,'0'); }
-    return { date:parsed.getFullYear()+'-'+pad(parsed.getMonth()+1)+'-'+pad(parsed.getDate()), time:pad(parsed.getHours())+':'+pad(parsed.getMinutes()), timestamp:raw };
+    // Lima business time (UTC-5, no DST), never the device zone.
+    var lima = new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
+    return { date:lima.getUTCFullYear()+'-'+pad(lima.getUTCMonth()+1)+'-'+pad(lima.getUTCDate()), time:pad(lima.getUTCHours())+':'+pad(lima.getUTCMinutes()), timestamp:raw };
   }
   function confirmedLegacySale(entry, legacy) {
     var payload = entry.payload, when = localParts(payload.created_at);

@@ -450,7 +450,7 @@ function _naRenderPageNow(id){
   if(id==='pagePOS'){posRender();posUpdateCart();return;}
   if(id==='pageInventario'){invRender();invBadges();return;}
   if(id==='pageClientes'){cliRender();return;}
-  if(id==='pageCaja'){const label=document.getElementById('cajFechaLbl');if(label)label.textContent=new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'});cajRender();return;}
+  if(id==='pageCaja'){const label=document.getElementById('cajFechaLbl');if(label)label.textContent=window.NALimaTime?NALimaTime.shortDateLabel(new Date()):new Date().toLocaleDateString('es-PE',{timeZone:'America/Lima',weekday:'short',day:'numeric',month:'short'});cajRender();return;}
   if(id==='pageVentas'){ventasRender();return;}
   if(id==='pageGastos'){gasRender();return;}
   if(id==='pageConfig'){document.getElementById('pageConfig')?.classList.remove('cfg-menu-open');switchCfgCategory(currentCfgCategory);}

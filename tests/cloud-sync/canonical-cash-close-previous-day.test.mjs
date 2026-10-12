@@ -14,9 +14,10 @@ const bridge=readFileSync('POS/js/sync/canonical-cash-bridge.js','utf8');
 const scripts=['canonical-sale-intent','canonical-sale-outbox'].map(n=>[n,readFileSync('POS/js/sync/'+n+'.js','utf8')]);
 const MIGRATIONS=['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql','0016_canonical_generic_sale_lines.sql'];
 const NO_UPDATE="CREATE TRIGGER cash_sessions_no_update BEFORE UPDATE ON canonical_cash_sessions BEGIN SELECT RAISE(ABORT,'immutable_financial_history'); END;";
-// Same as POS/js/core/utils.js obtenerHoy.
-function obtenerHoy(){const a=new Date();return new Date(a.getTime()-a.getTimezoneOffset()*60000).toISOString().split('T')[0];}
-function yesterdayIso(){const y=new Date();y.setDate(y.getDate()-1);y.setHours(12,0,0,0);return y.toISOString();}
+// Same as POS/js/core/lima-time.js (obtenerHoy on the Lima business calendar, UTC-5),
+// matching the adapter's fechaApertura regardless of the machine time zone.
+function obtenerHoy(){return new Date(Date.now()-5*3600000).toISOString().slice(0,10);}
+function yesterdayIso(){const y=new Date(Date.parse(obtenerHoy()+'T12:00:00-05:00')-86400000);return y.toISOString();}
 function backdate(f,sessionId){
  f.database.exec('DROP TRIGGER cash_sessions_no_update');
  f.database.prepare('UPDATE canonical_cash_sessions SET opened_at=? WHERE session_id=?').run(yesterdayIso(),sessionId);
