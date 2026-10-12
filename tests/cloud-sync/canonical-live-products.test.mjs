@@ -115,7 +115,7 @@ test('product.create rejects duplicate catalog codes across IMPORT and LIVE and 
   assert.equal(await tab.context.NuevoAmanecerCanonicalProductBridge.save(),false);
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_live_products').n,0);
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_product_operations').n,0);
-  assert.ok(tab.toasts.some(([m])=>/rechazó|product_code_conflict|No se registró/.test(m)));
+  assert.ok(tab.toasts.some(([m])=>/rechazó|product_code_conflict|No se registró|ya pertenece a «/.test(m)));
 
   assert.equal(tab.api.pendingSnapshot(),null,'a definitive 409 must not poison the next product create');
   fillProduct(tab,{pSku:'LIVE-UNIQUE-1',pBarcode:'775000000098'});

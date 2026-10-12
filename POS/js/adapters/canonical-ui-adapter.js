@@ -81,6 +81,7 @@
       unidCaja: unitsPerBox > 0 ? unitsPerBox : null,
       stock: number(p.current_stock_quantity, 0),
       stockRevision: integer(p.stock_revision, 0),
+      metadataRevision: integer(p.metadata_revision, 0),
       stockMin: number(p.stock_min_quantity, 0),
       venc: text(p.expiry_date),
       incluyeIGV: p.includes_igv !== 0 && p.includes_igv !== false,
