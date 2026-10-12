@@ -61,3 +61,23 @@ test('operational session derivation is read-only SQL and does not alter ledger 
   assert.match(source,/r\.rowid<=s\.closing_watermark/);
   assert.doesNotMatch(source,/UPDATE cash_movements SET session_id|ALTER TABLE cash_movements/);
 });
+
+test('sale-items pages use a NUL-free tuple cursor and never repeat the last row of a page',async t=>{
+  const f=await active(t);
+  const products=f.database.prepare('SELECT product_id FROM products WHERE current_stock_quantity>=1 ORDER BY product_id LIMIT 6').all().map(r=>r.product_id);
+  assert.equal(products.length,6);
+  for(let s=0;s<3;s++){
+    const lines=[products[s*2],products[s*2+1]].map(id=>({product_id:id,quantity:1,unit_price_cents:100,line_total_cents:100,expected_stock_revision:Number(f.database.prepare('SELECT stock_revision r FROM products WHERE product_id=?').get(id)?.r??0)}));
+    await response(await f.fetch('http://localhost/commands/sale.create',{method:'POST',headers:auth('operational-token'),body:JSON.stringify({
+      ...common(f,'tuple-sale-'+s,'2026-09-27T15:0'+s+':00.000Z'),sale_id:'tuple-sale-'+s,payment_method:'yape',total_cents:200,
+      payment:{cash_cents:0,digital_cents:200,credit_cents:0},items:lines})}),201);
+  }
+  const seen=[];let cursor=null,pages=0;
+  do{
+    const page=await response(await f.fetch('http://localhost/read/canonical/sale-items?limit=1'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{headers:{authorization:'Bearer operational-token'}}),200);
+    page.items.forEach(i=>seen.push(i.sale_id+'#'+i.line_number));cursor=page.next_cursor;pages++;
+  }while(cursor&&pages<20);
+  assert.equal(seen.length,6,seen.join(','));
+  assert.equal(new Set(seen).size,6);
+  assert.doesNotMatch(source,/char\(0\)/);
+});
