@@ -8,7 +8,7 @@
         .line-mode{display:inline-block;margin-top:3px;font-size:9px;font-weight:800;padding:2px 6px;border-radius:7px;background:var(--amber-light);color:#b45309}
         @media(max-width:700px){
             .pm-grid{grid-template-columns:repeat(2,1fr)}
-            .g-topbar{padding:0 9px}.g-logo-text{font-size:13px}.g-status{padding:5px 8px}.g-status span{font-size:0}.g-status span::after{content:'Local';font-size:10px}
+            .g-topbar{padding:0 9px}.g-logo-text{font-size:13px}.g-status{padding:5px 8px;min-width:0;max-width:104px}.g-status span{font-size:10px;display:block;min-width:0;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#localStatus[data-state]{padding:0;min-width:22px;max-width:22px;width:22px;height:22px}
             .top-mod-bar{height:auto;min-height:50px;flex-wrap:wrap;padding:8px 10px}
             .filter-bar{flex-wrap:wrap}.f-select{max-width:100%}
         }
@@ -97,7 +97,7 @@
 
         /* CORRECCIÓN: mostrar el contenido completo de tarjetas en escritorio sin alterar el scroll móvil */
         @media(min-width:701px){
-            #pageClientes .client-card{height:auto;max-height:none}
+            #pageClientes .client-card{height:auto;max-height:none;flex:0 0 auto;min-height:64px}
             #pageClientes .client-header{align-items:flex-start;min-height:64px}
             #pageClientes .c-info{min-width:0;overflow:visible}
             #pageClientes .c-name,
