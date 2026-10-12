@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { webcrypto, randomUUID } from 'node:crypto';
 import { a6Fixture, response } from './a6-fixture.mjs';
+import { webLocks } from './web-locks-sim.mjs';
 
 const read = (path) => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 export const SOURCES = {
@@ -65,15 +66,22 @@ export async function device(f, { token, deviceId, localStorage = storage(), scr
     URL, console, Headers, Request, Response, TextEncoder, TextDecoder, setTimeout, clearTimeout, AbortController,
     crypto: { ...webcrypto, randomUUID }, localStorage, sessionStorage: storage(), document,
     location: { hostname: 'localhost', origin: 'http://localhost', protocol: 'http:' },
-    navigator: { onLine: true, locks: { request(_name, _options, callback) { return Promise.resolve(callback({ name: 'lock' })); } } },
+    navigator: { onLine: true, locks: webLocks() },
     addEventListener(name, fn) { const list = listeners.get(name) || []; list.push(fn); listeners.set(name, list); },
     dispatchEvent(event) { (listeners.get(event.type) || []).forEach((fn) => fn(event)); return true; },
     CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
     async fetch(url, options = {}) {
-      const { cache, signal, ...rest } = options; void cache; void signal;
+      const { cache, signal, ...rest } = options; void cache;
       fetchLog.push({ url: String(url), method: rest.method || 'GET', body: rest.body });
-      if (onFetch) { const hooked = await onFetch(String(url), rest, () => f.fetch(url, rest)); if (hooked) return hooked; }
-      return f.fetch(url, rest);
+      const abortError = () => { const error = new Error('The operation was aborted.'); error.name = 'AbortError'; return error; };
+      if (signal && signal.aborted) throw abortError();
+      const work = (async () => {
+        if (onFetch) { const hooked = await onFetch(String(url), rest, () => f.fetch(url, rest)); if (hooked) return hooked; }
+        return f.fetch(url, rest);
+      })();
+      if (!signal) return work;
+      // Like a browser: abort rejects the caller, the server may still commit.
+      return Promise.race([work, new Promise((_, reject) => signal.addEventListener('abort', () => reject(abortError()), { once: true }))]);
     },
     ...globals,
   });

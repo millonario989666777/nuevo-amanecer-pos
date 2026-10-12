@@ -348,7 +348,7 @@
         row.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
         var info = doc.createElement('span');
         info.textContent = clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
-          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
+          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : typeof outbox.reasonText === 'function' ? outbox.reasonText(entry.reason) + ' (' + clean(entry.reason) + ')' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
         row.appendChild(info);
         function action(label, kind, run) {
           var el = doc.createElement('button');
@@ -366,7 +366,10 @@
           return done.status === 'CONFIRMED_REMOTE' ? 'Venta ' + clean(intent.sale_id) + ' ya está registrada en el servidor. Conciliada.'
             : 'Venta ' + clean(intent.sale_id) + ' NO está registrada en el servidor. No la cobres de nuevo sin hablar con el cliente.';
         });
-        if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action('Reintentar', 'retry', async function () {
+        var rebinds = typeof outbox.quarantineRebindsOnRetry === 'function' && outbox.quarantineRebindsOnRetry(entry.reason);
+        var retryLabel = rebinds ? 'Registrar en la caja abierta' : entry.reason === 'promotion_changed' ? 'Reenviar en este equipo' : 'Reintentar';
+        if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action(retryLabel, 'retry', async function () {
+          if (rebinds && typeof root.confirm === 'function' && !root.confirm('¿Registrar ' + clean(intent.sale_id) + ' en la caja abierta ahora? Su efectivo contará en la caja actual.')) return 'Reintento cancelado.';
           await outbox.resolveQuarantined(intent.operation_id, 'retry');
           var outcome = await outbox.sync();
           return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';

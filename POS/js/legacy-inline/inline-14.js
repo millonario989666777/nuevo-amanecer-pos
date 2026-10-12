@@ -16,7 +16,7 @@ function _naSecRenderProductImage(visual,product,safeImage,size){
   visual.appendChild(image);
 }
 function _naSecProductCard(parent,product,allowNoStock){
-  const box=modoMayorista&&product.precioCaja>0&&product.unidCaja>0,price=box?product.precioCaja:product.precio,label=box?`Caja x${product.unidCaja} · S/ ${_naNumber(price).toFixed(2)}`:`S/ ${_naNumber(price).toFixed(2)}`;
+  const box=modoMayorista&&!_naCanonSaleMode()&&product.precioCaja>0&&product.unidCaja>0,price=box?product.precioCaja:product.precio,label=box?`Caja x${product.unidCaja} · S/ ${_naNumber(price).toFixed(2)}`:`S/ ${_naNumber(price).toFixed(2)}`;
   const tracked=_naTracksStock(product),hasStock=!tracked||product.stock>0,available=hasStock||allowNoStock,stockTone=!tracked?'ok':product.stock<=0?'out':product.stock<=product.stockMin?'low':'ok';
   const stockLabel=!tracked?'Sin control':(product._canonicalPendingStock&&Number.isFinite(product._canonicalRemoteStock)?`CANON ${product._canonicalRemoteStock} (−${Number(product._canonicalPendingDelta||Math.max(0,product._canonicalRemoteStock-product.stock))} pend.)`:product.stock<0?`Faltante: ${Math.abs(product.stock)}`:product.stock===0?(allowNoStock?'Sin stock · permitido':'Sin stock'):`Stock: ${product.stock}`);
   const card=_naSecAppend(parent,'div',`product-card${!hasStock?' no-stock':''}${!hasStock&&allowNoStock?' sale-allowed':''}${box?' box-mode':''}`);
@@ -42,7 +42,7 @@ posRender=function(){
     _naSecAppend(empty,'p','','Sin productos');
     return;
   }
-  const allowNoStock=_naFreeSaleCfg().allowRegisteredNoStock;
+  const allowNoStock=_naAllowNoStockSale();
   rows.forEach(product=>_naSecProductCard(area,product,allowNoStock));
 };
 function _naSecCartButton(text,action,key){
