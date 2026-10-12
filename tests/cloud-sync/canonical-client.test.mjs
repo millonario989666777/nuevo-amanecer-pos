@@ -20,7 +20,8 @@ test('canonical client maps every operational entity through fallback reads and 
     "['inventory-movements','inventoryMovements']",
     "['cash-movements','cashMovements']"
   ]) assert.ok(compact.includes(pair),pair);
-  assert.match(source,/coreEntries\.concat\(activeEntries\)\.map\(readEntry\)/,'ACTIVE fallback must keep one complete parallel read wave');
+  assert.match(source,/var waveEntries = coreEntries\.filter\(function \(entry\) \{ return !accountsRead \|\| entry !== accountsEntry; \}\)\.concat\(activeEntries\)/,'ACTIVE fallback wave covers every collection (credit-accounts may already be in flight)');
+  assert.match(source,/Promise\.all\(waveEntries\.map\(readEntry\)\)/,'ACTIVE fallback must keep one complete parallel read wave');
   assert.match(source,/endpoint \+ '\/read\/canonical\/snapshot'/,'bulk path must use the canonical snapshot endpoint');
   for(const marker of [
     'next.cashSessions = snap.cash_sessions',

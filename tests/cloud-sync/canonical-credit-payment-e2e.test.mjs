@@ -90,7 +90,7 @@ test('payment latency: one POST before receipt; full HTTP reconciliation and ren
   assert.notEqual(tab.el('pagoConfirmBtn').textContent, 'Procesando…');
   assert.deepEqual([...tab.context.__closed], ['mPagoCred']);
   assert.deepEqual(tab.fetchLog.slice(before).map(x => x.method + ' ' + new URL(x.url).pathname),
-    ['POST /commands/payment.create', 'GET /read/canonical/status']);
+    ['POST /commands/payment.create', 'GET /read/canonical/status', 'GET /read/canonical/credit-accounts']);
   assert.deepEqual(renders, [], 'no bridge-driven full renders on the receipt path');
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n, 1);
   assert.ok(stages.d1.before >= stages.postStart && stages.d1.after <= stages.postEnd);

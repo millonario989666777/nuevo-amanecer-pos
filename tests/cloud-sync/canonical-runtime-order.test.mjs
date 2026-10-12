@@ -11,8 +11,11 @@ test('runtime remains local-first: cached canonical replica is published before 
   const start=client.slice(client.indexOf('async function startPOS()'),client.indexOf('function legacySnapshot()'));
   const read=start.indexOf('await localReplica()');
   const publish=start.indexOf("publishReplica(cached, 'cache')");
-  const refresh=start.indexOf('refresh().catch');
-  assert.ok(read>=0 && publish>read && refresh>publish);
+  const refresh=start.indexOf('var validating = refresh();');
+  const notify=start.indexOf('notifyReplicaUpdate()',refresh);
+  // The cached replica is published (provisional, read-only) before the refresh starts; the
+  // refresh requests leave before the cached view is rendered.
+  assert.ok(read>=0 && publish>read && refresh>publish && notify>refresh);
 });
 
 test('transport verification is not the READY/green signal',()=>{
