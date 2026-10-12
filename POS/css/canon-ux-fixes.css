@@ -191,3 +191,6 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 .na-pur-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0;border-top:1px solid #f1f5f9}
 @media(max-width:420px){.na-pur-head{grid-template-columns:1fr}}
 @media(max-width:480px){.na-pur-line{grid-template-columns:1fr 1fr 36px}.na-pur-line .na-pur-prod{grid-column:1/-1}.na-pur-line{padding-bottom:6px;border-bottom:1px solid #f1f5f9}}
+
+/* Ítem 13: títulos de apartado en el menú del teléfono */
+.na-mobile-drawer-section{margin:12px 14px 4px;font:900 11px 'Nunito',sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#64748b}
