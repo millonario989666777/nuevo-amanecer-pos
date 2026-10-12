@@ -151,7 +151,7 @@ function _naSecRenderSaleCard(list,sale,index){
   _naSecSaleAudit(audit,'Líneas / unidades',`${_naInt(sale.cantidadLineas,(sale.items||[]).length)} / ${_naNumber(sale.unidadesFisicas,units)}`);
   _naSecSaleAudit(audit,'Método',method.label);
   if(sale.metodo==='mixto'&&sale.paymentBreakdown){
-    [['💵 Efectivo',sale.paymentBreakdown.efectivo],[sale.paymentBreakdown.digitalMethod==='yape'?'📱 Yape/Plin':'🏦 Transferencia',sale.paymentBreakdown.digital]].forEach(([label,value])=>{
+    [['💵 Efectivo',sale.paymentBreakdown.efectivo],[sale.paymentBreakdown.digitalMethod==='yape'?'📱 Yape':sale.paymentBreakdown.digitalMethod==='plin'?'📱 Plin':'🏦 Transferencia',sale.paymentBreakdown.digital]].forEach(([label,value])=>{
       const row=_naSecAppend(detail,'div','det-row');
       _naSecAppend(row,'span','',label);
       _naSecAppend(row,'span','',fmt(value));

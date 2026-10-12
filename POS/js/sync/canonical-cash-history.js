@@ -7,6 +7,9 @@
   if (root.NuevoAmanecerCashHistory) return;
 
   var CASHIER_KEY = 'na_canonical_cash_session_cashiers';
+  // Ítem 3: desglose por método (ventas + cobros) para el cierre de caja.
+  var METHOD_KEYS = ['efectivo', 'yape', 'plin', 'transferencia', 'credito'];
+  var METHOD_LABELS = { efectivo: '💵 Efectivo', yape: '📲 Yape', plin: '📲 Plin', transferencia: '🏦 Transferencia', credito: '📋 Al crédito' };
   var LIMA_OFFSET_MS = 5 * 60 * 60 * 1000; // America/Lima: UTC-5 sin horario de verano
 
   function api() { return root.NuevoAmanecerCanonical; }
@@ -72,10 +75,12 @@
       return null;
     }
     var totals = {};
-    sessions.forEach(function (s) { totals[s.session_id] = { ventas: 0, ventasCount: 0, ventasEfectivo: 0, ventasDigital: 0, ventasCredito: 0, cobros: 0, cobrosCount: 0, cobrosEfectivo: 0, cobrosDigital: 0, anulaciones: 0, gastos: 0, ajustes: 0, sales: {} }; });
+    sessions.forEach(function (s) { totals[s.session_id] = { ventas: 0, ventasCount: 0, ventasEfectivo: 0, ventasDigital: 0, ventasCredito: 0, cobros: 0, cobrosCount: 0, cobrosEfectivo: 0, cobrosDigital: 0, anulaciones: 0, gastos: 0, ajustes: 0, metodos: { efectivo: 0, yape: 0, plin: 0, transferencia: 0, credito: 0 }, sales: {} }; });
     movements.forEach(function (m) {
       var t = m && totals[m.session_id]; if (!t) return;
       t.ventas += int(m.amount_cents); t.ventasEfectivo += int(m.cash_cents); t.ventasDigital += int(m.digital_cents); t.ventasCredito += int(m.credit_cents);
+      t.metodos.efectivo += int(m.cash_cents); t.metodos.credito += int(m.credit_cents);
+      if (int(m.digital_cents)) t.metodos[METHOD_KEYS.indexOf(m.digital_method) > 0 ? m.digital_method : 'transferencia'] += int(m.digital_cents);
       if (m.sale_id && !t.sales[m.sale_id]) { t.sales[m.sale_id] = true; t.ventasCount += 1; }
     });
     events.forEach(function (e) {
@@ -85,6 +90,7 @@
         var amount = -int(e.credit_delta_cents);
         t.cobros += amount; t.cobrosCount += 1;
         if (e.payment_method === 'efectivo') t.cobrosEfectivo += amount; else t.cobrosDigital += amount;
+        t.metodos[METHOD_KEYS.indexOf(e.payment_method) >= 0 && e.payment_method !== 'credito' ? e.payment_method : 'transferencia'] += amount;
       } else if (e.event_type === 'COMPENSATION') {
         if (e.credit_id) t.anulaciones += int(e.credit_delta_cents); else t.ajustes += int(e.cash_delta_cents);
       } else if (e.event_type === 'ADJUSTMENT') {
@@ -125,6 +131,42 @@
     parent.append(row);
   }
 
+  function methodLines(parent, metodos) {
+    var box = el('div', 'na-cash-methods', null, 'margin:4px 0;padding:6px 8px;border-radius:8px;background:var(--bg,#f8fafc)');
+    box.setAttribute('data-na-cash-methods', 'true');
+    box.append(el('div', '', 'Por método de pago (ventas + cobros)', 'font-size:11px;font-weight:800;color:var(--slate);margin-bottom:2px'));
+    METHOD_KEYS.forEach(function (k) {
+      var v = metodos && int(metodos[k]);
+      if (v || k === 'efectivo' || k === 'yape' || k === 'plin') line(box, METHOD_LABELS[k], money(v || 0));
+    });
+    parent.append(box);
+    return box;
+  }
+
+  // Desglose de la sesión abierta, para el modal de cierre (sin llamadas al servidor).
+  function openSessionMethods() {
+    if (!enabled()) return null;
+    var rows = [];
+    try { rows = summarize(api().snapshot(), {}).filter(function (r) { return r.status === 'OPEN'; }); } catch (_) { rows = []; }
+    return rows.length ? rows[0].metodos : null;
+  }
+
+  function decorateClosing() {
+    var doc = root.document, box = doc && doc.getElementById('cierreBox');
+    if (!box) return;
+    var old = box.querySelector('[data-na-cash-methods]'); if (old) old.remove();
+    var metodos = openSessionMethods();
+    if (metodos) methodLines(box, metodos);
+  }
+
+  function wrapClosing() {
+    var current = root._naRefreshClosingCashTotals;
+    if (typeof current !== 'function' || current.__naMethods) return;
+    var wrapped = function () { var out = current.apply(this, arguments); try { decorateClosing(); } catch (_) {} return out; };
+    wrapped.__naMethods = true;
+    root._naRefreshClosingCashTotals = wrapped;
+  }
+
   function render(container) {
     var client = api();
     var rows = [];
@@ -144,6 +186,7 @@
       line(card, 'Ventas (' + r.ventasCount + ')', money(r.ventas));
       if (r.ventasCredito) line(card, '   · al crédito', money(r.ventasCredito));
       line(card, 'Cobros (' + r.cobrosCount + ')', money(r.cobros));
+      methodLines(card, r.metodos);
       if (r.anulaciones) line(card, 'Abonos anulados', money(r.anulaciones));
       if (r.gastos) line(card, 'Gastos', money(r.gastos));
       line(card, 'Efectivo esperado', money(r.esperado));
@@ -189,12 +232,12 @@
     root.cajRender = wrapped;
   }
 
-  wrapRender();
+  wrapRender(); wrapClosing();
   try { ensureTab(); } catch (_) {}
   if (typeof root.addEventListener === 'function') {
-    root.addEventListener('load', function () { try { wrapRender(); ensureTab(); } catch (_) {} });
+    root.addEventListener('load', function () { try { wrapRender(); wrapClosing(); ensureTab(); } catch (_) {} });
     root.addEventListener('na:canonical-updated', function () { try { ensureTab(); } catch (_) {} });
   }
 
-  root.NuevoAmanecerCashHistory = Object.freeze({ summarize: summarize, render: render, rememberCashier: rememberCashier, cashierMap: cashierMap, lima: lima, ensureTab: ensureTab });
+  root.NuevoAmanecerCashHistory = Object.freeze({ summarize: summarize, openSessionMethods: openSessionMethods, decorateClosing: decorateClosing, render: render, rememberCashier: rememberCashier, cashierMap: cashierMap, lima: lima, ensureTab: ensureTab });
 })(globalThis);
