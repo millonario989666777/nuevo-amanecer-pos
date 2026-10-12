@@ -44,7 +44,22 @@
     // Credits of sales still in the local outbox (not yet in `creditos`).
     try{const p=root.NuevoAmanecerCanonicalSaleIntegration?.lastProjection?.();return(Array.isArray(p?.credits)?p.credits:[]).filter(cr=>cr&&(cr.status==='PENDING_SYNC'||cr.source==='CANONICAL_OUTBOX'));}catch(_){return[];}
   }
-  function nowLabel(){const l=new Date(Date.now()-5*60*60*1000),p=v=>String(v).padStart(2,'0');return l.getUTCFullYear()+'-'+p(l.getUTCMonth()+1)+'-'+p(l.getUTCDate())+' '+p(l.getUTCHours())+':'+p(l.getUTCMinutes());}
+  // "2026-10-11  8:33 p.m." in America/Lima (UTC-5, no DST): 12-hour clock,
+  // hour without leading zero but space-padded to 2 so the minutes line up.
+  function nowLabel(now=Date.now()){const l=new Date(now-5*60*60*1000),p=v=>String(v).padStart(2,'0'),h24=l.getUTCHours(),h12=h24%12||12;return l.getUTCFullYear()+'-'+p(l.getUTCMonth()+1)+'-'+p(l.getUTCDate())+' '+String(h12).padStart(2,' ')+':'+p(l.getUTCMinutes())+' '+(h24<12?'a.m.':'p.m.');}
+  const DEFAULT_PLACE='PUERTO SUNGARO';
+  function plainUpper(value){return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,'').replace(/\s+/g,' ').trim().toUpperCase();}
+  // Place label from the store settings: an explicit city/locality field if
+  // present, else the first address segment that is not a street (no digits),
+  // e.g. "Puerto Súngaro, Huánuco" -> "PUERTO SUNGARO".
+  function placeLabel(){
+    let b=null;try{if(typeof _naGetBusiness==='function')b=_naGetBusiness();}catch(_){}
+    if(!b){const c=config();b=c.business||null;}
+    if(!b)return DEFAULT_PLACE;
+    for(const key of ['ciudad','localidad','distrito','city']){const v=plainUpper(b[key]);if(v)return v;}
+    const parts=String(b.direccion||'').split(/[,\n|]/).map(plainUpper).filter(Boolean);
+    return parts.find(part=>!/\d/.test(part))||DEFAULT_PLACE;
+  }
   function accountSummary(data,sale,cr){
     const customer=data.customer||{};
     const isCredit=data.kind==='credit'||sale.metodo==='credito'||sale.metodoPago==='credito';
@@ -80,12 +95,12 @@
     let line=null,available=null;
     const record=customers().find(c=>String(c.id)===customerId)||customer;
     if(record.lineaCreditoManualActiva===true&&known(record.lineaCreditoManual)&&Number(record.lineaCreditoManual)>0){line=toCents(record.lineaCreditoManual);available=Math.max(0,line-total);}
-    return{customerId,kind:data.kind==='credit'?'credit':'sale',previousCents:previous,currentCents:current,totalCents:total,openCount,pendingOthers,thisPending,lineCents:line,availableCents:available,asOf:nowLabel()};
+    return{customerId,kind:data.kind==='credit'?'credit':'sale',previousCents:previous,currentCents:current,totalCents:total,openCount,pendingOthers,thisPending,lineCents:line,availableCents:available,asOf:nowLabel(),place:placeLabel()};
   }
   function accountLines(summary,width){
     const out=['-'.repeat(width),'ESTADO DE CUENTA DEL CLIENTE'];
     const field=(label,value)=>{const text=label+': '+value;for(let start=0;start<text.length;start+=width)out.push(text.slice(start,start+width));};
-    if(summary.asOf)field('Al',summary.asOf+' (Lima)');
+    if(summary.asOf)field('Al',summary.asOf+' ('+(summary.place||DEFAULT_PLACE)+')');
     field('Deuda anterior',centsMoney(summary.previousCents));
     field(summary.kind==='credit'?'Este crédito':'Esta venta',centsMoney(summary.currentCents));
     field('Deuda total',centsMoney(summary.totalCents));
@@ -285,7 +300,7 @@
         const credit=credits().find(cr=>creditSaleId(cr)===String(v.id))||{};
         const summary=accountSummary({kind:'sale',sale:v,credit,customer:customerFor(v.clienteId??v.customer_id??v.cliente?.id)||{},pendingSync:String(v.status||'')==='PENDING_SYNC'},v,credit);
         if(!summary)return built;
-        const width=built.width||42,ascii=typeof root._naTicketAscii==='function'?root._naTicketAscii:(x=>x);
+        const width=built.width||42,ascii=line=>String(line).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[¡]/g,'!').replace(/[¿]/g,'?').replace(/[^\x20-\x7E]/g,'').replace(/\s+$/,'');
         const lines=built.lines.concat(accountLines(summary,width).map(line=>ascii(line)));
         return{...built,lines,text:lines.join('\n')};
       }catch(error){root.console?.warn?.('[Ticket estado de cuenta]',error.message);return built;}
@@ -293,5 +308,5 @@
     wrapped._naAccountSummary=true;root._naBuildThermalTicket=wrapped;return true;
   }
   installPrintedAccountSummary();
-  root.NAReceiptShare=Object.freeze({accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
+  root.NAReceiptShare=Object.freeze({formatAsOf:nowLabel,placeLabel,accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
 })(globalThis);

@@ -48,7 +48,7 @@ test('fresh credit sale pending sync: shows previous debt + this sale + total, l
   assert.match(b, /Línea de crédito: S\/ 1500\.00/);
   assert.match(b, /Línea disponible: S\/ 146\.10/);
   assert.match(flat(b), /\(incluye esta venta, pendiente de sincronizar\)/);
-  assert.match(b, /Al: \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(Lima\)/);
+  assert.match(b, /^Al: \d{4}-\d{2}-\d{2} [ 1]\d:\d{2} [ap]\.m\. \(PUERTO SUNGARO\)$/m);
   assert.ok(r.lines.every(l => l.length <= r.width), 'no line exceeds ticket width');
 });
 
@@ -124,4 +124,34 @@ test('printed ticket (Ver ticket / imprimir / ESC-POS) gets the same block once,
   assert.equal(JSON.stringify(credits), before);
   // Wrapper is idempotent.
   assert.equal(ctx.NAReceiptShare.installPrintedAccountSummary(), false);
+});
+
+test('"Al:" line: Lima date, 12-hour a.m./p.m. without leading zero, store place label', () => {
+  const ctx = realTicket({ _naGetBusiness: () => ({ nombre: 'Multiservicios Nuevo Amanecer', direccion: 'Puerto Súngaro, Huánuco', cajero: 'Frank' }) });
+  const f = ctx.NAReceiptShare.formatAsOf;
+  assert.equal(f(Date.parse('2026-10-12T01:33:00Z')), '2026-10-11  8:33 p.m.');
+  assert.equal(f(Date.parse('2026-10-11T15:05:00Z')), '2026-10-11 10:05 a.m.');
+  assert.equal(f(Date.parse('2026-10-11T17:00:00Z')), '2026-10-11 12:00 p.m.');
+  assert.equal(f(Date.parse('2026-10-11T05:07:00Z')), '2026-10-11 12:07 a.m.');
+  assert.equal(f(Date.parse('2026-10-11T04:59:00Z')), '2026-10-10 11:59 p.m.');
+  assert.equal(ctx.NAReceiptShare.placeLabel(), 'PUERTO SUNGARO');
+  assert.equal(realTicket({ _naGetBusiness: () => ({ direccion: 'Jr. Lima 123, Tingo María, Huánuco' }) }).NAReceiptShare.placeLabel(), 'TINGO MARIA');
+  assert.equal(realTicket({ _naGetBusiness: () => ({ ciudad: 'Pucallpa', direccion: 'Puerto Súngaro' }) }).NAReceiptShare.placeLabel(), 'PUCALLPA');
+  assert.equal(realTicket({ _naGetBusiness: () => ({ direccion: '' }) }).NAReceiptShare.placeLabel(), 'PUERTO SUNGARO');
+  assert.equal(realTicket({ _naGetBusiness: () => { throw new Error('x'); } }).NAReceiptShare.placeLabel(), 'PUERTO SUNGARO');
+});
+
+test('shared and printed tickets carry the exact same "Al:" text (printed keeps the two spaces)', () => {
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-10-12T01:33:00Z');
+  try {
+    const credits = previousCredits().concat([{ id: 'CR-94', cliId: 'C-DALILA', ventaId: 'V-094', monto: 102.5, pagado: 0, saldo: 102.5 }]);
+    const ctx = realTicket({ Date, clientes: [DALILA], creditos: credits, _naGetBusiness: () => ({ nombre: 'Nuevo Amanecer', direccion: 'Puerto Súngaro, Huánuco', cajero: 'Frank' }) });
+    const expected = 'Al: 2026-10-11  8:33 p.m. (PUERTO SUNGARO)';
+    const shared = ctx.NAReceiptShare.build({ kind: 'sale', sale: V094, credit: credits.at(-1), customer: DALILA });
+    assert.ok(shared.lines.includes(expected), shared.text);
+    const printed = ctx._naBuildThermalTicket(V094, false);
+    assert.ok(printed.lines.includes(expected), printed.text);
+    assert.equal(expected.length, 42, 'fits an 80 mm (42 col) ticket');
+  } finally { Date.now = realNow; }
 });
