@@ -67,6 +67,12 @@ export default {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
         return await activateSession(request, env);
       }
+      // Lista de anulaciones por /auth/ (el sitio web sirve GET /commands/* como archivo estático).
+      if (url.pathname === '/auth/sale-annulments' && request.method === 'GET') {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        return await listSaleAnnulments(env, json);
+      }
       if (ROLE_PATHS.has(url.pathname)) {
         return cors(await handleRoles(request, url, env, { json, authorizeSession, getDatabase }));
       }

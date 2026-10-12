@@ -23,7 +23,7 @@
     var r = roles(); if (!cloud() || !r || state.busy || root.navigator.onLine === false) return;
     state.busy = true;
     try {
-      var out = await r.api('/commands/sale.annul');
+      var out = await r.api('/auth/sale-annulments');
       var next = {}; (out.annulments || []).forEach(function (a) { next[String(a.sale_id)] = { status: a.status, reason: a.reason }; });
       state.map = next; save(); mark(); rerender();
     } catch (_) {} finally { state.busy = false; }

@@ -66,7 +66,7 @@ test('cash sale: stock and cash return exactly once; retry is idempotent; anothe
   assert.deepEqual([other.status, other.body.error], [409, 'already_annulled']);
   assert.ok(Math.abs(stock(f) - (q0 + 0.1)) < 1e-9);
   assert.equal(f.sql('SELECT COUNT(*) n FROM sales WHERE sale_id=?', 'sale-a').n, 1, 'sale is never deleted');
-  const list = await call(f, '/commands/sale.annul', 'owner-token');
+  const list = await call(f, '/auth/sale-annulments', 'owner-token');
   assert.deepEqual(list.body.annulments.map(a => [a.sale_id, a.status]), [['sale-a', 'anulada']]);
 });
 
