@@ -154,5 +154,5 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 /* Ítem 3: Yape, Plin y Transferencia en una fila */
 #mDigitalChannels.digital-channel-list{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
 
-/* Historial (Etapa 2): las tarjetas fuera de pantalla no se pintan ni se maquetan (scroll fluido con cientos de ventas). */
+/* Historial (Etapa 2): cada tanda de tarjetas es un bloque contenido; agregar una tanda no recalcula ni repinta las anteriores. */
 #ventasContent .v-list-wrap>.v-chunk{contain:layout style paint}
