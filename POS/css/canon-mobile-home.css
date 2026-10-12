@@ -207,7 +207,7 @@
 
 /* Etapa 2: tablet (701-1099px) docks VENTA ACTUAL as a column so it never covers product cards. */
 @media (min-width:701px) and (max-width:1099px){
-body:not(.na-pos-phone-device) #pagePOS>.pos-body{display:grid;grid-template-columns:96px minmax(0,1fr) clamp(280px,36vw,360px)}
+body:not(.na-pos-phone-device) #pagePOS>.pos-body{display:grid;grid-template-columns:96px minmax(0,1fr) clamp(260px,34vw,360px)}
 body:not(.na-pos-phone-device) #pagePOS .sidebar{width:auto;flex:none}
 body:not(.na-pos-phone-device) #pagePOS .products-area{grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
 body:not(.na-pos-phone-device) #pagePOS .cart-drawer,body:not(.na-pos-phone-device) #pagePOS .cart-drawer.open{position:relative;top:auto;right:auto!important;bottom:auto;width:auto;height:100%;z-index:2;box-shadow:none;transition:none}
