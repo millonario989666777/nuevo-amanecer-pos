@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 1cb914f (#577): server sale annul (POST /commands/sale.annul, owner PIN approval bound to operation_id, stock and cash returned once). Uses table from additive migration 0026, applied in run 38310367065 after a verified R2 backup. No schema changes in this deploy, no live sale. Rollback to 6fb215f (current live Worker source).",
-  "target_commit": "1cb914f1fb08086499514e4065faed205b54b49c",
-  "rollback_ref": "6fb215fdcaeff1ff960b5632ed94d2bd794aa55f",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of cc18286 (#581): adds GET /auth/sale-annulments (read-only list) next to the sale annul from #577. No schema changes, no live sale. Rollback to 1cb914f (current live Worker source).",
+  "target_commit": "cc18286b57094474090ea379926999198a785f32",
+  "rollback_ref": "1cb914f1fb08086499514e4065faed205b54b49c",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 16,
-  "previous_run_id": 38308829129,
+  "attempt": 17,
+  "previous_run_id": 38310434213,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "G4_SERVER_SALE_ANNUL"
+  "optimization": "G4_SALE_ANNUL_LIST"
 }
