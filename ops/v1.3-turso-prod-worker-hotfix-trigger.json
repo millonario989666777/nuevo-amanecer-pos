@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized in 1:1 (2026-10-11 23:29 UTC) merging #525 and publishing Worker and app to CANON: canonical collection reads accept 250-row pages and status advertises page_limit_max (same Turso subrequests per request). Turso-only Worker redeploy, no schema changes, no live sale. Rollback to c979d64 (current live Worker source).",
-  "target_commit": "a36551e408e27de310b1cd6a787cb68fcca6a6fe",
-  "rollback_ref": "c979d644b0fb5c7b0ebfc8b0d02024a6c183b4aa",
+  "authorization_context": "Owner authorized in 1:1 (2026-10-12 ~01:15 UTC, 'SI NECECITAS AUTORIZACION ESTAS AUTORIZADO') publishing the ready fixes #528 (creditos/abonos) and #529 (inventario/clientes) to CANON. Turso-only Worker redeploy of f9514c4; the Worker is backward compatible without migrations 0021/0022 (features gate on sqlite_master). No schema changes in this run, no live sale. Rollback to a36551e (current live Worker source, version 29d156a5).",
+  "target_commit": "f9514c4532592a9bcd234dba39940924941329d3",
+  "rollback_ref": "a36551e408e27de310b1cd6a787cb68fcca6a6fe",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 9,
-  "previous_run_id": 38169603181,
-  "previous_run_outcome": "SUCCESS",
-  "optimization": "CANONICAL_READ_PAGE_LIMIT_250_FAST_RELOAD"
+  "attempt": 10,
+  "previous_run_id": 38184849932,
+  "previous_run_outcome": "DEPLOYED_THEN_CANCELLED (version 29d156a5 live)",
+  "optimization": "CANON_FIXES_528_529"
 }
