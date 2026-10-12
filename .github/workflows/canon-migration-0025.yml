@@ -1,0 +1,131 @@
+name: CANON Migration 0025
+
+on:
+  push:
+    branches:
+      - feature/v1.3-mobile-cloud
+    paths:
+      - "ops/canon-migration-0025.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuevo-amanecer-production-change
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
+      TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
+      R2_BUCKET: nuevo-amanecer-prod-v2-backups
+      PROD_WORKER_URL: https://nuevo-amanecer-pos-prod.nuevo-amanecer-pos.workers.dev
+      POS_WEB_URL: https://nuevo-amanecer-pos-web.nuevo-amanecer-pos.workers.dev
+
+    steps:
+      - name: Require existing deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | grep -Eq '^[a-f0-9]{32}$'
+          test -n "$TURSO_PROD_DATABASE_URL"
+          test "${#TURSO_PROD_AUTH_TOKEN}" -ge 32
+          echo "::add-mask::$TURSO_PROD_DATABASE_URL"
+          echo "::add-mask::$TURSO_PROD_AUTH_TOKEN"
+
+      - name: Checkout exact authorized HEAD
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate authorized scope and current CANON head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "feature/v1.3-mobile-cloud"
+          git fetch origin feature/v1.3-mobile-cloud
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/v1.3-mobile-cloud)"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const t=JSON.parse(readFileSync('ops/canon-migration-0025.json','utf8'));
+          if(t.authorized_by!=='owner'||t.authorized!==true||t.provider!=='turso'||t.action!=='apply-canon-migration-0025'||t.destructive!==false)throw new Error('invalid migration scope');
+          if(JSON.stringify(t.migrations)!==JSON.stringify(['0025']))throw new Error('migrations must be exactly ["0025"]');
+          if(!/^[a-f0-9]{40}$/.test(t.feature_commit))throw new Error('feature commit missing');
+          execFileSync('git',['merge-base','--is-ancestor',t.feature_commit,'HEAD']);
+          NODE
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+
+      - name: Install pinned Cloudflare tooling
+        working-directory: tools/cloudflare-lab
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify migration contracts before remote reads or writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/cloud-sync/canon-migration-0025.test.mjs tests/cloud-sync/pos-roles.test.mjs tests/cloud-sync/canonical-revision-coverage.test.mjs tools/cloudflare-lab/test/turso-d1-adapter.test.mjs
+          cd tools/cloudflare-lab
+          npx wrangler deploy --dry-run --config ../cloudflare-prod/wrangler.turso-prod.jsonc
+
+      - name: Read-only preflight 0025 (schema drift)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/cloudflare-prod/scripts/turso-pos-reviews-maintenance.mjs preflight | tee /tmp/preflight-0025.log
+          REPORT="$(grep -F '"POS_REVIEWS_PREFLIGHT"' /tmp/preflight-0025.log | tail -1)"
+          test -n "$REPORT"
+          echo "PREFLIGHT_0025=$REPORT" >> "$GITHUB_ENV"
+
+      - name: Create consistent encrypted logical Turso backup
+        run: node tools/cloudflare-prod/scripts/turso-pos-reviews-maintenance.mjs backup
+
+      - name: Store and verify backup in private remote R2
+        working-directory: tools/cloudflare-lab
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="canon-migration-0025/$(date -u +%Y-%m-%dT%H-%M-%SZ)-$GITHUB_SHA.json"
+          npx wrangler r2 object put "$R2_BUCKET/$KEY" --remote --file=/tmp/turso-migration-0025-backup.json
+          npx wrangler r2 object get "$R2_BUCKET/$KEY" --remote --file=/tmp/turso-migration-0025-backup-check.json
+          test "$(sha256sum /tmp/turso-migration-0025-backup.json | awk '{print $1}')" = "$(sha256sum /tmp/turso-migration-0025-backup-check.json | awk '{print $1}')"
+          echo "MIGRATION_BACKUP_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "MIGRATION_BACKUP_SHA256=$(sha256sum /tmp/turso-migration-0025-backup.json | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Apply additive migration 0025 to Turso authority
+        run: node tools/cloudflare-prod/scripts/turso-pos-reviews-maintenance.mjs migrate
+
+      - name: Verify schema and production health after migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/cloudflare-prod/scripts/turso-pos-reviews-maintenance.mjs verify
+          node tools/cloudflare-prod/scripts/turso-pos-roles-maintenance.mjs verify
+          node tools/cloudflare-prod/scripts/turso-customer-identity-maintenance.mjs verify
+          node tools/cloudflare-prod/scripts/turso-payment-references-maintenance.mjs verify
+          node tools/cloudflare-prod/scripts/turso-product-revisions-maintenance.mjs verify
+          curl --fail --silent --show-error --retry 10 --retry-delay 2 --max-time 15 "$PROD_WORKER_URL/health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.ok!==true||x.service!=="nuevo-amanecer-pos-prod"||x.environment!=="production")process.exit(1)})'
+          curl --fail --silent --show-error --retry 10 --retry-delay 2 --max-time 15 "$POS_WEB_URL/health" | grep -Fq '"ok":true'
+
+      - name: Migration summary
+        shell: bash
+        run: |
+          {
+            echo "## CANON migration 0025"
+            echo "- Status: APPLIED_AND_VERIFIED"
+            echo "- Preflight 0025: $PREFLIGHT_0025"
+            echo "- Backup: $MIGRATION_BACKUP_KEY (sha256 $MIGRATION_BACKUP_SHA256)"
+            echo "- Worker / POS deploy in this run: none"
+            echo "- Existing rows changed: none (additive DDL only)"
+          } >> "$GITHUB_STEP_SUMMARY"
