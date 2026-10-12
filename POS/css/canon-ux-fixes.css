@@ -171,3 +171,8 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 .na-ds-actions{display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
 .na-ds-actions button{min-height:48px;border:0;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer}
 .na-ds-cancel{background:#e2e8f0;color:#0f172a}.na-ds-ok{background:#15803d;color:#fff}.na-ds-ok:disabled{opacity:.45;cursor:not-allowed}
+
+/* Ítem 10: nota de venta en Pagar */
+.na-sale-note{display:flex;flex-direction:column;gap:4px;margin:8px 0}
+.na-sale-note label{font:800 12px 'Nunito',sans-serif;color:#475569}
+.na-sale-note input{height:40px;border:1px solid #cbd5e1;border-radius:10px;padding:0 10px;font:600 14px 'Nunito',sans-serif;box-sizing:border-box;width:100%}

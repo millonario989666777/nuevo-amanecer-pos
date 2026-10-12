@@ -147,6 +147,7 @@ function _naSecRenderSaleCard(list,sale,index){
   _naSecSaleAudit(audit,'Cliente',sale.clienteNombre||'Consumidor final');
   _naSecSaleAudit(audit,'Fecha y hora',`${sale.fecha||''} · ${sale.hora24||sale.hora||''}`);
   _naSecSaleAudit(audit,'Operación',sale.paymentRef||sale.operation||'-');
+  if(sale.nota)_naSecSaleAudit(audit,'Nota',String(sale.nota));
   const units=(Array.isArray(sale.items)?sale.items:[]).reduce((sum,item)=>sum+_naUnitsSold(item),0);
   _naSecSaleAudit(audit,'Líneas / unidades',`${_naInt(sale.cantidadLineas,(sale.items||[]).length)} / ${_naNumber(sale.unidadesFisicas,units)}`);
   _naSecSaleAudit(audit,'Método',method.label);
