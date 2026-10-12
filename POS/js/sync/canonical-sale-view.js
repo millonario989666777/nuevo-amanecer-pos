@@ -240,12 +240,18 @@
       var pendingOperations = new Set((outboxSnapshot.intents || []).map(function (intent) { return String(intent && intent.operation_id || ''); }).filter(Boolean));
       applyConfirmedProductProjection(projected, pendingOperations);
       var visualProducts = copy(legacy.products);
+      // First projected product per id (same result as a linear find, without O(n²) at ~500 products).
+      var projectedById = new Map();
+      projected.products.forEach(function (candidate) {
+        if (!candidate) return;
+        [candidate.product_id, candidate.id].forEach(function (key) {
+          if (key !== undefined && key !== null && !projectedById.has(String(key))) projectedById.set(String(key), candidate);
+        });
+      });
       visualProducts.forEach(function (product) {
         if (!product) return;
         var id = product.product_id !== undefined ? product.product_id : product.id;
-        var match = projected.products.find(function (candidate) {
-          return candidate && (sameId(id, candidate.product_id) || sameId(id, candidate.id));
-        });
+        var match = id !== undefined && id !== null ? projectedById.get(String(id)) : undefined;
         if (match && typeof match.projected_stock === 'number' && Number.isFinite(match.projected_stock)) {
           var remoteStock = Number(product.stock);
           product._canonicalRemoteStock = remoteStock;
@@ -284,7 +290,11 @@
       renderSalesNow();
     });
     root.addEventListener('na:canonical-sale-projection', rebuild);
-    root.addEventListener('na:canonical-updated', rebuild);
+    root.addEventListener('na:canonical-updated', function (event) {
+      // Cached rows re-confirmed unchanged by the authority: the view built from them stands.
+      if (event && event.detail && event.detail.unchanged === true && last) return;
+      rebuild();
+    });
     root.addEventListener('na:sales-rendered', function () { if (last) pendingSales(last); });
     root.addEventListener('na:clients-rendered', function () { if (last) pendingCredits(last); });
     root.addEventListener('storage', function (event) {

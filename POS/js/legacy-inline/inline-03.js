@@ -762,8 +762,9 @@ window.addEventListener('na:canonical-connected',()=>{
 });
 let _naCanonicalLoadError=null;
 function _naEmptyCanonicalCashState(){return{abierta:false,fondo:0,cajero:'',cajeroNombre:'',cajeroId:null,hora:'',hora24:'',fechaApertura:'',cerrada:false,horaCierre:null,horaCierre24:null,sessionId:null,contado:null,esperado:null,diferencia:null,canonical:true};}
-function _naClearCanonicalOperationalView(){ventas=[];gastos=[];cajMovs=[];inventoryMovements=[];cajEstado=_naEmptyCanonicalCashState();}
-function _naClearCanonicalLegacyView(){
+var _naCanonicalViewApplied=false;
+function _naClearCanonicalOperationalView(){_naCanonicalViewApplied=false;ventas=[];gastos=[];cajMovs=[];inventoryMovements=[];cajEstado=_naEmptyCanonicalCashState();}
+function _naClearCanonicalLegacyView(){_naCanonicalViewApplied=false;
   productos=[];clientes=[];creditos=[];_naClearCanonicalOperationalView();
 }
 function _naApplyCanonicalLegacyView(canonical){
@@ -796,13 +797,15 @@ window.addEventListener('na:canonical-updated',()=>{
     return;
   }
   try{
-    const canonical=NuevoAmanecerCanonical.legacySnapshot();
-    _naApplyCanonicalLegacyView(canonical);_naCanonicalLoadError=null;
-    renderCategorySelects();_naSchedulePageRender(_naActivePageId());
+    // Cached rows re-confirmed by the authority (only read-only -> ACTIVE changed): keep the view already built.
+    const reuse=state.unchanged===true&&_naCanonicalViewApplied&&!_naCanonicalLoadError;
+    const canonical=reuse?null:NuevoAmanecerCanonical.legacySnapshot();
+    if(!reuse){_naApplyCanonicalLegacyView(canonical);_naCanonicalViewApplied=true;renderCategorySelects();}
+    _naCanonicalLoadError=null;_naSchedulePageRender(_naActivePageId());
     const connectionReady=state.validation==='current',connectionSyncing=state.validation==='validating';
     _naSetHeaderConnectionState(connectionReady?'connected':connectionSyncing?'update':'disconnected',connectionReady?'Conectado':connectionSyncing?'Sincronizando CANON…':'Desconectado');
     if(saveStatus)saveStatus.textContent='Persistencia canónica protegida';
-    if(badge){badge.hidden=false;badge.textContent=state.validation==='offline'?'Cache canónico · sin conexión':'Canónico · '+String(canonical.customers.length)+' clientes';}
+    if(badge){badge.hidden=false;badge.textContent=state.validation==='offline'?'Cache canónico · sin conexión':'Canónico · '+String(reuse?clientes.length:canonical.customers.length)+' clientes';}
   }catch(error){
     _naCanonicalTransportConnected=false;
     _naCanonicalLoadError=error;_naClearCanonicalLegacyView();
@@ -813,6 +816,8 @@ window.addEventListener('na:canonical-updated',()=>{
 });
 window.addEventListener('storage',event=>{if(typeof NuevoAmanecerCanonical!=='undefined'&&NuevoAmanecerCanonical.enabled()&&(!event.key||event.key==='na_canonical_binding'||event.key==='na_cloud_sync_credentials')){_naCanonicalTransportConnected=false;_naCanonicalLoadError=new Error('STALE_AUTHORITY_BINDING');_naSchedulePageRender(_naActivePageId());_naSetHeaderConnectionState('disconnected','Desconectado');}});
 document.addEventListener('DOMContentLoaded',async()=>{
+  // Start the canonical status/credit-accounts reads now; startPOS consumes them under the usual fences.
+  try{if(typeof NuevoAmanecerCanonical!=='undefined'&&NuevoAmanecerCanonical.enabled()&&typeof NuevoAmanecerCanonical.warm==='function')NuevoAmanecerCanonical.warm();}catch(_){}
   document.getElementById('fechaHoy').textContent=new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});document.getElementById('backBtn').style.display='none';
   await loadAllData();
   const canonicalEnabled=typeof NuevoAmanecerCanonical!=='undefined'&&NuevoAmanecerCanonical.enabled();
