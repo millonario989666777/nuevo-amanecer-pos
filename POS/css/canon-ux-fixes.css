@@ -124,3 +124,16 @@
   body.module-mobile-scroll #pageClientes>.page-chrome .ss-num{font-size:13px!important}
   body.module-mobile-scroll #pageClientes>.page-chrome .ss-lbl{font-size:8px!important;margin-top:0!important}
 }
+/* Inventario en tablet: columnas fijas para que las filas que llegan al deslizar no cambien
+   el ancho de las columnas (CLS 0,17 -> ~0 en tablet vertical). */
+@media(min-width:701px) and (max-width:1024px){
+  #pageInventario .table-card>table{table-layout:fixed;width:100%}
+  #pageInventario .table-card>table th:nth-child(1){width:33%}
+  #pageInventario .table-card>table th:nth-child(2){width:15%}
+  #pageInventario .table-card>table th:nth-child(3){width:12%}
+  #pageInventario .table-card>table th:nth-child(4){width:13%}
+  #pageInventario .table-card>table th:nth-child(5){width:8%}
+  #pageInventario .table-card>table th:nth-child(6){width:19%}
+}
+/* Stock bajo: misma familia naranja que el stock normal, un tono ámbar más oscuro + ⚠ (pedido del dueño). */
+body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!important}

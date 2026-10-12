@@ -35,9 +35,18 @@ html.na-ap-custom #btnPagar,html.na-ap-custom #btnRapido,html.na-ap-custom .pm-b
 @media(max-width:767px){
   #pageConfig .cfg-menu-toggle{display:none!important}
   #pageConfig.na-cfg-detail .na-cfg-back{display:inline-flex;align-items:center}
-  #pageConfig.na-cfg-list .cfg-content{display:none!important}
+  #pageConfig.na-cfg-list .cfg-content,html.config-page-scroll #pageConfig.na-cfg-list .cfg-content{display:none!important}
   #pageConfig.na-cfg-list .cfg-sidebar{position:static!important;transform:none!important;visibility:visible!important;display:block!important;width:100%!important;max-width:none!important;height:auto!important;box-shadow:none!important;border:0!important;padding:8px 12px!important;background:transparent!important}
   #pageConfig.na-cfg-list .cfg-mobile-overlay{display:none!important}
   #pageConfig.na-cfg-list .cfg-cat-btn{width:100%;min-height:60px;margin-bottom:6px;border:1px solid var(--border,#e5e7eb)!important;border-radius:12px!important;background:#fff!important}
   #pageConfig.na-cfg-detail .cfg-sidebar{display:none!important}
+}
+/* Tablet vertical (768-960): lista de secciones fija a la izquierda + formulario (sin panel deslizable detrás del ☰). */
+@media(min-width:768px) and (max-width:960px){
+  #pageConfig .cfg-menu-toggle,#pageConfig .cfg-mobile-overlay{display:none!important}
+  #pageConfig .cfg-layout,html.config-page-scroll #pageConfig.page .cfg-shell{display:flex!important;flex-direction:row!important;align-items:flex-start}
+  #pageConfig .cfg-sidebar{position:sticky!important;top:0!important;left:auto!important;bottom:auto!important;transform:none!important;width:240px!important;min-width:240px;max-height:calc(100vh - 80px)!important;border:0!important;border-right:1px solid var(--border,#e5e7eb)!important;border-radius:0!important;box-shadow:none!important;z-index:auto!important}
+  #pageConfig .cfg-sidebar-head{display:none}
+  #pageConfig .cfg-content,html.config-page-scroll #pageConfig.page .cfg-content{flex:1 1 auto!important;min-width:0;width:auto!important}
+  #pageConfig.na-cfg-list .cfg-content{display:block!important}
 }

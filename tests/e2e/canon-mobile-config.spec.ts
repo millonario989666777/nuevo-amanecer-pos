@@ -47,3 +47,19 @@ test('appearance is clamped 85-125, saved per device and resettable',async({page
   await page.locator('.na-ap-reset').click();
   expect(await page.evaluate(()=>localStorage.getItem('na_appearance_v1'))).toBeNull();
 });
+
+// Tablet vertical (768-960): la lista de secciones queda fija a la izquierda, sin ☰ deslizable.
+for(const width of [768,820,960])test('tablet portrait fixed section list '+width,async({page})=>{
+  await openConfig(page,width);
+  const sb=await page.locator('#cfgSidebar').boundingBox(),ct=await page.locator('#cfgContent').boundingBox();
+  expect(sb.x).toBeGreaterThanOrEqual(0);expect(ct.x).toBeGreaterThanOrEqual(sb.x+sb.width-1);
+  await expect(page.locator('#pageConfig .cfg-menu-toggle')).toBeHidden();
+  await page.locator('#cfgSidebar [data-cfgcat="apariencia"]').click();
+  await expect(page.locator('#naAppearancePanel')).toBeVisible();
+  await expect(page.locator('#cfgFontSize')).toHaveCount(0);
+});
+
+test('phone entry shows only the sections list',async({page})=>{
+  await openConfig(page,360);
+  await expect(page.locator('#cfgContent')).toBeHidden();
+});
