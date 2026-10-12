@@ -233,13 +233,17 @@ test('phone checkout groups digital payments while retaining the selected channe
  await expect(page.locator('#mCobro .pay-methods [data-method="transferencia"]')).toHaveCount(0);
  await page.locator('#mCobro .pay-methods [data-digital-group]').click();
  await expect(page.locator('#mDigitalSection')).toBeVisible();
- await expect(page.locator('#mDigitalChannels')).toContainText('Yape / Plin');
+ // Ítem 3: Yape y Plin son métodos separados.
+ await expect(page.locator('#mDigitalChannels')).toContainText('Yape');
+ await expect(page.locator('#mDigitalChannels')).toContainText('Plin');
  await expect(page.locator('#mDigitalChannels')).toContainText('Transferencia');
  await page.locator('#mDigitalChannels [data-digital-method="transferencia"]').click();
  expect(await page.evaluate(()=>posPayM)).toBe('transferencia');
  await expect(page.locator('#mCobro .pay-methods [data-digital-group]')).toHaveClass(/active/);
  await page.locator('#mDigitalChannels [data-digital-method="yape"]').click();
  expect(await page.evaluate(()=>posPayM)).toBe('yape');
+ await page.locator('#mDigitalChannels [data-digital-method="plin"]').click();
+ expect(await page.evaluate(()=>posPayM)).toBe('plin');
 });
 
 for(const width of [320,360,390,430]) test(`phone checkout reference layout ${width}: three method cards and cash change are visible`,async({page})=>{
