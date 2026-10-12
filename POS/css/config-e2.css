@@ -1,0 +1,43 @@
+/* Etapa 2: Apariencia por dispositivo (85%-125%) y Configuración tipo CasaMarket. */
+html.na-ap-custom #pagePOS .products-area{grid-template-columns:repeat(auto-fill,minmax(calc(148px * var(--na-ap-cards,1)),1fr))!important}
+@media(max-width:700px){
+  html.na-ap-custom body.na-pos-phone-device #pagePOS.phone-sale #posPhoneCatalog #posArea{grid-template-columns:repeat(auto-fill,minmax(calc(104px * var(--na-ap-cards,1)),1fr))!important}
+}
+html.na-ap-custom #pagePOS .cart-head-title{font-size:calc(16px * var(--na-ap-cart-title,1))!important}
+html.na-ap-custom .p-name,html.na-ap-custom .ci-name,html.na-ap-custom .v-items-txt,html.na-ap-custom .top-mod-title,
+html.na-ap-custom td,html.na-ap-custom .cli-name,html.na-ap-custom .mov-desc{font-size:calc(13px * var(--na-ap-text,1))!important}
+html.na-ap-custom #btnPagar,html.na-ap-custom #btnRapido,html.na-ap-custom .pm-btn,html.na-ap-custom #mBtnConf{min-height:calc(46px * var(--na-ap-buttons,1))!important;font-size:calc(16px * var(--na-ap-buttons,1))!important}
+
+.na-ap-panel{grid-column:1/-1}
+.na-ap-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb);flex-wrap:wrap}
+.na-ap-row strong{display:block;font-size:14px}.na-ap-row small{display:block;font-size:12px;color:var(--slate,#64748b)}
+.na-ap-steps{display:flex;gap:4px;flex-wrap:wrap}
+.na-ap-step{min-height:40px;padding:6px 10px;border:1px solid var(--border,#cbd5e1);border-radius:8px;background:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer;color:var(--dark,#0f172a)}
+.na-ap-step.active{background:var(--teal,#00a99d);border-color:var(--teal,#00a99d);color:#fff}
+.na-ap-step:disabled,.na-ap-reset:disabled{opacity:.5;cursor:not-allowed}
+.na-ap-note{margin:8px 0;padding:8px 10px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700}
+.na-ap-preview{margin-top:12px;padding:12px;border:1px dashed var(--border,#cbd5e1);border-radius:12px}
+.na-ap-pv-title{font-weight:800;font-size:calc(16px * var(--na-ap-cart-title,1))}
+.na-ap-pv-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(80px * var(--na-ap-cards,1)),1fr));gap:6px;margin:8px 0}
+.na-ap-pv-card{border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:calc(14px * var(--na-ap-cards,1)) 4px;text-align:center;font-size:calc(12px * var(--na-ap-text,1))}
+.na-ap-pv-text{font-weight:800;font-size:calc(14px * var(--na-ap-text,1))}
+.na-ap-pv-btn{margin-top:8px;width:100%;min-height:calc(46px * var(--na-ap-buttons,1));font-size:calc(16px * var(--na-ap-buttons,1));border:0;border-radius:10px;background:var(--orange,#f97316);color:#fff;font-weight:800}
+.na-ap-actions{margin-top:10px;display:flex;justify-content:flex-end}
+.na-ap-reset{min-height:40px;padding:6px 14px;border:1px solid var(--border,#cbd5e1);border-radius:8px;background:#fff;font:inherit;font-weight:800;cursor:pointer}
+.na-igv-switch{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;min-height:44px}
+.na-igv-switch input{width:20px;height:20px}
+.na-cfg-save{display:flex;justify-content:flex-end;padding:14px 0 6px}
+.na-cfg-save-btn{min-height:44px;padding:8px 22px;border:0;border-radius:10px;background:var(--teal,#00a99d);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+/* Guardar va abajo en cada sección; se quita el "Guardar todo" de arriba. */
+#pageConfig .cfg-topbar-simple>.top-btn-nuevo{display:none!important}
+.na-cfg-back{display:none;min-height:40px;padding:6px 10px;border:0;border-radius:8px;background:var(--teal-light,#e0f7f4);color:var(--teal-dark,#00796b);font:inherit;font-weight:800;cursor:pointer}
+/* Celular y tablet chica: lista de secciones -> pantalla de la sección. */
+@media(max-width:960px){
+  #pageConfig .cfg-menu-toggle{display:none!important}
+  #pageConfig.na-cfg-detail .na-cfg-back{display:inline-flex;align-items:center}
+  #pageConfig.na-cfg-list .cfg-content{display:none!important}
+  #pageConfig.na-cfg-list .cfg-sidebar{position:static!important;transform:none!important;visibility:visible!important;display:block!important;width:100%!important;max-width:none!important;height:auto!important;box-shadow:none!important;border:0!important;padding:8px 12px!important;background:transparent!important}
+  #pageConfig.na-cfg-list .cfg-mobile-overlay{display:none!important}
+  #pageConfig.na-cfg-list .cfg-cat-btn{width:100%;min-height:60px;margin-bottom:6px;border:1px solid var(--border,#e5e7eb)!important;border-radius:12px!important;background:#fff!important}
+  #pageConfig.na-cfg-detail .cfg-sidebar{display:none!important}
+}
