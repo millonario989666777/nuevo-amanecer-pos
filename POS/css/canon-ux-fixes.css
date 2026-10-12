@@ -104,3 +104,23 @@
 #pagePOS .cart-head-title,#pagePOS button,#pagePOS .product-card,#pagePOS .p-stock-badge{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 /* Etapa 2: Caja centrada en tablet y PC, igual que los demás módulos. */
 @media(min-width:701px){#cajContent>*{width:100%;max-width:900px;margin-left:auto!important;margin-right:auto!important;box-sizing:border-box}}
+/* Etapa 2: cabeceras compactas en celular (Inventario y Clientes ocupaban 46-61% de la pantalla). */
+@media(max-width:700px){
+  body.module-mobile-scroll #pageInventario>.page-chrome .top-mod-bar,
+  body.module-mobile-scroll #pageClientes>.page-chrome .top-mod-bar{padding:6px 12px!important;min-height:0!important;gap:8px!important}
+  body.module-mobile-scroll #pageInventario>.page-chrome .top-mod-title,
+  body.module-mobile-scroll #pageClientes>.page-chrome .top-mod-title{font-size:17px!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .top-btn-nuevo{min-height:44px!important;padding:6px 12px!important;font-size:12px!important}
+  body.module-mobile-scroll #pageInventario>.page-chrome .top-btn-nuevo{min-height:36px!important;padding:6px 10px!important;font-size:12px!important}
+  body.module-mobile-scroll #pageInventario .ocr-purchase-status{font-size:11px!important;padding:2px 12px 4px!important;line-height:1.3!important}
+  body.module-mobile-scroll #pageInventario>.page-chrome .filter-bar,
+  body.module-mobile-scroll #pageClientes>.page-chrome .filter-bar{padding:6px 12px!important;gap:6px!important;flex-wrap:nowrap!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .search-box{flex:1 1 auto!important;min-width:0!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .f-select{flex:0 0 112px!important;width:112px!important;min-height:44px!important}
+  body.module-mobile-scroll #pageInventario #ocrPurchaseStatus:not([data-state]),body.module-mobile-scroll #pageInventario #ocrPurchaseStatus[data-state="idle"]{display:none!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .tab{padding:4px 10px!important;font-size:12px!important;min-height:44px!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .stats-strip{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;padding:6px 12px!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .ss{padding:5px 3px!important;min-height:0!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .ss-num{font-size:13px!important}
+  body.module-mobile-scroll #pageClientes>.page-chrome .ss-lbl{font-size:8px!important;margin-top:0!important}
+}

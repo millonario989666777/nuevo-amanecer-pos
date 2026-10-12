@@ -5,12 +5,15 @@ let _naInventoryRowsObserver=null;
 function _naCancelInventoryRows(){if(_naInventoryRowsObserver)_naInventoryRowsObserver.disconnect();_naInventoryRowsObserver=null;}
 function _naRenderInventoryRows(container,items,renderItem){
   _naCancelInventoryRows();let next=0;
+  // Etapa 2: al refrescar la misma pestaña se vuelven a pintar al menos las filas que ya se veían,
+  // así la lista no se acorta y el usuario no pierde su lugar (antes 3524 px -> ~1500 px).
+  const keep=container.__naInvTab===invTab?container.children.length:0;container.__naInvTab=invTab;
   const chunk=()=>{const end=Math.min(items.length,next+24);container.insertAdjacentHTML('beforeend',items.slice(next,end).map(renderItem).join(''));next=end;};
   const renderChunk=callback=>{const withPhotos=()=>window.NuevoAmanecerImageBatch?.withSources?window.NuevoAmanecerImageBatch.withSources(callback):callback();try{return _naWithCategoryCatalog(withPhotos);}finally{if(typeof _naInventoryImageDisplay!=='undefined')_naInventoryImageDisplay.prune();}};
   container.replaceChildren();
   // Search visibility badges are applied synchronously by the existing visibility wrapper.
   if(typeof IntersectionObserver!=='function'||document.getElementById('invSearch')?.value.trim()){renderChunk(()=>{container.innerHTML=items.map(renderItem).join('');});return;}
-  renderChunk(chunk);if(next===items.length)return;
+  renderChunk(()=>{chunk();while(next<Math.min(items.length,keep))chunk();});if(next===items.length)return;
   const tab=invTab,observer=new IntersectionObserver(entries=>{
     if(observer!==_naInventoryRowsObserver||invTab!==tab||!container.isConnected)return;
     if(!entries.some(entry=>entry.isIntersecting))return;observer.disconnect();
