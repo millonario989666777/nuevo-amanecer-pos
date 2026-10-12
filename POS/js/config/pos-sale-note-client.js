@@ -2,10 +2,12 @@
    - Campo "Nota (opcional)" en Pagar. El borrador sobrevive al vaciar el carrito y a recargar; se limpia solo al confirmar una venta.
    - La nota nunca cambia el monto: viaja aparte (POST /auth/sale-notes) después de la venta.
    - Cola local: si no hay internet o la venta aún no llegó al servidor, se reintenta luego (no se pierde).
-   - Se muestra en el Historial (detalle) y en el comprobante. */
+   - Se muestra en el Historial (detalle) y en el comprobante.
+   - Ítem 10b: comentario opcional del abono (llave 'pay:<operation_id>'), y quién atendió cada venta y abono
+     (GET /auth/record-meta: etiqueta del aparato; sin etiqueta = Dueño o Empleado). */
 (function (root) {
   'use strict';
-  var doc = root.document, DRAFT = 'na_sale_note_draft_v1', QUEUE = 'na_sale_note_queue_v1', CACHE = 'na_sale_notes_v1';
+  var doc = root.document, DRAFT = 'na_sale_note_draft_v1', QUEUE = 'na_sale_note_queue_v1', CACHE = 'na_sale_notes_v1', META = 'na_record_meta_v1';
   var busy = false;
   function lsGet(k, d) { try { var v = JSON.parse(root.localStorage.getItem(k)); return v == null ? d : v; } catch (_) { return d; } }
   function lsSet(k, v) { try { root.localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
@@ -29,9 +31,19 @@
     var list = getVentas(); if (!Array.isArray(list)) return;
     var server = lsGet(CACHE, {}), local = {};
     lsGet(QUEUE, []).forEach(function (q) { (q.keys || []).forEach(function (k) { local[k] = q.note; }); });
+    var meta = lsGet(META, { sales: {}, payments: {} });
     list.forEach(function (v) {
-      var ks = keys(v);
-      for (var i = 0; i < ks.length; i++) { var n = server[ks[i]] || local[ks[i]]; if (n) { v.nota = n; return; } }
+      var ks = keys(v), i;
+      for (i = 0; i < ks.length; i++) { var who = meta.sales[ks[i]]; if (who) { v.cajero = v.cajeroNombre = who; break; } }
+      for (i = 0; i < ks.length; i++) { var n = server[ks[i]] || local[ks[i]]; if (n) { v.nota = n; break; } }
+    });
+    var credits; try { credits = creditos; } catch (_) { credits = []; } // eslint-disable-line no-undef
+    (Array.isArray(credits) ? credits : []).forEach(function (cr) {
+      (Array.isArray(cr && cr.pagos) ? cr.pagos : []).forEach(function (p) {
+        var op = String(p.operationId || p.operation_id || p.pagoId || p.id || ''); if (!op) return;
+        var who = meta.payments[op]; if (who) p.cajero = p.cajeroNombre = who;
+        var c = server['pay:' + op] || local['pay:' + op]; if (c) p.comentario = c;
+      });
     });
   }
   async function post(saleId, note) {
@@ -62,10 +74,50 @@
     try {
       var out = await root.NA_ROLES.api('/auth/sale-notes'), next = {};
       (out.notes || []).forEach(function (n) { next[String(n.sale_id)] = n.note; });
-      lsSet(CACHE, next); mark();
+      lsSet(CACHE, next);
+      try {
+        var m = await root.NA_ROLES.api('/auth/record-meta'), meta = { sales: {}, payments: {} };
+        (m.sales || []).forEach(function (r) { meta.sales[String(r.sale_id)] = r.cashier; });
+        (m.payments || []).forEach(function (r) { meta.payments[String(r.operation_id)] = r.cashier; });
+        lsSet(META, meta);
+      } catch (_) {}
+      mark();
     } catch (_) {}
   }
 
+  function cashierLabel() { var r = root.NA_ROLES; if (!r) return ''; return r.label || (r.role === 'empleado' ? 'Empleado' : 'Dueño'); }
+  function ensurePayFields() {
+    var hosts = [];
+    var single = doc.querySelector('#mPagoCred .mbtns'); if (single) hosts.push(single);
+    var batch = doc.getElementById('naV2BatchSubmit'); if (batch) hosts.push(batch);
+    hosts.forEach(function (h) {
+      var parent = h.parentElement; if (!parent || parent.querySelector('.na-pay-note')) return;
+      var box = doc.createElement('div'); box.className = 'na-sale-note na-pay-note';
+      box.innerHTML = '<label>Comentario del abono (opcional)</label><input type="text" maxlength="300" autocomplete="off" placeholder="Ej.: pagó su hija">';
+      parent.insertBefore(box, h);
+    });
+  }
+  // Lo llama share-receipt.js onPayments con los abonos confirmados: guarda el comentario y lo pone en el recibo.
+  root.__naPayNoteTake = function (entries) {
+    var inputs = [].slice.call(doc.querySelectorAll('.na-pay-note input')), note = '';
+    inputs.forEach(function (i) { if (!note && clean(i.value)) note = clean(i.value); i.value = ''; });
+    if (!note) return '';
+    var q = lsGet(QUEUE, []);
+    (entries || []).forEach(function (e) {
+      var op = e && e.receipt && (e.receipt.operation_id || e.receipt.event_id || e.receipt.payment_id);
+      if (op) q.push({ keys: ['pay:' + String(op)], note: note, at: new Date().toISOString() });
+    });
+    lsSet(QUEUE, q); setTimeout(flush, 1500);
+    return note;
+  };
+  root.__naCashierLabel = cashierLabel;
+  root.__naPaymentMeta = function (op) {
+    if (!op) return null;
+    var meta = lsGet(META, { sales: {}, payments: {} }), server = lsGet(CACHE, {}), c = server['pay:' + op];
+    if (!c) lsGet(QUEUE, []).some(function (q) { if ((q.keys || []).indexOf('pay:' + op) >= 0) { c = q.note; return true; } return false; });
+    var who = meta.payments && meta.payments[op];
+    return who || c ? { cashier: who || '', comment: c || '' } : null;
+  };
   function wrapConfirm() {
     var base = root.confirmarVenta;
     if (typeof base !== 'function' || base.__naNote) return;
@@ -103,7 +155,8 @@
     var w = function () { mark(); return base.apply(this, arguments); }; w.__naNote = true; root.ventasRender = w;
   }
   function init() {
-    ensureField(); wrapConfirm(); wrapRender(); mark(); load().then(flush);
+    ensureField(); ensurePayFields(); wrapConfirm(); wrapRender();
+    doc.addEventListener('click', function () { setTimeout(ensurePayFields, 60); }, true); mark(); load().then(flush);
     root.addEventListener('online', function () { flush(); });
     setInterval(function () { wrapConfirm(); flush(); }, 60000);
   }
