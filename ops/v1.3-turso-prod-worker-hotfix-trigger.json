@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of cc18286 (#581): adds GET /auth/sale-annulments (read-only list) next to the sale annul from #577. No schema changes, no live sale. Rollback to 1cb914f (current live Worker source).",
-  "target_commit": "cc18286b57094474090ea379926999198a785f32",
-  "rollback_ref": "1cb914f1fb08086499514e4065faed205b54b49c",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 7957909 (#588): adds GET/POST /auth/sale-notes (sale note stored apart in pos_sale_notes, applied by migration 0027 run 38319599253; never changes amounts). No schema changes in this deploy, no live sale. Rollback to cc18286 (current live Worker source).",
+  "target_commit": "79579090bf7b84b9786912a3c5225ca18b49c41b",
+  "rollback_ref": "cc18286b57094474090ea379926999198a785f32",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 17,
-  "previous_run_id": 38310434213,
+  "attempt": 18,
+  "previous_run_id": 38310918185,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "G4_SALE_ANNUL_LIST"
+  "optimization": "E2_ITEM10_SALE_NOTES"
 }
