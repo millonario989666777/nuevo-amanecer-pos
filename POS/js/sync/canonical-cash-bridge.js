@@ -232,6 +232,7 @@
         ? root.crypto.randomUUID()
         : 'cash-' + Date.now().toString(36);
       await client.openCash({ session_id: id, opening_cents: openingCents });
+      try { root.NuevoAmanecerCashHistory?.rememberCashier(id, cashier); } catch (_) {}
       refreshAfterReceipt();
       closeModal('mApertura');
       renderCash();
