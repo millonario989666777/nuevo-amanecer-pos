@@ -75,3 +75,36 @@ test('C-P1: a boot 500 while online recovers by itself (no "online" event needed
   assert.equal(ob.snapshot().intents.length, 0);
   assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='V-900'").n, 1);
 });
+
+test('C-P2/C-P1: close toast shows the difference; the close dialog verifies against a fresh read before enabling Confirmar', async (t) => {
+  const f = await activeCanon(t, { migrations: MIGS });
+  let holdStatus = null;
+  const calls = [];
+  const d = await device(f, { token: 'c-a', deviceId: 'c-a', scripts: [...SCRIPTS, BRIDGE],
+    globals: { ...UI, prepCierre() { d.el('mCierre').classList.add('open'); }, _naRefreshClosingCashTotals(tot) { calls.push(tot); }, cajTotales() { return { ef: 10 }; } },
+    onFetch: async (url) => { if (holdStatus && url.includes('/read/canonical/status')) await holdStatus; return null; } });
+  await d.api.openCash({ session_id: 'C1', opening_cents: 1000 }); await d.api.refresh();
+  const open = new Set();
+  d.el('mCierre').classList = { add: (c) => open.add(c), remove: (c) => open.delete(c), contains: (c) => open.has(c), toggle() {} };
+  let release; holdStatus = new Promise((r) => { release = r; });
+  d.context.prepCierre();
+  assert.equal(calls.length, 0, 'not refreshed before the fresh read');
+  release(); holdStatus = null;
+  for (let i = 0; i < 20 && !calls.length; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(calls.length, 1, 'expected cash refreshed after the fresh read');
+  d.el('cajContado').value = '12.50';
+  assert.equal(await d.context.cerrarCaja(), true);
+  assert.match(d.toasts.at(-1)[0], /Caja CANON cerrada correctamente · Diferencia: \+S\/ 2\.50 \(sobrante\)/);
+});
+
+test('C-P2: the "caja de otro día" warning is shown once per till, not on every render', () => {
+  const src = read('POS/js/legacy-inline/inline-01.js') + read('POS/js/legacy-inline/inline-11.js');
+  assert.doesNotMatch(src, /toast\('⚠️ Caja de otro día, ciérrala primero'/);
+  const helper = src.match(/let _naOtherDayTillWarned='';\nfunction _naWarnOtherDayTill\(\)\{.*\}/)[0];
+  const toasts = [];
+  const ctx = { cajEstado: { sessionId: 'S1', fechaApertura: '2026-10-11' }, obtenerHoy: () => '2026-10-12', toast: (m) => toasts.push(m) };
+  const vmMod = { runInNewContext: (code, c) => new Function(...Object.keys(c), code + ';for(let i=0;i<5;i++)_naWarnOtherDayTill();')(...Object.values(c)) };
+  vmMod.runInNewContext(helper, ctx);
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /La caja abierta es del 2026-10-11/);
+});

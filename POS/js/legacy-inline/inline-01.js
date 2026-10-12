@@ -863,7 +863,7 @@ let cajTab='resumen',cajMovTipo='ing';
 function cajSetTab(btn,tab){document.querySelectorAll('#pageCaja .tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');cajTab=tab;cajRender();}
 function _baseCajRender(){
     if(isModuleLocked('caja')){toast('Módulo de caja protegido','error');}
-    if(cajEstado.abierta&&!cajEstado.cerrada&&cajEstado.fechaApertura&&cajEstado.fechaApertura!==obtenerHoy()){toast('⚠️ Caja de otro día, ciérrala primero','error');}
+    if(cajEstado.abierta&&!cajEstado.cerrada&&cajEstado.fechaApertura&&cajEstado.fechaApertura!==obtenerHoy()){_naWarnOtherDayTill();}
     const t=cajTotales();const c=document.getElementById('cajContent');
     if(!cajEstado.abierta&&!cajEstado.cerrada){c.innerHTML=`<div style="padding:13px"><div class="banner-cerrada-cj"><div><div class="bn-title">🔒 Caja sin abrir</div><div style="font-size:12px;opacity:.7;margin-top:3px">Inicia el turno para registrar</div></div><button class="btn-abrir-cj" onclick="document.getElementById('mApertura').classList.add('open')">🔓 Abrir caja</button></div></div>`;return;}
     const banner=cajEstado.cerrada?`<div class="banner-cerrada-cj"><div class="bn-title">🔒 Cerrada — ${cajEstado.horaCierre}</div><div class="bn-monto">${fmt(t.ef)}</div><div class="bn-sub">Cajero: ${cajEstado.cajero}</div></div>`:`<div class="banner-abierta"><div><div class="bn-title">🟢 Abierta desde ${cajEstado.hora}</div><div class="bn-monto">${fmt(t.ef)}</div><div class="bn-sub">Fondo: ${fmt(cajEstado.fondo)} · Cajero: ${cajEstado.cajero}</div></div><button class="btn-cerrar-cj" onclick="prepCierre()">🔒 Cerrar</button></div>`;
@@ -878,6 +878,9 @@ function _baseCajRender(){
 // The closing dialog owns its displayed balance; keystrokes only subtract.
 // Caja renders refresh this balance when a confirmed movement changes the turn.
 let _naClosingCashExpected=null;
+// C-P2: the 'other day' warning shows once per till and day, not on every render.
+let _naOtherDayTillWarned='';
+function _naWarnOtherDayTill(){const key=String(cajEstado.sessionId||cajEstado.fechaApertura||'')+'|'+obtenerHoy();if(_naOtherDayTillWarned===key)return;_naOtherDayTillWarned=key;toast(`⚠️ La caja abierta es del ${cajEstado.fechaApertura}: ciérrala primero y abre la de hoy`,'error');}
 function _naRefreshClosingCashTotals(t){
   _naClosingCashExpected=t.ef;
   document.getElementById('cierreBox').innerHTML=`<div class="cc-row"><span>Ventas del día</span><span class="ccv">${fmt(t.ven)}</span></div><div class="cc-row"><span>Egresos totales</span><span class="ccv">${fmt(t.egr)}</span></div><div class="cc-row hl"><span>💰 Efectivo esperado</span><span class="ccv">${fmt(t.ef)}</span></div>`;

@@ -522,6 +522,32 @@
     return submit(0);
   }
 
+  function differenceText(difference) {
+    if (!Number.isSafeInteger(difference)) return '';
+    if (difference === 0) return ' · Cuadrada (sin diferencia)';
+    return ' · Diferencia: ' + (difference > 0 ? '+' : '−') + 'S/ ' + (Math.abs(difference) / 100).toFixed(2) + (difference > 0 ? ' (sobrante)' : ' (faltante)');
+  }
+  // C-P1: the close dialog shows the expected cash of a FRESH server read and
+  // keeps "Confirmar cierre" disabled until that read confirms it.
+  var basePrepCierre = root.prepCierre;
+  if (typeof basePrepCierre === 'function') root.prepCierre = function () {
+    var result = basePrepCierre.apply(this, arguments);
+    if (!enabled()) return result;
+    var modal = root.document.getElementById('mCierre');
+    if (!modal || !modal.classList || !modal.classList.contains('open')) return result;
+    var button = root.document.querySelector('#mCierre .mbtn-ok');
+    var label = button && button.textContent || '🔒 Confirmar cierre';
+    if (button) { button.disabled = true; button.textContent = 'Verificando…'; }
+    Promise.resolve().then(refreshCanonical).then(function () {
+      if (!modal.classList.contains('open')) return;
+      if (typeof root._naRefreshClosingCashTotals === 'function' && typeof root.cajTotales === 'function') root._naRefreshClosingCashTotals(root.cajTotales());
+      if (button && !closingBusy) { button.disabled = false; button.textContent = label; }
+    }).catch(function () {
+      closeStatus('Sin confirmar: no se pudo leer la caja del servidor. Revisa la conexión y vuelve a abrir el cierre.');
+      if (button && !closingBusy) button.textContent = 'Sin confirmar';
+    });
+    return result;
+  };
   root.cerrarCaja = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
     if (closingBusy) return false;
@@ -545,9 +571,10 @@
       closeModal('mCierre');
       renderCash();
       var actualCount = outcome.receipt && outcome.receipt.counted_cents;
+      var difference = outcome.receipt && outcome.receipt.difference_cents;
       notify(outcome.status === 'CLOSED' ? 'Esta caja ya estaba cerrada. Estado actualizado.' :
         'Caja CANON cerrada correctamente' + (Number.isSafeInteger(actualCount) && actualCount !== countedCents
-          ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : ''), 'success');
+          ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : '') + differenceText(difference), 'success');
       return true;
     } catch (error) {
       var message = closeFailure(error);
