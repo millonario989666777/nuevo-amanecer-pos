@@ -112,7 +112,7 @@
     return{amount:original,initial,balance,due:credit.vence||options.due||sale.credit_due||null,account:summary};
   }
   function accountLines(summary,width){
-    const out=['ESTADO DE CUENTA DEL CLIENTE'];
+    const out=wrap('ESTADO DE CUENTA DEL CLIENTE',width);
     const field=(label,value)=>{const text=label+': '+value;for(let start=0;start<text.length;start+=width)out.push(text.slice(start,start+width));};
     if(summary.asOf)field('Al',summary.asOf);
     field('Deuda anterior',centsMoney(summary.previousCents));
