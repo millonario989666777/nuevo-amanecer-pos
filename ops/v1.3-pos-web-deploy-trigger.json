@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Cierre de caja: recuperar ACK incierto de pagos/movimientos sin duplicados y conservar diagnóstico dentro del modal.",
-  "retry_attempt": 112,
-  "retry_reason": "Frontend verificado con 629 regresiones cloud, 183 negocio/respaldo, E2E Smoke CI y revisión independiente; recuperación exacta de pendientes financieros.",
-  "requested_at_utc": "2026-10-11T12:55:07.345Z",
-  "approved_base": "25d0303ab57a973fa21d303cf7ad19a974057dce"
+  "note": "Comprobante monocromo CANON y editor unificado sin etiquetas técnicas; desplegar solo POS web.",
+  "retry_attempt": 113,
+  "retry_reason": "PR #545 integrado; CANON Critical CI y E2E Smoke CI PASS en SHA 976f790a7fad799a3185da05d2540a58950e16f7. Sin migraciones ni modificación de outbox.",
+  "requested_at_utc": "2026-10-12T11:50:48Z",
+  "approved_base": "3c86baae0c1f2456c1f87d66f6e4cb0b6df21315"
 }
