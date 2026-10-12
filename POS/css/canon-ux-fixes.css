@@ -24,6 +24,29 @@
   body:has(#pwaUpdatePrompt:not([hidden])){padding-bottom:96px}
 }
 
+/* P2-4/P2-5/P2-6 (móvil · Clientes, Abonos, Caja): el pie de acciones de los modales queda
+   fijo al fondo del área visible (Confirmar nunca queda fuera de vista ni bajo el teclado),
+   objetivos táctiles de 44 px y pestañas de Clientes completas en 2×2. */
+@media (max-width:700px){
+  .modal-overlay{height:var(--na-visual-height,100dvh)!important;max-height:var(--na-visual-height,100dvh)!important}
+  .modal-overlay .mbody>.mbtns{position:sticky;bottom:-16px;z-index:4;margin-left:-4px;margin-right:-4px;padding:10px 4px 12px;background:rgba(255,255,255,.97);border-top:1px solid #edf1f5}
+  .mbtn{min-height:44px}
+  .fi,.fs{min-height:44px}
+  .top-btn-nuevo,.btn-cerrar-cj{min-height:44px}
+  #pageClientes .filter-bar{flex-wrap:wrap}
+  #pageClientes .search-box{height:44px;min-width:0}
+  #pageClientes .search-box input{font-size:16px;min-height:40px}
+  #pageClientes .f-select{height:44px}
+  #pageClientes .tabs-wrap{display:grid;grid-template-columns:1fr 1fr;overflow:visible}
+  #pageClientes .tabs-wrap .tab{justify-content:center;min-height:44px;padding:8px 6px;white-space:normal}
+  #pageCaja .tabs-wrap .tab{min-height:44px}
+  #pageClientes .na-v2-client-head .na-v2-risk,
+  #pageClientes .na-receipt-history,
+  #pageClientes .na-v2-batch-selectall,
+  #pageClientes .na-v2-batch-auto,
+  #naV2BatchMethod{min-height:44px}
+}
+
 /* B: una venta a crédito no es ingreso de caja. */
 .mov-ic.credito{background:#ede9fe}
 .mov-amt.credito{color:#7c3aed;font-size:13px}
