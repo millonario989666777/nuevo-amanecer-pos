@@ -50,3 +50,8 @@ html.na-ap-custom #btnPagar,html.na-ap-custom #btnRapido,html.na-ap-custom .pm-b
   #pageConfig .cfg-content,html.config-page-scroll #pageConfig.page .cfg-content{flex:1 1 auto!important;min-width:0;width:auto!important}
   #pageConfig.na-cfg-list .cfg-content{display:block!important}
 }
+/* Apariencia "Tamaño de botones": Pagar/Cobrar también se achica al 85 % (antes solo crecía). */
+html.na-ap-custom #pagePOS #btnPagar{height:calc(64px * var(--na-ap-buttons,1))!important;min-height:calc(64px * var(--na-ap-buttons,1))!important;font-size:calc(18px * var(--na-ap-buttons,1))!important}
+html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:calc(48px * var(--na-ap-buttons,1))!important;min-height:calc(48px * var(--na-ap-buttons,1))!important;font-size:calc(17px * var(--na-ap-buttons,1))!important}
+html.na-ap-custom #mCobro #mBtnConf{height:calc(48px * var(--na-ap-buttons,1))!important}
+html.na-ap-custom body.na-pos-phone-device #mCobro #mBtnConf{height:calc(44px * var(--na-ap-buttons,1))!important;min-height:calc(44px * var(--na-ap-buttons,1))!important}
