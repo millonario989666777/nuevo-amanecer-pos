@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized in 1:1 (2026-10-12 ~01:50 UTC, 'Publícalo ahora') publishing #534 (fix/canon-sales-p0: sales/caja P0) to CANON. Turso-only Worker redeploy of 90a1457: explicit insufficient_stock/stale_stock/sale_id_conflict/cash_session codes in sale.create; old app stays compatible. No schema changes, no live sale by the deploy. Rollback to f9514c4 (current live Worker source, version 7463fd52).",
-  "target_commit": "90a14574cd97b03ba3e57fad6158d041c37e3221",
-  "rollback_ref": "f9514c4532592a9bcd234dba39940924941329d3",
+  "authorization_context": "Owner authorized in 1:1 (2026-10-12 ~03:50 UTC, 'Publica las tres ahora') publishing #539 (anular abono) and #541 (DNI/RUC + direccion) to CANON. Migration 0023 applied and verified first (run 38201936200). Turso-only Worker redeploy of b965560ea4766eb04857956ce2873cc80d9a4794. No schema changes in this run, no live sale. Rollback to 90a1457 (current live Worker source, version 69ff02da).",
+  "target_commit": "b965560ea4766eb04857956ce2873cc80d9a4794",
+  "rollback_ref": "90a14574cd97b03ba3e57fad6158d041c37e3221",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 11,
-  "previous_run_id": 38191794583,
+  "attempt": 12,
+  "previous_run_id": 38193679954,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "CANON_SALES_CAJA_P0_534"
+  "optimization": "CANON_ANULAR_ABONO_539_CUSTOMER_IDENTITY_541"
 }
