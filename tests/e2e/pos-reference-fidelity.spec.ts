@@ -146,8 +146,9 @@ for (const width of [320,360,390,430,768,1024,1366,1920]) {
     });
     expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
     expect(geometry.width).toBeGreaterThan(width < 700 ? 200 : 400);
-    expect(geometry.cart).toBe(width<1100?'absolute':'relative');
-    if(width<1100) {
+    // Etapa 2: tablet (701-1099px) docks VENTA ACTUAL as a column so it never covers product cards.
+    expect(geometry.cart).toBe(width<=700?'absolute':'relative');
+    if(width<=700) {
       await page.locator('.cart-fab').click();
       await expect(page.locator('.cart-mobile-close')).toBeVisible();
       await page.locator('.cart-mobile-close').click();

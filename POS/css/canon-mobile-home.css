@@ -204,3 +204,26 @@
 #pageClientes .top-mod-bar > .top-btn-nuevo { order:1; flex:none }
 #pageClientes .top-mod-bar::after { content:''; order:2; flex-basis:100%; height:0 }
 #pageClientes .top-mod-bar > #cliAuthorityBadge { order:3; flex:none; font-size:11px !important; padding:3px 8px !important }
+
+/* Etapa 2: tablet (701-1099px) docks VENTA ACTUAL as a column so it never covers product cards. */
+@media (min-width:701px) and (max-width:1099px){
+body:not(.na-pos-phone-device) #pagePOS>.pos-body{display:grid;grid-template-columns:96px minmax(0,1fr) clamp(260px,34vw,360px)}
+body:not(.na-pos-phone-device) #pagePOS .sidebar{width:auto;flex:none}
+body:not(.na-pos-phone-device) #pagePOS .products-area{grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
+body:not(.na-pos-phone-device) #pagePOS .cart-drawer,body:not(.na-pos-phone-device) #pagePOS .cart-drawer.open{position:relative;top:auto;right:auto!important;bottom:auto;width:auto;height:100%;z-index:2;box-shadow:none;transition:none}
+body:not(.na-pos-phone-device) #pagePOS .cart-backdrop,body:not(.na-pos-phone-device) #pagePOS .cart-mobile-close,body:not(.na-pos-phone-device) #pagePOS .cart-fab{display:none!important}
+}
+/* Etapa 2: compact empty states (Gastos) instead of a huge blank area. */
+#pageGastos #gasContent>.empty-state:only-child{padding:22px 16px;margin:4px auto 0;max-width:420px;width:100%;background:var(--white);border:1px dashed var(--border);border-radius:12px}
+#pageGastos #gasContent>.empty-state .ei{font-size:30px;margin-bottom:6px}
+#pageGastos #gasContent>.empty-state p{font-size:14px}
+/* Etapa 2: Caja cierre centred and narrower on wide screens. */
+@media (min-width:701px){#pageCaja #cajContent>div:only-child{max-width:640px;margin:0 auto;width:100%}}
+/* Etapa 2: bigger, touch-friendly Inventario actions. */
+#pageInventario .act-btns{gap:6px}
+#pageInventario .act-btns .btn-act{min-width:38px;min-height:36px;padding:8px 11px;font-size:13px;border-radius:9px}
+#pageInventario .top-btn-nuevo,#pageInventario .top-mod-bar button{min-height:38px;padding:8px 14px;font-size:13px}
+/* Etapa 2: readable Historial summary lines. */
+#pageVentas .v-items-txt{line-height:1.45;white-space:normal;overflow-wrap:anywhere}
+#pageVentas .v-items-txt .sale-special-badge{margin-right:3px}
+#pageVentas .v-meta{gap:6px;row-gap:4px;flex-wrap:wrap}

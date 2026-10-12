@@ -86,13 +86,15 @@ function _naSecRenderSaleCard(list,sale,index){
   _naSecAppend(header,'div','v-num',displayId);
   const info=_naSecAppend(header,'div','v-info'),itemsText=_naSecAppend(info,'div','v-items-txt');
   if(sale.anulada)_naSecAppend(itemsText,'span','badge-anulada','ANULADA');
+  const shownBadges=new Set();
   (Array.isArray(sale.items)?sale.items:[]).forEach((item,itemIndex)=>{
     if(itemIndex)itemsText.appendChild(document.createTextNode(', '));
-    if(item.ventaLibre)_naSecAppend(itemsText,'span','sale-special-badge free','VARIOS');
-    else if(item.ventaSinStock)_naSecAppend(itemsText,'span','sale-special-badge shortage','SIN STOCK');
+    const badgeKind=item.ventaLibre?'free':item.ventaSinStock?'shortage':'';
+    const showBadge=badgeKind&&!shownBadges.has(badgeKind);
+    if(showBadge){shownBadges.add(badgeKind);_naSecAppend(itemsText,'span',`sale-special-badge ${badgeKind}`,badgeKind==='free'?'VARIOS':'SIN STOCK');}
     const prefix=_naNumber(item.qty??item.cantidad)>1?`${_naNumber(item.qty??item.cantidad)}x `:'';
     const itemName=_naSaleItemTitle(item);
-    if(item.ventaLibre||item.ventaSinStock)itemsText.appendChild(document.createTextNode(' '));
+    if(showBadge)itemsText.appendChild(document.createTextNode(' '));
     if(prefix||itemName)itemsText.appendChild(document.createTextNode(`${prefix}${itemName}`.trim()));
   });
   const meta=_naSecAppend(info,'div','v-meta');
