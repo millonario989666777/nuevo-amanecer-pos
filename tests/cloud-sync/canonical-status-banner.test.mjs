@@ -102,3 +102,21 @@ test('abono en efectivo con respuesta perdida + reconexión: la caja queda corre
   assert.equal(cash.esperado, 11, 'fondo S/ 10 + abono S/ 1');
   assert.equal(banner.view(banner.compute()), null);
 });
+
+test('caja de otro día: la franja roja desaparece sin F5 cuando el servidor ya muestra la caja de hoy', async (t) => {
+  const f = await activeCanon(t, { migrations: MIGS });
+  let today = '2099-01-01';
+  const d = await device(f, { token: 'b5', deviceId: 'b5', scripts: SCRIPTS, globals: { obtenerHoy: () => today } });
+  await d.api.openCash({ session_id: 'S-ayer', opening_cents: 0 }); await d.api.refresh();
+  const banner = d.context.NuevoAmanecerStatusBanner;
+  assert.equal(banner.view(banner.compute()).tone, 'red');
+  // Otro equipo cierra la caja vieja y abre la de hoy.
+  const other = await device(f, { token: 'b5o', deviceId: 'b5o', scripts: SCRIPTS });
+  await other.api.refresh(); await other.api.closeCash({ counted_cents: 0 }); await other.api.refresh();
+  await other.api.openCash({ session_id: 'S-hoy', opening_cents: 0 });
+  await d.api.refresh(); // misma lectura que hace la app al reconectar o volver a la pestaña (sin recargar)
+  const open = d.context.NuevoAmanecerCanonicalUIAdapter.cashState(d.api.snapshot().cashSessions);
+  assert.equal(open.sessionId, 'S-hoy');
+  today = open.fechaApertura; // la caja abierta es la de hoy
+  assert.equal(banner.view(banner.compute()), null, 'sin franja roja, sin F5');
+});
