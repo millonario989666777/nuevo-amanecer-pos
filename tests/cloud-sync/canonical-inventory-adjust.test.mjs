@@ -148,6 +148,34 @@ test('lost ACK retries same inventory operation without applying stock twice',as
   assert.equal(tab.api.receiptSnapshot().status,'already_processed');
 });
 
+test('P1-5: 503 transitorio queda PENDIENTE (no "rechazó") y el reintento aplica la MISMA operación una sola vez',async(t)=>{
+  const f=await activeCanon(t,{migrations:['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql']});
+  const product=trackedImport(f,0);
+  let fail=true;
+  const tab=await inventoryTab(f,{
+    productId:product.product_id,
+    onFetch:async(url)=>{
+      if(url.endsWith('/commands/inventory.adjust')&&fail){fail=false;
+        return new Response(JSON.stringify({error:'service_unavailable'}),{status:503,headers:{'content-type':'application/json'}});}
+      return null;
+    }
+  });
+  tab.el('mMovCant').value='1';
+  assert.equal(await tab.context.NuevoAmanecerCanonicalInventoryBridge.save(),false);
+  const last=tab.toasts.at(-1)[0];
+  assert.doesNotMatch(last,/rechaz|No se modificó/i);
+  assert.match(last,/PENDIENTE/);assert.match(last,/MISMA operación/);
+  const pending=tab.api.pendingSnapshot();
+  assert.equal(pending.command,'inventory.adjust');
+  const operation=pending.payload.operation_id;
+  assert.equal(f.sql('SELECT current_stock_quantity q FROM products WHERE product_id=?',product.product_id).q,product.current_stock_quantity);
+  assert.equal(await tab.context.NuevoAmanecerCanonicalInventoryBridge.save(),true);
+  assert.equal(f.sql('SELECT current_stock_quantity q FROM products WHERE product_id=?',product.product_id).q,product.current_stock_quantity+1);
+  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_manual_inventory_movements WHERE operation_id=?',operation).n,1);
+  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_manual_inventory_movements WHERE product_id=?',product.product_id).n,1);
+  assert.equal(tab.api.pendingSnapshot(),null);
+});
+
 test('SALIDA above stock is rejected before D1 mutation',async(t)=>{
   const f=await activeCanon(t,{migrations:['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql']});
   const product=trackedImport(f,0);
