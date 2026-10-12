@@ -646,8 +646,21 @@
     }
   };
 
+  // Ítem 6: abrir la lista de ventas en revisión desde la franja de estado.
+  function showReview() {
+    try { if (typeof root.goPage === 'function') root.goPage('pageCaja'); } catch (_) {}
+    try { renderReview(); } catch (_) {}
+    var box = root.document && root.document.getElementById('cajContentReview');
+    if (box) {
+      try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+      box.style.outline = '3px solid #f59e0b';
+      setTimeout(function () { box.style.outline = ''; }, 2200);
+    }
+    return !!box;
+  }
   root.NuevoAmanecerCanonicalCashBridge = Object.freeze({
     enabled: enabled,
+    showReview: showReview,
     originalHandlers: function () { return Object.assign({}, original); }
   });
 })(globalThis);

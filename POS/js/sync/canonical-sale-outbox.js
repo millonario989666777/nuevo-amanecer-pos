@@ -120,8 +120,8 @@
   }
   function definitive(record) { return !!record && !!record.last_error && [400, 404, 409].indexOf(record.last_status) !== -1; }
   var REASON_TEXT = {
-    insufficient_stock: 'no había stock suficiente en CANON (otro equipo o una salida usó esas unidades)',
-    stale_stock: 'el stock cambió en otro equipo',
+    insufficient_stock: 'no había stock suficiente en CANON: el stock de este aparato estaba desactualizado (otro equipo o una salida usó esas unidades). Revisa el producto y pulsa Reintentar, o Anular si no se cobró',
+    stale_stock: 'stock desactualizado: el stock cambió en otro equipo mientras se vendía. Pulsa Reintentar: usa el stock actual y nunca cobra dos veces',
     product_not_found: 'el producto no existe en CANON',
     customer_not_found: 'el cliente no existe en CANON',
     sale_id_conflict: 'otro equipo ya usó ese número de venta',
