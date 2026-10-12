@@ -406,10 +406,20 @@
         var rebinds = typeof outbox.quarantineRebindsOnRetry === 'function' && outbox.quarantineRebindsOnRetry(entry.reason);
         var retryLabel = rebinds ? 'Registrar en la caja abierta' : entry.reason === 'promotion_changed' ? 'Reenviar en este equipo' : 'Reintentar';
         if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action(retryLabel, 'retry', async function () {
-          if (rebinds && typeof root.confirm === 'function' && !root.confirm('¿Registrar ' + clean(intent.sale_id) + ' en la caja abierta ahora? Su efectivo contará en la caja actual.')) return 'Reintento cancelado.';
-          await outbox.resolveQuarantined(intent.operation_id, 'retry');
+          var meta = undefined, moved = '';
+          if (rebinds) {
+            var target = typeof outbox.rebindTarget === 'function' ? outbox.rebindTarget() : null;
+            if (!target) return 'No hay una caja abierta en CANON. Abre la caja y vuelve a intentar; ' + clean(intent.sale_id) + ' sigue en revisión.';
+            var from = intent.session_id ? 'caja ' + clean(intent.session_id).slice(0, 8) : 'sin caja registrada';
+            var to = 'caja ' + clean(target.session_id).slice(0, 8) + (target.opened_at ? ' abierta el ' + clean(target.opened_at).slice(0, 10) : '');
+            if (typeof root.confirm !== 'function' || !root.confirm('¿Registrar ' + clean(intent.sale_id) + ' en la ' + to + '? Pertenecía a la ' + from + ', que ya está cerrada. Su efectivo contará en la caja actual.')) return 'Reintento cancelado.';
+            meta = { targetSessionId: target.session_id, by: root.cajEstado && (root.cajEstado.cajero || root.cajEstado.cashier_id) || null };
+            moved = ' Pasó de la ' + from + ' a la ' + to + '.';
+            if (typeof root._naAudit === 'function') root._naAudit('Venta pasada a otra caja', clean(intent.sale_id) + ' · ' + from + ' → ' + to);
+          }
+          await outbox.resolveQuarantined(intent.operation_id, 'retry', meta);
           var outcome = await outbox.sync();
-          return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';
+          return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.' + moved;
         });
         if (entry.verified_absent_at && typeof outbox.quarantineAnnullable === 'function' && outbox.quarantineAnnullable(entry)) action('Anular venta no registrada', 'archive', async function () {
           if (typeof root._naAuthorize !== 'function' || !root._naAuthorize('anularVenta', 'Anular venta no registrada ' + clean(intent.sale_id))) return 'Anulación cancelada.';
