@@ -87,21 +87,16 @@ async function upGesture(sb, px = 80) {
   await tick();
 }
 
-test('HEADER_CLASS_TOGGLES_DESKTOP 1024 — scroll del contenedor activo oculta; 1↑ sigue, 2↑ muestra', async () => {
-  const sb = fresh(1024);
-  const container = buildPage(sb, 'pageInventario', 'table-wrap');
-  await containerScrollTo(sb, container, 0);
-  await containerScrollTo(sb, container, 200);
-  assert.equal(sb.headerHidden(), true, 'delta 200 ≥ 80 en el contenedor oculta el header en desktop');
-  assert.equal(sb.pageChromeHidden('pageInventario'), true, 'la misma transición oculta el chrome completo de Inventario');
-  await upGesture(sb, 80);
-  assert.equal(sb.headerHidden(), true, '1 gesto arriba sigue oculto');
-  assert.equal(sb.pageChromeHidden('pageInventario'), true, '1 gesto arriba conserva el chrome del módulo oculto');
-  await upGesture(sb, 80);
-  assert.equal(sb.headerHidden(), false, '2 gestos arriba consecutivos muestran');
-  assert.equal(sb.pageChromeHidden('pageInventario'), false, '2 gestos arriba muestran el chrome completo');
+test('ETAPA2_NO_JUMP 1024 — en los módulos con lista la cabecera no se oculta al desplazar', async () => {
+  for (const id of ['pageInventario', 'pageClientes', 'pageVentas', 'pageCaja', 'pageGastos']) {
+    const sb = fresh(1024);
+    const container = buildPage(sb, id, 'table-wrap');
+    await containerScrollTo(sb, container, 0);
+    await containerScrollTo(sb, container, 200);
+    assert.equal(sb.pageChromeHidden(id), false, `${id}: la cabecera queda en el diseño (sin salto)`);
+    assert.equal(sb.headerHidden(), false, `${id}: el topbar no se oculta`);
+  }
 });
-
 test('HEADER_CLASS_TOGGLES_DESKTOP 1366 — .main-scroll, wheel/trackpad y near-top', async () => {
   const sb = fresh(1366);
   const container = buildPage(sb, 'pageMenu', 'main-scroll');
@@ -128,51 +123,18 @@ test('HEADER_CLASS_TOGGLES_DESKTOP 1366 — .main-scroll, wheel/trackpad y near-
   assert.equal(sb.run('window._naTopbarGesture.isActive()'), false, 'gestos inactivos en POS desktop');
 });
 
-test('SCROLL_OWNER_REAL — un wrapper interno dinámico gana sobre su contenedor padre', async () => {
+test('HEADER_CLASS_TOGGLES_DESKTOP — navegación al menú y resize dejan el header visible', async () => {
   const sb = fresh(1366);
-  sb.run(`
-    document.getElementById('pageVentas').classList.add('active');
-    var _naOuter=document.createElement('div');_naOuter.id='ventasContent';
-    _naOuter.clientHeight=400;_naOuter.scrollHeight=400;
-    var _naInner=document.createElement('div');_naInner.classList.add('v-list-wrap');
-    _naInner.clientHeight=300;_naInner.scrollHeight=1200;
-    _naOuter.appendChild(_naInner);document.getElementById('pageVentas').appendChild(_naOuter);
-    _naC=_naInner;
-  `);
-  await containerScrollTo(sb, sb.run('_naInner'), 220);
-  assert.equal(sb.headerHidden(), true, 'el scroll emitido por .v-list-wrap oculta el chrome');
-  assert.equal(sb.pageChromeHidden('pageVentas'), true);
-  assert.equal(sb.run("window._naTopbarGesture.getScrollOwner()"), '.v-list-wrap');
-});
-
-test('HEADER_CLASS_TOGGLES_DESKTOP — navegación y resize muestran/resetean', async () => {
-  const sb = fresh(1366);
-  const container = buildPage(sb, 'pageInventario', 'table-wrap');
-  await containerScrollTo(sb, container, 0);
-  await containerScrollTo(sb, container, 250);
-  assert.equal(sb.headerHidden(), true);
-  // navegar a Caja (página distinta) muestra el header y resetea la máquina
-  sb.run("document.getElementById('pageInventario').classList.remove('active')");
-  sb.run("document.getElementById('pageCaja').classList.add('active');var _n=document.createElement('div');_n.id='cajContent';document.getElementById('pageCaja').appendChild(_n);");
   sb.run("goPage('pageCaja')");
   await tick();
-  assert.equal(sb.headerHidden(), false, 'navegar muestra el header en desktop');
-  assert.equal(sb.pageChromeHidden('pageInventario'), false, 'navegar elimina el estado oculto de la página anterior');
-  // scroll en #cajContent vuelve a ocultar
-  const caj = sb.run("_naC=document.getElementById('pageCaja').querySelector('#cajContent')");
-  await containerScrollTo(sb, caj, 180);
-  assert.equal(sb.headerHidden(), true, '#cajContent oculta en desktop');
-  // goMenu muestra
+  assert.equal(sb.headerHidden(), false);
   sb.run('goMenu()');
   await tick();
   assert.equal(sb.headerHidden(), false, 'volver al menú muestra el header');
-  // resize desktop conserva/muestra
-  sb.run("document.getElementById('pageMenu').classList.add('active')");
   sb.fireWindow('resize', {});
   await tick();
   assert.equal(sb.headerHidden(), false, 'resize en desktop deja el header visible');
 });
-
 test('CHROME_VISUALLY_COLLAPSES_DESKTOP — CSS retira topbar y page-chrome del layout', () => {
   assert.match(BASE_CSS, /@media\(min-width:701px\)\{[^}]*body>\.g-topbar\{[^}]*transition:margin-top 0?\.28s ease!important;[^}]*\}[^}]*body>\.g-topbar\.g-topbar-hidden\{[^}]*margin-top:-58px!important;[^}]*\}/s, 'bloque desktop min-width:701px con la misma clase');
   assert.match(TOP, /\.page-chrome\{[^}]*flex-shrink:0;[^}]*min-width:0;?\}/s, 'wrapper único del chrome conserva el layout visible');
@@ -201,32 +163,27 @@ test('CHROME_FREES_VERTICAL_SPACE — body estable y móvil también libera los 
   assert.match(BASE_CSS, /@media\(max-width:480px\)\{body\.module-mobile-scroll \.page\.active>\.page-chrome\{top:60px!important\}\}/s, 'el offset móvil coincide con el topbar de 60px');
 });
 
-test('MOBILE_390 — no degrada: ruta window/module-mobile-scroll', async () => {
-  const sb = fresh(390);
-  sb.run("document.body.classList.add('module-mobile-scroll')");
-  sb.run("goPage('pageVentas')");
-  await tick();
-  await windowScrollTo(sb, 0);
-  await windowScrollTo(sb, 200);
-  assert.equal(sb.headerHidden(), true, 'móvil oculta con scroll de documento');
-  assert.equal(sb.pageChromeHidden('pageVentas'), true, 'móvil oculta el chrome completo de Ventas');
-  await upGesture(sb, 80);
-  assert.equal(sb.headerHidden(), true, '1 gesto arriba sigue oculto');
-  await upGesture(sb, 80);
-  assert.equal(sb.headerHidden(), false, '2 gestos arriba muestran');
-  assert.equal(sb.pageChromeHidden('pageVentas'), false, '2 gestos muestran también el chrome del módulo');
+test('ETAPA2_NO_JUMP móvil 390 — Historial, Caja y Gastos no ocultan la cabecera', async () => {
+  for (const id of ['pageVentas', 'pageCaja', 'pageGastos']) {
+    const sb = fresh(390);
+    sb.run("document.body.classList.add('module-mobile-scroll')");
+    sb.run(`goPage('${id}')`);
+    await tick();
+    await windowScrollTo(sb, 0);
+    await windowScrollTo(sb, 200);
+    assert.equal(sb.pageChromeHidden(id), false, `${id}: sin display:none a mitad del gesto`);
+    assert.equal(sb.headerHidden(), false);
+  }
 });
-
-test('MOBILE_430 — no degrada: near-top y navegación', async () => {
+test('MOBILE_430 — navegación al menú deja el header visible', async () => {
   const sb = fresh(430);
   sb.run("document.body.classList.add('module-mobile-scroll')");
   sb.run("goPage('pageInventario')");
   await tick();
   await windowScrollTo(sb, 300);
-  assert.equal(sb.headerHidden(), true);
-  await windowScrollTo(sb, 5);
-  assert.equal(sb.headerHidden(), false, 'near-top muestra en móvil');
+  assert.equal(sb.headerHidden(), false, 'Inventario no oculta el header');
   sb.run('goMenu()');
   await tick();
   assert.equal(sb.headerHidden(), false);
 });
+

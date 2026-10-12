@@ -92,11 +92,19 @@
       &&motion&&motion.scroll
       &&typeof motion.scroll.enablePreset==='function';
   }
+  var MODULE_LIST_PAGES=['pageInventario','pageClientes','pageVentas','pageCaja','pageGastos'];
   function gesturesActive(){
     // The compact inventory keeps its search and menus in a stable sticky chrome.
     // Legacy display:none removes that chrome from flow and changes scrollY while
     // the same gesture is still moving, causing jumps in products and suggestions.
     var page=activePageEl();
+    // Etapa 2: en los módulos con lista (Inventario, Clientes, Historial, Caja,
+    // Gastos) la cabecera queda fija. Ocultarla con display:none la saca del
+    // diseño a mitad del gesto y la lista salta o rebota (CLS 1,4 en celular).
+    if(page&&MODULE_LIST_PAGES.indexOf(page.id)!==-1){
+      if(page.classList.contains('g-page-chrome-hidden'))setChromeHidden(false);
+      return false;
+    }
     if(window.innerWidth<=767&&page&&page.id==='pageInventario'
       &&page.classList.contains('inv-mobile-simple'))return false;
     if(document.body.classList.contains('module-mobile-scroll')){

@@ -16,7 +16,8 @@ for(const width of [360,390,430,701,767])for(const tab of ['todos','sugerencia']
  expect(await page.evaluate(()=>JSON.stringify(productos))).toBe(before);
  await page.locator('.inv-filters>summary').click();await expect(page.locator('#invCat')).toBeVisible();
  await page.setViewportSize({width:768,height:844});
- await expect.poll(()=>page.evaluate(()=>window._naTopbarGesture.isActive())).toBe(true);
+ // Etapa 2: en tablet Inventario tampoco oculta la cabecera (evita el salto del primer gesto).
+ await expect.poll(()=>page.evaluate(()=>window._naTopbarGesture.isActive())).toBe(false);
  await page.setViewportSize({width,height:844});
  await expect.poll(()=>page.evaluate(()=>window._naTopbarGesture.isActive())).toBe(false);
  await expect(page.locator('#pageInventario>.page-chrome')).toBeVisible();

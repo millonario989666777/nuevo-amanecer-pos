@@ -237,3 +237,7 @@ body.na-pos-phone-device #mCobro .pay-modal-head{justify-content:space-between}
 body.na-pos-phone-device #mCobro .pay-alt-panel{padding:10px;margin-bottom:0}
 body.na-pos-phone-device #mCobro .digital-channel-list{margin-bottom:8px}
 body.na-pos-phone-device #mCobro .digital-payment-confirmation{padding:8px 10px;margin-bottom:8px;min-height:44px}
+
+/* Etapa 2: la franja de estado (#naStatusBanner) no tapa la barra de Nueva venta. */
+body.na-sb-on.na-pos-phone-device #pagePOS.phone-sale.active{top:calc(var(--phone-visible-top,0px) + var(--na-sb-h,28px));height:calc(var(--phone-visible-height,100dvh) - var(--na-sb-h,28px));max-height:calc(var(--phone-visible-height,100dvh) - var(--na-sb-h,28px))}
+body.na-sb-on.na-pos-phone-device .na-mobile-menu-toggle{transform:translateY(var(--na-sb-h,28px))}
