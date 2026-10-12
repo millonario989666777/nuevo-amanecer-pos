@@ -42,6 +42,15 @@
   // advertises page_limit_max in /read/canonical/status; it is remembered so the
   // next reload can use it without waiting for status. Never above CLIENT_PAGE_MAX.
   var DEFAULT_PAGE_LIMIT = 100, CLIENT_PAGE_MAX = 250, PAGE_LIMIT_KEY = 'na_canon_read_page_limit';
+  // Worker CPU (Free plan ~10 ms/request): a 250-row products page costs ~7.5 ms of
+  // Worker CPU at prod-like row width, so products are capped lower than the rest.
+  var ROUTE_PAGE_MAX = { products: 200 };
+  function routePageLimit(route, limit) { return ROUTE_PAGE_MAX[route] ? Math.min(limit, ROUTE_PAGE_MAX[route]) : limit; }
+  // Conditional revalidation: a replica fully validated by the authority is re-confirmed with
+  // status + credit-accounts (credit-account.create is not part of financial_revision) and
+  // the remaining collections are skipped when everything matches. A full re-read still runs
+  // in the background once the last full validation is older than this.
+  var FULL_REVALIDATE_MS = 10 * 60 * 1000, PREFETCH_MAX_AGE_MS = 15000;
   function readPageLimit() {
     try {
       var stored = Number(root.localStorage && root.localStorage.getItem(PAGE_LIMIT_KEY));
@@ -205,7 +214,16 @@
     if (typeof root._naReadCanonicalReplica !== 'function') return null;
     try { var value = await root._naReadCanonicalReplica(); return validReplica(value) ? value : null; } catch (_) { return null; }
   }
+  var publishedReplica = null;
+  // The cached replica already on screen was re-confirmed by the authority: only the
+  // authority fields change (provisional read-only -> ACTIVE), the rows are identical.
+  function promotePublishedReplica(replica) {
+    if (publishedReplica !== replica || !data) return publishReplica(replica, 'revalidated');
+    data.mode = replica.mode; data.read_only = replica.read_only !== false; data.minimum_client_contract = replica.minimum_client_contract;
+    ready = true; replicaState = { source: 'revalidated', cache: copy(replicaState.cache), validation: 'current', unchanged: true };
+  }
   function publishReplica(replica, source) {
+    publishedReplica = replica;
     var provisional = source === 'cache' || source === 'bootstrap';
     data = { authority: 'canonical', promotion_id: replica.promotion_id, authority_epoch: replica.authority_epoch, revision: replica.revision,
       financial_revision: replica.financial_revision, products: copy(replica.products), customers: copy(replica.customers), credits: copy(replica.credits),
@@ -256,10 +274,77 @@
       });
     });
   }
-  var pageLimitRetried = false;
+  var pageLimitRetried = false, bootPrefetch = null, bootCache = null, forceFullRead = false, fullRevalidateTimer = null;
+  function readOptions(token) { return { credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { authorization: 'Bearer ' + token } }; }
+  // Starts the two requests every ACTIVE refresh needs first (status, credit-accounts page 1)
+  // as early as possible during boot. Pure network: nothing is published or trusted until
+  // refresh() consumes the responses with exactly the same fences as a normal read.
+  function warm() {
+    try {
+      if (bootPrefetch || !enabled() || root.navigator.onLine === false || bulkSnapshotEnabled()) return false;
+      var expected = binding && !changed ? copy(binding) : null;
+      var session = expected && sessionCredentials(expected);
+      if (!session) return false;
+      var limit = readPageLimit();
+      bootPrefetch = { key: JSON.stringify(expected), token: session.token, limit: limit, at: Date.now(),
+        status: readFetch(expected.endpoint + '/read/canonical/status', readOptions(session.token)),
+        accounts: readFetch(expected.endpoint + '/read/canonical/credit-accounts?limit=' + routePageLimit('credit-accounts', limit), readOptions(session.token)) };
+      bootPrefetch.status.catch(function () {}); bootPrefetch.accounts.catch(function () {});
+      return true;
+    } catch (_) { bootPrefetch = null; return false; }
+  }
+  function takePrefetch(expected, token, limit) {
+    var value = bootPrefetch; bootPrefetch = null;
+    if (!value || value.key !== JSON.stringify(expected) || value.token !== token || value.limit !== limit || Date.now() - value.at > PREFETCH_MAX_AGE_MS) return null;
+    return value;
+  }
+  var REPLICA_COLLECTIONS = ['products', 'customers', 'credits', 'credit_payments', 'credit_accounts', 'cash_sessions', 'financial_events', 'expenses', 'sales', 'sale_items', 'inventory_movements', 'cash_movements'];
+  // The re-confirmation shortcut is bound to the app build (service-worker shell caches change on
+  // every deploy) and to the session that performed the complete read. Any difference -> full read.
+  async function replicaContext(endpoint, token) {
+    var build = 'no-cache-api', session = 'unknown';
+    try {
+      if (root.caches && typeof root.caches.keys === 'function') {
+        build = (await root.caches.keys()).filter(function (name) { return /^nuevo-amanecer-pos-shell-/.test(name); }).sort().join(',') || 'no-shell-cache';
+      }
+    } catch (_) {}
+    try {
+      if (root.crypto && root.crypto.subtle && typeof root.TextEncoder === 'function') {
+        var digest = new Uint8Array(await root.crypto.subtle.digest('SHA-256', new root.TextEncoder().encode(endpoint + '\n' + token)));
+        session = Array.prototype.map.call(digest.slice(0, 12), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      }
+    } catch (_) {}
+    return JSON.stringify([CONTRACT, build, session]);
+  }
+  function fullyValidatedAt(replica) {
+    var at = replica && typeof replica.remote_validated_at === 'string' ? Date.parse(replica.remote_validated_at) : NaN;
+    return Number.isFinite(at) ? at : null;
+  }
+  // Only a replica written by a complete authority read (never a local projection) can be
+  // re-confirmed without re-reading its collections.
+  function fastRevalidationCandidate(cache, expected, context) {
+    return !!(cache && fullyValidatedAt(cache) !== null && typeof context === 'string' && cache.remote_validated_context === context && cache.mode === 'ACTIVE' && cache.read_only === false && cache.minimum_client_contract === CONTRACT &&
+      cache.promotion_id === expected.promotion_id && cache.authority_epoch === expected.authority_epoch && cache.revision === expected.revision &&
+      uint(cache.financial_revision) && REPLICA_COLLECTIONS.every(function (key) { return Array.isArray(cache[key]); }));
+  }
+  function cacheMatchesStatus(cache, meta, digest) {
+    return meta.mode === 'ACTIVE' && meta.read_only === false && meta.minimum_client_contract === cache.minimum_client_contract &&
+      meta.promotion_id === cache.promotion_id && meta.authority_epoch === cache.authority_epoch && meta.revision === cache.revision &&
+      meta.financial_revision === cache.financial_revision && (digest || null) === (cache.canonical_digest || null);
+  }
+  function scheduleFullRevalidation(delay) {
+    if (fullRevalidateTimer) return;
+    fullRevalidateTimer = root.setTimeout(function () {
+      fullRevalidateTimer = null;
+      if (loading) { scheduleFullRevalidation(delay); return; }
+      forceFullRead = true;
+      refresh().catch(function () {});
+    }, delay);
+  }
   async function refresh() {
     if (loading) return loading;
     if (!data) ready = false;
+    var fullRequested = forceFullRead; forceFullRead = false;
     loading = (async function () {
       if (root.navigator.onLine === false) fail('AUTHORITY_UNAVAILABLE');
       var expected = binding && !changed ? copy(binding) : null, statusMeta = null;
@@ -270,12 +355,19 @@
       var next = { authority: 'canonical', promotion_id: expected.promotion_id, authority_epoch: expected.authority_epoch, revision: expected.revision, digests: {} };
       var statusDigest = null;
       var expectedPageMeta = null;
-      var cache = await localReplica();
-      var bulkApplied = false;
+      var bulkApplied = false, bulkWanted = bulkSnapshotEnabled();
+      var pageLimit = readPageLimit(), deferredPageMetas = null;
+      // Status and the first credit-accounts page start before the local replica is read.
+      var prefetched = bulkWanted ? null : takePrefetch(expected, session.token, pageLimit);
+      var statusRequest = bulkWanted ? null : (prefetched ? prefetched.status : readFetch(endpoint + '/read/canonical/status', readOptions(session.token)));
+      var accountsRequest = bulkWanted ? null : (prefetched ? prefetched.accounts : readFetch(endpoint + '/read/canonical/credit-accounts?limit=' + routePageLimit('credit-accounts', pageLimit), readOptions(session.token)));
+      if (statusRequest) { statusRequest.catch(function () {}); accountsRequest.catch(function () {}); }
+      var contextRequest = replicaContext(endpoint, session.token);
+      var cache = bootCache || await localReplica(); bootCache = null;
 
       // FASE7 LAB: optional 1-request bulk snapshot (meta + 12 collections, one FR fence).
       // On failure → fall back to FASE6 status + 13 entity routes. Old routes never removed.
-      if (bulkSnapshotEnabled()) {
+      if (bulkWanted) {
         try {
           var snapRes = await readFetch(endpoint + '/read/canonical/snapshot', {
             credentials: 'omit', redirect: 'error', cache: 'no-store', headers: authHeaders
@@ -318,15 +410,18 @@
         }
       }
 
-      var pageLimit = readPageLimit(), deferredPageMetas = null;
+      // entry = [route, name, firstPageResponse?]: the optional third element is a first page
+      // already requested (prefetched during boot); it is fenced exactly like any other page.
       async function readEntry(entry) {
-        var route = entry[0], name = entry[1], cursor = null, seen = new Set(), items = [], digest = null;
+        var route = entry[0], name = entry[1], firstResponse = entry[2] || null, cursor = null, seen = new Set(), items = [], digest = null, limit = routePageLimit(route, pageLimit);
         do {
           if (binding && !changed) assertBinding(expected);
-          var response = await readFetch(endpoint + '/read/canonical/' + route + '?limit=' + pageLimit + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {
+          var response;
+          if (firstResponse && !cursor && !items.length) { response = await firstResponse; firstResponse = null; }
+          else response = await readFetch(endpoint + '/read/canonical/' + route + '?limit=' + limit + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), {
             credentials: 'omit', redirect: 'error', cache: 'no-store', headers: authHeaders
           });
-          if (response.status === 400 && pageLimit !== DEFAULT_PAGE_LIMIT && !cursor) {
+          if (response.status === 400 && limit !== DEFAULT_PAGE_LIMIT && !cursor) {
             // A Worker without large pages rejects the limit: forget it and restart this refresh with 100.
             try { root.localStorage.removeItem(PAGE_LIMIT_KEY); } catch (_) {}
             fail('CANONICAL_PAGE_LIMIT_RETRY');
@@ -359,21 +454,35 @@
         });
       }
       var coreEntries = [['products', 'products'], ['customers', 'customers'], ['credits', 'credits'], ['credit-payments', 'payments'], ['credit-accounts', 'creditAccounts']];
+      var accountsEntry = coreEntries[4];
       var activeEntries = [['cash-sessions', 'cashSessions'], ['financial-events', 'financialEvents'], ['expenses', 'expenses'], ['sales', 'sales'], ['sale-items', 'saleItems'], ['inventory-movements', 'inventoryMovements'], ['cash-movements', 'cashMovements']];
 
       if (!bulkApplied) {
+      // credit-accounts (page 1 already in flight with status) is fenced against status
+      // exactly like any other page; its result is reused by every ACTIVE path below.
+      var accountsRead = null;
+      if (accountsRequest) {
+        deferredPageMetas = [];
+        accountsRead = readEntry([accountsEntry[0], accountsEntry[1], accountsRequest]);
+        accountsRead.catch(function () {});
+      }
+      var waveEntries = coreEntries.filter(function (entry) { return !accountsRead || entry !== accountsEntry; }).concat(activeEntries);
+      // A replica fully validated by this authority only needs status + credit-accounts to be
+      // re-confirmed; the remaining reads run only if anything differs.
+      var currentContext = await contextRequest;
+      var fast = !fullRequested && !!accountsRead && fastRevalidationCandidate(cache, expected, currentContext);
       // The last validated replica was ACTIVE: start the full wave together with status
       // instead of after it (one round trip less). The fence is identical: every page
       // must carry exactly the status meta/digest, otherwise the refresh fails closed.
       var parallelWave = null;
-      if (cache && cache.mode === 'ACTIVE') {
-        deferredPageMetas = [];
-        parallelWave = Promise.all(coreEntries.concat(activeEntries).map(readEntry));
+      if (!fast && cache && cache.mode === 'ACTIVE') {
+        deferredPageMetas = deferredPageMetas || [];
+        parallelWave = Promise.all(waveEntries.map(readEntry));
         parallelWave.catch(function () {});
       }
-      var status = await readFetch(endpoint + '/read/canonical/status', {
+      var status = await (statusRequest || readFetch(endpoint + '/read/canonical/status', {
         credentials: 'omit', redirect: 'error', cache: 'no-store', headers: authHeaders
-      });
+      }));
       if (!status.ok) fail('CANONICAL_READ_' + status.status);
       statusMeta = await status.json();
       verify(statusMeta, expected);
@@ -384,20 +493,39 @@
       notifyConnectionVerified();
       expectedPageMeta = JSON.stringify([statusMeta.mode, statusMeta.read_only, statusMeta.minimum_client_contract, statusMeta.mode === 'ACTIVE' ? statusMeta.financial_revision : null]);
       if (statusDigest) next.canonical_digest = statusDigest;
-      if (statusMeta.mode === 'ACTIVE' && parallelWave) {
-        var waveResults = await parallelWave;
-        var pendingMetas = deferredPageMetas; deferredPageMetas = null;
+      var checkDeferredPages = function () {
+        var pendingMetas = deferredPageMetas || []; deferredPageMetas = null;
         pendingMetas.forEach(function (page) {
           if (page.meta !== expectedPageMeta) fail('STALE_AUTHORITY_BINDING');
           if (statusDigest && page.digest && page.digest !== statusDigest) fail('STALE_AUTHORITY_BINDING');
         });
-        applyEntries(waveResults);
-      } else if (statusMeta.mode === 'ACTIVE') {
-        // FASE6 path: one parallel wave after status (13 routes total with status).
-        applyEntries(await Promise.all(coreEntries.concat(activeEntries).map(readEntry)));
+      };
+      if (statusMeta.mode === 'ACTIVE') {
+        var accountsResult = accountsRead ? await accountsRead : null;
+        if (fast) {
+          checkDeferredPages();
+          if (cacheMatchesStatus(cache, statusMeta, statusDigest) && JSON.stringify(accountsResult.items) === JSON.stringify(cache.credit_accounts)) {
+            if (binding && !changed) assertBinding(expected);
+            promotePublishedReplica(cache); notifyReplicaUpdate();
+            if (Date.now() - fullyValidatedAt(cache) > FULL_REVALIDATE_MS) scheduleFullRevalidation(2000);
+            return snapshot();
+          }
+          // Something changed: read every other collection under the status already verified.
+          applyEntries([accountsResult].concat(await Promise.all(waveEntries.map(readEntry))));
+        } else if (parallelWave) {
+          var waveResults = await parallelWave;
+          checkDeferredPages();
+          applyEntries(waveResults.concat(accountsResult ? [accountsResult] : []));
+        } else {
+          // FASE6 path: one parallel wave after status (13 routes total with status).
+          checkDeferredPages();
+          applyEntries((accountsResult ? [accountsResult] : []).concat(await Promise.all(waveEntries.map(readEntry))));
+        }
       } else {
-        // Predicted ACTIVE but the authority is not: discard the speculative wave.
-        if (parallelWave) { deferredPageMetas = null; await parallelWave.catch(function () {}); }
+        // Predicted ACTIVE but the authority is not: discard the speculative reads.
+        deferredPageMetas = null;
+        if (parallelWave) await parallelWave.catch(function () {});
+        if (accountsRead) await accountsRead.catch(function () {});
         applyEntries(await Promise.all(coreEntries.map(readEntry)));
         var operationalSeed = operationalBootstrapSeed(data, statusMeta);
         next.sales = operationalSeed.sales; next.saleItems = operationalSeed.saleItems; next.inventoryMovements = operationalSeed.inventoryMovements;
@@ -416,6 +544,9 @@
       if (statusMeta.mode === 'ACTIVE') next.financial_revision = statusMeta.financial_revision;
       var incoming = replicaOf(next);
       if (!validReplica(incoming)) fail('INVALID_CANONICAL_REPLICA');
+      // Marks a replica written from a complete authority read (see fastRevalidationCandidate).
+      incoming.remote_validated_at = new Date().toISOString();
+      incoming.remote_validated_context = await contextRequest;
       if (cache && cacheIsNewer(cache, incoming)) {
         publishReplica(cache, 'cache'); replicaState.validation = 'remote-older'; notifyReplicaUpdate(); return snapshot();
       }
@@ -423,8 +554,10 @@
         cache.revision === incoming.revision && (cache.financial_revision || 0) === (incoming.financial_revision || 0) && (cache.canonical_digest || null) === (incoming.canonical_digest || null) &&
         JSON.stringify([cache.products,cache.customers,cache.credits,cache.credit_payments,cache.credit_accounts||[],cache.sales||[],cache.sale_items||[],cache.inventory_movements||[],cache.cash_movements||[],cache.cash_sessions||[],cache.financial_events||[],cache.expenses||[],cache.digests||{}]) ===
         JSON.stringify([incoming.products,incoming.customers,incoming.credits,incoming.credit_payments,incoming.credit_accounts||[],incoming.sales||[],incoming.sale_items||[],incoming.inventory_movements||[],incoming.cash_movements||[],incoming.cash_sessions||[],incoming.financial_events||[],incoming.expenses||[],incoming.digests||{}]);
+      var cacheValidatedAt = cache ? fullyValidatedAt(cache) : null;
+      var stampStale = cacheValidatedAt === null || Date.now() - cacheValidatedAt > FULL_REVALIDATE_MS / 2 || cache.remote_validated_context !== incoming.remote_validated_context;
       publishReplica(incoming, 'remote');
-      if (!same && typeof root._naWriteCanonicalReplica === 'function') await root._naWriteCanonicalReplica(incoming);
+      if ((!same || stampStale) && typeof root._naWriteCanonicalReplica === 'function') await root._naWriteCanonicalReplica(incoming);
       replicaState.validation = 'current'; notifyReplicaUpdate(); return snapshot();
     })();
     try { return await loading; } catch (error) {
@@ -1620,11 +1753,15 @@
   }
   async function startPOS() {
     if (!enabled()) return null;
+    warm();
     var cached = await localReplica();
     if (cached) {
       publishReplica(cached, 'cache');
+      // Start the revalidation (its requests leave now) before rendering the cached view.
+      bootCache = cached;
+      var validating = refresh();
+      validating.catch(function () { replicaState.validation = 'offline'; notifyReplicaUpdate(); });
       notifyReplicaUpdate();
-      refresh().catch(function () { replicaState.validation = 'offline'; notifyReplicaUpdate(); });
       return snapshot();
     }
     return refresh();
@@ -1640,5 +1777,5 @@
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
     pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal,
     createProduct: createProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
-    renderCredits: renderCredits, startPOS: startPOS, legacySnapshot: legacySnapshot, sourceState: sourceState });
+    renderCredits: renderCredits, startPOS: startPOS, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);

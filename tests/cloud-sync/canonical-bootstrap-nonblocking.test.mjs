@@ -30,7 +30,8 @@ test('canonical reads and payment receipts are bounded while other command trans
   assert.match(canonical,/var READ_TIMEOUT_MS = 8000/);
   assert.match(canonical,/function readFetch\(url, options, includeJson\)/);
   assert.match(canonical,/reject\(new Error\('CANONICAL_READ_TIMEOUT'\)\)/);
-  assert.match(canonical,/await readFetch\(endpoint \+ '\/read\/canonical\/status'/);
+  assert.match(canonical,/readFetch\(endpoint \+ '\/read\/canonical\/status'/);
+  assert.match(canonical,/var status = await \(statusRequest \|\| readFetch\(endpoint \+ '\/read\/canonical\/status'/);
   assert.match(canonical,/await readFetch\(endpoint \+ '\/read\/canonical\/' \+ route/);
   const sendPending=canonical.slice(canonical.indexOf('async function sendPending'),canonical.indexOf('async function createSale'));
   assert.match(sendPending,/record\.command === 'payment\.create' \|\| record\.command === 'payment\.batch'/);
@@ -66,12 +67,14 @@ test('CANON refresh keeps read-only bootstrap fail-closed and ACTIVE reads in on
   assert.match(canonical,/var activeEntries = \[\['cash-sessions', 'cashSessions'\], \['financial-events', 'financialEvents'\], \['expenses', 'expenses'\], \['sales', 'sales'\], \['sale-items', 'saleItems'\], \['inventory-movements', 'inventoryMovements'\], \['cash-movements', 'cashMovements'\]\];/);
 
   const activeStart=canonical.indexOf("if (statusMeta.mode === 'ACTIVE')");
-  const readOnlyStart=canonical.indexOf('} else {',activeStart);
+  const readOnlyStart=canonical.lastIndexOf('} else {',canonical.indexOf('// Predicted ACTIVE but the authority is not'));
   const fallbackEnd=canonical.indexOf('} // end !bulkApplied fallback',readOnlyStart);
   assert.ok(activeStart>=0 && readOnlyStart>activeStart && fallbackEnd>readOnlyStart,'refresh branches must remain explicit');
 
   const activeBlock=canonical.slice(activeStart,readOnlyStart);
-  assert.match(activeBlock,/Promise\.all\(coreEntries\.concat\(activeEntries\)\.map\(readEntry\)\)/);
+  assert.match(activeBlock,/Promise\.all\(waveEntries\.map\(readEntry\)\)/);
+  // Conditional revalidation only reuses the cache after status + credit-accounts match it exactly.
+  assert.match(activeBlock,/cacheMatchesStatus\(cache, statusMeta, statusDigest\) && JSON\.stringify\(accountsResult\.items\) === JSON\.stringify\(cache\.credit_accounts\)/);
   assert.doesNotMatch(activeBlock,/publishReplica\(bootstrapReplica/);
 
   const readOnlyBlock=canonical.slice(readOnlyStart,fallbackEnd);

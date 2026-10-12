@@ -367,7 +367,9 @@ function _naReadLocalSnapshot(){return _naParseStoredSnapshot(storage.readPersis
 function _naReadSessionSnapshot(){return _naParseStoredSnapshot(storage.readSession(_NA_SESSION_KEY)||storage.readSession(_NA_LOCAL_KEY));}
 function _naWriteLocalSnapshot(serialized){return storage.writePersistent(_NA_LOCAL_KEY,serialized);}
 function _naWriteSessionSnapshot(serialized){return storage.writeSession(_NA_SESSION_KEY,serialized);}
-async function _naCommitSnapshot(snapshot,serialized){
+// Boot reads of loadAllData() reused once by the first canonical replica read (invalidated by any write).
+let _naBootStorageReads=null;
+async function _naCommitSnapshot(snapshot,serialized){_naBootStorageReads=null;
   if(typeof NuevoAmanecerCanonical!=='undefined'&&NuevoAmanecerCanonical.enabled()&&!_naCanonicalReplicaCommit)return _naPersistFailed(new Error('CANONICAL_LEGACY_PERSISTENCE_BLOCKED'));
   const local=_naWriteLocalSnapshot(serialized),session=_naWriteSessionSnapshot(serialized),idb=await _naWriteIDBSnapshot(snapshot,serialized);
   const idbOK=!!(idb.ok&&idb.verified),localOK=!!(local.ok&&local.verified),sessionOK=!!(session.ok&&session.verified),durable=idbOK||localOK,temporary=!durable&&sessionOK;
@@ -376,7 +378,7 @@ async function _naCommitSnapshot(snapshot,serialized){
 }
 let _naCanonicalReplicaCommit=false;
 function _naCanonicalReplicaOrder(a,b){if(!a)return-1;if(!b)return 1;if(a.authority_epoch!==b.authority_epoch)return a.authority_epoch>b.authority_epoch?1:-1;if(a.promotion_id!==b.promotion_id)return 0;if(a.revision!==b.revision)return a.revision>b.revision?1:-1;const af=Number(a.financial_revision||0),bf=Number(b.financial_revision||0);return af===bf?0:af>bf?1:-1;}
-window._naReadCanonicalReplica=async function(){const idb=await _naReadIDBSnapshot(),local=_naReadLocalSnapshot(),items=[idb,local].filter(s=>_naValidSnapshot(s)&&s.canonicalReplica);if(!items.length)return null;if(items.length===1)return _naClone(items[0].canonicalReplica);const order=_naCanonicalReplicaOrder(items[0].canonicalReplica,items[1].canonicalReplica);if(order===0&&items[0].canonicalReplica.promotion_id!==items[1].canonicalReplica.promotion_id)return null;return _naClone(items[order>=0?0:1].canonicalReplica);};
+window._naReadCanonicalReplica=async function(){const boot=_naBootStorageReads;_naBootStorageReads=null;const idb=boot?boot.idb:await _naReadIDBSnapshot(),local=boot?boot.local:_naReadLocalSnapshot(),items=[idb,local].filter(s=>_naValidSnapshot(s)&&s.canonicalReplica);if(!items.length)return null;if(items.length===1)return _naClone(items[0].canonicalReplica);const order=_naCanonicalReplicaOrder(items[0].canonicalReplica,items[1].canonicalReplica);if(order===0&&items[0].canonicalReplica.promotion_id!==items[1].canonicalReplica.promotion_id)return null;return _naClone(items[order>=0?0:1].canonicalReplica);};
 window._naWriteCanonicalReplica=function(replica){const persist=async()=>{try{const candidates=[await _naReadIDBSnapshot(),_naReadLocalSnapshot(),_naReadSessionSnapshot()].filter(_naValidSnapshot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))),current=candidates[0]||_naLegacySnapshot();const base=_naValidSnapshot(current)?current:_naBuildSnapshot();const next=_naClone(base);next.canonicalReplica=_naClone(replica);const serialized=JSON.stringify(next);_naCanonicalReplicaCommit=true;try{const result=await _naCommitSnapshot(next,serialized);if(_naWasPersisted(result))_naCloudDurableSnapshot=_naClone(next);return _naPublishPersistResult(result);}finally{_naCanonicalReplicaCommit=false;}}catch(error){return _naPublishPersistResult(_naPersistFailed(error));}};_naPersistChain=_naPersistChain.then(persist,persist);return _naPersistChain;};
 function _naPublishPersistResult(result){
   _naLastPersistResult=result;_naLastPersistOK=!!result.durable;
@@ -419,7 +421,7 @@ saveAppState=function(){return _naCanonicalRuntimeEnabled()?_naPersistLocalConfi
 saveAllData=function(){return _naQueuePersist();};
 loadAllData=async function(){
   if(_naCanonicalRuntimeEnabled()){
-    const [idb,local]=await Promise.all([_naReadIDBSnapshot(),Promise.resolve(_naReadLocalSnapshot())]),saved=[idb,local].filter(_naValidSnapshot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0]||_naLegacySnapshot();
+    const [idb,local]=await Promise.all([_naReadIDBSnapshot(),Promise.resolve(_naReadLocalSnapshot())]);_naBootStorageReads={idb,local};const saved=[idb,local].filter(_naValidSnapshot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0]||_naLegacySnapshot();
     if(saved){_naApplySnapshot(saved,true);_naCloudDurableSnapshot=_naClone(saved);}
     const localConfig=_naReadLocalConfigState();if(localConfig)_naApplyLocalConfigState(localConfig);
     _naNormalizeData();return;

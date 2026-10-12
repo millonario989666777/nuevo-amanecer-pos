@@ -372,7 +372,7 @@ test('client refresh motion matches the approved LAB contract',()=>{
 test('cached CANON clients remain visible while remote validation finishes',()=>{
   assert.match(source,/state\.source==='none' && \(state\.validation==='pending' \|\| state\.validation==='validating'\)/);
   assert.doesNotMatch(source,/loading=state\.validation==='pending' \|\| state\.validation==='validating'/);
-  assert.match(canonicalClient,/publishReplica\(cached, 'cache'\);\s*notifyReplicaUpdate\(\);/);
+  assert.match(canonicalClient,/publishReplica\(cached, 'cache'\);[\s\S]{0,400}var validating = refresh\(\);[\s\S]{0,200}notifyReplicaUpdate\(\);/);
   assert.match(canonicalClient,/replicaState\.validation = 'current';\s*notifyReplicaUpdate\(\);/);
   assert.match(canonicalClient,/replicaState\.validation = 'remote-older';\s*notifyReplicaUpdate\(\);/);
 });
