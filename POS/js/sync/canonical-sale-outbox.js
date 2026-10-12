@@ -597,6 +597,11 @@
       }
       return close(outcome.processed);
   }
+  function openCashSession(canonical) {
+    var snap = canonical && typeof canonical.snapshot === 'function' ? canonical.snapshot() || {} : {};
+    var open = (snap.cashSessions || []).filter(function (item) { return item && item.status === 'OPEN' && item.session_id; });
+    return open.length === 1 ? clone(open[0]) : null;
+  }
   async function resolveQuarantined(operationId, action, meta) {
     return withLock(async function () {
       var q = readQuarantine();
@@ -628,7 +633,18 @@
         // closed, retrying is the owner's explicit choice to register the
         // charged sale in the till that is open now.
         var again = clone(entry.intent);
-        if (REBIND_ON_RETRY.indexOf(entry.reason) !== -1) { delete again.session_id; again = validateIntent(again); }
+        if (REBIND_ON_RETRY.indexOf(entry.reason) !== -1) {
+          // Etapa 1.3 (auditoría 2026-10-12): nunca re-asignar en silencio. El
+          // dueño debe confirmar la caja destino exacta (la única OPEN en CANON)
+          // y queda registrado de qué caja venía y a cuál entró.
+          var target = openCashSession(canonical);
+          if (!target) fail('QUARANTINE_REBIND_NO_OPEN_CASH');
+          if (!meta || meta.targetSessionId !== target.session_id) fail('QUARANTINE_REBIND_NEEDS_CONFIRMATION');
+          entry.rebound_from_session_id = entry.intent.session_id || null;
+          entry.rebound_to_session_id = target.session_id;
+          entry.rebound_by = meta.by != null ? String(meta.by) : null;
+          again.session_id = target.session_id; again = validateIntent(again);
+        }
         if (entry.reason === 'promotion_changed') clearHold(operationId);
         await withStore(function () {
           var current = parseStored();
@@ -805,6 +821,7 @@
   }
   root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent,
     reasonText: reasonText, quarantineRebindsOnRetry: function (reason) { return REBIND_ON_RETRY.indexOf(reason) !== -1; },
+    rebindTarget: function () { return openCashSession(root.NuevoAmanecerCanonical); },
     // The drain resolves every sale.create rejection by itself (review list,
     // session hold or replay); capture never has to stop for it.
     autoResolves: function (record) { var c = root.NuevoAmanecerCanonical; return !!record && record.command === 'sale.create' && !!c && typeof c.releaseRejectedSaleJournal === 'function'; } });

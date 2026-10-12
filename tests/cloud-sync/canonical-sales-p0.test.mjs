@@ -190,6 +190,36 @@ test('C-P0-3: a cash sale carries the open session_id; after the close it goes t
   assert.equal(f.sql('SELECT COUNT(*) n FROM sales').n, 0);
 });
 
+test('Etapa 1.3: la venta de una caja cerrada NUNCA se re-asigna en silencio; solo con la caja destino confirmada y queda registrado el origen', async (t) => {
+  const { f, add, sell, tab, queue } = await fixture(t);
+  tab.context.navigator.onLine = false;
+  add(1); await sell();
+  const [intent] = queue.snapshot().intents;
+  tab.context.navigator.onLine = true;
+  const other = await seller(f, { token: 'other-session', deviceId: 'other-device' });
+  await other.api.closeCash({ counted_cents: 0 });
+  await queue.sync();
+  await tab.api.refresh();
+  // Sin caja abierta: no se puede re-asignar.
+  await assert.rejects(queue.resolveQuarantined(intent.operation_id, 'retry'), /QUARANTINE_REBIND_NO_OPEN_CASH/);
+  await other.api.openCash({ session_id: 'cash-p0-new', opening_cents: 0 });
+  await tab.api.refresh();
+  assert.equal(queue.rebindTarget().session_id, 'cash-p0-new');
+  // Sin confirmación explícita de la caja destino: rechazado, sigue en revisión.
+  await assert.rejects(queue.resolveQuarantined(intent.operation_id, 'retry'), /QUARANTINE_REBIND_NEEDS_CONFIRMATION/);
+  await assert.rejects(queue.resolveQuarantined(intent.operation_id, 'retry', { targetSessionId: 'cash-p0' }), /QUARANTINE_REBIND_NEEDS_CONFIRMATION/);
+  assert.equal(queue.quarantine().entries[0].status, 'QUARANTINED');
+  assert.equal(f.sql('SELECT COUNT(*) n FROM sales').n, 0);
+  const done = await queue.resolveQuarantined(intent.operation_id, 'retry', { targetSessionId: 'cash-p0-new', by: 'dueño' });
+  assert.equal(done.status, 'REQUEUED');
+  const [entry] = queue.quarantine().entries;
+  assert.equal(entry.rebound_from_session_id, 'cash-p0');
+  assert.equal(entry.rebound_to_session_id, 'cash-p0-new');
+  assert.equal(queue.snapshot().intents.find((x) => x.operation_id === intent.operation_id).session_id, 'cash-p0-new', 'reenvío atado a la caja confirmada (el servidor exige que siga OPEN)');
+  for (let i = 0; i < 3 && queue.snapshot().intents.length; i++) await queue.sync();
+  assert.equal(f.sql('SELECT COUNT(*) n FROM sales WHERE operation_id=?', intent.operation_id).n, 1);
+});
+
 test('Inventario R11: a manual SALIDA is validated against stock minus pending sales', async (t) => {
   const { tab, add, sell } = await fixture(t, { stock: 3 });
   tab.context.navigator.onLine = false;
