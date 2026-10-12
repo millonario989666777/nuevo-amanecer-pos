@@ -247,11 +247,22 @@
       return card;
     }
 
+    // Ítem 11: quitar el campo enfocado dispara «blur»/«change» y otro render dentro de este;
+    // el render anidado intentaba quitar nodos ya quitados (error removeChild). Se encola y se hace después.
+    var rendering = false, renderAgain = false;
     function render() {
-      while (container.firstChild) container.removeChild(container.firstChild);
-      for (var i = 0; i < proposals.length; i += 1) {
-        container.appendChild(renderRow(proposals[i], rows[i], i));
-      }
+      if (rendering) { renderAgain = true; return; }
+      rendering = true;
+      try {
+        while (container.firstChild) {
+          var node = container.firstChild;
+          if (node.parentNode === container) container.removeChild(node); else break;
+        }
+        for (var i = 0; i < proposals.length; i += 1) {
+          container.appendChild(renderRow(proposals[i], rows[i], i));
+        }
+      } finally { rendering = false; }
+      if (renderAgain) { renderAgain = false; render(); }
     }
 
     function findActionTarget(target, key) {

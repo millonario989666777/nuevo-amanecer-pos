@@ -236,6 +236,7 @@
       seenLines[line]=true;
       rows.push({sourceIndex:sourceIndex,productId:proposal.productId==null?'':String(proposal.productId),
         quantity:typeof proposal.quantity==='number'?proposal.quantity:Number(proposal.quantity),
+        unitCost:typeof proposal.unitCost==='number'&&isFinite(proposal.unitCost)&&proposal.unitCost>=0?proposal.unitCost:null,
         operationId:operation+':'+line});
     });
     if(!rows.length){errors.push(purchaseError('NO_CONFIRMED_ROWS','No hay filas confirmadas para aplicar.'));return result();}
@@ -276,6 +277,33 @@
       if(invalid.length){
         errors.push(purchaseError('INVALID_PURCHASE_ROWS','No se aplicó la compra. Corrige: '+invalid.join('; ')+'.'));
         return result();
+      }
+
+      // Ítem 11: una sola llamada registra la compra (proveedor, costo) y suma el stock de todas las líneas,
+      // con los mismos operation_id '<op>:<línea>'. Si el servidor aún no la tiene, sigue el camino de siempre (línea por línea).
+      var purchases=root.NA_PURCHASES;
+      var intLines=rows.every(function(row){return /^\d{1,5}$/.test(String(row.sourceIndex));});
+      if(purchases&&typeof purchases.submit==='function'&&intLines&&operation.length<=120&&root.navigator&&root.navigator.onLine!==false){
+        try{
+          var out=await purchases.submit(operation,rows.map(function(row){return{line:Number(row.sourceIndex),product_id:row.productId,quantity:row.quantity,
+            unit_cost_cents:row.unitCost==null?null:Math.round(row.unitCost*100)};}),{supplier:clean(settings.supplier),documentRef:clean(settings.documentRef)});
+          (out&&out.applied||[]).forEach(function(a){applied.push({sourceIndex:a.line,productId:a.product_id,quantity:a.quantity,referenceId:operation+':'+a.line,status:'applied',stockAfter:a.stock_after});});
+          (out&&out.skipped||[]).forEach(function(a){var row=rows.find(function(r){return Number(r.sourceIndex)===a.line;});skipped.push({sourceIndex:a.line,productId:row?row.productId:null,reason:'ALREADY_APPLIED',referenceId:operation+':'+a.line});});
+          if(out&&out.idempotent)rows.forEach(function(row){skipped.push({sourceIndex:row.sourceIndex,productId:row.productId,reason:'ALREADY_APPLIED',referenceId:row.operationId});});
+          try{renderViews();}catch(_){}
+          return result();
+        }catch(error){
+          var st=error&&error.status,code=clean(error&&(error.data&&error.data.error||error.message));
+          if(error&&error.cancelled){errors.push(purchaseError('OWNER_APPROVAL_CANCELLED','No se aplicó la compra: falta el PIN del dueño.'));return result();}
+          // 404/405/503 o sin respuesta: el servidor aún no tiene el registro de compras; seguir línea por línea.
+          if(st&&st!==404&&st!==405&&st!==503){
+            errors.push(purchaseError(code==='purchase_line_failed'?'CANONICAL_PENDING':'CANONICAL_REJECTED',
+              code==='purchase_line_failed'?'Una línea no se pudo aplicar ('+clean(error.data&&error.data.detail&&error.data.detail.error)+'). Pulsa «Aplicar compra» de nuevo para completar (no se duplicará).'
+                :'CANON rechazó la compra ('+code+'). No se duplicará al reintentar.'));
+            try{await refreshCanonical();renderViews();}catch(_){}
+            return result();
+          }
+        }
       }
 
       for(var i=0;i<rows.length;i++){

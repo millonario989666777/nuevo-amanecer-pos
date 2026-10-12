@@ -13,6 +13,7 @@ import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
 import { saleNoteRoute, recordMetaRoute } from './pos-sale-notes.js';
+import { purchasesRoute } from './pos-purchases.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
@@ -75,6 +76,18 @@ export default {
         return await listSaleAnnulments(env, json);
       }
       // Ítem 10: nota opcional de venta (registro aparte, nunca cambia montos).
+      // Ítem 11: compra con proveedor y costo en una sola llamada (permiso como ajustar inventario).
+      if (url.pathname === '/auth/purchases') {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        if (request.method === 'POST') {
+          const denied = canonicalRuntimeDenied(url, env, json);
+          if (denied) return denied;
+          const gated = await ownerGate(request, env, auth, 'inventory.adjust', json, getDatabase(env));
+          if (gated) return gated;
+        }
+        return cors(await purchasesRoute(request, env, auth, json));
+      }
       if (url.pathname === '/auth/record-meta' && request.method === 'GET') {
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
