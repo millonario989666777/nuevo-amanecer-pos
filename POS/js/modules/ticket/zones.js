@@ -126,7 +126,9 @@ function _naF11ZoneAccount(ctx,s){
   if(!extra?.account)return[];
   // El bloque forma parte de las zonas editables, sin un segundo wrapper al final.
   const rows=globalThis.NAReceiptShare.accountLines(extra.account,ctx.width);
-  return s.align==='left'||s.align==='split'?rows:_naF11AlignLines(rows,ctx.width,s.align);
+  // La impresión térmica mantiene la compatibilidad ASCII histórica; PNG/PDF conservan acentos.
+  const printable=ctx.v?._naReceiptContext?rows:rows.map(line=>_naTicketAscii(line));
+  return s.align==='left'||s.align==='split'?printable:_naF11AlignLines(printable,ctx.width,s.align);
 }
 function _naF11ZoneFooter(ctx,s){const out=[];for(const part of String(ctx.pie||'').split('|').map(x=>x.trim()).filter(Boolean))out.push(..._naF11AlignLines(_naTkWrap(part,ctx.width),ctx.width,s.align));return out;}
 function _naF11ComposeZones(ctx,state){
