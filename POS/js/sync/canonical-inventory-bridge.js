@@ -194,6 +194,20 @@
     }catch(_){}
     return seen;
   }
+  // P0-1: movimientos ya registrados en CANON para un documento OCR (<op>:<línea>).
+  function documentApplied(operation){
+    var prefix=clean(operation)+':',hit=null,client=api();
+    if(prefix===':')return null;
+    try{
+      var snap=client&&typeof client.snapshot==='function'?client.snapshot():null;
+      (snap&&Array.isArray(snap.inventoryMovements)?snap.inventoryMovements:[]).forEach(function(row){
+        if(row&&row.operation_id!=null&&String(row.operation_id).indexOf(prefix)===0){
+          hit=hit||{lines:0,at:row.created_at||null};hit.lines+=1;
+        }
+      });
+    }catch(_){}
+    return hit;
+  }
   async function applyPurchase(proposals,options){
     var settings=options||{},operation=clean(settings.operationId);
     var applied=[],skipped=[],errors=[];
@@ -312,6 +326,7 @@
     enabled:enabled,
     save:save,
     applyPurchase:applyPurchase,
+    documentApplied:documentApplied,
     busy:function(){return busy;},
     userLocked:userLocked
   });

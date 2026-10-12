@@ -36,6 +36,41 @@
       + second.toString(16).padStart(8, '0');
   }
 
+  function fnv(text) {
+    var first = 2166136261, second = 2246822519;
+    for (var i = 0; i < text.length; i += 1) {
+      first = Math.imul(first ^ text.charCodeAt(i), 16777619) >>> 0;
+      second = Math.imul(second ^ text.charCodeAt(i), 3266489917) >>> 0;
+    }
+    return first.toString(16).padStart(8, '0') + second.toString(16).padStart(8, '0');
+  }
+
+  // P0-1 (auditoría 2026-10-12): la identidad de una factura no puede ser el hash
+  // de los bytes del archivo, porque otra foto del mismo papel tiene otros bytes.
+  // Se usa RUC del emisor + serie-número + total, leídos del texto OCR.
+  function documentIdentity(rawText) {
+    var text = String(rawText || '').toUpperCase().replace(/\r/g, '');
+    var ruc = null, series = null, total = null;
+    var rucLabeled = text.match(/R\.?\s*U\.?\s*C\.?\s*[:#N°º.\s]*((?:10|15|16|17|20)\d{9})(?!\d)/);
+    var rucAny = rucLabeled || text.match(/(?:^|[^\d])((?:10|15|16|17|20)\d{9})(?!\d)/);
+    if (rucAny) ruc = rucAny[1];
+    var serie = text.match(/(?:^|[^A-Z0-9])([FBE][A-Z0-9]{3})\s*[-–]\s*0*(\d{1,8})(?!\d)/);
+    if (serie) series = serie[1].replace(/O/g, '0') + '-' + Number(serie[2]);
+    var lines = text.split('\n');
+    for (var i = lines.length - 1; i >= 0 && total === null; i -= 1) {
+      var line = lines[i].trim();
+      if (!/^(IMPORTE\s+)?TOTAL\b/.test(line) || /SUB\s*TOTAL|GRAVAD|DESCUENTO/.test(line)) continue;
+      var amount = line.match(/(\d{1,3}(?:[ ,]\d{3})*|\d+)[.,](\d{2})\s*$/);
+      if (amount) total = (Number(amount[1].replace(/[ ,]/g, '')) + Number(amount[2]) / 100).toFixed(2);
+    }
+    if (!ruc || !series || total === null) {
+      return { ok: false, ruc: ruc, series: series, total: total };
+    }
+    return { ok: true, ruc: ruc, series: series, total: total,
+      key: ruc + '|' + series + '|' + total,
+      operationId: 'OCR-DOC-' + fnv(ruc + '|' + series + '|' + total) };
+  }
+
   function defaultDependencies() {
     return {
       extract: root.extractPurchaseDocument || root.extractOcrText,
@@ -71,6 +106,21 @@
         ? inventoryMovements : [];
     };
     var createOperationId = settings.createOperationId || operationId;
+    var findAppliedDocument = settings.findAppliedDocument || function (opId) {
+      var canonical = settings.canonicalInventory || (root && root.NuevoAmanecerCanonicalInventoryBridge) || null;
+      try {
+        if (canonical && typeof canonical.enabled === 'function' && canonical.enabled()
+          && typeof canonical.documentApplied === 'function') return canonical.documentApplied(opId);
+      } catch (_) {}
+      var prefix = opId + ':', hit = null;
+      getMovements().forEach(function (m) {
+        if (m && typeof m.referenceId === 'string' && m.referenceId.indexOf(prefix) === 0) {
+          hit = hit || { lines: 0, at: m.date || m.createdAt || null };
+          hit.lines += 1;
+        }
+      });
+      return hit;
+    };
     var refreshInventory = settings.refreshInventory || function () {
       if (typeof invRender === 'function') invRender();
       if (typeof posRender === 'function') posRender();
@@ -181,13 +231,19 @@
         reviewController = deps.createReview(elements.review, { proposals: processed.proposals }, {
           products: getProducts(),
         });
+        var identity = documentIdentity(extracted.rawText);
         currentBatch = {
-          operationId: await createOperationId(selectedFile),
+          operationId: identity.ok ? identity.operationId : await createOperationId(selectedFile),
+          identity: identity,
+          attempted: false,
+          duplicateAcknowledged: false,
           extracted: extracted,
           processed: processed,
         };
         setBusy(elements.apply, false);
-        setStatus('review', 'Verifica si los datos son correctos. Confirma o descarta cada fila antes de guardar.');
+        setStatus('review', identity.ok
+          ? 'Factura ' + identity.series + ' (RUC ' + identity.ruc + ', total ' + identity.total + '). Verifica si los datos son correctos. Confirma o descarta cada fila antes de guardar.'
+          : 'No se pudo leer RUC, serie-número y total de la factura: no se podrá detectar si ya fue ingresada con otra foto. Verifica los datos y confirma o descarta cada fila.');
         openReview();
         return { ok: true, operationId: currentBatch.operationId, proposals: processed.proposals };
       } catch (error) {
@@ -217,6 +273,24 @@
         return { ok: false, errors: [{ code: 'NO_CONFIRMED_ROWS' }] };
       }
 
+      // Una foto nueva (lote nuevo) de una factura ya ingresada se bloquea. El
+      // reintento del mismo lote tras un fallo parcial sí continúa: sus líneas ya
+      // aplicadas se saltan por operation_id y no se duplican.
+      if (!currentBatch.attempted && currentBatch.identity && currentBatch.identity.ok) {
+        var already = null;
+        try { already = findAppliedDocument(currentBatch.operationId); } catch (_) { already = null; }
+        if (already && already.lines > 0) {
+          if (!currentBatch.duplicateAcknowledged) {
+            currentBatch.duplicateAcknowledged = true;
+            var when = already.at ? ' el ' + String(already.at).slice(0, 10) : '';
+            setStatus('error', 'Esta factura ' + currentBatch.identity.series + ' (RUC ' + currentBatch.identity.ruc
+              + ') ya fue ingresada' + when + '. No se aplicó nada. Si de verdad es otra compra con los mismos datos, pulsa «Aplicar compra» otra vez para registrarla como nueva.');
+            return { ok: false, errors: [{ code: 'DOCUMENT_ALREADY_APPLIED', appliedAt: already.at || null }] };
+          }
+          currentBatch.operationId = currentBatch.operationId + '-R' + Date.now().toString(36);
+        }
+      }
+      currentBatch.attempted = true;
       applying = true;
       setBusy(elements.apply, true);
       setStatus('progress', 'Aplicando compra confirmada…');
@@ -335,6 +409,7 @@
   var api = {
     version: '1.0.0',
     createPurchaseOcrIntegration: createPurchaseOcrIntegration,
+    documentIdentity: documentIdentity,
     initPurchaseOcrIntegration: initPurchaseOcrIntegration,
   };
 
