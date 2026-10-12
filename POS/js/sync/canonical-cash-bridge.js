@@ -69,6 +69,28 @@
     if (client && typeof client.prepareCommand === 'function') return client.prepareCommand(command);
     return refreshCanonical();
   }
+  // Spanish, actionable text for a failed cash command (C-P0-1).
+  function commandFailureText(error) {
+    var code = clean(error && (error.code || error.message));
+    var record = null;
+    try { record = api().pendingSnapshot(); } catch (_) {}
+    if (/REJECTED_4\d\d/.test(code)) return 'CANON lo rechazó' + (record && record.last_error ? ' (' + clean(record.last_error) + ')' : '') +
+      '. No se aplicó nada: vuelve a intentarlo (los datos ya se actualizaron).';
+    if (code === 'CANONICAL_FINANCIAL_PENDING' || /TIMEOUT|HTTP_5|HTTP_429|Failed to fetch|NetworkError/i.test(code))
+      return 'sin confirmación del servidor. Vuelve a intentarlo: se reenvía la MISMA operación y no se duplica.';
+    return code;
+  }
+  // C-P0-1: release/replay a stranded cash operation before a new one. Returns
+  // true when the replay confirmed the SAME kind of operation the cashier is
+  // retrying, so the caller must not register it twice.
+  async function settleStranded(command) {
+    var client = api();
+    if (!client || typeof client.settleStrandedFinancial !== 'function') return false;
+    var settled = await client.settleStrandedFinancial();
+    if (!settled || settled.status !== 'REPLAYED') return false;
+    refreshAfterReceipt();
+    return settled.command === command;
+  }
   function refreshAfterReceipt() {
     Promise.resolve().then(refreshCanonical).then(renderCash).catch(function (error) {
       if (root.console) root.console.warn('[Caja CANON] Confirmada; actualización pendiente', error.message);
@@ -198,6 +220,12 @@
     if (button) { button.disabled = true; button.textContent = 'Procesando…'; }
 
     try {
+      if (await settleStranded('cash.open')) {
+        closeModal('mApertura');
+        renderCash();
+        notify('La apertura anterior sí llegó al servidor: la caja CANON ya está abierta.', 'success');
+        return true;
+      }
       await prepare('cash.open');
       var client = api();
       var id = root.crypto && typeof root.crypto.randomUUID === 'function'
@@ -210,7 +238,7 @@
       notify('Caja CANON abierta con S/ ' + (openingCents / 100).toFixed(2), 'success');
       return true;
     } catch (error) {
-      notify('No se pudo abrir la caja CANON: ' + clean(error && error.message), 'error');
+      notify('No se pudo abrir la caja CANON: ' + commandFailureText(error), 'error');
       return false;
     } finally {
       openingBusy = false;
@@ -277,6 +305,12 @@
     if (button) { button.disabled = true; button.textContent = 'Procesando…'; }
 
     try {
+      if (await settleStranded('adjustment.create')) {
+        closeModal('mMovCaja');
+        renderCash();
+        notify('El movimiento anterior sí llegó al servidor. Revisa la lista antes de registrar otro.', 'success');
+        return true;
+      }
       await prepare('adjustment.create');
       await api().createAdjustment({ amount_cents: signed, reason: reason.slice(0, 500) });
       refreshAfterReceipt();
@@ -285,7 +319,7 @@
       notify((type === 'ing' ? 'Ingreso' : 'Egreso') + ' CANON de S/ ' + (amountCents / 100).toFixed(2) + ' registrado', 'success');
       return true;
     } catch (error) {
-      notify('No se pudo registrar el movimiento CANON: ' + clean(error && error.message), 'error');
+      notify('No se pudo registrar el movimiento CANON: ' + commandFailureText(error), 'error');
       return false;
     } finally {
       movementBusy = false;

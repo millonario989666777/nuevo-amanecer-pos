@@ -1645,6 +1645,19 @@
       return true;
     });
   }
+  // C-P0-1: a cash/expense/payment operation stranded in the single journal
+  // must never freeze the POS. A definitive 4xx proves nothing committed: it is
+  // archived and released. A lost ACK / 429 / 5xx is replayed with the SAME
+  // operation_id (idempotent). Sales and the close keep their own recovery.
+  async function settleStrandedFinancial() {
+    var record = journal();
+    if (!record || record.state !== 'PENDING' || !record.payload || record.command === 'sale.create' || record.command === 'cash.close') return null;
+    var operationId = record.payload.operation_id;
+    if (record.last_error && record.last_status >= 400 && record.last_status < 500 && record.last_status !== 429)
+      return (await releaseRejectedFinancial(operationId)) ? { status: 'RELEASED', command: record.command, operation_id: operationId } : null;
+    var receipt = await retryPending();
+    return { status: 'REPLAYED', command: record.command, operation_id: operationId, receipt: receipt };
+  }
   async function releaseRejectedCashClose() {
     return withWriterLock(function () {
       var record = journal();
@@ -1911,7 +1924,7 @@
       // Start the revalidation (its requests leave now) before rendering the cached view.
       bootCache = cached;
       var validating = refresh();
-      validating.catch(function () { replicaState.validation = 'offline'; notifyReplicaUpdate(); });
+      validating.catch(function () { replicaState.validation = root.navigator.onLine === false ? 'offline' : 'stale'; notifyReplicaUpdate(); }); // online 500 => 'stale': auto-retried
       notifyReplicaUpdate();
       return snapshot();
     }
@@ -1926,7 +1939,7 @@
   root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; saleOnlyReady = false; } });
   root.addEventListener('offline', function () { ready = false; saleOnlyReady = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
     createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);
