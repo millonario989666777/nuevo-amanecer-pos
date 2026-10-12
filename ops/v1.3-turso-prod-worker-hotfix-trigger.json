@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized in 1:1 (2026-10-12 ~03:50 UTC, 'Publica las tres ahora') publishing #539 (anular abono) and #541 (DNI/RUC + direccion) to CANON. Migration 0023 applied and verified first (run 38201936200). Turso-only Worker redeploy of b965560ea4766eb04857956ce2873cc80d9a4794. No schema changes in this run, no live sale. Rollback to 90a1457 (current live Worker source, version 69ff02da).",
-  "target_commit": "b965560ea4766eb04857956ce2873cc80d9a4794",
-  "rollback_ref": "90a14574cd97b03ba3e57fad6158d041c37e3221",
+  "authorization_context": "Owner approved Etapa 2 G (per-device roles + server-side owner PIN) with blanket authorization to merge and deploy (2026-10-12). Migration 0024 applied and verified first with verified R2 backup (run 38298987734). Turso-only Worker redeploy of fd431f6 (#562): only pos-roles.js + worker.js wiring changed since live b965560. No schema changes in this run, no live sale. Rollback to b965560 (current live Worker source).",
+  "target_commit": "fd431f6d7fafcdc76a234f3d5a607d029d7695b8",
+  "rollback_ref": "b965560ea4766eb04857956ce2873cc80d9a4794",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 12,
-  "previous_run_id": 38193679954,
+  "attempt": 13,
+  "previous_run_id": 38298987734,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "CANON_ANULAR_ABONO_539_CUSTOMER_IDENTITY_541"
+  "optimization": "CANON_POS_ROLES_OWNER_PIN_G"
 }
