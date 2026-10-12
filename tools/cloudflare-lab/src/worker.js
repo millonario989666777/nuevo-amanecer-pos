@@ -13,7 +13,7 @@ import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
-import { handleRoles, ownerGate, ROLE_PATHS } from './pos-roles.js';
+import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -42,7 +42,7 @@ function runtimeServiceName(environment) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const isRead = url.pathname.startsWith('/read/');
     const isLabWorkspace = isLabWorkspacePath(url.pathname);
@@ -96,7 +96,9 @@ export default {
             ? await deferredSaleAuth(request, env)
             : await authorizeSession(request, env);
           if (auth instanceof Response) return auth;
-          return await createCanonicalSale(request, env, auth, json);
+          const saleResponse = await createCanonicalSale(request, env, auth, json);
+          await reviewSale(request, env, auth, saleResponse, ctx);
+          return saleResponse;
         }
         return await createSale(request, env);
       }
@@ -183,7 +185,10 @@ export default {
           const gated = await ownerGate(request, env, auth, financialCommand, json, getDatabase(env));
           if (gated) return gated;
         }
-        return await createCanonicalFinancial(financialCommand, request, env, auth, json);
+        const closeBody = financialCommand === 'cash.close' && auth.posRole === 'empleado' ? await request.clone().json().catch(() => null) : null;
+        const financialResponse = await createCanonicalFinancial(financialCommand, request, env, auth, json);
+        if (closeBody) await reviewCashClose(env, auth, financialResponse, closeBody);
+        return financialResponse;
       }
       if (url.pathname === IMPORT_STAGE_PATH) {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
@@ -275,6 +280,35 @@ function sessionCredential(request) {
   const authorization = String(request.headers.get('authorization') || '');
   const bearer = authorization.match(/^Bearer\s+([^\s]+)$/i);
   return bearer?.[1] || String(request.headers.get('x-session-token') || '');
+}
+
+// Revisiones del dueño (G): nunca cambian la respuesta ni rechazan la operación.
+async function reviewSale(request, env, auth, response, ctx) {
+  if (!response || (response.status !== 200 && response.status !== 201)) return;
+  let saleId = null;
+  try { saleId = (await response.clone().json())?.sale_id ?? null; } catch { saleId = null; }
+  if (!saleId) return;
+  const run = async () => {
+    try {
+      let deviceId = auth.principalId, role = auth.posRole;
+      if (!deviceId) { const full = await authorizeSession(request, env); if (full instanceof Response) return; deviceId = full.principalId; role = full.posRole; }
+      if (role === 'owner') return;
+      await flagSaleDiscount(getDatabase(env), deviceId, saleId);
+    } catch (e) { console.warn('[review] sale', e?.message || e); }
+  };
+  if (auth.principalId) { if (auth.posRole === 'empleado') await run(); return; }
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(run());
+}
+async function reviewCashClose(env, auth, response, closeBody) {
+  if (!response || (response.status !== 200 && response.status !== 201)) return;
+  try {
+    const out = await response.clone().json();
+    const diff = Number(out?.difference_cents ?? out?.receipt?.difference_cents ?? 0);
+    const sessionId = closeBody?.session_id ?? out?.session_id;
+    if (!diff || !sessionId) return;
+    await flagReview(getDatabase(env), { kind: 'cash_close_diff', ref_id: String(sessionId), device_id: auth.principalId, amount_cents: diff,
+      detail: { esperado_cents: Number(closeBody.counted_cents) - diff, contado_cents: Number(closeBody.counted_cents) } });
+  } catch (e) { console.warn('[review] cash.close', e?.message || e); }
 }
 
 async function deferredSaleAuth(request, env) {
