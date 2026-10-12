@@ -55,18 +55,40 @@ function abrirLineaCreditoManual(clientId){
   const autoBtn=document.getElementById('btnLineaAutomatica');
   if(autoBtn)autoBtn.style.display=e.manualActive?'inline-flex':'none';
   actualizarAdvertenciaLineaManual();
+  const reasonInput=_naEnsureManualLineReasonField();if(reasonInput)reasonInput.value='';
   cerrarModal('mEvaluacionCredito');
   document.getElementById('mLineaCreditoManual')?.classList.add('open');
   setTimeout(()=>document.getElementById('lineaManualMonto')?.focus(),60);
 }
 function actualizarAdvertenciaLineaManual(){const e=_naEvaluateClientCredit(_naManualCreditClientId),amount=Math.max(0,_naNumber(document.getElementById('lineaManualMonto')?.value)),box=document.getElementById('lineaManualAdvertencia');if(!box||!e.exists)return;const aboveProfit=amount>e.realizedProfit+.001,belowDebt=amount+0.001<e.history.debt;box.className=`credit-manual-warning ${!aboveProfit&&!belowDebt?'safe':''}`;box.textContent=belowDebt?`La línea es menor que la deuda activa (${fmt(e.history.debt)}). El cliente no tendrá crédito disponible hasta reducir su deuda.`:aboveProfit?`Aviso de riesgo: ${fmt(amount)} supera la ganancia real cobrada de ${fmt(e.realizedProfit)}. Se aplicará como línea manual.`:`La línea dejará disponible ${fmt(Math.max(0,amount-e.history.debt))} después de descontar la deuda activa.`;}
 function _naCanonicalCreditPolicyAuthority(){const canonical=globalThis.NuevoAmanecerCanonical;if(!canonical||typeof canonical.enabled!=='function')return false;try{return canonical.enabled()===true;}catch(_){return false;}}
+// P1-5: a manual credit line is an owner decision: free-text reason (8-500 chars, same
+// rule as the CANON policy ledger) and the master PIN when one is configured.
+// The field is injected by JS so the shared LAB/CANON modal markup stays identical.
+function _naEnsureManualLineReasonField(){
+  let input=document.getElementById('lineaManualMotivo');if(input)return input;
+  const anchor=document.getElementById('lineaManualAdvertencia');if(!anchor||!anchor.parentNode)return null;
+  const group=document.createElement('div');group.className='fg';
+  const label=document.createElement('div');label.className='fl';label.textContent='Motivo del cambio ';
+  const req=document.createElement('span');req.className='req';req.textContent='*';label.appendChild(req);
+  input=document.createElement('textarea');input.id='lineaManualMotivo';input.className='fi';input.rows=2;input.maxLength=500;
+  input.placeholder='Ej.: cliente puntual, compra grande acordada con el dueño';
+  group.append(label,input);anchor.parentNode.insertBefore(group,anchor.nextSibling);return input;
+}
+function _naManualLineReason(){return String(document.getElementById('lineaManualMotivo')?.value||'').replace(/[\x00-\x1f\x7f]+/g,' ').replace(/\s+/g,' ').trim();}
+function _naAuthorizeManualLine(clientName){
+  if(typeof _naSecurity==='undefined'||!_naSecurity?.pinEnabled)return true;
+  return typeof _naVerifyPin==='function'?_naVerifyPin(`Cambiar línea de crédito de ${clientName}`):false;
+}
 async function guardarLineaCreditoManual(){
   const e=_naEvaluateClientCredit(_naManualCreditClientId);
   if(!e.exists)return;
   const amount=Math.max(0,_naNumber(document.getElementById('lineaManualMonto')?.value));
-  const reason='Ajuste manual del propietario';
   if(amount>1e6){toast('La línea manual máxima permitida es S/ 1,000,000','error');return;}
+  _naEnsureManualLineReasonField();
+  const reason=_naManualLineReason();
+  if(reason.length<8||reason.length>500){toast('Escribe el motivo del cambio (mínimo 8 caracteres)','error');document.getElementById('lineaManualMotivo')?.focus?.();return;}
+  if(!_naAuthorizeManualLine(e.client.nombre))return;
   const canonicalPolicyBridge=globalThis.NuevoAmanecerCanonicalCustomerCreditPolicyBridge;
   if(_naCanonicalCreditPolicyAuthority()){
     if(!canonicalPolicyBridge||typeof canonicalPolicyBridge.saveManual!=='function'){toast('No se guardó la línea: integración CANON no disponible','error');return;}
@@ -103,7 +125,8 @@ async function guardarLineaCreditoManual(){
 async function restaurarLineaCreditoAutomatica(){
   const e=_naEvaluateClientCredit(_naManualCreditClientId);
   if(!e.exists||!e.manualActive)return;
-  const reason='Restauración automática del propietario';
+  const typed=_naManualLineReason(),reason=typed.length>=8&&typed.length<=500?typed:'Restauración automática del propietario';
+  if(!_naAuthorizeManualLine(e.client.nombre))return;
   const canonicalPolicyBridge=globalThis.NuevoAmanecerCanonicalCustomerCreditPolicyBridge;
   if(_naCanonicalCreditPolicyAuthority()){
     if(!canonicalPolicyBridge||typeof canonicalPolicyBridge.restoreAutomatic!=='function'){toast('No se restauró la línea: integración CANON no disponible','error');return;}
@@ -166,7 +189,7 @@ async function creditPolicySetNumber(key,value){if(isModuleLocked('configuracion
 const _naF7BaseApplyConfigUI=_naApplyConfigUI;
 _naApplyConfigUI=function(){const result=_naF7BaseApplyConfigUI();_naCreditPolicy();_naApplyCreditPolicyUI();return result;};
 _baseCliRender=function(){
-  const venc=clientes.filter(c=>statusCli(c)==='vencido').length,prox=clientes.filter(c=>statusCli(c)==='proximo').length,vig=clientes.filter(c=>statusCli(c)==='vigente').length;document.getElementById('cliB0').textContent=clientes.length;document.getElementById('cliB1').textContent=venc;document.getElementById('cliB2').textContent=prox;document.getElementById('cliB3').textContent=vig;const totD=clientes.reduce((a,c)=>a+deudaT(c),0);document.getElementById('cliS0').textContent=clientes.length;document.getElementById('cliS1').textContent=`S/${totD.toFixed(0)}`;document.getElementById('cliS2').textContent=venc;document.getElementById('cliS3').textContent=`S/${cobradoHoy.toFixed(0)}`;const s=sinTildes(document.getElementById('cliSearch').value.toLowerCase()),sort=document.getElementById('cliSort').value;let list=clientes.filter(c=>{const m=sinTildes(c.nombre.toLowerCase()).includes(s)||(c.dni||'').includes(s);if(cliTab==='vencidos')return m&&statusCli(c)==='vencido';if(cliTab==='proximos')return m&&statusCli(c)==='proximo';if(cliTab==='vigentes')return m&&statusCli(c)==='vigente';return m;});if(sort==='deuda')list.sort((a,b)=>deudaT(b)-deudaT(a));else list.sort((a,b)=>a.nombre.localeCompare(b.nombre));const wrap=document.getElementById('cliList');if(!list.length){wrap.innerHTML='<div class="empty-state"><div class="ei">👥</div><p>Sin clientes en esta vista</p></div>';return;}wrap.innerHTML=list.map(c=>{const deuda=deudaT(c),s2=statusCli(c),dcls=s2==='vencido'?'mal':s2==='proximo'?'parcial':'ok',scls=s2==='vencido'?'cs-m':s2==='proximo'?'cs-p':s2==='vigente'?'cs-v':'cs-c',slbl=s2==='vencido'?'VENCIDO':s2==='proximo'?'PRÓXIMO':s2==='vigente'?'VIGENTE':'AL DÍA',cardcls=s2==='vencido'?'vencido-c':s2==='proximo'?'proximo-c':'',crs=creditos.filter(x=>String(x.cliId)===String(c.id)),crHtml=crs.length?crs.map(cr=>_naCreditCardHtml(cr)).join(''):'<div style="text-align:center;color:var(--slate);font-size:12px;padding:14px 0;font-weight:700">Sin créditos</div>',e=_naEvaluateClientCredit(c.id),arg=JSON.stringify(String(c.id));return`<div class="client-card ${cardcls}" data-client-id="${_naEsc(c.id)}"><div class="client-header" onclick='toggleCliCard(${arg})'><div class="c-avatar" style="background:${colorFor(c.color)}">${_naEsc(initials(c.nombre))}</div><div class="c-info"><div class="c-name">${_naEsc(c.nombre)}</div><div class="c-meta">${c.dni?`📋 ${_naEsc(c.dni)}`:''} ${c.tel?`📱 ${_naEsc(c.tel)}`:''} ${crs.length?`· ${crs.length} crédito(s)`:''}</div></div><div class="c-right"><div class="c-deuda ${dcls}">${fmt(deuda)}</div><span class="c-status ${scls}">${slbl}</span></div></div><div class="client-creds" id="cc-${_naEsc(c.id)}"><div class="creds-hdr"><span>Créditos registrados</span><div class="credit-header-actions"><button class="btn-credit-eval" onclick='abrirEvaluacionCredito(${arg})'>📊 Evaluar línea</button>${e.enabled?`<button class="btn-add-cr" data-na-new-credit onclick='abrirCred(${arg})'>+ Nuevo crédito</button>`:''}</div></div>${_naCreditInlineHtml(e)}${crHtml}</div></div>`;}).join('');
+  const venc=clientes.filter(c=>statusCli(c)==='vencido').length,prox=clientes.filter(c=>statusCli(c)==='proximo').length,vig=clientes.filter(c=>statusCli(c)==='vigente').length;document.getElementById('cliB0').textContent=clientes.length;document.getElementById('cliB1').textContent=venc;document.getElementById('cliB2').textContent=prox;document.getElementById('cliB3').textContent=vig;const totD=clientes.reduce((a,c)=>a+deudaT(c),0);document.getElementById('cliS0').textContent=clientes.length;document.getElementById('cliS1').textContent=`S/${totD.toFixed(0)}`;document.getElementById('cliS2').textContent=venc;document.getElementById('cliS3').textContent=`S/${cobradoHoy.toFixed(2)}`;const s=sinTildes(document.getElementById('cliSearch').value.toLowerCase()),sort=document.getElementById('cliSort').value;let list=clientes.filter(c=>{const m=sinTildes(c.nombre.toLowerCase()).includes(s)||(c.dni||'').includes(s);if(cliTab==='vencidos')return m&&statusCli(c)==='vencido';if(cliTab==='proximos')return m&&statusCli(c)==='proximo';if(cliTab==='vigentes')return m&&statusCli(c)==='vigente';return m;});if(sort==='deuda')list.sort((a,b)=>deudaT(b)-deudaT(a));else list.sort((a,b)=>a.nombre.localeCompare(b.nombre));const wrap=document.getElementById('cliList');if(!list.length){wrap.innerHTML='<div class="empty-state"><div class="ei">👥</div><p>Sin clientes en esta vista</p></div>';return;}wrap.innerHTML=list.map(c=>{const deuda=deudaT(c),s2=statusCli(c),dcls=s2==='vencido'?'mal':s2==='proximo'?'parcial':'ok',scls=s2==='vencido'?'cs-m':s2==='proximo'?'cs-p':s2==='vigente'?'cs-v':'cs-c',slbl=s2==='vencido'?'VENCIDO':s2==='proximo'?'PRÓXIMO':s2==='vigente'?'VIGENTE':'AL DÍA',cardcls=s2==='vencido'?'vencido-c':s2==='proximo'?'proximo-c':'',crs=creditos.filter(x=>String(x.cliId)===String(c.id)),crHtml=crs.length?crs.map(cr=>_naCreditCardHtml(cr)).join(''):'<div style="text-align:center;color:var(--slate);font-size:12px;padding:14px 0;font-weight:700">Sin créditos</div>',e=_naEvaluateClientCredit(c.id),arg=JSON.stringify(String(c.id));return`<div class="client-card ${cardcls}" data-client-id="${_naEsc(c.id)}"><div class="client-header" onclick='toggleCliCard(${arg})'><div class="c-avatar" style="background:${colorFor(c.color)}">${_naEsc(initials(c.nombre))}</div><div class="c-info"><div class="c-name">${_naEsc(c.nombre)}</div><div class="c-meta">${c.dni?`📋 ${_naEsc(c.dni)}`:''} ${c.tel?`📱 ${_naEsc(c.tel)}`:''} ${crs.length?`· ${crs.length} crédito(s)`:''}</div></div><div class="c-right"><div class="c-deuda ${dcls}">${fmt(deuda)}</div><span class="c-status ${scls}">${slbl}</span></div></div><div class="client-creds" id="cc-${_naEsc(c.id)}"><div class="creds-hdr"><span>Créditos registrados</span><div class="credit-header-actions"><button class="btn-credit-eval" onclick='abrirEvaluacionCredito(${arg})'>📊 Evaluar línea</button>${e.enabled?`<button class="btn-add-cr" data-na-new-credit onclick='abrirCred(${arg})'>+ Nuevo crédito</button>`:''}</div></div>${_naCreditInlineHtml(e)}${crHtml}</div></div>`;}).join('');
 };
 
 // MEJORA FASE 7: asegurar la política y la interfaz después de cargar datos antiguos.

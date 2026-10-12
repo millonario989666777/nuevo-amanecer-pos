@@ -264,7 +264,7 @@ test('pre-0018 customer reads remain compatible and policy command fails closed'
 });
 
 
-test('owner credit-line UI removes credit PIN/reason ceremony but keeps automatic backend audit metadata',()=>{
+test('P1-5: owner credit-line change requires a free-text reason and the master PIN (when configured)',()=>{
   const manual=inline04.slice(
     inline04.indexOf('async function guardarLineaCreditoManual'),
     inline04.indexOf('async function restaurarLineaCreditoAutomatica')
@@ -278,17 +278,21 @@ test('owner credit-line UI removes credit PIN/reason ceremony but keeps automati
     inline04.indexOf('function actualizarAdvertenciaLineaManual')
   );
 
+  // The reason field is injected by JS: the shared LAB/CANON modal markup is unchanged.
   assert.doesNotMatch(index,/id="lineaManualMotivo"/);
-  assert.doesNotMatch(inline04,/function _naRequireMasterPinForCredit/);
-  assert.doesNotMatch(open,/_naVerifyPin|_naRequireMasterPinForCredit/);
-  assert.doesNotMatch(manual,/_naConfirmAction|lineaManualMotivo.*value/);
-  assert.doesNotMatch(automatic,/lineaManualMotivo.*value/);
-  assert.match(manual,/reason='Ajuste manual del propietario'/);
-  assert.match(automatic,/reason='Restauración automática del propietario'/);
+  assert.match(open,/_naEnsureManualLineReasonField\(\)/);
+  assert.match(manual,/const reason=_naManualLineReason\(\)/);
+  assert.match(manual,/reason\.length<8\|\|reason\.length>500/);
+  assert.match(manual,/_naAuthorizeManualLine\(e\.client\.nombre\)/);
+  assert.doesNotMatch(manual,/reason='Ajuste manual del propietario'/);
+  assert.ok(manual.indexOf('_naAuthorizeManualLine')<manual.indexOf('saveManual('),'PIN before the CANON write');
+  assert.match(automatic,/_naAuthorizeManualLine\(e\.client\.nombre\)/);
+  assert.match(automatic,/'Restauración automática del propietario'/);
+  assert.match(inline04,/function _naAuthorizeManualLine\(clientName\)\{\s*if\(typeof _naSecurity==='undefined'\|\|!_naSecurity\?\.pinEnabled\)return true;/);
   assert.match(index,/Aplicar línea/);
   assert.match(inline04,/Se aplicará como línea manual/);
   assert.match(inline04,/Línea manual activa/);
-  assert.doesNotMatch(inline04,/Motivo: \$\{_naEsc\(e\.client\.lineaCreditoManualMotivo/);
+  assert.match(inline04,/Las excepciones manuales requieren PIN, motivo y auditoría/);
 });
 
 test('confirmed policy renders immediately without traversing the full CANON replica',async t=>{
