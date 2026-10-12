@@ -977,7 +977,7 @@ function labCategorySummary(client, category) {
         '<div class="na-v2-list na-v2-card-list">' + categories.map(function (cat) { return labAccountRow(client, cat); }).join('') + '</div></section>' +
       '<section class="na-v2-section"><div class="na-v2-section-title"><span>GESTIÓN DEL CLIENTE</span><small>Consulta y seguimiento</small></div>' +
         '<div class="na-v2-list na-v2-card-list na-v2-nav-grid">' +
-          '<button type="button" class="na-v2-row na-v2-nav-card" data-edit-contact="' + labEsc(String(client.id)) + '"><span><strong>DATOS DEL CLIENTE</strong><small>Nombre y WhatsApp</small></span><b>›</b></button>' +
+          '<button type="button" class="na-v2-row na-v2-nav-card" data-edit-contact="' + labEsc(String(client.id)) + '"><span><strong>DATOS DEL CLIENTE</strong><small>Nombre, WhatsApp, DNI/RUC y dirección</small></span><b>›</b></button>' +
           labNavRow('↺','slate','HISTORIAL DE PAGOS',paymentCount + ' pagos / cuotas canceladas','naCanonOpenClientPaymentHistory()') +
           labNavRow('✓','green','CRÉDITOS CANCELADOS',s.closed.length + ' créditos finalizados','naCanonOpenCanceledCredits()') +
           labNavRow('S/','blue','LÍNEA DE CRÉDITO',available === null ? 'Evaluación disponible' : labMoney(available) + ' disponible','naCanonOpenCreditLine()') +

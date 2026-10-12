@@ -128,14 +128,20 @@ async function customerIdConflict(db,body){
 
 async function documentConflict(db,body){
   if(!body.document)return null;
-  const imported=await db.prepare(`SELECT customer_id FROM customers
+  // One statement: imported + live base documents, plus effective DNI/RUC
+  // edits (customer.contact.set identity) when migration 0023 is applied.
+  const identity=await db.prepare(`SELECT customer_id FROM customers
+      WHERE promotion_id=?1 AND lower(trim(COALESCE(document,'')))=lower(trim(?2))
+    UNION ALL SELECT customer_id FROM canonical_live_customers
+      WHERE promotion_id=?1 AND lower(trim(COALESCE(document,'')))=lower(trim(?2))
+    UNION ALL SELECT ' view' FROM sqlite_master
+      WHERE type='table' AND name='canonical_customer_identities' LIMIT 1`)
+    .bind(body.promotion_id,body.document).first();
+  if(!identity||identity.customer_id!==' view')return identity?.customer_id||null;
+  const edited=await db.prepare(`SELECT customer_id FROM canonical_customer_effective_identity
     WHERE promotion_id=?1 AND lower(trim(COALESCE(document,'')))=lower(trim(?2)) LIMIT 1`)
     .bind(body.promotion_id,body.document).first();
-  if(imported)return imported.customer_id;
-  const live=await db.prepare(`SELECT customer_id FROM canonical_live_customers
-    WHERE promotion_id=?1 AND lower(trim(COALESCE(document,'')))=lower(trim(?2)) LIMIT 1`)
-    .bind(body.promotion_id,body.document).first();
-  return live?.customer_id||null;
+  return edited?.customer_id||null;
 }
 
 export async function createCanonicalCustomer(request,env,auth,json){
