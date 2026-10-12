@@ -247,8 +247,58 @@
     }
   }
 
+
+  // Descuentos de empleado: con internet piden el PIN del dueño (lo valida el servidor).
+  // Sin internet se aplican marcados «por autorizar» y, al cobrar, quedan en un registro
+  // local de solo agregar: nunca se borran ni se cambian.
+  var DISC_KEY = 'na_discounts_por_autorizar_v1';
+  /* global cart */
+  function cartRef() { try { return typeof cart !== 'undefined' ? cart : []; } catch (_) { return []; } }
+  function isEmployee() { return cloud() && R() && R().role === 'empleado'; }
+  function discountLog() { try { var v = JSON.parse(root.localStorage.getItem(DISC_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } }
+  function appendDiscount(entry) {
+    var list = discountLog(); if (list.some(function (e) { return e.id === entry.id; })) return false;
+    list.push(entry); root.localStorage.setItem(DISC_KEY, JSON.stringify(list));
+    return root.localStorage.getItem(DISC_KEY) === JSON.stringify(list);
+  }
+  function wrapDiscounts() {
+    if (typeof root.aplicarDescuentoPorcentaje === 'function' && !root.aplicarDescuentoPorcentaje.__naG) {
+      var baseApply = root.aplicarDescuentoPorcentaje;
+      root.aplicarDescuentoPorcentaje = async function (value) {
+        if (!isEmployee()) return baseApply.apply(this, arguments);
+        if (root.navigator.onLine !== false) {
+          var id = await R().approve('discount', null, 'Autorización del dueño', 'Descuento de ' + (Number(value) || 0) + '%: pide al dueño que escriba su PIN.');
+          if (!id) { toast('Descuento cancelado.', 'error'); return; }
+          var r = baseApply.apply(this, arguments);
+          cartRef().forEach(function (it) { if (it._descuento != null) { it._descuentoAprobado = id; delete it._descuentoPorAutorizar; } });
+          return r;
+        }
+        var out = baseApply.apply(this, arguments);
+        cartRef().forEach(function (it) { if (it._descuento != null && !it._descuentoAprobado) it._descuentoPorAutorizar = true; });
+        toast('Sin conexión: el descuento queda «por autorizar» y el dueño lo revisará.', 'error');
+        return out;
+      };
+      root.aplicarDescuentoPorcentaje.__naG = true;
+    }
+    if (typeof root.confirmarVenta === 'function' && !root.confirmarVenta.__naGDisc) {
+      var baseConfirm = root.confirmarVenta;
+      root.confirmarVenta = async function () {
+        var flagged = cartRef().filter(function (it) { return it._descuentoPorAutorizar; }).map(function (it) {
+          return { nombre: String(it.name || it.nombre || ''), cantidad: Number(it.qty) || 0, precio_original: Number(it._precioOriginal) || 0, precio: Number(it.precio) || 0, descuento_pct: Number(it._descuento) || 0 };
+        });
+        var out = await baseConfirm.apply(this, arguments);
+        if (flagged.length && !cartRef().length) {
+          var total = flagged.reduce(function (a, i) { return a + (i.precio_original - i.precio) * i.cantidad; }, 0);
+          appendDiscount(Object.freeze({ id: 'D-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), registrado: new Date().toISOString(), aparato: (R() && R().label) || '', estado: 'por autorizar', descuento_total: Math.round(total * 100) / 100, items: flagged }));
+        }
+        return out;
+      };
+      root.confirmarVenta.__naGDisc = true;
+    }
+  }
+
   function install() {
-    sidebar(); wrapReset(); wrapSettings();
+    sidebar(); wrapReset(); wrapSettings(); wrapDiscounts();
     if (typeof root.renderCfgContent === 'function' && !root.renderCfgContent.__naG) {
       var base = root.renderCfgContent;
       root.renderCfgContent = function (cat) { if (render(cat)) return; var r = base.apply(this, arguments); try { afterBase(cat); } catch (_) {} return r; };
@@ -265,5 +315,5 @@
   if (cloud()) setTimeout(function () { try { if (!R() || !R().isOwner()) applyServer(); } catch (_) {} }, 0);
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', install); else install();
   root.addEventListener('load', install);
-  root.NA_CONFIG_G = { render: render, unconfirmedSales: unconfirmedSales, pullSettings: pullSettings, pushSettings: pushSettings };
+  root.NA_CONFIG_G = { render: render, unconfirmedSales: unconfirmedSales, pullSettings: pullSettings, pushSettings: pushSettings, discountLog: function () { return JSON.parse(JSON.stringify(discountLog())); } };
 })(window);
