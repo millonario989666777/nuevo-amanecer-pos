@@ -28,7 +28,7 @@ function _naSecCreditCard(parent,credit){
   const pct=credit.monto>0?Math.min(100,_naNumber(credit.pagado)/_naNumber(credit.monto)*100):0,days=diasHasta(credit.vence),pending=_naCreditOutstanding(credit);
   const dateLabel=credit.status==='cancelado'?'Pagado completamente':credit.status==='anulado'?'Crédito anulado':days===null?'—':days<0?`Venció hace ${Math.abs(days)}d`:days===0?'Vence hoy':days<=7?`Vence en ${days}d`:credit.vence;
   const dateColor=credit.status==='cancelado'?'#15803d':credit.status==='anulado'||days!==null&&days<0?'var(--red)':days!==null&&days<=7?'var(--amber)':'var(--slate)';
-  const statusClass=credit.status==='cancelado'?'cs-c':credit.status==='vencido'||credit.status==='anulado'?'cs-m':'cs-v',payments=Array.isArray(credit.pagos)?credit.pagos.length:0;
+  const statusClass=credit.status==='cancelado'?'cs-c':credit.status==='vencido'||credit.status==='anulado'?'cs-m':'cs-v',payments=Array.isArray(credit.pagos)?credit.pagos.filter(pay=>pay?.status!=='REVERTED').length:0;
   const card=_naSecAppend(parent,'div','cr-item'),top=_naSecAppend(card,'div','cr-top'),copy=_naSecAppend(top,'div');
   _naSecAppend(copy,'div','cr-desc',`${credit.tipo==='contrato_privado'?'📋':'🛒'} ${credit.desc||'Crédito'}`);
   const date=_naSecAppend(copy,'div','cr-date',dateLabel);
@@ -344,10 +344,13 @@ abrirDetalleCredito=function(creditId){
         card,
         'div',
         'credit-payment-sub credit-payment-reversed',
-        `\u21a9\ufe0f REVERTIDO${payment.reversalId?` \u00b7 Reversi\u00f3n ${payment.reversalId}`:''}${payment.reversalReason?` \u00b7 Motivo: ${payment.reversalReason}`:''}`
+        payment.canonical
+          ? `\u21a9\ufe0f ANULADO${payment.reversalFecha?` el ${String(payment.reversalFecha).split('-').reverse().join('/')}${payment.reversalHora?` ${payment.reversalHora}`:''}`:''} \u00b7 no suma al saldo${payment.reversalReason?` \u00b7 Motivo: ${payment.reversalReason}`:''}`
+          : `\u21a9\ufe0f REVERTIDO${payment.reversalId?` \u00b7 Reversi\u00f3n ${payment.reversalId}`:''}${payment.reversalReason?` \u00b7 Motivo: ${payment.reversalReason}`:''}`
       ).style.cssText='color:var(--red);font-weight:800';
-    }else if(!credit.anulado){
-      const revert=_naSecCreditAction('btn-cr','\u21a9\ufe0f Revertir pago','revert-payment',credit.id);
+    }else if(!credit.anulado&&!(payment.canonical&&!payment.canonicalLive)){
+      // CANON: only LIVE payments (canonical events) can be annulled; imported history cannot.
+      const revert=_naSecCreditAction('btn-cr',payment.canonical?'\u21a9\ufe0f Anular abono':'\u21a9\ufe0f Revertir pago','revert-payment',credit.id);
       revert.dataset.paymentId=String(payment.pagoId||payment.id||'');
       revert.style.cssText='background:#fef2f2;color:var(--red);margin-top:8px';
       card.appendChild(revert);

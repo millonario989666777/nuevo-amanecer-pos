@@ -1175,7 +1175,11 @@
       if (!validId(input.compensates_operation_id) || !validReason(input.reason)) fail('INVALID_CANONICAL_COMPENSATION');
       event = data.financialEvents.find(function (item) { return item.operation_id === input.compensates_operation_id && ['PAYMENT', 'ADJUSTMENT'].includes(item.event_type); });
       if (!event || !Number.isSafeInteger(event.cash_delta_cents) || !Number.isSafeInteger(event.credit_delta_cents) || data.financialEvents.some(function (item) { return item.compensates_operation_id === event.operation_id; })) fail('INVALID_CANONICAL_COMPENSATION');
+      // Anular abono: the cashier annuls a payment seen inside one credit; the
+      // Worker re-proves that link (compensation_credit_mismatch).
+      if (input.credit_id !== undefined && (!validId(input.credit_id) || String(event.credit_id) !== String(input.credit_id))) fail('INVALID_CANONICAL_COMPENSATION');
       Object.assign(payload, { compensates_operation_id: event.operation_id, reason: input.reason });
+      if (input.credit_id !== undefined) payload.credit_id = input.credit_id;
       if (event.cash_delta_cents !== 0) {
         session = openSession(input.session_id); if (!uint(session.expected_cents - event.cash_delta_cents)) fail('INVALID_CANONICAL_COMPENSATION');
         payload.session_id = session.session_id; payload.expected_session_revision = session.revision;
@@ -1308,6 +1312,7 @@
     if (command === 'cash.close') return validId(payload.session_id) && uint(payload.expected_session_revision) && uint(payload.counted_cents);
     if (command === 'adjustment.create') return validId(payload.session_id) && uint(payload.expected_session_revision) && Number.isSafeInteger(payload.amount_cents) && payload.amount_cents !== 0 && validReason(payload.reason);
     return command === 'compensation.create' && validId(payload.compensates_operation_id) && validReason(payload.reason) &&
+      (payload.credit_id === undefined || validId(payload.credit_id)) &&
       (payload.session_id === undefined ? payload.expected_session_revision === undefined : uint(payload.expected_session_revision));
   }
   function validReceipt(record, result) {
