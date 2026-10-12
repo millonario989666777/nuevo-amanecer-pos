@@ -76,6 +76,13 @@
     return Math.ceil((due - today) / 86400000);
   }
 
+  function localDay(value) {
+    var parsed = new Date(String(value || ''));
+    if (!Number.isFinite(parsed.getTime())) return String(value || '').slice(0, 10);
+    function pad(v) { return String(v).padStart(2, '0'); }
+    return parsed.getFullYear() + '-' + pad(parsed.getMonth() + 1) + '-' + pad(parsed.getDate());
+  }
+
   function labPaymentIdentity(pay) {
     return String(pay && (pay.operation_id || pay.operationId || pay.pagoId || pay.id) || '');
   }
@@ -93,7 +100,8 @@
       clienteId: credit && (credit.cliId ?? credit.clienteId),
       monto: Number(payload.amount_cents) / 100,
       montoPagado: Number(payload.amount_cents) / 100,
-      fecha: /^\d{4}-\d{2}-\d{2}T/.test(timestamp) ? timestamp.slice(0, 10) : '',
+      // P1-3: business-local calendar day (same rule as the canonical adapter and Caja).
+      fecha: /^\d{4}-\d{2}-\d{2}T/.test(timestamp) ? localDay(timestamp) : '',
       timestamp: timestamp || null,
       canonicalDateKnown: !!timestamp,
       datePrecision: timestamp ? 'TIMESTAMP' : 'UNKNOWN',
@@ -1912,10 +1920,13 @@ function labCreditDisplayMoment(cr, fallbackDate) {
   function labMonthlyDates(firstDate, count) {
     var base = firstDate ? new Date(String(firstDate).slice(0,10) + 'T12:00:00') : new Date();
     if (!Number.isFinite(base.getTime())) base = new Date();
+    // P2-1: 31-01 + 1 month is 28/29-02 (last day of the month), never 02/03-03.
+    var year = base.getFullYear(), month = base.getMonth(), day = base.getDate();
+    function pad(v) { return String(v).padStart(2, '0'); }
     return Array.from({length:Math.max(1, Math.min(60, count))}, function (_, index) {
-      var d = new Date(base.getTime());
-      d.setMonth(d.getMonth() + index);
-      return d.toISOString().slice(0,10);
+      var y = year + Math.floor((month + index) / 12), m = (month + index) % 12;
+      var last = new Date(y, m + 1, 0).getDate();
+      return y + '-' + pad(m + 1) + '-' + pad(Math.min(day, last));
     });
   }
 

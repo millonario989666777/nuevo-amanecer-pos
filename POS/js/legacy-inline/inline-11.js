@@ -58,7 +58,7 @@ function _naSecCashStats(container,totals){
   [
     ['green','📈','Ventas',totals.ven],
     ['red','📉','Egresos',totals.egr],
-    ['teal','🤝','Cobros en caja',totals.cob],
+    ['teal','🤝','Cobros en efectivo',totals.cob],
     ['amber','🧾','Gastos',totals.gas]
   ].forEach(([tone,icon,label,value])=>{
     const card=_naSecAppend(grid,'div',`cjsg ${tone}`);
@@ -89,7 +89,7 @@ function _naSecCashClosing(container,totals){
     ['Fondo inicial',fmt(cajEstado.fondo),'var(--dark)'],
     ['Ventas del día',`+${fmt(totals.ven)}`,'#15803d'],
     ...(_naSecCashSalesCredit()>0?[['  · de ellas a crédito (no entra a caja)',fmt(_naSecCashSalesCredit()),'#7c3aed']]:[]),
-    ['Cobros crédito',`+${fmt(totals.cob)}`,'var(--teal)'],
+    ['Cobros crédito (efectivo)',`+${fmt(totals.cob)}`,'var(--teal)'],
     ['Gastos operativos',`-${fmt(totals.gas)}`,'var(--amber)'],
     ['Egresos / Retiros',`-${fmt(totals.ret)}`,'var(--red)']
   ].forEach(([label,value,color])=>{

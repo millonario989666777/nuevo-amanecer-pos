@@ -155,7 +155,7 @@
       montoPagado: cents(p.amount_cents),
       saldoDespues: p.source_balance_after_cents==null?null:cents(p.source_balance_after_cents),
       saldoAntes: p.source_balance_after_cents==null?null:cents(Number(p.source_balance_after_cents)+Number(p.amount_cents)),
-      fecha: known ? text(p.payment_date) : '',
+      fecha: known ? localDateOf(p.payment_timestamp, p.payment_date) : '',
       timestamp: known ? (p.payment_timestamp || p.payment_date || null) : null,
       canonicalDateKnown: known,
       datePrecision: p.date_precision,
@@ -214,7 +214,7 @@
       saldo: balance,
       vence: /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : '',
       canonicalDueKnown: /^\d{4}-\d{2}-\d{2}$/.test(due),
-      fecha: /^\d{4}-\d{2}-\d{2}/.test(issued) ? issued.slice(0, 10) : '',
+      fecha: /^\d{4}-\d{2}-\d{2}/.test(issued) ? localDateOf(issued, issued.slice(0, 10)) : '',
       timestamp: /^\d{4}-\d{2}-\d{2}T/.test(issued) ? issued : null,
       cajero: seller,
       cajeroNombre: seller,
@@ -237,6 +237,18 @@
     };
   }
 
+
+  // P1-3: the Worker stores UTC instants (2026-10-11T01:46:00Z is 20:46 of 10-10 in
+  // Lima). A zoned instant is shown on the business-local calendar day, exactly like
+  // Caja (localParts); date-only/unzoned historical values are kept verbatim.
+  function localDateOf(timestamp, fallback) {
+    var raw = text(timestamp);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) {
+      var local = localParts(raw).date;
+      if (local) return local;
+    }
+    return text(fallback);
+  }
 
   function localParts(value) {
     var raw = text(value);
