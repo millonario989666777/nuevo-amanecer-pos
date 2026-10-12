@@ -108,6 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/product-fixes/fix*/*.test.mjs
+          node --test tests/product-fixes/canon-ticket-unified-editor.test.mjs
           node --test tests/backup-complete.test.mjs tests/backup-restore.test.mjs
 
       - name: Cloud sync, offline outbox and idempotency regressions

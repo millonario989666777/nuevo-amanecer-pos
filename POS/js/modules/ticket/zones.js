@@ -8,10 +8,12 @@ const _NA_F11_ZONE_DEFS={
   p:{name:'Productos',icon:'📦',desc:'Cantidad, descripción, precio unitario e importe.'},
   t:{name:'Totales',icon:'💰',desc:'Artículos, descuento, IGV y total a pagar.'},
   y:{name:'Forma de pago',icon:'💳',desc:'Método, efectivo, digital, recibido y vuelto.'},
+  c:{name:'Detalle del crédito',icon:'📄',desc:'Importe, pago inicial, saldo y vencimiento.'},
+  a:{name:'Estado de cuenta',icon:'📊',desc:'Deuda acumulada y línea disponible del cliente.'},
   f:{name:'Pie de página',icon:'💬',desc:'Mensaje final personalizado.'}
 };
-const _NA_F11_DEFAULT_ORDER='h,i,p,t,y,f';
-const _NA_F11_DEFAULT_SETTINGS='h1cn01;i1ln10;p1lc10;t1sn01;y1sn10;f1cn00';
+const _NA_F11_DEFAULT_ORDER='h,i,p,t,y,c,a,f';
+const _NA_F11_DEFAULT_SETTINGS='h1cn01;i1ln10;p1lc10;t1sn01;y1sn10;c1ln10;a1ln10;f1cn00';
 const _NA_F11_ALIGN={l:'left',c:'center',r:'right',s:'split'};
 const _NA_F11_ALIGN_CODE={left:'l',center:'c',right:'r',split:'s'};
 const _NA_F11_DENSITY={c:'compact',n:'normal',r:'relaxed'};
@@ -19,11 +21,14 @@ const _NA_F11_DENSITY_CODE={compact:'c',normal:'n',relaxed:'r'};
 Object.assign(_naDefaults.ticket,{zoneOrder:_NA_F11_DEFAULT_ORDER,zoneSettings:_NA_F11_DEFAULT_SETTINGS});
 appConfig.ticket={..._naDefaults.ticket,...(appConfig.ticket||{})};
 let _naF11DragCode='';
+// El editor existente es la unica autoridad del orden de los bloques, tambien al compartir.
+globalThis._naF11ReceiptZonesEnabled=true;
 
 function _naF11ParseOrder(raw){
   const valid=Object.keys(_NA_F11_ZONE_DEFS),seen=new Set(),result=[];
   for(const code of String(raw||'').split(',').map(v=>v.trim()))if(valid.includes(code)&&!seen.has(code)){seen.add(code);result.push(code);}
-  for(const code of valid)if(!seen.has(code))result.push(code);
+  // Las configuraciones anteriores de seis zonas se migran en memoria sin borrar el orden del propietario.
+  for(const code of valid)if(!seen.has(code)){const footer=result.indexOf('f');if((code==='c'||code==='a')&&footer>=0)result.splice(footer,0,code);else result.push(code);}
   return result;
 }
 function _naF11DefaultSettings(){
@@ -32,7 +37,7 @@ function _naF11DefaultSettings(){
 function _naF11ParseSettings(raw,skipDefaults=false){
   const result={};
   for(const part of String(raw||'').split(';')){
-    const m=part.trim().match(/^([hiptyf])([01])([lcrs])([cnr])([01])([01])$/);if(!m)continue;
+    const m=part.trim().match(/^([hiptyfca])([01])([lcrs])([cnr])([01])([01])$/);if(!m)continue;
     result[m[1]]={enabled:m[2]==='1',align:_NA_F11_ALIGN[m[3]]||'left',density:_NA_F11_DENSITY[m[4]]||'normal',separator:m[5]==='1',emphasis:m[6]==='1'};
   }
   if(!skipDefaults){const defaults=_naF11DefaultSettings();for(const code of Object.keys(_NA_F11_ZONE_DEFS))result[code]={...defaults[code],...(result[code]||{})};}
@@ -83,14 +88,15 @@ function _naF11ZoneHeader(ctx,s){
 }
 function _naF11ZoneInfo(ctx,s){
   const out=[],push=(label,value)=>{if(value!==''&&value!==null&&value!==undefined)out.push(..._naF11FieldLines(label,value,ctx.width,s.align));};
+  if(ctx.v?._naReceiptContext?.kind!=='payment'&&(ctx.v?.metodo==='credito'||ctx.v?.metodoPago==='credito'))out.push(..._naTkWrap('COMPROBANTE DE VENTA A CREDITO',ctx.width).map(line=>_naTkAlignLine(line,ctx.width,'center')));
   if(ctx.showNum)push(ctx.labels.ticket,ctx.v?.id||'');if(ctx.showOperation){const op=_naTkOperation(ctx.v);if(op)push(ctx.labels.operation,op);}push(ctx.labels.date,_naTkFormatDate(ctx.v?.fecha||obtenerHoy()));push(ctx.labels.time,ctx.v?.hora24||ctx.v?.hora||nowT());push(ctx.labels.cashier,ctx.v?.cajeroNombre||ctx.v?.cajero||ctx.business.cajero||'');
   const client=ctx.v?.clienteNombre||ctx.v?.cliente?.nombre||'',dni=ctx.v?.clienteDni||ctx.v?.cliente?.dni||'';if(client)push('Cliente',client);if(dni)push('DNI',dni);if(ctx.v?.anulada)push('Estado','ANULADA');return out;
 }
 function _naF11ZoneProducts(ctx,s){
-  const out=[],items=ctx.items;if(!items.length)return[_naTkAlignLine('Sin productos',ctx.width,s.align==='split'?'left':s.align)];
+  const out=[],items=ctx.items;if(!items.length)return[_naTkAlignLine('Sin productos',ctx.width,s.align==='split'?'left':s.align)];out.push(..._naTkWrap('DETALLE DE PRODUCTOS',ctx.width));
   if(ctx.width>=24){const qtyW=ctx.width>=38?4:3,amtW=Math.min(ctx.width>=38?(ctx.showCurrency?10:8):(ctx.showCurrency?8:7),Math.max(6,Math.floor(ctx.width*.31))),descW=ctx.width-qtyW-amtW-2;out.push(_naTkPadRight(ctx.labels.qty,qtyW)+' '+_naTkPadRight(ctx.labels.desc,descW)+' '+_naTkPadLeft(ctx.labels.amount,amtW));
-    for(const item of items){const amount=_naTkMoney(Number(item.qty||item.cantidad||0)*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),suffix=item.ventaLibre?' VARIOS':item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,Math.max(3,descW));descLines.forEach((d,index)=>out.push(_naTkPadRight(index===0?String(item.qty||item.cantidad||0):'',qtyW)+' '+_naTkPadRight(d,descW)+' '+_naTkPadLeft(index===0?amount:'',amtW)));if(ctx.showUnit&&ctx.width>=26)out.push(_naTkPair('','P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}
-  }else{for(const item of items){const qty=Number(item.qty||item.cantidad||0),prefix=`${qty}x `,descWidth=Math.max(5,ctx.width-prefix.length),suffix=item.ventaLibre?' VARIOS':item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,descWidth);descLines.forEach((d,index)=>out.push((index===0?prefix:' '.repeat(prefix.length))+d));out.push(_naTkPadLeft(_naTkMoney(qty*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),ctx.width));if(ctx.showUnit)out.push(_naTkPadLeft('P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}}
+    for(const item of items){const amount=_naTkMoney(Number(item.qty||item.cantidad||0)*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),suffix=item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,Math.max(3,descW));descLines.forEach((d,index)=>out.push(_naTkPadRight(index===0?String(item.qty||item.cantidad||0):'',qtyW)+' '+_naTkPadRight(d,descW)+' '+_naTkPadLeft(index===0?amount:'',amtW)));if(ctx.showUnit&&ctx.width>=26)out.push(_naTkPair('','P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}
+  }else{for(const item of items){const qty=Number(item.qty||item.cantidad||0),prefix=`${qty}x `,descWidth=Math.max(5,ctx.width-prefix.length),suffix=item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,descWidth);descLines.forEach((d,index)=>out.push((index===0?prefix:' '.repeat(prefix.length))+d));out.push(_naTkPadLeft(_naTkMoney(qty*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),ctx.width));if(ctx.showUnit)out.push(_naTkPadLeft('P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}}
   return out;
 }
 function _naF11ZoneTotals(ctx,s){
@@ -102,9 +108,31 @@ function _naF11ZoneTotals(ctx,s){
 function _naF11ZonePayment(ctx,s){
   if(!ctx.showPayment)return[];const out=[],add=(label,value)=>out.push(..._naF11FieldLines(label,value,ctx.width,s.align));add(ctx.labels.payment,_naTkPayment(ctx.v?.metodo));const received=Number(ctx.v?.recibido??ctx.v?.received??(ctx.v?.metodo==='efectivo'?ctx.total:0)),change=Number(ctx.v?.vuelto??ctx.v?.change??Math.max(0,received-ctx.total));if(ctx.showReceived&&ctx.v?.metodo==='efectivo'){add(ctx.labels.received,_naTkMoney(received,ctx.showCurrency));add(ctx.labels.change,_naTkMoney(change,ctx.showCurrency));}if(ctx.v?.metodo==='mixto'&&ctx.v?.paymentBreakdown){const mix=ctx.v.paymentBreakdown;add('Efectivo',_naTkMoney(mix.efectivo,ctx.showCurrency));add(mix.digitalMethod==='yape'?'Yape/Plin':'Transferencia',_naTkMoney(mix.digital,ctx.showCurrency));}if(ctx.v?.paymentRef)add('Referencia',ctx.v.paymentRef);return out;
 }
+function _naF11ZoneCredit(ctx,s){
+  const extra=globalThis.NAReceiptShare?.ticketExtrasForSale?.(ctx.v);
+  if(!extra)return[];
+  const out=_naTkWrap('DETALLE DEL CREDITO (ESTA VENTA)',ctx.width);
+  const add=(label,value)=>{if(value!==null&&value!==undefined&&value!=='')out.push(..._naF11FieldLines(label,value,ctx.width,s.align));};
+  const money=value=>value===null||value===undefined?null:_naTkMoney(value,ctx.showCurrency);
+  add('Tipo de venta','Venta a credito');
+  add('Monto original',money(extra.amount));
+  add('Pago inicial',money(extra.initial));
+  add('Saldo pendiente',money(extra.balance));
+  add('Fecha de vencimiento',extra.due? _naTkFormatDate(extra.due):null);
+  return out;
+}
+function _naF11ZoneAccount(ctx,s){
+  const extra=globalThis.NAReceiptShare?.ticketExtrasForSale?.(ctx.v);
+  if(!extra?.account)return[];
+  // El bloque forma parte de las zonas editables, sin un segundo wrapper al final.
+  const rows=globalThis.NAReceiptShare.accountLines(extra.account,ctx.width);
+  // La impresión térmica mantiene la compatibilidad ASCII histórica; PNG/PDF conservan acentos.
+  const printable=ctx.v?._naReceiptContext?rows:rows.map(line=>String(line).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[¡]/g,'!').replace(/[¿]/g,'?').replace(/[^\x20-\x7E]/g,'').replace(/\s+$/,''));
+  return s.align==='left'||s.align==='split'?printable:_naF11AlignLines(printable,ctx.width,s.align);
+}
 function _naF11ZoneFooter(ctx,s){const out=[];for(const part of String(ctx.pie||'').split('|').map(x=>x.trim()).filter(Boolean))out.push(..._naF11AlignLines(_naTkWrap(part,ctx.width),ctx.width,s.align));return out;}
 function _naF11ComposeZones(ctx,state){
-  const builders={h:_naF11ZoneHeader,i:_naF11ZoneInfo,p:_naF11ZoneProducts,t:_naF11ZoneTotals,y:_naF11ZonePayment,f:_naF11ZoneFooter},lines=[],active=state.order.filter(code=>state.settings[code]?.enabled!==false);
+  const builders={h:_naF11ZoneHeader,i:_naF11ZoneInfo,p:_naF11ZoneProducts,t:_naF11ZoneTotals,y:_naF11ZonePayment,c:_naF11ZoneCredit,a:_naF11ZoneAccount,f:_naF11ZoneFooter},lines=[],active=state.order.filter(code=>state.settings[code]?.enabled!==false);
   active.forEach((code,index)=>{const s=state.settings[code],zone=(builders[code]?.(ctx,s)||[]).filter(line=>line!==undefined&&line!==null);if(!zone.length)return;if(s.density==='relaxed'&&lines.length&&lines[lines.length-1]!=='')lines.push('');lines.push(...zone);if(s.separator&&ctx.showSep&&zone[zone.length-1]!==ctx.dash&&zone[zone.length-1]!==ctx.eq)lines.push(ctx.dash);if(index<active.length-1){if(s.density==='relaxed')lines.push('','');else if(s.density==='normal')lines.push('');}});
   while(lines[0]==='')lines.shift();while(lines[lines.length-1]==='')lines.pop();return lines;
 }

@@ -35,7 +35,7 @@ function realTicket(extra = {}) {
 const block = text => text.slice(text.indexOf('ESTADO DE CUENTA DEL CLIENTE'));
 const flat = text => text.replace(/\s*\n\s*/g, ' ');
 
-test('fresh credit sale pending sync: shows previous debt + this sale + total, labelled pending', () => {
+test('fresh credit sale pending sync: debt is accurate while the technical state remains private', () => {
   const projection = { credits: [{ id: 'pending:V-094', sale_id: 'V-094', customer_id: 'C-DALILA', balance_cents: 10250, status: 'PENDING_SYNC', source: 'CANONICAL_OUTBOX' }] };
   const ctx = realTicket({ clientes: [DALILA], creditos: previousCredits(), NuevoAmanecerCanonicalSaleIntegration: { lastProjection: () => projection } });
   const r = ctx.NAReceiptShare.build({ kind: 'sale', sale: V094, customer: DALILA, fresh: true, pendingSync: true, due: '2026-10-25' });
@@ -47,8 +47,9 @@ test('fresh credit sale pending sync: shows previous debt + this sale + total, l
   assert.match(b, /Créditos abiertos: 91\b/);
   assert.match(b, /Línea de crédito: S\/ 1500\.00/);
   assert.match(b, /Línea disponible: S\/ 146\.10/);
-  assert.match(flat(b), /\(incluye esta venta, pendiente de sincronizar\)/);
-  assert.match(b, /^Al: \d{4}-\d{2}-\d{2} [ 1]\d:\d{2} [ap]\.m\. \(PUERTO SUNGARO\)$/m);
+  assert.doesNotMatch(r.text, /pendiente de sincronizar|guardado local|puerto sungaro\)/i);
+  assert.equal(ctx.NAReceiptShare.accountSummary({kind:'sale',sale:V094,customer:DALILA,pendingSync:true}).thisPending,true,'pending sync state still exists internally');
+  assert.match(b, /^Al: \d{4}-\d{2}-\d{2} [ 1]\d:\d{2} [ap]\.m\.$/m);
   assert.ok(r.lines.every(l => l.length <= r.width), 'no line exceeds ticket width');
 });
 
@@ -67,7 +68,7 @@ test('after sync the same sale is counted once (no double counting with the repl
   assert.doesNotMatch(b, /pendiente de sincronizar/);
 });
 
-test('other unsynced credit sales of the same customer are included once and labelled', () => {
+test('other unsynced credit sales are included once without showing internal labels', () => {
   const projection = { credits: [
     { id: 'pending:V-095', sale_id: 'V-095', customer_id: 'C-DALILA', balance_cents: 1000, status: 'PENDING_SYNC' },
     { id: 'pending:V-096', sale_id: 'V-096', customer_id: 'C-DALILA', balance_cents: 500, status: 'PENDING_SYNC' },
@@ -79,7 +80,8 @@ test('other unsynced credit sales of the same customer are included once and lab
   assert.match(b, /Esta venta: S\/ 5\.00/);
   assert.match(b, /Deuda total: S\/ 55\.00/);
   assert.match(b, /Créditos abiertos: 3\b/);
-  assert.match(flat(b), /\(incluye 1 venta anterior pendiente de sincronizar\)/);
+  assert.doesNotMatch(b, /pendiente de sincronizar/);
+  assert.equal(ctx.NAReceiptShare.accountSummary({kind:'sale',sale,customer:DALILA,fresh:true,pendingSync:true}).pendingOthers,1);
 });
 
 test('no block for cash sales, generic customer, or a customer without id; no line when no manual line', () => {
@@ -126,7 +128,7 @@ test('printed ticket (Ver ticket / imprimir / ESC-POS) gets the same block once,
   assert.equal(ctx.NAReceiptShare.installPrintedAccountSummary(), false);
 });
 
-test('"Al:" line: Lima date, 12-hour a.m./p.m. without leading zero, store place label', () => {
+test('"Al:" line: Lima date, 12-hour a.m./p.m. without leading zero (place still available only internally)', () => {
   const ctx = realTicket({ _naGetBusiness: () => ({ nombre: 'Multiservicios Nuevo Amanecer', direccion: 'Puerto Súngaro, Huánuco', cajero: 'Frank' }) });
   const f = ctx.NAReceiptShare.formatAsOf;
   assert.equal(f(Date.parse('2026-10-12T01:33:00Z')), '2026-10-11  8:33 p.m.');
@@ -141,17 +143,18 @@ test('"Al:" line: Lima date, 12-hour a.m./p.m. without leading zero, store place
   assert.equal(realTicket({ _naGetBusiness: () => { throw new Error('x'); } }).NAReceiptShare.placeLabel(), 'PUERTO SUNGARO');
 });
 
-test('shared and printed tickets carry the exact same "Al:" text (printed keeps the two spaces)', () => {
+test('shared and printed tickets carry the exact same "Al:" text without location suffix', () => {
   const realNow = Date.now;
   Date.now = () => Date.parse('2026-10-12T01:33:00Z');
   try {
     const credits = previousCredits().concat([{ id: 'CR-94', cliId: 'C-DALILA', ventaId: 'V-094', monto: 102.5, pagado: 0, saldo: 102.5 }]);
     const ctx = realTicket({ Date, clientes: [DALILA], creditos: credits, _naGetBusiness: () => ({ nombre: 'Nuevo Amanecer', direccion: 'Puerto Súngaro, Huánuco', cajero: 'Frank' }) });
-    const expected = 'Al: 2026-10-11  8:33 p.m. (PUERTO SUNGARO)';
+    const expected = 'Al: 2026-10-11  8:33 p.m.';
     const shared = ctx.NAReceiptShare.build({ kind: 'sale', sale: V094, credit: credits.at(-1), customer: DALILA });
     assert.ok(shared.lines.includes(expected), shared.text);
     const printed = ctx._naBuildThermalTicket(V094, false);
     assert.ok(printed.lines.includes(expected), printed.text);
-    assert.equal(expected.length, 42, 'fits an 80 mm (42 col) ticket');
+    assert.ok(expected.length<=42, 'fits an 80 mm (42 col) ticket');
+    assert.doesNotMatch(shared.text, /\(PUERTO SUNGARO\)|pendiente de sincronizar/i);
   } finally { Date.now = realNow; }
 });
