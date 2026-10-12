@@ -137,3 +137,17 @@
 }
 /* Stock bajo: misma familia naranja que el stock normal, un tono ámbar más oscuro + ⚠ (pedido del dueño). */
 body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!important}
+
+/* Etapa 2 (G): revisiones del dueño */
+.na-review-notice{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;padding:10px 14px;border-radius:12px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-weight:700;font-size:14px}
+.na-review-notice button{border:0;border-radius:10px;padding:8px 12px;background:#b45309;color:#fff;font-weight:700;cursor:pointer}
+.badge-descuento-revision{display:inline-block;margin:0 6px 0 0;padding:1px 7px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-size:11px;font-weight:700}
+.na-review-overlay{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.na-review-box{background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:18px;color:#0f172a}
+.na-review-box h3{margin:0 0 12px}
+.na-review-row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #e2e8f0}
+.na-review-row small{display:block;color:#64748b;font-size:12px;word-break:break-all}
+.na-review-actions{display:flex;gap:6px;flex-shrink:0}
+.na-review-actions button,.na-review-close{border:0;border-radius:10px;padding:8px 10px;background:#15803d;color:#fff;font-weight:700;cursor:pointer}
+.na-review-actions .danger{background:#b91c1c}
+.na-review-close{margin-top:12px;width:100%;background:#0f172a}
