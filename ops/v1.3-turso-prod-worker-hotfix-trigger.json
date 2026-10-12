@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner approved Etapa 2 G (per-device roles + server-side owner PIN) with blanket authorization to merge and deploy (2026-10-12). Migration 0024 applied and verified first with verified R2 backup (run 38298987734). Turso-only Worker redeploy of fd431f6 (#562): only pos-roles.js + worker.js wiring changed since live b965560. No schema changes in this run, no live sale. Rollback to b965560 (current live Worker source).",
-  "target_commit": "fd431f6d7fafcdc76a234f3d5a607d029d7695b8",
-  "rollback_ref": "b965560ea4766eb04857956ce2873cc80d9a4794",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of d6f95ee: #568/#569 are client-only; #570 changes canonical read paging (sale-items and credit-accounts tuple cursor without NUL) to stop repeated rows at page boundaries. No schema changes, no live sale. Rollback to fd431f6 (current live Worker source).",
+  "target_commit": "d6f95eee9d6131581239f16691c38e32ef8f459d",
+  "rollback_ref": "fd431f6d7fafcdc76a234f3d5a607d029d7695b8",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 13,
-  "previous_run_id": 38298987734,
+  "attempt": 14,
+  "previous_run_id": 38299145291,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "CANON_POS_ROLES_OWNER_PIN_G"
+  "optimization": "CANON_READ_TUPLE_CURSOR_DEDUPE"
 }
