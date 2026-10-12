@@ -632,24 +632,14 @@
       profile.appendChild(profileCopy);
       drawer.appendChild(profile);
       var navigation = node('nav', 'na-mobile-drawer-nav');
-      // Ítem 13 (pequeño): títulos cortos por apartado según el mapa de menú; mismos destinos de siempre.
-      var section = function (title) { var h = node('div', 'na-mobile-drawer-section', title); h.setAttribute('role', 'presentation'); navigation.appendChild(h); };
       navigation.appendChild(drawerItem('Inicio', 'home', 'pageMenu'));
-      section('Vender');
       navigation.appendChild(drawerItem('Nueva venta', 'sale', 'pagePOS', 'Punto de Venta'));
       navigation.appendChild(drawerItem('Ventas', 'sales', 'pageVentas', 'Historial de ventas'));
-      section('Caja');
-      navigation.appendChild(drawerItem('Abrir / cerrar caja', 'cash', 'pageCaja', 'Caja · controlar turno'));
-      navigation.appendChild(drawerItem('Registrar gasto', 'expense', 'pageGastos', 'Gastos · registrar y consultar'));
-      section('Clientes y créditos');
+      navigation.appendChild(drawerItem('Ingresar mercadería', 'stock', 'pageInventario', 'Inventario · consultar stock'));
       navigation.appendChild(drawerItem('Buscar cliente', 'search', 'pageClientes', 'Clientes · saldos y créditos'));
       navigation.appendChild(drawerItem('Registrar abono', 'payment', 'pageClientes', 'Cuentas por cobrar'));
-      section('Inventario y compras');
-      navigation.appendChild(drawerItem('Ingresar mercadería', 'stock', 'pageInventario', 'Inventario · consultar stock'));
-      var compras = drawerItem('Compras', 'stock', 'pageInventario', 'Registrar compra · proveedor y costo');
-      compras.addEventListener('click', function () { setTimeout(function () { try { if (root.NA_PURCHASES) root.NA_PURCHASES.open(); } catch (_) {} }, 250); });
-      navigation.appendChild(compras);
-      section('Ajustes');
+      navigation.appendChild(drawerItem('Abrir / cerrar caja', 'cash', 'pageCaja', 'Caja · controlar turno'));
+      navigation.appendChild(drawerItem('Registrar gasto', 'expense', 'pageGastos', 'Gastos · registrar y consultar'));
       navigation.appendChild(drawerItem('Configuración', 'settings', 'pageConfig'));
       drawer.appendChild(navigation);
       document.body.appendChild(drawer);
