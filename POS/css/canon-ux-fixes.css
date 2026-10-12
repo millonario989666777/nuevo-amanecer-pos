@@ -156,3 +156,18 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 
 /* Historial (Etapa 2): cada tanda de tarjetas es un bloque contenido; agregar una tanda no recalcula ni repinta las anteriores. */
 #ventasContent .v-list-wrap>.v-chunk{contain:layout style paint}
+
+/* Ítem 12: hoja de descuento */
+.na-ds-overlay{position:fixed;inset:0;z-index:10060;background:rgba(15,23,42,.45);display:flex;align-items:flex-end;justify-content:center}
+.na-ds-sheet{background:#fff;color:#0f172a;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.2)}
+@media (min-width:700px){.na-ds-overlay{align-items:center}.na-ds-sheet{border-radius:18px}}
+.na-ds-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:12px}.na-ds-head span{color:#64748b;font-size:13px}
+.na-ds-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.na-ds-chips button,.na-ds-mode button{min-height:44px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;font-weight:800;font-size:15px;color:#0f172a;cursor:pointer}
+.na-ds-chips button.active,.na-ds-mode button.active{background:#0f766e;border-color:#0f766e;color:#fff}
+.na-ds-mode{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+#naDsInput{width:100%;box-sizing:border-box;min-height:46px;border:1px solid #cbd5e1;border-radius:12px;padding:8px 12px;font-size:18px;font-weight:700}
+.na-ds-preview{margin:10px 0;font-size:14px;color:#334155;font-weight:600}
+.na-ds-actions{display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
+.na-ds-actions button{min-height:48px;border:0;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer}
+.na-ds-cancel{background:#e2e8f0;color:#0f172a}.na-ds-ok{background:#15803d;color:#fff}.na-ds-ok:disabled{opacity:.45;cursor:not-allowed}

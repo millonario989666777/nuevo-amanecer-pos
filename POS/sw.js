@@ -120,6 +120,7 @@ const PRECACHE_URLS = [
   './js/config/config-g.js',
   './js/config/pos-reviews-client.js',
   './js/config/pos-annul-client.js',
+  './js/modules/discount-sheet.js',
   './js/config/pos-roles-client.js',
   './js/core/lazy-assets.js'
 ];

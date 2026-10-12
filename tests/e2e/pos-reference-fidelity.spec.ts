@@ -64,8 +64,9 @@ test('current sale controls edit real cart and survive canonical capture', async
   await expect(page.locator('.cart-item')).toHaveCount(2);
   await page.locator('.cart-item').last().locator('[data-na-cart-action="remove"]').click();
   await expect(page.locator('.cart-item')).toHaveCount(1);
-  page.once('dialog', dialog => dialog.accept('10'));
   await page.locator('#posDiscount').click();
+  await page.locator('#naDiscountSheet [data-pct="10"]').click();
+  await page.locator('#naDiscountSheet .na-ds-ok').click();
   await expect(page.locator('#posTotal')).toHaveText('S/ 22.95');
   await page.locator('.pos-customer-button').click();
   await page.locator('.na-client-picker-row').filter({ hasText: 'Cliente prueba' }).click();
