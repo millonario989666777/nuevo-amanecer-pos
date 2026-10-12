@@ -69,6 +69,28 @@
     if (client && typeof client.prepareCommand === 'function') return client.prepareCommand(command);
     return refreshCanonical();
   }
+  // Spanish, actionable text for a failed cash command (C-P0-1).
+  function commandFailureText(error) {
+    var code = clean(error && (error.code || error.message));
+    var record = null;
+    try { record = api().pendingSnapshot(); } catch (_) {}
+    if (/REJECTED_4\d\d/.test(code)) return 'CANON lo rechazó' + (record && record.last_error ? ' (' + clean(record.last_error) + ')' : '') +
+      '. No se aplicó nada: vuelve a intentarlo (los datos ya se actualizaron).';
+    if (code === 'CANONICAL_FINANCIAL_PENDING' || /TIMEOUT|HTTP_5|HTTP_429|Failed to fetch|NetworkError/i.test(code))
+      return 'sin confirmación del servidor. Vuelve a intentarlo: se reenvía la MISMA operación y no se duplica.';
+    return code;
+  }
+  // C-P0-1: release/replay a stranded cash operation before a new one. Returns
+  // true when the replay confirmed the SAME kind of operation the cashier is
+  // retrying, so the caller must not register it twice.
+  async function settleStranded(command) {
+    var client = api();
+    if (!client || typeof client.settleStrandedFinancial !== 'function') return false;
+    var settled = await client.settleStrandedFinancial();
+    if (!settled || settled.status !== 'REPLAYED') return false;
+    refreshAfterReceipt();
+    return settled.command === command;
+  }
   function refreshAfterReceipt() {
     Promise.resolve().then(refreshCanonical).then(renderCash).catch(function (error) {
       if (root.console) root.console.warn('[Caja CANON] Confirmada; actualización pendiente', error.message);
@@ -198,6 +220,12 @@
     if (button) { button.disabled = true; button.textContent = 'Procesando…'; }
 
     try {
+      if (await settleStranded('cash.open')) {
+        closeModal('mApertura');
+        renderCash();
+        notify('La apertura anterior sí llegó al servidor: la caja CANON ya está abierta.', 'success');
+        return true;
+      }
       await prepare('cash.open');
       var client = api();
       var id = root.crypto && typeof root.crypto.randomUUID === 'function'
@@ -210,7 +238,7 @@
       notify('Caja CANON abierta con S/ ' + (openingCents / 100).toFixed(2), 'success');
       return true;
     } catch (error) {
-      notify('No se pudo abrir la caja CANON: ' + clean(error && error.message), 'error');
+      notify('No se pudo abrir la caja CANON: ' + commandFailureText(error), 'error');
       return false;
     } finally {
       openingBusy = false;
@@ -277,6 +305,12 @@
     if (button) { button.disabled = true; button.textContent = 'Procesando…'; }
 
     try {
+      if (await settleStranded('adjustment.create')) {
+        closeModal('mMovCaja');
+        renderCash();
+        notify('El movimiento anterior sí llegó al servidor. Revisa la lista antes de registrar otro.', 'success');
+        return true;
+      }
       await prepare('adjustment.create');
       await api().createAdjustment({ amount_cents: signed, reason: reason.slice(0, 500) });
       refreshAfterReceipt();
@@ -285,7 +319,7 @@
       notify((type === 'ing' ? 'Ingreso' : 'Egreso') + ' CANON de S/ ' + (amountCents / 100).toFixed(2) + ' registrado', 'success');
       return true;
     } catch (error) {
-      notify('No se pudo registrar el movimiento CANON: ' + clean(error && error.message), 'error');
+      notify('No se pudo registrar el movimiento CANON: ' + commandFailureText(error), 'error');
       return false;
     } finally {
       movementBusy = false;
@@ -348,7 +382,7 @@
         row.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
         var info = doc.createElement('span');
         info.textContent = clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
-          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
+          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : typeof outbox.reasonText === 'function' ? outbox.reasonText(entry.reason) + ' (' + clean(entry.reason) + ')' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
         row.appendChild(info);
         function action(label, kind, run) {
           var el = doc.createElement('button');
@@ -366,7 +400,10 @@
           return done.status === 'CONFIRMED_REMOTE' ? 'Venta ' + clean(intent.sale_id) + ' ya está registrada en el servidor. Conciliada.'
             : 'Venta ' + clean(intent.sale_id) + ' NO está registrada en el servidor. No la cobres de nuevo sin hablar con el cliente.';
         });
-        if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action('Reintentar', 'retry', async function () {
+        var rebinds = typeof outbox.quarantineRebindsOnRetry === 'function' && outbox.quarantineRebindsOnRetry(entry.reason);
+        var retryLabel = rebinds ? 'Registrar en la caja abierta' : entry.reason === 'promotion_changed' ? 'Reenviar en este equipo' : 'Reintentar';
+        if (typeof outbox.quarantineRetryable === 'function' && outbox.quarantineRetryable(entry.reason)) action(retryLabel, 'retry', async function () {
+          if (rebinds && typeof root.confirm === 'function' && !root.confirm('¿Registrar ' + clean(intent.sale_id) + ' en la caja abierta ahora? Su efectivo contará en la caja actual.')) return 'Reintento cancelado.';
           await outbox.resolveQuarantined(intent.operation_id, 'retry');
           var outcome = await outbox.sync();
           return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.';
@@ -485,6 +522,32 @@
     return submit(0);
   }
 
+  function differenceText(difference) {
+    if (!Number.isSafeInteger(difference)) return '';
+    if (difference === 0) return ' · Cuadrada (sin diferencia)';
+    return ' · Diferencia: ' + (difference > 0 ? '+' : '−') + 'S/ ' + (Math.abs(difference) / 100).toFixed(2) + (difference > 0 ? ' (sobrante)' : ' (faltante)');
+  }
+  // C-P1: the close dialog shows the expected cash of a FRESH server read and
+  // keeps "Confirmar cierre" disabled until that read confirms it.
+  var basePrepCierre = root.prepCierre;
+  if (typeof basePrepCierre === 'function') root.prepCierre = function () {
+    var result = basePrepCierre.apply(this, arguments);
+    if (!enabled()) return result;
+    var modal = root.document.getElementById('mCierre');
+    if (!modal || !modal.classList || !modal.classList.contains('open')) return result;
+    var button = root.document.querySelector('#mCierre .mbtn-ok');
+    var label = button && button.textContent || '🔒 Confirmar cierre';
+    if (button) { button.disabled = true; button.textContent = 'Verificando…'; }
+    Promise.resolve().then(refreshCanonical).then(function () {
+      if (!modal.classList.contains('open')) return;
+      if (typeof root._naRefreshClosingCashTotals === 'function' && typeof root.cajTotales === 'function') root._naRefreshClosingCashTotals(root.cajTotales());
+      if (button && !closingBusy) { button.disabled = false; button.textContent = label; }
+    }).catch(function () {
+      closeStatus('Sin confirmar: no se pudo leer la caja del servidor. Revisa la conexión y vuelve a abrir el cierre.');
+      if (button && !closingBusy) button.textContent = 'Sin confirmar';
+    });
+    return result;
+  };
   root.cerrarCaja = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
     if (closingBusy) return false;
@@ -508,9 +571,10 @@
       closeModal('mCierre');
       renderCash();
       var actualCount = outcome.receipt && outcome.receipt.counted_cents;
+      var difference = outcome.receipt && outcome.receipt.difference_cents;
       notify(outcome.status === 'CLOSED' ? 'Esta caja ya estaba cerrada. Estado actualizado.' :
         'Caja CANON cerrada correctamente' + (Number.isSafeInteger(actualCount) && actualCount !== countedCents
-          ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : ''), 'success');
+          ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : '') + differenceText(difference), 'success');
       return true;
     } catch (error) {
       var message = closeFailure(error);

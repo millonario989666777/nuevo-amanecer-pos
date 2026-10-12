@@ -221,7 +221,10 @@
     root.document.getElementById('naReceiptPhone').value=receipt.phone?'+'+receipt.phone:'';
     root.document.getElementById('naReceiptFormat').value=active.format;
     root.document.getElementById('naReceiptText').textContent=receipt.text;
-    overlay.classList.add('open');prepare();root.document.getElementById('naReceiptPhone').focus();return true;
+    overlay.classList.add('open');prepare();
+    // P1-D (mobile): focus the dialog title, never the phone input, so the
+    // on-screen keyboard does not pop up after every sale.
+    const title=root.document.getElementById('naReceiptTitle');if(title){title.setAttribute('tabindex','-1');title.focus({preventScroll:true});}return true;
   }
   function downloadFile(file){const url=root.URL.createObjectURL(file),a=el('a');a.href=url;a.download=file.name;root.document.body.append(a);a.click();a.remove();root.setTimeout(()=>root.URL.revokeObjectURL(url),30000);notify('Comprobante descargado. Puedes adjuntarlo en WhatsApp.','success');}
   async function share(){
