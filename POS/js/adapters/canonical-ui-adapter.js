@@ -166,8 +166,39 @@
       referencia: operation,
       cajero: seller,
       cajeroNombre: seller,
+      // LIVE payments are canonical financial events: they can be annulled
+      // with compensation.create (payment_id === event_id === operation_id).
+      operationId: p.provenance === 'LIVE' ? text(p.operation_id || p.payment_id) : '',
+      canonicalLive: p.provenance === 'LIVE',
       canonical: true
     };
+  }
+
+  // P1-4: a COMPENSATION is not a second (negative) payment. The original
+  // payment stays in the history marked REVERTED ("Anulado el ...") and the
+  // compensation row itself is not listed nor counted.
+  function compensationsByTarget(payments, events) {
+    var out = new Map();
+    function add(row) {
+      if (!row || !row.compensates_operation_id) return;
+      var key = String(row.compensates_operation_id);
+      if (!out.has(key)) out.set(key, row);
+    }
+    (Array.isArray(payments) ? payments : []).forEach(add);
+    (Array.isArray(events) ? events : []).forEach(function (event) { if (event && event.event_type === 'COMPENSATION') add(event); });
+    return out;
+  }
+  function markReverted(payment, compensation) {
+    if (!compensation) return payment;
+    var at = text(compensation.payment_timestamp || compensation.created_at);
+    var when = localParts(at);
+    payment.status = 'REVERTED';
+    payment.reversalId = text(compensation.operation_id || compensation.event_id || compensation.payment_id);
+    payment.reversalAt = at || null;
+    payment.reversalFecha = when.date;
+    payment.reversalHora = when.time;
+    payment.reversalReason = text(compensation.reason);
+    return payment;
   }
 
   function safeInstallments(value) {
@@ -181,7 +212,7 @@
     }).filter(function (row) { return row.number > 0; });
   }
 
-  function uiCredit(c, customerById, paymentsByCredit) {
+  function uiCredit(c, customerById, paymentsByCredit, compensations) {
     c = c && typeof c === 'object' ? c : {};
     var issued = typeof c.issued_value === 'string' ? c.issued_value : (typeof c.created_at === 'string' ? c.created_at : '');
     var due = typeof c.due_value === 'string' ? c.due_value : (typeof c.due_date === 'string' ? c.due_date : '');
@@ -198,7 +229,10 @@
       mode: c.account_mode === 'separate' ? 'separate' : 'accumulated',
       source: 'canonical'
     } : null;
-    var payments = (paymentsByCredit.get(String(c.credit_id)) || []).map(function (p) { return uiPayment(p, c); });
+    var payments = (paymentsByCredit.get(String(c.credit_id)) || []).map(function (p) {
+      var ui = uiPayment(p, c);
+      return ui.canonicalLive ? markReverted(ui, compensations && compensations.get(String(ui.operationId))) : ui;
+    });
     return {
       id: c.credit_id,
       credit_id: c.credit_id,
@@ -429,8 +463,9 @@
       monto: amount,
       efectivo: isCash ? Math.abs(cashDelta) / 100 : 0,
       digital: kind === 'PAYMENT' && !isCash ? amount : 0,
-      desc: kind === 'PAYMENT' ? 'Cobro de crédito' : (kind === 'ADJUSTMENT' ? text(event.reason, 'Ajuste de caja') : text(event.reason, 'Compensación')),
-      cat: kind === 'PAYMENT' ? 'Cobro' : (kind === 'ADJUSTMENT' ? 'Ajuste' : 'Compensación'),
+      desc: kind === 'PAYMENT' ? 'Cobro de crédito' : (kind === 'ADJUSTMENT' ? text(event.reason, 'Ajuste de caja') :
+        (event.credit_id ? 'Anulación de abono' + (text(event.reason) ? ' · ' + text(event.reason) : '') : text(event.reason, 'Compensación'))),
+      cat: kind === 'PAYMENT' ? 'Cobro' : (kind === 'ADJUSTMENT' ? 'Ajuste' : (event.credit_id ? 'Anulación de abono' : 'Compensación')),
       metodo: method,
       referencia: text(event.reference),
       numeroOperacion: text(event.reference),
@@ -532,13 +567,14 @@
     });
     var customerById = new Map(customers.map(function (c) { return [String(c.id), c]; }));
     var paymentsByCredit = new Map();
+    var compensations = compensationsByTarget(data.payments, data.financialEvents);
     (Array.isArray(data.payments) ? data.payments : []).forEach(function (p) {
-      if (!p) return;
+      if (!p || p.compensates_operation_id) return;
       var key = String(p.credit_id), list = paymentsByCredit.get(key) || [];
       list.push(p); paymentsByCredit.set(key, list);
     });
     var credits = (Array.isArray(data.credits) ? data.credits : []).map(function (c) {
-      return uiCredit(c, customerById, paymentsByCredit);
+      return uiCredit(c, customerById, paymentsByCredit, compensations);
     });
     var creditById = new Map(credits.map(function (c) { return [String(c.id), c]; }));
     var products = (Array.isArray(data.products) ? data.products : []).map(uiProduct);

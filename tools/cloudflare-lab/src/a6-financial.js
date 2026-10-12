@@ -8,7 +8,8 @@ const FIELDS = {
   'cash.open': ['session_id','opening_cents'],
   'cash.close': ['session_id','expected_session_revision','counted_cents'],
   'adjustment.create': ['session_id','expected_session_revision','amount_cents','reason'],
-  'compensation.create': ['compensates_operation_id','session_id','expected_session_revision','expected_credit_revision','reason'],
+  // credit_id is optional: when present the Worker proves the annulled payment belongs to that credit.
+  'compensation.create': ['compensates_operation_id','session_id','expected_session_revision','expected_credit_revision','reason','credit_id'],
 };
 const id = v => typeof v === 'string' && v.length > 0 && v.length <= 160 && !/[\x00-\x1f\x7f]/.test(v);
 const uint = v => Number.isSafeInteger(v) && v >= 0;
@@ -66,7 +67,7 @@ function validate(command, b) {
   if (command === 'cash.close' && (!id(b.session_id) || !uint(b.expected_session_revision) || !uint(b.counted_cents))) return 'invalid_closure';
   if (command === 'adjustment.create' && (!id(b.session_id) || !uint(b.expected_session_revision) || !Number.isSafeInteger(b.amount_cents) || b.amount_cents === 0)) return 'invalid_adjustment';
   if (['adjustment.create','compensation.create'].includes(command) && !text(b.reason)) return 'reason_required';
-  if (command === 'compensation.create' && !id(b.compensates_operation_id)) return 'invalid_compensation';
+  if (command === 'compensation.create' && (!id(b.compensates_operation_id) || (b.credit_id !== undefined && !id(b.credit_id)))) return 'invalid_compensation';
   return null;
 }
 
@@ -114,6 +115,8 @@ export async function createCanonicalFinancial(command, request, env, auth, json
     target = await db.prepare(`SELECT * FROM canonical_financial_events WHERE operation_id=?1 AND promotion_id=?2
       AND event_type IN ('PAYMENT','ADJUSTMENT')`).bind(body.compensates_operation_id,body.promotion_id).first();
     if (!target) return json({error:'compensation_target_not_found'},409);
+    // Anular abono: the payment must belong to the credit the cashier is looking at.
+    if (body.credit_id !== undefined && String(target.credit_id ?? '') !== body.credit_id) return json({error:'compensation_credit_mismatch'},409);
     if (await db.prepare('SELECT 1 ok FROM canonical_financial_events WHERE compensates_operation_id=?1').bind(body.compensates_operation_id).first()) return json({error:'already_compensated'},409);
     creditDelta = -target.credit_delta_cents; cashDelta = -target.cash_delta_cents; method = target.payment_method;
     if (cashDelta !== 0 ? !id(body.session_id) || !uint(body.expected_session_revision) : body.session_id !== undefined || body.expected_session_revision !== undefined) return json({error:'invalid_compensation_session'},400);
@@ -184,6 +187,9 @@ export async function createCanonicalFinancial(command, request, env, auth, json
     const recovered = await replay();
     if (recovered) return recovered;
     if (await referenceTakenBy(db,referenceGuard,body.operation_id)) return json({error:'reference_already_used',reference:body.reference},409);
+    // Two devices annulling the same payment: the UNIQUE(compensates_operation_id) fence lets one win.
+    if (command === 'compensation.create' && await db.prepare('SELECT 1 ok FROM canonical_financial_events WHERE compensates_operation_id=?1 AND operation_id<>?2')
+      .bind(body.compensates_operation_id,body.operation_id).first().catch(() => null)) return json({error:'already_compensated'},409);
     // Storage/transport failures are not disguised as business conflicts or success.
     const conflict = /constraint|conflict|stale_authority|gate_p_control|invalid_|forbidden/i.test(String(error?.message));
     return json({error:conflict?'financial_conflict':'financial_storage_error',operation_id:body.operation_id,retry_same_operation_id:true},conflict?409:503);

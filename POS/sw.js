@@ -65,6 +65,7 @@ const PRECACHE_URLS = [
   './js/sync/canonical-sale-integration.js',
   './js/sync/canonical-sale-view.js',
   './js/sync/canonical-credit-payment-bridge.js',
+  './js/sync/canonical-payment-annul-bridge.js',
   './js/sync/canonical-product-bridge.js',
   './js/sync/canonical-customer-bridge.js',
   './js/sync/canonical-customer-credit-policy-bridge.js',
