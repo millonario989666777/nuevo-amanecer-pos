@@ -90,8 +90,11 @@
   function render() {
     var v = view(compute()); last = v;
     var el = element(); if (!el) return v;
-    if (!v) { el.style.display = 'none'; return v; }
+    var body = root.document.body;
+    if (!v) { el.style.display = 'none'; if (body && body.classList) body.classList.remove('na-sb-on'); return v; }
     el.style.display = 'flex';
+    // Reserva el alto de la franja para que no tape la barra fija de Nueva venta (☰).
+    if (body && body.classList) { body.classList.add('na-sb-on'); if (body.style && body.style.setProperty) body.style.setProperty('--na-sb-h', (el.offsetHeight || 28) + 'px'); }
     el.dataset.tone = v.tone;
     el.style.background = v.tone === 'red' ? '#fee2e2' : '#fef3c7';
     el.style.color = v.tone === 'red' ? '#991b1b' : '#92400e';

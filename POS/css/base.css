@@ -339,8 +339,10 @@
         .v-num{width:36px;height:36px;background:var(--teal-light);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--teal-dark);flex-shrink:0}
         .v-info{flex:1;min-width:0}
         .v-items-txt{font-size:12px;font-weight:800;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .v-meta{font-size:10px;color:var(--slate);font-weight:600;margin-top:2px;display:flex;gap:7px}
-        .v-right{text-align:right;flex-shrink:0}
+        .v-meta{font-size:10px;color:var(--slate);font-weight:600;margin-top:2px;display:flex;flex-wrap:wrap;gap:3px 7px;align-items:center}
+        .v-meta>span{white-space:nowrap}
+        .v-right{text-align:right;flex-shrink:0;max-width:42%}
+        @media(max-width:700px){.v-header{align-items:flex-start}.v-total{font-size:14px}}
         .v-total{font-size:15px;font-weight:800;color:var(--teal)}
         .mp{font-size:10px;font-weight:800;padding:2px 8px;border-radius:7px;display:inline-block;margin-top:2px}
         .mp-ef{background:#f0fdf4;color:#15803d}.mp-yp{background:var(--purple-light);color:var(--purple)}.mp-cr{background:var(--amber-light);color:#b45309}.mp-tr{background:var(--blue-light);color:var(--blue)}
@@ -941,6 +943,15 @@
             }
         }
         @media(max-width:480px){body.module-mobile-scroll .page.active>.page-chrome{top:60px!important}}
+        /* Etapa 2: en celular la cabecera de Clientes, Historial, Caja y Gastos ocupaba
+           hasta el 69% de la pantalla al quedar fija. Ahora sube con la lista y no se
+           oculta con display:none (sin saltos). Inventario mantiene su buscador fijo. */
+        @media(max-width:700px){
+            body.module-mobile-scroll #pageClientes.active>.page-chrome,
+            body.module-mobile-scroll #pageVentas.active>.page-chrome,
+            body.module-mobile-scroll #pageCaja.active>.page-chrome,
+            body.module-mobile-scroll #pageGastos.active>.page-chrome{position:relative!important;top:auto!important}
+        }
 
         /* HOTFIX DESKTOP: header auto-hide en escritorio SIN cambiar el layout del body.
            .g-topbar sigue siendo un flex-item en flujo (58px); al ocultarse se retira con
