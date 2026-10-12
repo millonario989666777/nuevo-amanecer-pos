@@ -49,7 +49,9 @@
     panel.setAttribute('aria-label', title);
     panel.className = 'na-canonical-pending';
     text(panel, 'h3', title);
-    target.appendChild(panel);
+    // Pendientes y en revisión van arriba, visibles sin desplazarse.
+    if (target.firstChild && typeof target.insertBefore === 'function') target.insertBefore(panel, target.firstChild);
+    else target.appendChild(panel);
     return panel;
   }
   function confirmedOperationIds() { return new Set(Array.from(confirmedReceipts.keys())); }
