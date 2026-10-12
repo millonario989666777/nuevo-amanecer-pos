@@ -17,11 +17,15 @@ async function commerceCapabilities(db) {
   const pending = db.prepare(`SELECT
       SUM(CASE WHEN type='table' AND name IN ('canonical_product_operations','canonical_live_products','canonical_live_inventory_effects') THEN 1 ELSE 0 END) AS live_product_tables,
       SUM(CASE WHEN type='table' AND name='canonical_generic_sale_lines' THEN 1 ELSE 0 END) AS generic_sale_tables,
-      SUM(CASE WHEN type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers') THEN 1 ELSE 0 END) AS live_customer_tables
+      SUM(CASE WHEN type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers') THEN 1 ELSE 0 END) AS live_customer_tables,
+      SUM(CASE WHEN type='table' AND name='canonical_customer_credit_policies' THEN 1 ELSE 0 END) AS credit_policy_tables,
+      SUM(CASE WHEN type='table' AND name='canonical_reconciliation_credits' THEN 1 ELSE 0 END) AS reconciliation_tables
     FROM sqlite_master`).first().then(row => Object.freeze({
       liveProducts:Number(row?.live_product_tables)===3,
       genericSales:Number(row?.generic_sale_tables)===1,
       liveCustomers:Number(row?.live_customer_tables)===3,
+      creditPolicy:Number(row?.credit_policy_tables)===1,
+      reconciliation:Number(row?.reconciliation_tables)===1,
     }));
   commerceCapabilityCache.set(db,pending);
   try { return await pending; }
@@ -511,6 +515,24 @@ export async function createCanonicalSale(request, env, auth, json) {
     readIndex.customer=addRead(db.prepare(customerSql).bind(body.promotion_id,body.customer_id));
   }
 
+  // P1-2: the customer's credit line is enforced by the Worker, not only by the screen.
+  // MANUAL policy: open balance of every credit of the customer + this sale <= manual limit.
+  // AUTOMATIC/no policy keeps today's behaviour (the automatic line is computed on the client),
+  // but the policy row itself is CAS-fenced so a concurrent switch to MANUAL is not bypassed.
+  const creditOwnersSql=`SELECT credit_id,'IMPORT' AS provenance FROM credits WHERE promotion_id=?1 AND customer_id=?2
+      UNION ALL SELECT credit_id,'LIVE' FROM live_credits WHERE promotion_id=?1 AND customer_id=?2${capabilities.reconciliation ? `
+      UNION ALL SELECT credit_id,'IMPORT' FROM canonical_reconciliation_credits WHERE promotion_id=?1 AND customer_id=?2` : ''}`;
+  const customerDebtSql=`(SELECT COALESCE(SUM(b.current_balance_cents),0) FROM canonical_credit_balances b
+      JOIN (${creditOwnersSql}) o ON o.credit_id=b.credit_id AND o.provenance=b.provenance WHERE b.promotion_id=?1)`;
+  readIndex.creditLine=-1;
+  if (body.payment_method === 'credito' && capabilities.creditPolicy) {
+    readIndex.creditLine=addRead(db.prepare(`SELECT
+        (SELECT mode FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2) AS mode,
+        (SELECT manual_limit_cents FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2) AS manual_limit_cents,
+        (SELECT revision FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2) AS policy_revision,
+        ${customerDebtSql} AS debt_cents`).bind(body.promotion_id,body.customer_id));
+  }
+
   readIndex.account=-1;
   if (body.payment_method === 'credito' && body.credit_account && body.credit_account.account_id !== 'small') {
     readIndex.account=addRead(db.prepare('SELECT account_id,name,mode FROM canonical_credit_accounts WHERE promotion_id=?1 AND customer_id=?2 AND (account_id=?3 OR lower(name)=lower(?4))')
@@ -565,6 +587,17 @@ export async function createCanonicalSale(request, env, auth, json) {
 
   if (body.customer_id && !validation[readIndex.customer]) return json({error:'customer_not_found'},409);
 
+  let creditLine=null;
+  if (readIndex.creditLine>=0) {
+    const line=validation[readIndex.creditLine]||{};
+    creditLine={mode:line.mode||null,limit:line.manual_limit_cents==null?null:Number(line.manual_limit_cents),
+      revision:line.policy_revision==null?null:Number(line.policy_revision),debt:Number(line.debt_cents)||0};
+    if (creditLine.mode==='MANUAL' && creditLine.debt+body.total_cents>creditLine.limit) {
+      return json({error:'credit_limit_exceeded',customer_id:body.customer_id,limit_cents:creditLine.limit,
+        debt_cents:creditLine.debt,available_cents:Math.max(0,creditLine.limit-creditLine.debt),requested_cents:body.total_cents},409);
+    }
+  }
+
   let accountExists=false;
   if (readIndex.account>=0) {
     const account=validation[readIndex.account];
@@ -590,6 +623,20 @@ export async function createCanonicalSale(request, env, auth, json) {
   if (body.session_id) statements.push(db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok)
     SELECT ?1,CASE WHEN EXISTS(SELECT 1 FROM canonical_cash_state WHERE promotion_id=?2 AND session_id=?3 AND status='OPEN') THEN 1 ELSE 0 END`)
     .bind(`${token}:session`,body.promotion_id,body.session_id));
+  if (creditLine) {
+    // Evaluated inside the same atomic batch, before this sale's credit exists: two concurrent
+    // sales cannot both fit into the same remaining line, and a policy change in between fails.
+    statements.push(creditLine.mode==='MANUAL'
+      ? db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok) SELECT ?3,CASE WHEN
+          EXISTS(SELECT 1 FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2 AND mode='MANUAL'
+            AND manual_limit_cents=?4 AND revision=?5)
+          AND ${customerDebtSql}+?6<=?4 THEN 1 ELSE 0 END`)
+          .bind(body.promotion_id,body.customer_id,`${token}:credit-line`,creditLine.limit,creditLine.revision,body.total_cents)
+      : db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok) SELECT ?3,CASE WHEN
+          COALESCE((SELECT revision FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2),-1)=?4
+          THEN 1 ELSE 0 END`)
+          .bind(body.promotion_id,body.customer_id,`${token}:credit-line`,creditLine.revision==null?-1:creditLine.revision));
+  }
   for (let index=0; index<body.items.length; index++) {
     const item=body.items[index], line=index+1, product=products[index];
     if (product.provenance==='GENERIC') {
@@ -657,6 +704,14 @@ export async function createCanonicalSale(request, env, auth, json) {
     if(replay?.payload_hash===payloadHash)return json({status:'already_processed',operation_id:body.operation_id,sale_id:replay.sale_id,idempotent:true});
     if(replay)return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
     if(await db.prepare('SELECT operation_id FROM canonical_financial_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
+    if(creditLine&&creditLine.mode==='MANUAL'){
+      // The batch lost a race on the credit line (another sale or a policy change): report it clearly.
+      const now=await db.prepare(`SELECT (SELECT manual_limit_cents FROM canonical_customer_credit_policies WHERE promotion_id=?1 AND customer_id=?2 AND mode='MANUAL') AS limit_cents,
+        ${customerDebtSql} AS debt_cents`).bind(body.promotion_id,body.customer_id).first().catch(()=>null);
+      if(now&&now.limit_cents!=null&&Number(now.debt_cents)+body.total_cents>Number(now.limit_cents))
+        return json({error:'credit_limit_exceeded',customer_id:body.customer_id,limit_cents:Number(now.limit_cents),debt_cents:Number(now.debt_cents),
+          available_cents:Math.max(0,Number(now.limit_cents)-Number(now.debt_cents)),requested_cents:body.total_cents},409);
+    }
     return json({error:'canonical_sale_conflict',operation_id:body.operation_id},409); }
   return json({status:'created',operation_id:body.operation_id,sale_id:body.sale_id,promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false},201);
 }

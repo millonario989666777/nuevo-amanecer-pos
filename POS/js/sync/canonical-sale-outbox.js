@@ -72,7 +72,7 @@
   // answers (401, 403, canonical_not_active, stale_authority, cash_session_*)
   // and unknown reasons keep the head in place and stop the drain (fail-closed).
   var SALE_REJECTIONS = ['product_not_found', 'insufficient_stock', 'invalid_sale_request', 'customer_not_found',
-    'sale_id_conflict', 'operation_id_conflict', 'canonical_sale_conflict'];
+    'sale_id_conflict', 'operation_id_conflict', 'canonical_sale_conflict', 'credit_limit_exceeded'];
   function readQuarantine() {
     var raw;
     try { raw = root.localStorage.getItem(QKEY); } catch (_) { fail('QUARANTINE_STORAGE_READ_FAILED'); }
@@ -97,7 +97,9 @@
   // after a data fix; never for conflicts or malformed requests.
   // Explicit allowlist (fail-closed): causes that clear when the replica
   // catches up, stock arrives, or the missing customer/product is registered.
-  var RETRYABLE = DETERMINISTIC.concat(['insufficient_stock', 'customer_not_found', 'product_not_found']);
+  // credit_limit_exceeded clears when the customer pays or the owner raises the line;
+  // the Worker re-evaluates the line on every attempt with the same operation_id.
+  var RETRYABLE = DETERMINISTIC.concat(['insufficient_stock', 'customer_not_found', 'product_not_found', 'credit_limit_exceeded']);
   function retryable(reason) { return RETRYABLE.indexOf(reason) !== -1; }
   // Annul only when the absence proof can see the sale: the quarantined
   // command must carry a journal bound to the promotion that is active now
