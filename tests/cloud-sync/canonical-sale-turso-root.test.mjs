@@ -8,7 +8,7 @@ const source = name => readFileSync('POS/js/' + name, 'utf8');
 const saleScripts = ['canonical-sale-intent','canonical-sale-outbox','canonical-sale-projection','canonical-sale-integration','canonical-sale-view'];
 
 async function fixture(t, options={}) {
-  const f=await activeCanon(t,{migrations:['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql','0016_canonical_generic_sale_lines.sql']});
+  const f=await activeCanon(t,{migrations:['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql','0016_canonical_generic_sale_lines.sql','0024_pos_roles_owner_pin.sql']});
   const turso=tursoSqlite(f.database);
   f.env.DB=turso.adapter;
   f.env.nuevo_amanecer_lab={prepare(){throw Error('D1 must not be used');}};
