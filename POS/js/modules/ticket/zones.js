@@ -88,12 +88,12 @@ function _naF11ZoneHeader(ctx,s){
 }
 function _naF11ZoneInfo(ctx,s){
   const out=[],push=(label,value)=>{if(value!==''&&value!==null&&value!==undefined)out.push(..._naF11FieldLines(label,value,ctx.width,s.align));};
-  if(ctx.v?._naReceiptContext?.kind!=='payment'&&(ctx.v?.metodo==='credito'||ctx.v?.metodoPago==='credito'))out.push(_naTkAlignLine('COMPROBANTE DE VENTA A CREDITO',ctx.width,'center'));
+  if(ctx.v?._naReceiptContext?.kind!=='payment'&&(ctx.v?.metodo==='credito'||ctx.v?.metodoPago==='credito'))out.push(..._naTkWrap('COMPROBANTE DE VENTA A CREDITO',ctx.width).map(line=>_naTkAlignLine(line,ctx.width,'center')));
   if(ctx.showNum)push(ctx.labels.ticket,ctx.v?.id||'');if(ctx.showOperation){const op=_naTkOperation(ctx.v);if(op)push(ctx.labels.operation,op);}push(ctx.labels.date,_naTkFormatDate(ctx.v?.fecha||obtenerHoy()));push(ctx.labels.time,ctx.v?.hora24||ctx.v?.hora||nowT());push(ctx.labels.cashier,ctx.v?.cajeroNombre||ctx.v?.cajero||ctx.business.cajero||'');
   const client=ctx.v?.clienteNombre||ctx.v?.cliente?.nombre||'',dni=ctx.v?.clienteDni||ctx.v?.cliente?.dni||'';if(client)push('Cliente',client);if(dni)push('DNI',dni);if(ctx.v?.anulada)push('Estado','ANULADA');return out;
 }
 function _naF11ZoneProducts(ctx,s){
-  const out=[],items=ctx.items;if(!items.length)return[_naTkAlignLine('Sin productos',ctx.width,s.align==='split'?'left':s.align)];out.push('DETALLE DE PRODUCTOS');
+  const out=[],items=ctx.items;if(!items.length)return[_naTkAlignLine('Sin productos',ctx.width,s.align==='split'?'left':s.align)];out.push(..._naTkWrap('DETALLE DE PRODUCTOS',ctx.width));
   if(ctx.width>=24){const qtyW=ctx.width>=38?4:3,amtW=Math.min(ctx.width>=38?(ctx.showCurrency?10:8):(ctx.showCurrency?8:7),Math.max(6,Math.floor(ctx.width*.31))),descW=ctx.width-qtyW-amtW-2;out.push(_naTkPadRight(ctx.labels.qty,qtyW)+' '+_naTkPadRight(ctx.labels.desc,descW)+' '+_naTkPadLeft(ctx.labels.amount,amtW));
     for(const item of items){const amount=_naTkMoney(Number(item.qty||item.cantidad||0)*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),suffix=item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,Math.max(3,descW));descLines.forEach((d,index)=>out.push(_naTkPadRight(index===0?String(item.qty||item.cantidad||0):'',qtyW)+' '+_naTkPadRight(d,descW)+' '+_naTkPadLeft(index===0?amount:'',amtW)));if(ctx.showUnit&&ctx.width>=26)out.push(_naTkPair('','P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}
   }else{for(const item of items){const qty=Number(item.qty||item.cantidad||0),prefix=`${qty}x `,descWidth=Math.max(5,ctx.width-prefix.length),suffix=item.ventaSinStock?' SIN STOCK':'',descLines=_naTkWrap((item.name||item.nombre||'Producto')+suffix,descWidth);descLines.forEach((d,index)=>out.push((index===0?prefix:' '.repeat(prefix.length))+d));out.push(_naTkPadLeft(_naTkMoney(qty*Number(item.precio??item.precioUnitario??0),ctx.showCurrency),ctx.width));if(ctx.showUnit)out.push(_naTkPadLeft('P.U. '+_naTkMoney(item.precio??item.precioUnitario,ctx.showCurrency),ctx.width));}}
@@ -111,7 +111,7 @@ function _naF11ZonePayment(ctx,s){
 function _naF11ZoneCredit(ctx,s){
   const extra=globalThis.NAReceiptShare?.ticketExtrasForSale?.(ctx.v);
   if(!extra)return[];
-  const out=['DETALLE DEL CREDITO (ESTA VENTA)'];
+  const out=_naTkWrap('DETALLE DEL CREDITO (ESTA VENTA)',ctx.width);
   const add=(label,value)=>{if(value!==null&&value!==undefined&&value!=='')out.push(..._naF11FieldLines(label,value,ctx.width,s.align));};
   const money=value=>value===null||value===undefined?null:_naTkMoney(value,ctx.showCurrency);
   add('Tipo de venta','Venta a credito');
