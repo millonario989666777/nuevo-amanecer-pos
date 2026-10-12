@@ -880,7 +880,7 @@ function _baseCajRender(){
 let _naClosingCashExpected=null;
 // C-P2: the 'other day' warning shows once per till and day, not on every render.
 let _naOtherDayTillWarned='';
-function _naWarnOtherDayTill(){const key=String(cajEstado.sessionId||cajEstado.fechaApertura||'')+'|'+obtenerHoy();if(_naOtherDayTillWarned===key)return;_naOtherDayTillWarned=key;toast(`⚠️ La caja abierta es del ${cajEstado.fechaApertura}: ciérrala primero y abre la de hoy`,'error');}
+function _naWarnOtherDayTill(){/* Seguimiento Etapa 1: en CANON el aviso vive en la franja superior; el toast queda solo como respaldo sin franja. */if(typeof window!=='undefined'&&window.NuevoAmanecerStatusBanner&&typeof NuevoAmanecerCanonical!=='undefined'&&NuevoAmanecerCanonical.enabled()){try{window.NuevoAmanecerStatusBanner.render();}catch(_){}return;}const key=String(cajEstado.sessionId||cajEstado.fechaApertura||'')+'|'+obtenerHoy();if(_naOtherDayTillWarned===key)return;_naOtherDayTillWarned=key;toast(`⚠️ La caja abierta es del ${cajEstado.fechaApertura}: ciérrala primero y abre la de hoy`,'error');}
 function _naRefreshClosingCashTotals(t){
   _naClosingCashExpected=t.ef;
   document.getElementById('cierreBox').innerHTML=`<div class="cc-row"><span>Ventas del día</span><span class="ccv">${fmt(t.ven)}</span></div><div class="cc-row"><span>Egresos totales</span><span class="ccv">${fmt(t.egr)}</span></div><div class="cc-row hl"><span>💰 Efectivo esperado</span><span class="ccv">${fmt(t.ef)}</span></div>`;
