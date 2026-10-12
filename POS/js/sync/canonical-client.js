@@ -784,7 +784,14 @@
     var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
     if(!product||Number(product.tracks_inventory)!==1||!uint(product.stock_revision)||typeof product.current_stock_quantity!=='number'||!Number.isFinite(product.current_stock_quantity)||product.current_stock_quantity<0)fail('INVALID_CANONICAL_PRODUCT');
     if(type==='SALIDA'&&input.quantity>product.current_stock_quantity)fail('INSUFFICIENT_CANONICAL_STOCK');
-    return Object.assign(commonPayload(),{
+    // Optional caller-supplied operation_id (e.g. OCR purchase "OCR-PURCHASE-<hash>:<line>")
+    // so a re-applied document maps to the SAME operation and can never double-count.
+    var common=commonPayload();
+    if(input.operation_id!=null){
+      if(typeof input.operation_id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(input.operation_id))fail('INVALID_CANONICAL_INVENTORY');
+      common.operation_id=input.operation_id;
+    }
+    return Object.assign(common,{
       product_id:product.product_id,
       movement_type:type,
       quantity:input.quantity,

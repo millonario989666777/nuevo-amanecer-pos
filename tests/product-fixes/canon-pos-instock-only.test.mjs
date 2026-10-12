@@ -36,7 +36,7 @@ test('CANON POS shows positive controlled stock and hides zero/negative controll
 test('CANON posRender filters visibility without mutating inventory state', () => {
   assert.match(source, /rows=productos\.filter\(product=>_naSecProductVisibleInPos\(product\)&&/);
   assert.doesNotMatch(source, /productos\s*=\s*productos\.filter\(_naSecProductVisibleInPos\)/);
-  assert.doesNotMatch(source, /product\.stock\s*=/);
+  assert.doesNotMatch(source, /product\.stock\s*[-+*/]?=(?!=)/, 'no assignment to product.stock (comparisons like === are fine)');
 });
 
 test('promotion contract is CANON-scoped and rollbackable', () => {

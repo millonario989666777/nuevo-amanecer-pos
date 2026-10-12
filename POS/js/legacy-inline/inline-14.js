@@ -31,7 +31,7 @@ function _naSecProductCard(parent,product,allowNoStock){
   _naSecAppend(card,'div','p-name',product.name||'Producto');
 }
 posRender=function(){
-  const search=sinTildes((document.getElementById('posSearch')?.value||'').toLowerCase()),rows=productos.filter(product=>_naSecProductVisibleInPos(product)&&(posCat==='todo'||product.cat===posCat)&&(sinTildes((product.name||'').toLowerCase()).includes(search)||sinTildes(product.descripcion||'').includes(search)||sinTildes((product.marca||'').toLowerCase()).includes(search)||(product.sku||'').toLowerCase().includes(search)||(product.barcode||'').includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search))));
+  const search=sinTildes((document.getElementById('posSearch')?.value||'').toLowerCase()),rows=productos.filter(product=>_naSecProductVisibleInPos(product)&&(posCat==='todo'||product.cat===posCat)&&(sinTildes((product.name||'').toLowerCase()).includes(search)||sinTildes(String(product.descripcion||'').toLowerCase()).includes(search)||sinTildes((product.marca||'').toLowerCase()).includes(search)||(product.sku||'').toLowerCase().includes(search)||String(product.barcode||'').toLowerCase().includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search))));
   const area=document.getElementById('posArea');
   if(!area)return;
   area.replaceChildren();
