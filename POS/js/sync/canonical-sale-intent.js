@@ -183,6 +183,13 @@
     if (input.credit_due !== undefined && input.credit_due !== null && input.credit_due !== '') intent.credit_due = input.credit_due;
     if (creditAccount) intent.credit_account = creditAccount;
     if (installments.length) intent.installments = installments;
+    // Optional binding to the open till where the cash was received.
+    if (input.session_id !== undefined && input.session_id !== null && input.session_id !== '') {
+      if (cash <= 0) fail('SESSION_ID_WITHOUT_CASH');
+      var sessionId = nonEmptyString(input.session_id, 'SESSION_ID_INVALID');
+      if (sessionId.length > 160 || /[\u0000-\u001f\u007f-\u009f]/.test(sessionId)) fail('SESSION_ID_INVALID');
+      intent.session_id = sessionId;
+    }
     return intent;
   }
 

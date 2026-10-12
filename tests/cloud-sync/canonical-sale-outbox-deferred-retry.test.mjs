@@ -16,6 +16,8 @@ function storage(initial) {
 function locks() {
   let held = false;
   return { async request(name, options, callback) {
+    // Store lock: short, waits (never ifAvailable). Drain lock: ifAvailable.
+    if (name === 'na-canonical-sale-outbox-store') { assert.equal(options.ifAvailable, undefined); return callback({ name }); }
     assert.equal(name, 'na-canonical-sale-outbox'); assert.deepEqual(copy(options), { mode: 'exclusive', ifAvailable: true });
     if (held) return callback(null);
     held = true; try { return await callback({ name }); } finally { held = false; }

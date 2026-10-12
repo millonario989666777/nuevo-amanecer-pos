@@ -32,7 +32,7 @@ test('rejected sale notifies once per operation_id across syncs, close attempts 
   await again.sync();
   const errors = notes.filter(([kind]) => kind === 'error');
   assert.equal(errors.length, 1, JSON.stringify(notes));
-  assert.equal(errors[0][1], 'Venta ' + head.sale_id + ' en revisión: CANON la rechazó (product_not_found). No la cobres de nuevo y no entregues el crédito hasta resolverla.');
+  assert.equal(errors[0][1], 'Venta ' + head.sale_id + ' en revisión: el producto no existe en CANON. No la cobres de nuevo y no entregues el crédito hasta resolverla en Caja › Ventas en revisión. Las demás ventas siguen funcionando.');
   assert.equal(notes.filter(([, m]) => /vuelve a cobrarla/i.test(m)).length, 0);
   assert.equal(notes.filter(([kind]) => kind === 'success').length, 0, 'no green toast after the rejection');
   assert.equal(again.snapshot().intents.length, 2);

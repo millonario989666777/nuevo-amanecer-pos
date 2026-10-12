@@ -78,6 +78,8 @@
   }
   function pendingMessage(error){
     var pending=pendingRecord(),code=clean(error&&error.message);
+    if(code==='INSUFFICIENT_PROJECTED_STOCK')return 'No se registró la salida: parte de ese stock ya está vendido en ventas que aún se están enviando a CANON. Espera a que se sincronicen o registra una cantidad menor.';
+    if(code==='INSUFFICIENT_CANONICAL_STOCK')return 'No se registró la salida: no hay suficiente stock en CANON.';
     if(pending&&pending.command==='inventory.adjust'&&!pending.invalid){
       if(pending.last_error)return 'CANON rechazó el movimiento ('+clean(pending.last_error)+'). No se modificó el stock.';
       return 'El movimiento se envió pero CANON no confirmó la recepción ('+code+'). Pulsa Guardar nuevamente para reintentar la MISMA operación.';

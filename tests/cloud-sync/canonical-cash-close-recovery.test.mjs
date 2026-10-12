@@ -168,7 +168,7 @@ test('an uncertain 503 never archives or replaces the pending close operation',a
  assert.equal(await first.context.cerrarCaja(),true);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
 });
-test('cash closure holds the sale outbox lock until acknowledgement, preventing a new stranded local sale',async t=>{
+test('cash closure holds the sale outbox store lock until acknowledgement, preventing a new stranded local sale',async t=>{
  let entered,release;
  const closing=new Promise(resolve=>{entered=resolve;});
  const gate=new Promise(resolve=>{release=resolve;});

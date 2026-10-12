@@ -13,12 +13,19 @@ function storage(initial) {
   const values = new Map(initial ? [[KEY, initial]] : []);
   return { values, fail: false, drop: false, getItem(k) { return values.get(k) ?? null; }, setItem(k, v) { if (this.fail) throw Error('storage unavailable'); if (!this.drop) values.set(k, String(v)); }, removeItem(k) { values.delete(k); } };
 }
+// Real Web Locks semantics: the drain lock is ifAvailable (BUSY when held);
+// the storage lock waits its turn and is never requested with ifAvailable.
 function locks() {
-  let held = false;
+  const held = new Set();
   return { async request(name, options, callback) {
-    assert.equal(name, 'na-canonical-sale-outbox'); assert.deepEqual(copy(options), { mode: 'exclusive', ifAvailable: true });
-    if (held) return callback(null);
-    held = true; try { return await callback({ name }); } finally { held = false; }
+    if (name === 'na-canonical-sale-outbox') {
+      assert.deepEqual(copy(options), { mode: 'exclusive', ifAvailable: true });
+      if (held.has(name)) return callback(null);
+    } else {
+      assert.equal(name, 'na-canonical-sale-outbox-store'); assert.equal(options.mode, 'exclusive'); assert.equal(options.ifAvailable, undefined);
+      while (held.has(name)) await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    held.add(name); try { return await callback({ name }); } finally { held.delete(name); }
   } };
 }
 function fixture({ local = storage(), lock = locks(), canonical = {} } = {}) {
@@ -92,10 +99,35 @@ test('stale-stock recovery never drops the durable intent when the retry becomes
   assert.equal(f.calls.filter(x => Array.isArray(x) && x[0] === 'createSale').length, 2);
 });
 
-test('foreign operation or command pending blocks without touching it', async () => {
-  for (const pending of [{ state: 'PENDING', command: 'sale.create', payload: makeIntent('X') }, { state: 'PENDING', command: 'payment.create', payload: makeIntent('A') }]) {
-    const f = fixture({ canonical: { pending } }); await f.api.enqueue(makeIntent('A')); assert.equal((await f.api.sync()).status, 'BLOCKED_FOREIGN_PENDING'); assert.equal(f.calls.includes('retryPending'), false); assert.equal(f.calls.some(x => Array.isArray(x)), false);
-  }
+test('foreign sale operation pending blocks without touching it', async () => {
+  const pending = { state: 'PENDING', command: 'sale.create', payload: makeIntent('X') };
+  const f = fixture({ canonical: { pending } }); await f.api.enqueue(makeIntent('A')); assert.equal((await f.api.sync()).status, 'BLOCKED_FOREIGN_PENDING'); assert.equal(f.calls.includes('retryPending'), false); assert.equal(f.calls.some(x => Array.isArray(x)), false);
+});
+test('a lost-ACK non-sale command is replayed once with its SAME operation id, then sales drain (C-P0-1)', async () => {
+  const pending = { state: 'PENDING', command: 'payment.create', payload: { operation_id: 'pay-1' } };
+  const canonical = { pending, retryPending() { canonical.pending = null; return { operation_id: 'pay-1' }; } };
+  const f = fixture({ canonical }); await f.api.enqueue(makeIntent('A'));
+  assert.equal((await f.api.sync()).status, 'DRAINED');
+  assert.equal(f.calls.filter(x => x === 'retryPending').length, 1);
+  assert.deepEqual(f.calls.filter(x => Array.isArray(x)).map(x => x[1].operation_id), ['op-A']);
+});
+test('a definitively rejected non-sale command is released (archived by the client) and never freezes sales (C-P0-1)', async () => {
+  const pending = { state: 'PENDING', command: 'cash.open', payload: { operation_id: 'open-1' }, last_error: 'cash_session_conflict', last_status: 409 };
+  const released = [];
+  const canonical = { pending };
+  const f = fixture({ canonical });
+  f.context.NuevoAmanecerCanonical.releaseRejectedFinancial = async id => { released.push(id); canonical.pending = null; return true; };
+  await f.api.enqueue(makeIntent('A'));
+  assert.equal((await f.api.sync()).status, 'DRAINED');
+  assert.deepEqual(released, ['open-1']);
+  assert.equal(f.calls.includes('retryPending'), false);
+  // 429/5xx is uncertain: replay, never release.
+  const busy = { pending: { state: 'PENDING', command: 'expense.create', payload: { operation_id: 'exp-1' }, last_error: 'HTTP_503', last_status: 503 } };
+  busy.retryPending = () => { throw Error('still down'); };
+  const g = fixture({ canonical: busy }); g.context.NuevoAmanecerCanonical.releaseRejectedFinancial = async () => { throw Error('must not release a 5xx'); };
+  await g.api.enqueue(makeIntent('B'));
+  assert.equal((await g.api.sync()).status, 'BLOCKED_FOREIGN_PENDING');
+  assert.equal(g.calls.filter(x => x === 'retryPending').length, 1);
 });
 test('confirmed receipt dequeues after storage failure and reload without duplicate sale', async () => {
   const f = fixture(); await f.api.enqueue(makeIntent('A')); f.canonical.createSale = i => { f.canonical.receipt = { operation_id: i.operation_id, sale_id: i.sale_id }; f.local.fail = true; return f.canonical.receipt; };
@@ -159,7 +191,7 @@ test('mixed and credit intents survive durable FIFO and reach createSale unchang
 test('two concurrent syncs use one exclusive lock and second returns BUSY', async () => {
   let release; let held = false;
   const f = fixture(); await f.api.enqueue(makeIntent('A'));
-  const sharedLock = { request(name, options, callback) { assert.equal(name, 'na-canonical-sale-outbox'); if (held) return callback(null); held = true; return new Promise((resolve, reject) => { release = async () => { try { resolve(await callback({ name })); } catch (error) { reject(error); } finally { held = false; } }; }); } };
+  const sharedLock = { request(name, options, callback) { if (name === 'na-canonical-sale-outbox-store') return Promise.resolve(callback({ name })); assert.equal(name, 'na-canonical-sale-outbox'); if (held) return callback(null); held = true; return new Promise((resolve, reject) => { release = async () => { try { resolve(await callback({ name })); } catch (error) { reject(error); } finally { held = false; } }; }); } };
   f.context.navigator.locks = sharedLock; const one = f.api.sync(); await new Promise(resolve => setImmediate(resolve)); const two = await f.api.sync(); assert.equal(two.status, 'WAITING'); assert.equal(two.reason, 'BUSY'); await release(); await one;
 });
 test('missing Web Locks fails closed and module never calls fetch', async () => {
