@@ -12,6 +12,7 @@ import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
+import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
@@ -103,6 +104,18 @@ export default {
         return await createSale(request, env);
       }
       const financialCommand = url.pathname.startsWith('/commands/') ? url.pathname.slice('/commands/'.length) : '';
+      if (financialCommand === SALE_ANNUL_COMMAND) {
+        if (request.method !== 'POST' && request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, OPTIONS' });
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        if (request.method === 'GET') return await listSaleAnnulments(env, json);
+        const denied = canonicalRuntimeDenied(url, env, json);
+        if (denied) return denied;
+        // Solo con internet y con el PIN del dueño validado aquí (también en el aparato del dueño).
+        const gated = await ownerGate(request, env, auth, SALE_ANNUL_COMMAND, json, getDatabase(env), true);
+        if (gated) return gated;
+        return await annulCanonicalSale(request, env, auth, json);
+      }
       if (PRODUCT_COMMANDS.has(financialCommand)) {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
         const denied = canonicalRuntimeDenied(url, env, json);

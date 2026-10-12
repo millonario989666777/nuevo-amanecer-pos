@@ -15,7 +15,8 @@ test('CANON replaces every operational legacy array from one canonical snapshot'
 });
 
 test('confirmed canonical sale history cannot invoke legacy annul or admin-note actions',()=>{
-  assert.match(inline10,/!sale\.anulada&&!sale\.canonicalReadOnly/);
+  // Etapa 2 (G4): una venta CANON solo se anula por el servidor (NA_ANNUL, PIN del dueño, solo con internet).
+  assert.match(inline10,/!sale\.anulada&&\(!sale\.canonicalReadOnly\|\|window\.NA_ANNUL\?\.canAnnul\(sale\)\)/);
   assert.match(inline10,/CANON · solo lectura/);
   assert.match(inline10,/if\(!sale\.canonicalReadOnly\)actions\.appendChild\(_naSecButton\('f10-btn primary'/);
 });
