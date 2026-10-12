@@ -108,11 +108,24 @@
         : '<div class="cfg-panel"><div class="cfg-panel-title">Restaurar copia</div><div class="cfg-upload-box"><input type="file" id="backupFile" accept=".json"><button class="cfg-save-btn" onclick="importarRespaldo()" style="background:var(--blue)">⬆️ Restaurar respaldo</button></div></div>');
   }
 
+  // Reseteo nunca borra ventas, abonos, créditos, cajas, stock, movimientos, compras, fotos
+  // ni la Apariencia del aparato. Con la nube solo vuelve a descargar los datos del servidor.
+  function reseteoHtml() {
+    var keep = 'No se borran ventas, abonos, créditos, cajas, stock, movimientos de inventario, compras aplicadas, fotos de productos ni la Apariencia de este aparato.';
+    if (!cloud()) return head('⚠️', 'Reseteo', keep) + '<div class="cfg-business-note">Sin la nube activa no hay nada que volver a descargar. Para empezar de cero, pide ayuda al soporte.</div>';
+    return head('⚠️', 'Reseteo', keep)
+      + '<div class="cfg-action-card danger"><div class="cfg-action-title">☁️ Volver a descargar de la nube</div>'
+      + '<div class="cfg-action-desc">Vuelve a traer los datos del servidor a este aparato. Pide el PIN del dueño (lo valida el servidor), necesita internet y no funciona si hay ventas, abonos o compras sin confirmar.</div>'
+      + '<button class="cfg-save-btn" id="naResync" onclick="resetModule(\'nube\')" style="background:var(--red);padding:11px">Volver a descargar</button></div>';
+  }
+  function online() { try { return root.navigator.onLine !== false; } catch (_) { return true; } }
+
   function render(cat) {
     var cont = doc.getElementById('cfgContent'); if (!cont) return false;
     if (cat === 'usuarios') cont.innerHTML = usuariosHtml();
     else if (cat === 'aparatos') { cont.innerHTML = aparatosHtml(); loadDevices(); }
     else if (cat === 'respaldo') cont.innerHTML = respaldoHtml();
+    else if (cat === 'reseteo') cont.innerHTML = reseteoHtml();
     else return false;
     return true;
   }
@@ -130,28 +143,112 @@
   // Reseteo con reglas: PIN validado en el servidor y bloqueo si hay ventas sin confirmar.
   function unconfirmedSales() {
     try { if (root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.pendingSnapshot()) return true; } catch (_) {}
+    try { var rej = JSON.parse(root.localStorage.getItem('na_canonical_rejected_operations') || '[]'); if (rej && (Array.isArray(rej) ? rej.length : Object.keys(rej).length)) return true; } catch (_) {}
     try { return (root.ventas || []).some(function (v) { return v && (v.source === 'CANONICAL_OUTBOX' || v.status === 'PENDING_SYNC' || v.naReview || v.canonicalReview); }); } catch (_) { return false; }
   }
   function wrapReset() {
     if (typeof root.resetModule !== 'function' || root.resetModule.__naG) return;
     var base = root.resetModule;
     root.resetModule = async function (modulo) {
-      if (!R() || !R().isOwner()) { toast('Solo el dueño puede resetear.', 'error'); return; }
-      if (cloud()) {
-        if (unconfirmedSales()) { toast('Hay ventas u operaciones sin confirmar. Espera a que se sincronicen antes de resetear.', 'error'); return; }
-        if (!R().pinSet) { toast('Primero crea el PIN del dueño en Usuarios y PIN.', 'error'); return; }
-        var id = await R().approve('reset', null, 'Reseteo', 'Escribe el PIN del dueño para borrar datos de este aparato.');
-        if (!id) return;
-      }
-      var out = await base.apply(this, arguments);
-      if (cloud()) { try { await root.NuevoAmanecerCanonical.refresh(); } catch (_) {} }
-      return out;
+      if (!R() || !R().isOwner()) { toast('Solo el dueño puede usar Reseteo, con el aparato conectado a internet.', 'error'); return; }
+      if (!cloud() || modulo !== 'nube') { toast('Reseteo ya no borra datos. Con la nube activa usa «Volver a descargar».', 'error'); return; }
+      if (!online()) { toast('Sin internet: Reseteo necesita conexión para validar el PIN.', 'error'); return; }
+      if (unconfirmedSales()) { toast('Hay ventas, abonos o compras sin confirmar. Espera a que se sincronicen.', 'error'); return; }
+      if (!R().pinSet) { toast('Primero crea el PIN del dueño en Usuarios y PIN.', 'error'); return; }
+      // El servidor valida el PIN antes de que el aparato cambie nada.
+      var id = await R().approve('reset', null, 'Reseteo', 'Escribe el PIN del dueño para volver a descargar los datos de la nube.');
+      if (!id) return;
+      try { await R().refresh(); } catch (_) {}
+      if (!R().isOwner() || !online() || unconfirmedSales()) { toast('No se hizo: cambió la conexión o hay operaciones pendientes.', 'error'); return; }
+      try { await root.NuevoAmanecerCanonical.refresh(); toast('Datos descargados de nuevo desde la nube.'); }
+      catch (_) { toast('No se pudo descargar desde la nube. Inténtalo de nuevo.', 'error'); }
     };
     root.resetModule.__naG = true;
   }
 
+
+  // Negocio, POS y Ticket: el servidor (/settings) es la fuente. Solo el dueño confirmado guarda;
+  // los demás aparatos usan una copia local de solo lectura que se vuelve a tomar del servidor.
+  var SHARED = {
+    'pos.business': { get: function (c) { var b = c.business || {}; return { nombre: b.nombre || '', ruc: b.ruc || '', direccion: b.direccion || '', telefono: b.telefono || '' }; },
+      set: function (c, v) { c.business = Object.assign(c.business || {}, v); } },
+    'pos.flags': { get: function (c) { return { igvActive: !!c.igvActive, margenActive: !!c.margenActive, stockAlertActive: !!c.stockAlertActive, printAuto: !!c.printAuto, mayoristaActive: !!c.mayoristaActive, alertsEnabled: c.alertsEnabled !== false, stockMin: c.stockMin }; },
+      set: function (c, v) { Object.keys(v || {}).forEach(function (k) { c[k] = v[k]; }); } },
+    'pos.ticket': { get: function (c) { return Object.assign({}, c.ticket || {}); }, set: function (c, v) { c.ticket = Object.assign(c.ticket || {}, v); } }
+  };
+  var CACHE_KEY = 'na_pos_settings_cache_v1';
+  var server = {}; // key -> { value, revision }
+  try { server = JSON.parse(root.localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (_) { server = {}; }
+  var baseSave = null, pushTimer = null;
+  /* global appConfig */
+  function cfg() { try { return typeof appConfig !== 'undefined' ? appConfig : null; } catch (_) { return null; } }
+  function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function applyServer() {
+    var c = cfg(); if (!c) return false; var changed = false;
+    Object.keys(SHARED).forEach(function (k) { if (!server[k]) return; var before = SHARED[k].get(c); SHARED[k].set(c, server[k].value); if (!same(before, SHARED[k].get(c))) changed = true; });
+    if (changed) { try { root._naApplyConfigUI(); } catch (_) {} try { baseSave && baseSave(); } catch (_) {} }
+    return changed;
+  }
+  async function pullSettings() {
+    if (!cloud() || !R()) return false;
+    try {
+      var out = await R().api('/settings', null, 'GET');
+      (out.settings || []).forEach(function (r) { if (SHARED[r.key]) server[r.key] = { value: r.value, revision: r.revision }; });
+      try { root.localStorage.setItem(CACHE_KEY, JSON.stringify(server)); } catch (_) {}
+    } catch (_) {}
+    var owner = R().isOwner && R().isOwner();
+    // El dueño solo recibe del servidor lo que ya existe allí; nunca pierde lo que aún no subió.
+    return owner ? applyServerIfMissingLocal() : applyServer();
+  }
+  function applyServerIfMissingLocal() { return Object.keys(server).length ? applyServer() : false; }
+  async function pushSettings() {
+    var c = cfg(); if (!c || !cloud() || !R() || !R().isOwner()) return { ok: false, reason: 'owner_only' };
+    var failed = [];
+    for (var k in SHARED) {
+      var value = SHARED[k].get(c);
+      if (server[k] && same(server[k].value, value)) continue;
+      try {
+        var res = await R().api('/settings', { key: k, value: value, expected_revision: server[k] ? server[k].revision : 0 });
+        server[k] = { value: value, revision: res.revision };
+      } catch (e) { failed.push(k); if (e && e.message === 'revision_conflict') { await pullSettings(); } }
+    }
+    try { root.localStorage.setItem(CACHE_KEY, JSON.stringify(server)); } catch (_) {}
+    return { ok: !failed.length, failed: failed };
+  }
+  function wrapSettings() {
+    if (typeof root.saveAppState === 'function' && !root.saveAppState.__naG) {
+      baseSave = root.saveAppState;
+      root.saveAppState = function () {
+        var out = baseSave.apply(this, arguments);
+        if (cloud() && R()) {
+          if (R().isOwner()) { clearTimeout(pushTimer); pushTimer = setTimeout(function () { pushSettings(); }, 600); }
+          else if (Object.keys(server).length) setTimeout(applyServer, 0); // solo lectura: se vuelve a la copia del servidor
+        }
+        return out;
+      };
+      root.saveAppState.__naG = true;
+    }
+    if (typeof root.guardarConfig === 'function' && !root.guardarConfig.__naG) {
+      var baseGuardar = root.guardarConfig;
+      root.guardarConfig = async function () {
+        if (cloud()) {
+          if (!R() || !R().isOwner()) { toast(root.navigator.onLine === false ? 'Sin conexión: Configuración necesita internet para confirmar que eres el dueño.' : 'Solo el dueño puede cambiar la configuración.', 'error'); applyServer(); return false; }
+          if (root.navigator.onLine === false) { toast('Sin conexión: la configuración se guarda en el servidor. Conéctate e inténtalo de nuevo.', 'error'); return false; }
+        }
+        var ok = await baseGuardar.apply(this, arguments);
+        if (!cloud() || !ok) return ok;
+        clearTimeout(pushTimer);
+        var res = await pushSettings();
+        if (!res.ok) { toast('No se pudo guardar en el servidor. Revisa internet e inténtalo de nuevo.', 'error'); return false; }
+        toast('Configuración guardada en el servidor', 'success');
+        return true;
+      };
+      root.guardarConfig.__naG = true;
+    }
+  }
+
   function install() {
-    sidebar(); wrapReset();
+    sidebar(); wrapReset(); wrapSettings();
     if (typeof root.renderCfgContent === 'function' && !root.renderCfgContent.__naG) {
       var base = root.renderCfgContent;
       root.renderCfgContent = function (cat) { if (render(cat)) return; var r = base.apply(this, arguments); try { afterBase(cat); } catch (_) {} return r; };
@@ -164,8 +261,9 @@
     else if (t.closest('#naPairCreate')) createPair();
     else { var rv = t.closest('.na-g-revoke'); if (rv) revoke(rv.dataset.dev); }
   });
-  root.addEventListener('na:role', function () { sidebar(); });
+  root.addEventListener('na:role', function () { sidebar(); if (R() && (R().confirmed || R().role === 'empleado')) pullSettings(); });
+  if (cloud()) setTimeout(function () { try { if (!R() || !R().isOwner()) applyServer(); } catch (_) {} }, 0);
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', install); else install();
   root.addEventListener('load', install);
-  root.NA_CONFIG_G = { render: render, unconfirmedSales: unconfirmedSales };
+  root.NA_CONFIG_G = { render: render, unconfirmedSales: unconfirmedSales, pullSettings: pullSettings, pushSettings: pushSettings };
 })(window);
