@@ -54,7 +54,7 @@ test('CANON contact editor opens through the canonical customer UI instead of th
   assert.deepEqual(h.toasts, []);
   assert.equal(h.d.nodes.get('naCustomerContact').classList.contains('open'), true);
   assert.equal(h.d.nodes.get('naContactName').value, 'Luis');
-  assert.match(h.d.nodes.get('naContactStatus').textContent, /CANON[\s\S]*DNI\/RUC y dirección/);
+  assert.match(h.d.nodes.get('naContactStatus').textContent, /CANON[\s\S]*DNI \(8 dígitos\) o RUC \(11 dígitos\)/);
 });
 
 test('a user lock on Clientes still blocks the CANON contact editor', () => {
@@ -148,4 +148,70 @@ test('new-customer form exposes the optional credit line field and opening reset
   const inline01 = fs.readFileSync(new URL('../../POS/js/legacy-inline/inline-01.js', import.meta.url), 'utf8');
   assert.match(inline01, /function _naResetClienteForm\(\)\{\['cNombre','cDni','cTel','cDir','cLinea'\]/);
   assert.match(inline01, /function abrirModalCli\(\)\{[^}]*_naResetClienteForm\(\)/);
+});
+
+// DNI/RUC + dirección in the same "Datos del cliente" form (CANON customer.contact.set, migration 0023).
+function identityHarness({ setResult, pendingAfter = null } = {}) {
+  const d = dom();
+  const toasts = [], calls = [];
+  let pending = null;
+  const ctx = vm.createContext({
+    document: d.document, console,
+    clientes: [{ id: 'C-1', nombre: 'Luis', tel: '', dni: '12345678', dir: 'Jr. Uno 1' }, { id: 'C-2', nombre: 'Rosa Bodega', tel: '', dni: '20111111111', dir: '' }],
+    toast: (m, t) => toasts.push([m, t]),
+    isModuleLocked: () => false,
+    NAReceiptShare: { normalizePhone: (v) => String(v || '').replace(/\D/g, '') || null },
+    NuevoAmanecerCanonical: {
+      enabled: () => true, refresh: async () => ({}), pendingSnapshot: () => pending,
+      discardRejectedCustomerContact: async () => { calls.push(['discard']); pending = null; return true; },
+      setCustomerContact: async (input) => { calls.push(['set', input]); if (setResult) { pending = setResult(input); throw new Error('CANONICAL_FINANCIAL_REJECTED_409'); } return { status: 'created' }; },
+    },
+  });
+  ctx.globalThis = ctx;
+  vm.runInContext(contactUi, ctx);
+  return { ctx, d, toasts, calls, set: (id, v) => { d.nodes.get(id).value = v; } };
+}
+
+test('contact form shows and saves DNI/RUC + address; unchanged identity is not sent', async () => {
+  const h = identityHarness();
+  h.ctx.NAReceiptUI.editContact('C-1');
+  assert.equal(h.d.nodes.get('naContactDoc').value, '12345678');
+  assert.equal(h.d.nodes.get('naContactAddress').value, 'Jr. Uno 1');
+  h.set('naContactName', 'Luis Nuevo');
+  await h.d.nodes.get('naContactSave').onclick();
+  const first = h.calls.find((c) => c[0] === 'set')[1];
+  assert.equal(JSON.stringify(first), JSON.stringify({ customer_id: 'C-1', name: 'Luis Nuevo', phone: null }), 'name-only edit sends no identity');
+  h.ctx.NAReceiptUI.editContact('C-1');
+  h.set('naContactDoc', '20 123.456-789'); h.set('naContactAddress', '  Av.  Sungaro  45 ');
+  await h.d.nodes.get('naContactSave').onclick();
+  const second = h.calls.filter((c) => c[0] === 'set')[1][1];
+  assert.equal(second.document, '20123456789');
+  assert.equal(second.address, 'Av. Sungaro 45');
+  h.ctx.NAReceiptUI.editContact('C-1');
+  h.set('naContactDoc', ''); h.set('naContactAddress', '');
+  await h.d.nodes.get('naContactSave').onclick();
+  const third = h.calls.filter((c) => c[0] === 'set')[2][1];
+  assert.equal(third.document, null);
+  assert.equal(third.address, null);
+});
+
+test('invalid or locally duplicated DNI/RUC is refused before any command, naming the other customer', async () => {
+  const h = identityHarness();
+  h.ctx.NAReceiptUI.editContact('C-1');
+  h.set('naContactDoc', '1234567');
+  await h.d.nodes.get('naContactSave').onclick();
+  assert.match(h.toasts.at(-1)[0], /DNI\/RUC inválido: el DNI tiene 8 dígitos y el RUC 11/);
+  h.set('naContactDoc', '20111111111');
+  await h.d.nodes.get('naContactSave').onclick();
+  assert.match(h.toasts.at(-1)[0], /El RUC 20111111111 ya pertenece a «Rosa Bodega»/);
+  assert.equal(h.calls.length, 0);
+});
+
+test('server document conflict names the other customer and discards the rejected edit', async () => {
+  const h = identityHarness({ setResult: (input) => ({ command: 'customer.contact.set', state: 'PENDING', payload: input, last_status: 409, last_error: 'customer_document_conflict', last_conflict: { customer_id: 'C-9', customer_name: 'Otro Equipo SAC' } }) });
+  h.ctx.NAReceiptUI.editContact('C-1');
+  h.set('naContactDoc', '20999999999');
+  await h.d.nodes.get('naContactSave').onclick();
+  assert.match(h.d.nodes.get('naContactStatus').textContent, /El RUC 20999999999 ya pertenece a «Otro Equipo SAC»\. No se guardaron los cambios\./);
+  assert.ok(h.calls.some((c) => c[0] === 'discard'));
 });

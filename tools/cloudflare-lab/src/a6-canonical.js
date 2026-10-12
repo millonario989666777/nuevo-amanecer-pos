@@ -669,12 +669,16 @@ async function loadCollectionRows(db,type,before,page,schema=null){
     if(selected.length){
       const ids=selected.map(item=>item.customer_id);
       // One JSON binding avoids D1's parameter limit on full customer pages.
-      const edits=await db.prepare(`SELECT c.customer_id,c.name,c.phone,c.revision FROM canonical_customer_contacts c
+      // Migration 0023: the latest DNI/RUC + address edit rides in the same statement.
+      const identity=await customerIdentitySchemaAvailable(db,schema)?`,(SELECT json_array(i.document,i.address) FROM canonical_customer_identities i
+          WHERE i.promotion_id=c.promotion_id AND i.customer_id=c.customer_id ORDER BY i.revision DESC LIMIT 1) AS identity_json`:'';
+      const edits=await db.prepare(`SELECT c.customer_id,c.name,c.phone,c.revision${identity} FROM canonical_customer_contacts c
         WHERE c.promotion_id=?1 AND c.customer_id IN (SELECT value FROM json_each(?2))
         AND c.revision=(SELECT MAX(e.revision) FROM canonical_customer_contacts e WHERE e.promotion_id=c.promotion_id AND e.customer_id=c.customer_id)`)
         .bind(before.active_promotion_id,JSON.stringify(ids)).all();
       const contacts=new Map((edits.results??[]).map(c=>[c.customer_id,c]));
-      for(const row of selected){const contact=contacts.get(row.customer_id);if(contact){row.name=contact.name;row.phone=contact.phone;row.contact_revision=contact.revision;}}
+      for(const row of selected){const contact=contacts.get(row.customer_id);if(contact){row.name=contact.name;row.phone=contact.phone;row.contact_revision=contact.revision;
+        if(contact.identity_json){const [document,address]=JSON.parse(contact.identity_json);row.document=document;row.address=address;}}}
     }
   }
   return rows||{results:[]};
@@ -851,6 +855,10 @@ async function customerContactSchemaAvailable(db,schema=null){
   if(schema)return hasAll(schema,CUSTOMER_CONTACT_SCHEMA_TABLES);
   const row=await db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='canonical_customer_contacts'").first();return Number(row?.n)===1;
 }
+async function customerIdentitySchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,CUSTOMER_IDENTITY_SCHEMA_TABLES);
+  const row=await db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='canonical_customer_identities'").first();return Number(row?.n)===1;
+}
 async function customerContactLedgerCount(db,promotionId){
   if(!promotionId||!await customerContactSchemaAvailable(db))return 0;
   const row=await db.prepare('SELECT COUNT(*) n FROM canonical_customer_contacts WHERE promotion_id=?1').bind(promotionId).first();return Number(row?.n)||0;
@@ -884,8 +892,10 @@ const CUSTOMER_SCHEMA_TABLES=['canonical_customer_operations','canonical_custome
 const CREDIT_POLICY_SCHEMA_TABLES=['canonical_customer_credit_policy_operations','canonical_customer_credit_policies'];
 const DEBT_RECONCILIATION_SCHEMA_TABLES=['canonical_reconciliation_credits','canonical_credit_baseline_adjustments'];
 const CUSTOMER_CONTACT_SCHEMA_TABLES=['canonical_customer_contacts'];
+// Identity rows share the contact operation/revision, so the contact ledger term already counts them.
+const CUSTOMER_IDENTITY_SCHEMA_TABLES=['canonical_customer_identities'];
 const PRODUCT_REVISION_SCHEMA_TABLES=['canonical_product_revisions'];
-const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES])];
+const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...CUSTOMER_IDENTITY_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES])];
 // Same order and conditions as the legacy readControl ledger additions.
 const LEDGER_REVISION_TERMS=[
   [EXPENSE_SCHEMA_TABLES,['canonical_expense_operations']],

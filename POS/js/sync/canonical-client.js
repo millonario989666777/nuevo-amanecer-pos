@@ -871,8 +871,23 @@
     const customer=data?.customers?.find(c=>String(c.customer_id)===String(input?.customer_id));
     const name=String(input?.name||'').trim().replace(/\s+/g,' '),phone=input?.phone===null?null:String(input?.phone||'');
     if(!customer||!name||name.length>240||/[\x00-\x1f\x7f]/.test(name)||!(phone===null||/^\+[1-9]\d{8,14}$/.test(phone)))fail('INVALID_CANONICAL_CUSTOMER_CONTACT');
-    return Object.assign(commonPayload(),{customer_id:String(input.customer_id),name,phone,expected_contact_revision:Number(customer.contact_revision)||0});
+    const payload=Object.assign(commonPayload(),{customer_id:String(input.customer_id),name,phone,expected_contact_revision:Number(customer.contact_revision)||0});
+    // Optional DNI/RUC + address (migration 0023): both travel together, null clears.
+    if(input&&(Object.prototype.hasOwnProperty.call(input,'document')||Object.prototype.hasOwnProperty.call(input,'address'))){
+      const document=input.document==null||String(input.document).trim()===''?null:String(input.document).trim();
+      const address=input.address==null||String(input.address).trim()===''?null:String(input.address).trim().replace(/\s+/g,' ');
+      if(!validIdentity(document,address))fail('INVALID_CANONICAL_CUSTOMER_IDENTITY');
+      payload.document=document;payload.address=address;
+    }
+    return payload;
   }
+  // Who already owns the WhatsApp / DNI-RUC (Worker 409 body), so the UI can name them.
+  function conflictOwner(result){
+    if(!result||!['customer_phone_conflict','customer_document_conflict'].includes(result.error)||!validId(result.customer_id))return null;
+    var name=typeof result.customer_name==='string'?result.customer_name.replace(/[\x00-\x1f\x7f]/g,'').slice(0,240):'';
+    return {customer_id:result.customer_id,customer_name:name};
+  }
+  function validIdentity(document,address){return (document===null||typeof document==='string'&&/^(\d{8}|\d{11})$/.test(document))&&(address===null||typeof address==='string'&&address.trim().length>0&&address.length<=500&&!/[\x00-\x1f\x7f]/.test(address));}
   function makeCustomerCreditPolicyPayload(input) {
     input=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
     var customer=data&&Array.isArray(data.customers)
@@ -1219,7 +1234,7 @@
         typeof payload.name === 'string' && payload.name.trim().length > 0 && payload.name.trim().length <= 60 &&
         ['accumulated','separate'].includes(payload.mode);
     }
-    if (command === 'customer.contact.set') return validId(payload.customer_id)&&uint(payload.expected_contact_revision)&&typeof payload.name==='string'&&payload.name.trim().length>0&&payload.name.length<=240&&!/[\x00-\x1f\x7f]/.test(payload.name)&&(payload.phone===null||typeof payload.phone==='string'&&/^\+[1-9]\d{8,14}$/.test(payload.phone));
+    if (command === 'customer.contact.set') return validId(payload.customer_id)&&uint(payload.expected_contact_revision)&&(('document' in payload)===('address' in payload))&&(!('document' in payload)||validIdentity(payload.document,payload.address))&&typeof payload.name==='string'&&payload.name.trim().length>0&&payload.name.length<=240&&!/[\x00-\x1f\x7f]/.test(payload.name)&&(payload.phone===null||typeof payload.phone==='string'&&/^\+[1-9]\d{8,14}$/.test(payload.phone));
     if (command === 'customer.create') {
       return validId(payload.customer_id) &&
         typeof payload.name==='string' && payload.name.trim().length>0 && payload.name.length<=240 &&
@@ -1621,10 +1636,13 @@
     } catch (_) { fail('CANONICAL_FINANCIAL_PENDING'); }
     unchanged();
     if (!response.ok) {
-      durableJournal(Object.assign({}, record, {
+      var rejected = Object.assign({}, record, {
         last_error: validId(result && result.error) ? result.error : 'HTTP_' + response.status,
         last_status: response.status
-      }));
+      });
+      var owner = conflictOwner(result);
+      if (owner) rejected.last_conflict = owner; else delete rejected.last_conflict;
+      durableJournal(rejected);
       fail('CANONICAL_FINANCIAL_REJECTED_' + response.status);
     }
     if (!result || !(response.status === 201 && result.status === 'created' && result.idempotent === false || response.status === 200 && result.status === 'already_processed' && result.idempotent === true) ||
@@ -1932,7 +1950,7 @@
     });
   }
   async function discardRejectedCustomerContact(){
-    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||![400,409].includes(r.last_status)||!['invalid_customer_contact','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict','customer_phone_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
+    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||!([400,409].includes(r.last_status)||r.last_status===503&&r.last_error==='customer_identity_schema_not_ready')||!['customer_identity_schema_not_ready','invalid_customer_contact','invalid_customer_identity','customer_document_conflict','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict','customer_phone_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
   }
   async function discardRejectedCustomerCreditPolicy() {
     return withWriterLock(function () {
