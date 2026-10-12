@@ -247,7 +247,7 @@
         notify('Ingresa un monto válido', 'error');
         return false;
       }
-      if (!['efectivo', 'yape', 'transferencia'].includes(method)) {
+      if (!['efectivo', 'yape', 'plin', 'transferencia'].includes(method)) {
         notify('Método de pago inválido', 'error');
         return false;
       }
@@ -414,7 +414,7 @@
       notify('Selecciona al menos una deuda para registrar el pago', 'error');
       return { ok:false, partial:false, code:'EMPTY_BATCH', completed:[] };
     }
-    if (!['efectivo', 'yape', 'transferencia'].includes(method)) {
+    if (!['efectivo', 'yape', 'plin', 'transferencia'].includes(method)) {
       notify('Método de pago inválido', 'error');
       return { ok:false, partial:false, code:'INVALID_BATCH_METHOD', completed:[] };
     }

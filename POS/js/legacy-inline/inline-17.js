@@ -528,7 +528,7 @@ function _naV10Diagnostics(){return{version:_NA_V10_PHASE_A_VERSION,runtime:_naV
 
 /* ── Política de crédito canónica V10 (espejo puro de _naEvaluateClientCredit V9, sin DOM ni estado global) ── */
 const _NA_V10_CREDIT_POLICY_DEFAULTS={enabled:true,minPurchases:1000,minProfit:400,initialLine:5,punctualRate:10,lateRate:5};
-const _NA_V10_PAYMENT_METHODS=['efectivo','yape','transferencia','mixto','credito'];
+const _NA_V10_PAYMENT_METHODS=['efectivo','yape','plin','transferencia','mixto','credito'];
 function _naV10CreditPolicyFrom(data){
   const raw=(data&&data.appConfig&&data.appConfig.creditPolicy)||{},cfg={..._NA_V10_CREDIT_POLICY_DEFAULTS,...raw};
   cfg.enabled=cfg.enabled!==false;
@@ -660,7 +660,7 @@ function _naV10RevalidateSale(canonical,intent){
     if(!(mix.cash>0))return{ok:false,reason:'MIXTO_INVALIDO',detalle:'el componente efectivo debe ser mayor que cero'};
     if(!(mix.digital>0))return{ok:false,reason:'MIXTO_INVALIDO',detalle:'el componente digital debe ser mayor que cero'};
     if(mix.cash>=total)return{ok:false,reason:'MIXTO_INVALIDO',detalle:'el componente efectivo debe ser menor al total'};
-    if(['yape','transferencia'].indexOf(mix.digitalMethod)<0)return{ok:false,reason:'MIXTO_INVALIDO',detalle:'digitalMethod debe ser yape o transferencia'};
+    if(['yape','plin','transferencia'].indexOf(mix.digitalMethod)<0)return{ok:false,reason:'MIXTO_INVALIDO',detalle:'digitalMethod debe ser yape, plin o transferencia'};
     if(Math.abs(mix.cash+mix.digital-total)>0.005)return{ok:false,reason:'MIXTO_INCONSISTENTE',efectivo:mix.cash,digital:mix.digital,total};
     if(ref.length<4)return{ok:false,reason:'REFERENCIA_INVALIDA',paymentRef:intent.paymentRef,longitud:ref.length};
     if(ventas.some(v=>!v.anulada&&v.paymentRef===ref))return{ok:false,reason:'REFERENCIA_DUPLICADA',paymentRef:ref};
