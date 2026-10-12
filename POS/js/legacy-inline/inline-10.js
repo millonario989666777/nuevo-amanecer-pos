@@ -169,9 +169,26 @@ function _naSecRenderSales(){
     return;
   }
   const list=_naSecAppend(container,'div','v-list-wrap');
-  rows.forEach((sale,index)=>_naSecRenderSaleCard(list,sale,index));
+  // Etapa 2: se pinta primero una página y el resto por tandas al acercarse al final.
+  // Totales, conteos, filtros, búsqueda y exportación siguen usando TODAS las ventas (rows/ventas).
+  _naSecCancelSalesRows();
+  let next=0;const FIRST=30,STEP=60;
+  const chunk=n=>{const end=Math.min(rows.length,next+n);for(;next<end;next++)_naSecRenderSaleCard(list,rows[next],next);};
+  chunk(FIRST);
+  if(next<rows.length&&typeof IntersectionObserver==='function'){
+    const sentinel=_naSecAppend(list,'div','na-sales-more');sentinel.style.cssText='height:1px';
+    const observer=new IntersectionObserver(entries=>{
+      if(observer!==_naSecSalesObserver||!list.isConnected){observer.disconnect();return;}
+      if(!entries.some(e=>e.isIntersecting))return;
+      chunk(STEP);list.appendChild(sentinel);
+      if(next>=rows.length)_naSecCancelSalesRows();
+    },{rootMargin:'800px 0px'});
+    _naSecSalesObserver=observer;observer.observe(sentinel);
+  }else chunk(rows.length);
   _naSecSalesRendered();
 }
+let _naSecSalesObserver=null;
+function _naSecCancelSalesRows(){if(_naSecSalesObserver){_naSecSalesObserver.disconnect();_naSecSalesObserver=null;}document.querySelector('#ventasContent .na-sales-more')?.remove();}
 ventasRender=_naSecRenderSales;
 document.getElementById('ventasContent')?.addEventListener('click',event=>{
   const control=event.target.closest('[data-na-sale-action]');
