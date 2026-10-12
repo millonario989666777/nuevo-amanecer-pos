@@ -500,6 +500,14 @@
     var expense = source.tipo === 'gas' || source.tipo === 'egr';
     return { icon:payment ? 'payment' : expense ? 'expense' : 'cash', tone:payment ? 'payment' : expense ? 'expense' : 'cash', title:payment ? 'Abono registrado' : expense ? 'Egreso registrado' : 'Ingreso de caja', detail:activityClient(source), amount:money(source.monto) };
   }
+  // Coalesce bursts (observer mutations, canonical updates) into one refresh per frame.
+  var mobileActivityScheduled = false;
+  function scheduleMobileActivity() {
+    if (mobileActivityScheduled) return;
+    mobileActivityScheduled = true;
+    var run = function () { mobileActivityScheduled = false; refreshMobileActivity(); };
+    if (typeof root.requestAnimationFrame === 'function') root.requestAnimationFrame(run); else root.setTimeout(run, 16);
+  }
   function refreshMobileActivity() {
     syncMobileMoney();
     if (!isMobile()) return;
@@ -641,12 +649,12 @@
     syncMobileLandscape();
     page.classList.add('na-mobile-ready');
     if (!mobileHomeObserver && root.MutationObserver) {
-      mobileHomeObserver = new root.MutationObserver(function () { syncMobileLandscape(); refreshMobileActivity(); });
+      mobileHomeObserver = new root.MutationObserver(function () { syncMobileLandscape(); scheduleMobileActivity(); });
       mobileHomeObserver.observe(page, { attributes:true, attributeFilter:['class'] });
     }
 
     if (!mobileActivityObserver && root.MutationObserver) {
-      mobileActivityObserver = new root.MutationObserver(function () { refreshMobileActivity(); });
+      mobileActivityObserver = new root.MutationObserver(function () { scheduleMobileActivity(); });
       try { mobileActivityObserver.observe(stats, { subtree:true, childList:true, characterData:true }); } catch (_) {}
     }
     return true;
@@ -680,7 +688,7 @@
         }
       });
       root.addEventListener('na:canonical-updated', function () {
-        if (isMobile()) refreshMobileActivity();
+        if (isMobile()) scheduleMobileActivity();
       });
     }
   }
