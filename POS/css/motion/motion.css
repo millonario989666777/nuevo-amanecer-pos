@@ -12,6 +12,8 @@
 }
 
 .na-motion{
+  /* Solo propiedades del compositor: sin esto equivalía a "all" y animaba flex/padding con layout en cada frame. */
+  transition-property:opacity,transform;
   transition-duration:var(--na-motion-normal);
   transition-timing-function:var(--na-motion-ease-standard);
 }

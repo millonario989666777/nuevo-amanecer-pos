@@ -78,7 +78,8 @@ test('5: el botón de actualizar no se habilita mientras se descarga y el primer
   const index = read('index.html');
   const start = index.indexOf('CANON-PWA-UPDATE-001'), block = index.slice(start, index.indexOf('</script>', start));
   assert.match(block, /markVersionPending\('Descargando la versión nueva…', true\)/);
-  assert.match(block, /'Descargando…', false\)/);
+  // Pasivo (true): si el vendedor eligió "Más tarde" no se vuelve a abrir solo; el botón sigue deshabilitado.
+  assert.match(block, /'Descargando…', false, true\)/);
   assert.match(block, /120000/);
   assert.match(block, /pwaUpdateQueued = true/);
   assert.match(block, /if \(pwaUpdateQueued\) \{ pwaUpdateQueued = false; runPwaUpdate\(\); \}/);
@@ -91,7 +92,8 @@ test('CSS CANON de la ronda 2 está enlazado y precacheado', () => {
   assert.match(sw, /'\.\/css\/canon-ux-fixes\.css'/);
   assert.match(css, /\.modal-overlay:not\(\.open\)\{visibility:hidden/);
   assert.match(css, /#securityLockScreen:not\(\.open\)\{visibility:hidden\}/);
-  assert.match(css, /\.btn-close-m\{min-width:40px;min-height:40px/);
+  // P2-C (móvil): los cerrar llegan a 44 px.
+  assert.match(css, /\.btn-close-m\{min-width:44px;min-height:44px/);
   assert.match(css, /\.mov-amt\.credito/);
   assert.match(read('js/legacy-inline/inline-11.js'), /'Cobros en efectivo'/);
 });

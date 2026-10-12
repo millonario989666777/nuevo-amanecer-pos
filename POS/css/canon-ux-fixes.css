@@ -6,10 +6,10 @@
 .modal-overlay.open{visibility:visible;transition:opacity .2s,visibility 0s linear 0s}
 #securityLockScreen:not(.open){visibility:hidden}
 
-/* 10: objetivos táctiles de al menos 40 px en pantallas táctiles/móviles. */
+/* 10: objetivos táctiles de al menos 44 px en pantallas táctiles/móviles. */
 @media (pointer:coarse),(max-width:700px){
-  .btn-close-m{min-width:40px;min-height:40px;width:40px;height:40px;font-size:16px}
-  #btnEditorToggle{min-height:40px;padding-left:12px;padding-right:12px}
+  .btn-close-m{min-width:44px;min-height:44px;width:44px;height:44px;font-size:16px}
+  #btnEditorToggle{min-height:44px;padding-left:12px;padding-right:12px}
 }
 
 /* 5: el aviso de actualización no tapa contenido en móvil. */
@@ -31,3 +31,47 @@
 
 /* I: detalle de cada abono en el historial de pagos. */
 .na-v2-payment-detail small{display:block}
+
+/* P0-1: el aviso de versión nueva se puede posponer ("Más tarde") y nunca tapa Cobrar. */
+.pwa-update-prompt{grid-template-columns:auto minmax(0,1fr) auto auto}
+.pwa-update-later{min-height:38px;padding:0 12px;border:1px solid rgba(15,23,42,.14);border-radius:11px;background:transparent;color:var(--dark,#0f172a);font:800 12px/1 'Nunito',system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.pwa-update-later:focus-visible,.pwa-update-action:focus-visible{outline:2px solid var(--teal,#0f766e);outline-offset:2px}
+@media (max-width:700px){
+  .pwa-update-prompt{grid-template-columns:minmax(0,1fr) auto auto}
+  .pwa-update-icon{display:none}
+  .pwa-update-action,.pwa-update-later{grid-column:auto;width:auto;min-height:44px}
+  /* Nueva venta: chip compacto arriba, en la franja del título; el carrito y Cobrar quedan libres. */
+  body:has(#pagePOS.active) .pwa-update-prompt{top:max(6px,env(safe-area-inset-top));bottom:auto;left:58px;right:8px;max-width:none;margin:0;padding:0 0 0 10px;gap:6px;min-height:44px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,.16)}
+  body:has(#pagePOS.active) .pwa-update-copy strong{font-size:12px}
+  body:has(#pagePOS.active) .pwa-update-action,body:has(#pagePOS.active) .pwa-update-later{padding:0 10px;font-size:12px}
+  body:has(#pagePOS.active):has(#pwaUpdatePrompt:not([hidden])){padding-bottom:0}
+  body:has(#pagePOS.active):has(#pwaUpdatePrompt:not([hidden])) #posPhoneTitle{visibility:hidden}
+}
+@media (max-width:359px){
+  body:has(#pagePOS.active) .pwa-update-copy{display:none}
+  body:has(#pagePOS.active) .pwa-update-prompt{grid-template-columns:auto auto;justify-content:end;padding:0}
+}
+@media (min-width:701px){
+  /* Escritorio/tablet: en Nueva venta el aviso va abajo a la izquierda, lejos del carrito y de Cobrar. */
+  body:has(#pagePOS.active) .pwa-update-prompt{left:14px;right:auto;max-width:420px;margin:0}
+  body:has(#pagePOS.active):has(#pwaUpdatePrompt:not([hidden])){padding-bottom:0}
+}
+
+/* P1-4: en Nueva venta (teléfono) un solo botón de 44×44 abre el menú; "← Menú" ya no queda encima. */
+@media (max-width:767px){
+  body.na-pos-reference-active>.g-topbar>div:last-child{display:none!important}
+  body.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle{position:absolute!important;top:max(6px,env(safe-area-inset-top));left:7px;z-index:101;display:grid!important;width:44px!important;height:44px!important;border:1px solid #e1e7ed!important;background-color:#fff!important}
+  .g-topbar .back-btn{width:44px;min-width:44px;height:44px}
+}
+
+/* P1-C / P2-C: objetivos táctiles de 44 px en el carrito del teléfono y en el comprobante. */
+@media (pointer:coarse),(max-width:767px){
+  body.na-pos-phone-device #pagePOS.phone-sale #cartDrawer .qty-btn{width:44px;height:44px}
+  body.na-pos-phone-device #pagePOS.phone-sale #cartDrawer .ci-qty{gap:8px}
+  body.na-pos-phone-device #pagePOS.phone-sale #cartDrawer .btn-rm{width:44px;height:44px}
+  body.na-pos-phone-device #pagePOS.phone-sale #cartDrawer .ci-sub{line-height:44px}
+  body.na-pos-phone-device #btnCartMenu{width:44px;height:44px}
+  body.na-pos-phone-device #pagePOS #cartDrawer .cart-mobile-close,body.na-pos-phone-device #pagePOS .cart-head-clear{min-width:44px;min-height:44px}
+  .na-receipt-download{min-height:44px;padding:0 12px}
+  #backBtn{min-width:44px;min-height:44px}
+}
