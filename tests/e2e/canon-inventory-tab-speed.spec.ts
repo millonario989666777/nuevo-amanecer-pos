@@ -55,7 +55,7 @@ test('408 products with photos and sales change tabs with bounded work',async({p
  await expect(page.locator('#invBody tr').filter({has:page.getByText('Producto 0',{exact:true})}).locator('img')).toHaveCount(0);
  await expect(page.locator('#invBody tr').filter({has:page.getByText('Producto 1',{exact:true})}).locator('img')).toHaveCount(0);
  // An observer from the previous list must not append stale rows after changing filters.
- await page.locator('#invSearch').fill('Producto 407');await expect(page.locator('#invBody .prod-name-sm')).toHaveText('Producto 407');
+ await page.locator('#invSearch').fill('Producto 407');await expect(page.locator('#invBody .prod-name-sm')).toHaveCount(1);await expect(page.locator('#invBody .prod-name-sm')).toHaveText('Producto 407');
  await page.locator('#invBody tr').last().scrollIntoViewIfNeeded();await expect(page.locator('#invBody .prod-name-sm')).toHaveCount(1);
  await page.locator('#invSearch').fill('');await page.evaluate(()=>{window.scrollTo(0,0);invSetTab(document.querySelector("[onclick*=\"'sugerencia'\"]"),'sugerencia');});
  for(let i=0;i<10&&await page.locator('.purchase-card').count()<136;i++){

@@ -39,3 +39,16 @@ _baseInvRender=function(){
     return `<tr><td><div class="prod-info"><div class="prod-icon-sm">${icon}</div><div><div class="prod-name-sm">${_naEsc(product.name)}</div><div class="prod-sku-sm">${_naEsc(product.sku)}${product.marca&&product.marca!=='Sin marca'?` · ${_naEsc(product.marca)}`:''} · ${_naEsc(_naCategoryTitle(product.unidad||'unidad'))}</div></div></div></td><td><span class="cat-pill">${_naEsc(_naCategoryLabel(product.cat))}</span></td><td><div style="font-size:12px;font-weight:800;color:var(--teal)">S/ ${_naNumber(product.precio).toFixed(2)}</div><div style="font-size:10px;color:var(--slate)">Costo: S/ ${_naNumber(product.costo).toFixed(2)}</div></td><td><span class="venc-pill ${expiryClass}">${_naEsc(expiryLabel)}</span></td><td><span class="stock-pill ${stockClass}">${_naEsc(stockLabel)}</span></td><td><div class="act-btns">${tracked?`<button class="btn-act btn-ent" onclick="abrirMovInv(${_naEsc(id)},&quot;entrada&quot;)">📥</button><button class="btn-act btn-sal" onclick="abrirMovInv(${_naEsc(id)},&quot;salida&quot;)">📤</button>`:'<button class="btn-act" title="Sin control de inventario">∞</button>'}<button class="btn-act btn-edt" onclick="editProd(${_naEsc(id)})">✏️</button></div></td></tr>`;
   });
 };
+
+// Etapa 2 perf: debounce Inventario search so each keystroke no longer re-renders the whole table.
+(function(){
+  if(window.__naInvSearchDebounce)return;window.__naInvSearchDebounce=true;
+  let timer=0;
+  document.addEventListener('input',function(event){
+    const input=event.target;if(!input||input.id!=='invSearch')return;
+    event.stopPropagation();clearTimeout(timer);
+    const run=function(){if(typeof invRender==='function')invRender();};
+    if(!input.value.trim()){run();return;}
+    timer=setTimeout(run,180);
+  },true);
+})();
