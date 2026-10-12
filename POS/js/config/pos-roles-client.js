@@ -8,7 +8,7 @@
   var doc = root.document;
   var CRED = 'na_cloud_sync_credentials', CACHE = 'na_pos_role_v1';
   var OWNER_COMMANDS = ['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set'];
-  var state = { role: 'unknown', pinSet: false, label: null, deviceId: null, ready: false };
+  var state = { role: 'unknown', pinSet: false, label: null, deviceId: null, ready: false, confirmed: false };
 
   function creds() {
     try { var c = JSON.parse(root.localStorage.getItem(CRED) || 'null'); return c && c.endpoint && c.token ? c : null; } catch (_) { return null; }
@@ -16,11 +16,15 @@
   function cloud() {
     try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()) || !!creds(); } catch (_) { return !!creds(); }
   }
+  // Configuración y acciones de dueño solo con el rol confirmado por el servidor en esta sesión.
+  // El rol en caché (sin internet) nunca abre Configuración.
+  function canConfigure() { return !cloud() || (state.role === 'owner' && state.confirmed); }
   function paint() {
     var html = doc.documentElement;
     html.classList.toggle('na-role-owner', state.role === 'owner');
     html.classList.toggle('na-role-empleado', state.role === 'empleado');
     html.classList.toggle('na-role-locked', state.role !== 'owner');
+    html.classList.toggle('na-role-unconfirmed', !canConfigure());
     try { root.dispatchEvent(new CustomEvent('na:role', { detail: { role: state.role } })); } catch (_) {}
   }
   function setState(next, persist) {
@@ -50,9 +54,11 @@
     if (!cloud()) { setState({ role: 'owner' }); state.ready = true; return state; }
     try {
       var me = await api('/auth/me');
+      state.confirmed = true;
       setState({ role: me.pos_role, pinSet: me.owner_pin_set, label: me.label, deviceId: me.device_id }, true);
     } catch (e) {
-      if (e.status === 401 || e.status === 403) setState({ role: 'unknown' }, true);
+      state.confirmed = false;
+      if (e.status === 401 || e.status === 403) setState({ role: 'unknown' }, true); else paint();
     }
     state.ready = true; return state;
   }
@@ -107,17 +113,30 @@
 
   root.NA_ROLES = {
     get role() { return state.role; }, get pinSet() { return state.pinSet; }, get label() { return state.label; }, get deviceId() { return state.deviceId; },
-    isOwner: function () { return state.role === 'owner'; }, refresh: refresh, api: api, askPin: askPin, approve: approve, beforeCommand: beforeCommand,
+    isOwner: canConfigure, canConfigure: canConfigure, get confirmed() { return state.confirmed; }, refresh: refresh, api: api, askPin: askPin, approve: approve, beforeCommand: beforeCommand,
     message: message, OWNER_COMMANDS: OWNER_COMMANDS.slice()
   };
 
   // Configuración solo para el dueño, por cualquier camino de navegación.
   function guardConfig() {
     var page = doc.getElementById('pageConfig');
-    if (!page || !page.classList.contains('active') || state.role === 'owner') return;
+    if (!page || !page.classList.contains('active') || canConfigure()) return;
     page.classList.remove('active');
     try { if (root.NA_MENU_NAVIGATION) root.NA_MENU_NAVIGATION.navigate('pagePOS'); else root.goPage('pagePOS'); } catch (_) {}
-    toast(state.role === 'empleado' ? 'Configuración es solo para el dueño.' : 'Comprobando permisos de este aparato…', 'error');
+    if (state.role === 'empleado') toast('Configuración es solo para el dueño.', 'error');
+    else offlineNotice();
+  }
+  // Solo Configuración y pantallas del dueño fallan cerrado; vender, cobrar y la cola siguen igual.
+  function offlineNotice() {
+    if (doc.querySelector('.na-offline-cfg')) return;
+    var o = doc.createElement('div'); o.className = 'na-pin-overlay na-offline-cfg'; o.setAttribute('role', 'dialog');
+    var online = root.navigator.onLine !== false;
+    o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">' + (online ? 'Comprobando permisos…' : 'Sin conexión') + '</div>'
+      + '<div class="na-pin-detail">' + (online ? 'Configuración se abre cuando el servidor confirma que eres el dueño. Inténtalo de nuevo en unos segundos.' : 'Sin conexión: Configuración necesita internet para confirmar que eres el dueño.') + '</div>'
+      + '<div class="na-pin-actions"><button type="button" class="na-pin-ok na-offline-back">Volver a la venta</button></div></div>';
+    o.querySelector('.na-offline-back').addEventListener('click', function () { o.remove(); });
+    doc.body.appendChild(o);
+    if (online) refresh();
   }
   function install() {
     var page = doc.getElementById('pageConfig');
@@ -130,5 +149,6 @@
   }
   root.addEventListener('na:role', guardConfig);
   root.addEventListener('online', function () { refresh(); });
+  root.addEventListener('offline', function () { state.confirmed = false; paint(); guardConfig(); });
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', install); else install();
 })(window);
