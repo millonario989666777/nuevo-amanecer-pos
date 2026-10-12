@@ -500,6 +500,31 @@
     retryCount = Math.min(retryCount + 1, 7);
     retryTimer = root.setTimeout(function () { retryTimer = null; return resumeOutbox(); }, delay);
   }
+  // P1-B / P1-4: the receipt is projected locally (stock, sale view), so the
+  // full server reconciliation is deferred until the queue is idle. It never
+  // runs ahead of (or delays) a queued POST, and it repeats if a sale was
+  // confirmed while it was reading, so its replica is never older than a POST.
+  var RECONCILE_DELAY_MS = 1500, reconcileTimer = null, reconciling = false, confirmedSince = 0;
+  function scheduleReconcile() {
+    if (reconcileTimer !== null || typeof root.setTimeout !== 'function') return;
+    reconcileTimer = root.setTimeout(function () { reconcileTimer = null; reconcileWhenIdle(); }, RECONCILE_DELAY_MS);
+  }
+  async function reconcileWhenIdle() {
+    var canonical = root.NuevoAmanecerCanonical;
+    if (!canonical || typeof canonical.refresh !== 'function') return;
+    var pending = 0;
+    try { pending = snapshot().intents.length; } catch (_) { pending = 0; }
+    // A queued sale reschedules this itself when its drain confirms something;
+    // never poll while the queue is blocked.
+    if (pending) return;
+    if (reconciling || syncing) { scheduleReconcile(); return; }
+    reconciling = true;
+    var mark = confirmedSince;
+    try { await canonical.refresh(); }
+    catch (error) { if (root.console) root.console.warn('[Venta CANON] Confirmada; reconciliación pendiente', error.code || error.message); }
+    finally { reconciling = false; }
+    if (confirmedSince !== mark) scheduleReconcile();
+  }
   async function sync() {
     if (syncing) return result('WAITING', 0, snapshot().intents.length, 'BUSY');
     syncing = (async function () {
@@ -508,10 +533,7 @@
         // Receipt is already durable and the confirmed intent has been removed.
         // Return the commercial path immediately; reconciliation starts now but
         // is never allowed to hold the sale UI after the durable receipt.
-        if (outcome.processed > 0) {
-          Promise.resolve().then(function () { return root.NuevoAmanecerCanonical.refresh(); })
-            .catch(function (error) { if (root.console) root.console.warn('[Venta CANON] Confirmada; reconciliación pendiente', error.code || error.message); });
-        }
+        if (outcome.processed > 0) { confirmedSince++; scheduleReconcile(); }
         if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection'));
         if ((outcome.status === 'WAITING' && outcome.reason !== 'BUSY') || outcome.status === 'BLOCKED_FOREIGN_PENDING') scheduleResume();
         else if (outcome.status === 'DRAINED' || outcome.status === 'EMPTY') retryCount = 0;

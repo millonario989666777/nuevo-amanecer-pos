@@ -48,11 +48,17 @@ test('sale submission failure leaves FIFO untouched for durable retry', async ()
   const result = await f.api.sync(); assert.equal(result.status, 'WAITING'); assert.equal(f.calls.filter(x => Array.isArray(x) && x[0] === 'createSale').length, 1); assert.equal(f.api.snapshot().intents.length, 2);
 });
 test('drains FIFO without forcing a full refresh in front of each sale', async () => {
-  const f = fixture(); await enqueueAll(f, makeIntent('A'), makeIntent('B'));
+  // P1-B: the full reconciliation is deferred until the queue is idle (never in
+  // front of, or right behind, each POST) and runs once afterwards.
+  const f = fixture(); const timers = []; f.context.setTimeout = (fn, ms) => { timers.push([fn, ms]); return timers.length; };
+  await enqueueAll(f, makeIntent('A'), makeIntent('B'));
   const result = await f.api.sync(); assert.equal(result.status, 'DRAINED');
   await Promise.resolve();
-  assert.deepEqual(f.calls, [['createSale', makeIntent('A')], ['createSale', makeIntent('B')], 'refresh']);
+  assert.deepEqual(f.calls, [['createSale', makeIntent('A')], ['createSale', makeIntent('B')]]);
   assert.equal(f.api.snapshot().intents.length, 0);
+  const reconcile = timers.find(([, ms]) => ms === 1500); assert.ok(reconcile, 'one deferred reconciliation scheduled');
+  await reconcile[0](); await Promise.resolve();
+  assert.deepEqual(f.calls.slice(2), ['refresh']);
 });
 test('lost ACK is not retried in same execution; reload retries same pending once', async () => {
   const state = { pending: null };

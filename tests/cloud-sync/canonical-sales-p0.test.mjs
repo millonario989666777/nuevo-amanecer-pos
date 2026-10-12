@@ -249,3 +249,17 @@ for (const production of [false, true]) {
     void f;
   });
 }
+
+test('P1-B (móvil): a sale right after another is POSTed without waiting for a full reload; reconciliation runs once when idle', async (t) => {
+  const { tab, add, sell, queue } = await fixture(t);
+  const start = tab.fetchLog.length;
+  add(1); await sell(); assert.equal((await queue.sync()).status, 'DRAINED');
+  add(1); await sell(); assert.equal((await queue.sync()).status, 'DRAINED');
+  const seq = tab.fetchLog.slice(start).map((r) => r.method + ' ' + new URL(r.url).pathname);
+  assert.deepEqual(seq.filter((s) => s.startsWith('POST')), ['POST /commands/sale.create', 'POST /commands/sale.create']);
+  assert.equal(seq.filter((s) => s.startsWith('GET')).length, 0, 'no 15-GET reload between consecutive sales: ' + seq.join(', '));
+  await sleep(1800);
+  const after = tab.fetchLog.slice(start).filter((r) => r.method === 'GET' && new URL(r.url).pathname === '/read/canonical/status').length;
+  assert.equal(after, 1, 'one deferred reconciliation once the queue is idle');
+  assert.equal(tab.api.sourceState().validation, 'current');
+});

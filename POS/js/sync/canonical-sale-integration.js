@@ -213,8 +213,10 @@
     var rawBase = canonical.snapshot();
     var base = { products: rawBase.products || [], customers: rawBase.customers || [], credits: rawBase.credits || [], sales: rawBase.sales || [] };
     projection = copy(projector.project(base, outbox.snapshot()));
-    if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection', { detail: copy(projection) }));
-    return copy(projection);
+    // P1-A (mobile): no listener reads the projection from the event and the
+    // callers ignore the return value: two extra deep copies per sale removed.
+    if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection', { detail: { source: 'capture' } }));
+    return true;
   }
   function syncOutboxInBackground(outbox) {
     if (!outbox || typeof outbox.sync !== 'function') return;

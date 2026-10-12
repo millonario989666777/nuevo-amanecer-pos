@@ -74,6 +74,8 @@ test('C-P1: a boot 500 while online recovers by itself (no "online" event needed
   assert.equal(tab.api.sourceState().validation, 'current');
   assert.equal(ob.snapshot().intents.length, 0);
   assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='V-900'").n, 1);
+  // The resume loop retries forever by design (browser tab): stop it before the fixture is torn down.
+  tab.context.navigator.onLine = false;
 });
 
 test('C-P2/C-P1: close toast shows the difference; the close dialog verifies against a fresh read before enabling Confirmar', async (t) => {
