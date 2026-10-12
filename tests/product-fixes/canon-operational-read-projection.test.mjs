@@ -11,7 +11,7 @@ test('CANON replaces every operational legacy array from one canonical snapshot'
   assert.match(inline03,/cajMovs=canonical\.cashMovements/);
   assert.match(inline03,/inventoryMovements=canonical\.inventoryMovements/);
   assert.match(inline03,/cajEstado=canonical\.cashState/);
-  assert.match(inline03,/ventas=\[\];cajMovs=\[\];inventoryMovements=\[\]/);
+  assert.match(inline03,/ventas=\[\];gastos=\[\];cajMovs=\[\];inventoryMovements=\[\]/);
 });
 
 test('confirmed canonical sale history cannot invoke legacy annul or admin-note actions',()=>{
@@ -22,6 +22,8 @@ test('confirmed canonical sale history cannot invoke legacy annul or admin-note 
 });
 
 test('operational adapter does not project expenses without an explicit canonical source',()=>{
+  // Los gastos ya tienen fuente canónica (0013): solo se proyectan desde data.expenses, nunca desde datos locales.
   assert.doesNotMatch(adapter,/gastos\s*:/);
-  assert.doesNotMatch(adapter,/expenses\s*:/);
+  assert.match(adapter,/Array\.isArray\(data\.expenses\) \? data\.expenses : \[\]/);
+  assert.doesNotMatch(adapter,/\bexpenses:(?!\s*expenses\b)/);
 });

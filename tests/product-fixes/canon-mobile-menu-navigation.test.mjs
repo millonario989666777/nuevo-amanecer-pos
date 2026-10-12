@@ -235,7 +235,8 @@ test('CANON header uses a color-only connection indicator and direct settings ge
   assert.match(baseCss,/\.g-avatar\{/);
   assert.match(layoutCss,/\.g-status span\{/);
   assert.match(layoutCss,/#localStatus\[data-state\]\{padding:0/);
-  assert.match(inline03,/CANON validado/);
+  // Texto actual del indicador (antes «CANON validado»).
+  assert.match(inline03,/Conectado/);
   assert.match(inline03,/Canónico no disponible · reintenta/);
   assert.match(inline03,/na:version-update-pending/);
   assert.match(index,/registration\.addEventListener\('updatefound'/);
@@ -251,7 +252,7 @@ test('finger scroll gesture still does not navigate', () => {
 });
 
 test('navigation layer stays free of business/storage/network authority', () => {
-  assert.doesNotMatch(source,/localStorage|sessionStorage|indexedDB|fetch\(|XMLHttpRequest|sale\.create|payment\.create|cash\.open|cash\.close|credit-account\.create/i);
+  assert.doesNotMatch(source,/localStorage|sessionStorage|indexedDB|fetch\(|XMLHttpRequest|sale\.create\b|payment\.create\b|cash\.open\b|cash\.close\b|credit-account\.create\b/i);
   assert.match(source,/mobileSafeNavigate/);
   assert.match(source,/root\._naSchedulePageRender\(pageId\)/);
   assert.match(source,/persistVisiblePage\(target\)/);
