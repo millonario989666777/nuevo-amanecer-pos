@@ -147,7 +147,12 @@
     var known = !!p.payment_date_known;
     var operation = text(p.source_operation_reference);
     var seller = text(p.seller, 'Histórico');
+    // Ítem 10b: quién atendió y comentario del abono (presentación; opcional y a prueba de fallos).
+    var extra = null;
+    try { extra = typeof root.__naPaymentMeta === 'function' ? root.__naPaymentMeta(text(p.operation_id || p.payment_id)) : null; } catch (_) { extra = null; }
+    if (extra && extra.cashier) seller = text(extra.cashier, seller);
     return {
+      comentario: extra && extra.comment ? text(extra.comment) : '',
       id: p.payment_id,
       pagoId: p.payment_id,
       creditoId: credit.credit_id !== undefined ? credit.credit_id : p.credit_id,
@@ -221,7 +226,7 @@
     var balance = cents(c.current_balance_cents);
     var paid = Math.max(0, amount - balance);
     var seller = text(c.seller, 'Histórico');
-    var description = text(c.concept || c.document_number || c.reference, 'Crédito histórico');
+    var description = text(c.concept || c.document_number || c.reference, c.sale_id ? 'Venta a crédito ' + c.sale_id : 'Saldo anterior');
     var account = c.account_id ? {
       version: 2,
       categoryId: String(c.account_id),

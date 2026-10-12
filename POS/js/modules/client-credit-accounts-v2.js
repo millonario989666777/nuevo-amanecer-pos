@@ -1564,7 +1564,7 @@ function labCreditDisplayMoment(cr, fallbackDate) {
         return '<div class="na-v2-paid-row"><span>✓</span><div><strong>Cuota ' + item.number + '</strong><small>' + labEsc(pay ? labFormatPaymentMoment(pay) : (item.paidAt || 'Pago histórico sin hora canónica')) + '</small></div></div>';
       }).join('') : '<div class="na-v2-empty">Todavía no hay cuotas pagadas.</div>') +
       '</section><section class="na-v2-section"><h3>COMPROBANTES DE ABONOS</h3>' +
-      labEffectivePayments(cr).map(function(pay){return '<div class="na-receipt-payment-row"><span><strong>'+labMoney(pay.monto||pay.montoPagado||0)+'</strong><small>'+labEsc(labFormatPaymentMoment(pay))+'</small></span><button type="button" class="na-receipt-history" data-share-payment="'+labEsc(String(pay.id||pay.pagoId))+'" data-share-credit-id="'+labEsc(String(cr.id))+'">Compartir</button></div>';}).join('') + '</section></div>';
+      labEffectivePayments(cr).map(function(pay){return '<div class="na-receipt-payment-row"><span><strong>'+labMoney(pay.monto||pay.montoPagado||0)+'</strong><small>'+labEsc(labFormatPaymentMoment(pay))+'</small>'+((pay.cajeroNombre&&pay.cajeroNombre!=='Histórico')||pay.numeroOperacion||pay.comentario?'<small class="na-pay-meta">'+labEsc([pay.cajeroNombre&&pay.cajeroNombre!=='Histórico'?'Atendió: '+pay.cajeroNombre:'',pay.numeroOperacion?'N.º '+pay.numeroOperacion:'',pay.comentario||''].filter(Boolean).join(' · '))+'</small>':'')+'</span><button type="button" class="na-receipt-history" data-share-payment="'+labEsc(String(pay.id||pay.pagoId))+'" data-share-credit-id="'+labEsc(String(cr.id))+'">Compartir</button></div>';}).join('') + '</section></div>';
   }
 
   function labPaymentGroups(client) {

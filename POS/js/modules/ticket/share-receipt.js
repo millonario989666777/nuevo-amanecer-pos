@@ -152,6 +152,8 @@
       field('Saldo pendiente',known(pay.saldoDespues)?money(pay.saldoDespues):'No registrado');
       field('Método del abono',pay.metodo||pay.payment_method||'No registrado');
       if(pay.numeroOperacion||pay.reference)field('Referencia abono',pay.numeroOperacion||pay.reference);
+      if(pay.cajeroNombre&&pay.cajeroNombre!=='Histórico')field('Atendido por',pay.cajeroNombre);
+      if(pay.comentario)field('Comentario',String(pay.comentario).slice(0,300));
       (data.allocations||[]).forEach(row=>{field('Crédito',row.id);field('Abono',money(row.amount));field('Saldo de ese crédito',money(row.balance));});
     }else if(!root._naF11ReceiptZonesEnabled&&(data.kind==='credit'||sale.metodo==='credito')){
       lines.push('-'.repeat(width));field('Tipo',data.kind==='credit'?'Crédito registrado':'Venta a crédito');
@@ -166,6 +168,7 @@
       if(cr.vence||data.due||sale.credit_due)field('Vencimiento',cr.vence||data.due||sale.credit_due);
     }
     if(data.kind!=='payment'&&sale.nota)field('Nota',String(sale.nota).slice(0,300));
+    if(data.kind!=='payment'&&sale.cajeroNombre&&!/^(Cajero|Histórico)$/.test(sale.cajeroNombre)&&!lines.some(l=>l.includes(sale.cajeroNombre)))field('Atendido por',sale.cajeroNombre);
     // Estado de outbox permanece interno; nunca se imprime ni se comparte.
     if(!root._naF11ReceiptZonesEnabled&&data.kind!=='payment'){const summary=accountSummary(data,sale,cr);if(summary)accountLines(summary,width).forEach(line=>lines.push(line));}
     return{kind:data.kind,id:String((data.kind==='payment'&&(pay.id||pay.pagoId||pay.operation_id))||sale.id||cr.id||'comprobante'),customerName:sale.clienteNombre||'Sin cliente',phone:normalizePhone(customer.tel||customer.phone||''),lines,text:lines.join('\n'),width,mm:built.mm||80};
@@ -297,7 +300,8 @@
     if(ids.size!==1){notify('Cobro confirmado. Comparte cada comprobante desde el historial.','success');return;}
     const first=entries[0],cr={...first.credit,id:entries.map(e=>e.credit.id).join(', '),desc:'Abono a '+entries.length+' créditos',items:entries.flatMap(e=>itemsFromCredit(e.credit))};
     const amount=entries.reduce((sum,e)=>sum+e.amount_cents/100,0),before=entries.reduce((sum,e)=>sum+Number(e.credit.saldo),0),after=entries.reduce((sum,e)=>sum+Number(e.receipt.current_balance_cents)/100,0);
-    safely({kind:'payment',credit:cr,payment:{id:first.receipt.operation_id,monto:amount,metodo:method,numeroOperacion:reference,...dateFields(createdAt),saldoAntes:before,saldoDespues:after},customer:customerFor(first.credit.cliId||first.credit.clienteId),allocations:entries.map(e=>({id:e.credit.id,amount:e.amount_cents/100,balance:e.receipt.current_balance_cents/100}))});
+    let comentario='';try{comentario=root.__naPayNoteTake?.(entries)||'';}catch(_){}
+    safely({kind:'payment',credit:cr,payment:{id:first.receipt.operation_id,monto:amount,metodo:method,numeroOperacion:reference,comentario,cajeroNombre:root.__naCashierLabel?.()||'',...dateFields(createdAt),saldoAntes:before,saldoDespues:after},customer:customerFor(first.credit.cliId||first.credit.clienteId),allocations:entries.map(e=>({id:e.credit.id,amount:e.amount_cents/100,balance:e.receipt.current_balance_cents/100}))});
   }
   function installTicketButton(){
     const footer=root.document.querySelector('#mTicket .mfooter')||root.document.querySelector('#mTicket .mbtns')||root.document.querySelector('#mTicket .modal');if(!footer||root.document.getElementById('naTicketShare'))return;const button=el('button','na-receipt-history','Compartir comprobante');button.id='naTicketShare';button.type='button';button.onclick=()=>{let sale;try{sale=tkCurrentVenta;}catch(_){sale=root.tkCurrentVenta;}if(sale)open(saleInput(sale));};footer.append(button);

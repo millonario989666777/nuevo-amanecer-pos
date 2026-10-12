@@ -64,3 +64,22 @@ test('unknown sale is 404 (client keeps it queued), bad input is 400, missing sc
   assert.deepEqual((await call(g, '/auth/sale-notes', 'owner-token')).body, { notes: [], ready: false });
   assert.equal((await call(g, '/auth/sale-notes', 'bad-token')).status, 401);
 });
+
+test('payment comment uses pay:<operation_id>; record-meta names who attended (device label, no row = Dueño)', async t => {
+  const f = await setup(t); await openCash(f); await sell(f, 'sale-a');
+  const credit = f.sql("SELECT credit_id, revision FROM canonical_credit_balances WHERE current_balance_cents>=100 LIMIT 1");
+  const r0 = await call(f, '/commands/payment.create', 'owner-token', { ...ctl(f), operation_id: 'pay-op-1', created_at: '2026-10-12T16:00:00.000Z',
+    credit_id: credit.credit_id, expected_credit_revision: credit.revision, amount_cents: 100, payment_method: 'yape', reference: 'Y-77' });
+  assert.ok([200, 201].includes(r0.status), JSON.stringify(r0.body));
+  assert.equal((await call(f, '/auth/sale-notes', 'owner-token', { sale_id: 'pay:pay-op-1', note: 'Pagó su hija' })).status, 200);
+  assert.equal((await call(f, '/auth/sale-notes', 'owner-token', { sale_id: 'pay:nope', note: 'x' })).status, 404);
+  let m = await call(f, '/auth/record-meta', 'owner-token');
+  assert.equal(m.status, 200);
+  assert.deepEqual(m.body.sales.find(s => s.sale_id === 'sale-a').cashier, 'Dueño');
+  assert.deepEqual(m.body.payments.find(p => p.operation_id === 'pay-op-1').cashier, 'Dueño');
+  const dev = f.sql("SELECT device_id d FROM sales WHERE sale_id='sale-a'").d;
+  f.database.prepare("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) VALUES(?,'owner','Rosa','t','2026-10-12')").run(dev);
+  m = await call(f, '/auth/record-meta', 'owner-token');
+  assert.equal(m.body.sales.find(s => s.sale_id === 'sale-a').cashier, 'Rosa');
+  assert.equal((await call(f, '/auth/record-meta', 'bad-token')).status, 401);
+});
