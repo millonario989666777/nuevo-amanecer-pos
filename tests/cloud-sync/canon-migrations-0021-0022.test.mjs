@@ -136,7 +136,14 @@ test('workflow order: contracts, read-only preflights, verified R2 backup, then 
   assert.doesNotMatch(workflow,/wrangler deploy(?! --dry-run)/,'this workflow must not deploy Worker or POS');
   assert.doesNotMatch(workflow,/wrangler d1 /,'Turso is the authority; D1 must not be touched');
   assert.doesNotMatch(workflow,/set -x/);
-  assert.equal(existsSync('ops/canon-migrations-0021-0022.json'),false,'trigger file is created only on owner authorization');
+  // The trigger file exists only after owner authorization; when present it must match the exact scope.
+  if(existsSync('ops/canon-migrations-0021-0022.json')){
+    const t=JSON.parse(readFileSync('ops/canon-migrations-0021-0022.json','utf8'));
+    assert.equal(t.action,'apply-canon-migrations-0021-0022');
+    assert.equal(t.authorized,true);assert.equal(t.authorized_by,'owner');assert.equal(t.provider,'turso');assert.equal(t.destructive,false);
+    assert.deepEqual(t.migrations,['0021','0022']);
+    assert.match(t.feature_commit,/^[a-f0-9]{40}$/);
+  }
 });
 
 test('workflow refresh preserves ancestry needed to validate approved feature commit',async(t)=>{
