@@ -35,7 +35,7 @@
     } catch (_) {}
     try {
       var held = o && typeof o.quarantine === 'function' ? (o.quarantine().entries || []).filter(function (e) { return e && e.status === 'QUARANTINED'; }) : [];
-      if (held.length) { state.blocked += held.length; state.items.push(held.length === 1 ? '1 venta en revisión' : held.length + ' ventas en revisión'); }
+      if (held.length) { state.review = held.length; state.blocked += held.length; state.items.push(held.length === 1 ? '1 venta en revisión' : held.length + ' ventas en revisión'); }
     } catch (_) {}
     try {
       var pending = typeof c.pendingSnapshot === 'function' ? c.pendingSnapshot() : null;
@@ -62,10 +62,12 @@
     var red = state.blocked > 0 || !!state.otherDay;
     var parts = [];
     if (state.offline) parts.push('Sin conexión · ventas guardadas aquí');
-    if (state.blocked) parts.push(state.blocked === 1 ? '1 operación rechazada o bloqueada' : state.blocked + ' operaciones rechazadas o bloqueadas');
+    var review = state.review || 0, otherBlocked = state.blocked - review;
+    if (review) parts.push((review === 1 ? '1 venta en revisión' : review + ' ventas en revisión') + ' · no la cobres de nuevo');
+    if (otherBlocked > 0) parts.push(otherBlocked === 1 ? '1 operación rechazada o bloqueada' : otherBlocked + ' operaciones rechazadas o bloqueadas');
     if (state.retrying) parts.push((state.retrying === 1 ? '1 operación pendiente' : state.retrying + ' operaciones pendientes') + ' · reintentando');
     if (state.otherDay) parts.push('La caja abierta es del ' + state.otherDay + ': ciérrala y abre la de hoy');
-    return { tone: red ? 'red' : 'amber', count: count, text: parts.join(' · '), detail: state.items.join('\n') };
+    return { tone: red ? 'red' : 'amber', count: count, text: parts.join(' · '), detail: state.items.join('\n'), review: state.review || 0 };
   }
 
   function element() {
@@ -101,10 +103,15 @@
     el.style.borderBottom = '1px solid ' + (v.tone === 'red' ? '#fca5a5' : '#fcd34d');
     var text = el.querySelector ? el.querySelector('.na-sb-text') : null;
     if (text) { text.textContent = (v.tone === 'red' ? '⛔ ' : '⏳ ') + v.text; text.title = v.detail; }
+    var ver = el.querySelector ? el.querySelector('.na-sb-ver') : null;
+    if (ver) ver.textContent = v.review ? 'Resolver' : 'Ver';
     return v;
   }
 
   function openDetail() {
+    // Ítem 6: con ventas en revisión, «Resolver» abre directamente la lista con Verificar / Reintentar / Anular.
+    var bridge = root.NuevoAmanecerCanonicalCashBridge;
+    if (last && last.review && bridge && typeof bridge.showReview === 'function') { try { if (bridge.showReview()) return; } catch (_) {} }
     try { if (typeof root.goPage === 'function') root.goPage('pageCaja'); } catch (_) {}
     // toast es un const de nivel superior en inline-01 (no es propiedad de window).
     var fn = null; try { if (typeof toast === 'function') fn = toast; } catch (_) {}
