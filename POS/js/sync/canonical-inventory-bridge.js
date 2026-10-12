@@ -81,7 +81,13 @@
     if(code==='INSUFFICIENT_PROJECTED_STOCK')return 'No se registró la salida: parte de ese stock ya está vendido en ventas que aún se están enviando a CANON. Espera a que se sincronicen o registra una cantidad menor.';
     if(code==='INSUFFICIENT_CANONICAL_STOCK')return 'No se registró la salida: no hay suficiente stock en CANON.';
     if(pending&&pending.command==='inventory.adjust'&&!pending.invalid){
-      if(pending.last_error)return 'CANON rechazó el movimiento ('+clean(pending.last_error)+'). No se modificó el stock.';
+      // P1-5: solo 400/404/409 son rechazos definitivos (los mismos que descarta
+      // discardRejectedInventory). Un 5xx/429/sin red queda PENDIENTE y se
+      // reintentará con el MISMO operation_id: no decir "no se modificó".
+      if(pending.last_error&&[400,404,409].indexOf(Number(pending.last_status))>=0)
+        return 'CANON rechazó el movimiento ('+clean(pending.last_error)+'). No se modificó el stock.';
+      if(pending.last_error||pending.last_status)
+        return 'Movimiento PENDIENTE de enviar: CANON no respondió ('+clean(pending.last_error||pending.last_status)+'). No se perdió y se reintentará la MISMA operación, sin duplicar. No lo registres de nuevo; pulsa Guardar para reintentar ahora.';
       return 'El movimiento se envió pero CANON no confirmó la recepción ('+code+'). Pulsa Guardar nuevamente para reintentar la MISMA operación.';
     }
     return 'No se registró el movimiento CANON'+(code?': '+code:'');
@@ -141,6 +147,8 @@
       if(pending){
         var replay;
         try{replay=await client.retryPending();}catch(error){notify(pendingMessage(error),'error');return false;}
+        var replayed=replay&&replay.product_id!=null&&String(replay.product_id)!==String(ctx.productId);
+        if(replayed){notify('Se envió primero un movimiento PENDIENTE de otro producto. Revisa y vuelve a registrar este movimiento.','error');}
         return await afterCommit(replay,true);
       }
 
