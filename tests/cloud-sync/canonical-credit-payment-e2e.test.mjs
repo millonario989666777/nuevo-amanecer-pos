@@ -89,8 +89,12 @@ test('payment latency: one POST before receipt; full HTTP reconciliation and ren
   assert.equal(tab.el('pagoConfirmBtn').disabled, false);
   assert.notEqual(tab.el('pagoConfirmBtn').textContent, 'Procesando…');
   assert.deepEqual([...tab.context.__closed], ['mPagoCred']);
-  assert.deepEqual(tab.fetchLog.slice(before).map(x => x.method + ' ' + new URL(x.url).pathname),
-    ['POST /commands/payment.create', 'GET /read/canonical/status', 'GET /read/canonical/credit-accounts']);
+  // The targeted reconciliation (P1-1) may already have its first reads in flight (at most
+  // 4 at once), but it never holds the receipt and never touches unrelated collections.
+  const receiptPath = tab.fetchLog.slice(before).map(x => x.method + ' ' + new URL(x.url).pathname);
+  assert.deepEqual(receiptPath.slice(0, 3), ['POST /commands/payment.create', 'GET /read/canonical/status', 'GET /read/canonical/credit-accounts']);
+  assert.ok(receiptPath.length <= 5, receiptPath.join(', '));
+  assert.ok(receiptPath.slice(3).every(x => /^GET \/read\/canonical\/(?:credits|credit-payments|cash-sessions|cash-movements|financial-events)$/.test(x)), receiptPath.join(', '));
   assert.deepEqual(renders, [], 'no bridge-driven full renders on the receipt path');
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n, 1);
   assert.ok(stages.d1.before >= stages.postStart && stages.d1.after <= stages.postEnd);
@@ -99,7 +103,12 @@ test('payment latency: one POST before receipt; full HTTP reconciliation and ren
   stages.refreshEnd = performance.now();
   const after = tab.fetchLog.slice(before);
   assert.equal(after.filter(x => x.method === 'POST').length, 1);
-  assert.equal(after.filter(x => x.method === 'GET').length, 13, 'status + 12 single-page collections');
+  // P1-1: only this device's payment happened since the validated base, so the
+  // reconciliation re-reads exactly what payment.create can change (no products,
+  // customers, sales, sale items, inventory or expenses).
+  assert.deepEqual(after.filter(x => x.method === 'GET').map(x => new URL(x.url).pathname.replace('/read/canonical/', '')).sort(),
+    ['cash-movements', 'cash-sessions', 'credit-accounts', 'credit-payments', 'credits', 'financial-events', 'status']);
+  assert.equal(tab.api.sourceState().validation, 'current');
   assert.equal(creditOf(tab).saldo, 6);
   assert.deepEqual(renders, [], 'the canonical-updated listener, not the bridge, owns page rendering');
   t.diagnostic(JSON.stringify({

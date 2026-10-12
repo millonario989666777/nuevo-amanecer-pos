@@ -739,9 +739,12 @@ function labCategorySummary(client, category) {
   function naClientOpenWorkspace(screen) {
     var page = document.getElementById('pageClientes');
     var panel = naClientWorkspacePanel(screen);
+    // P2-3: reset the scroll while the layout is still clean (before showing the
+    // panel). Writing scrollTop after hidden=false forced a synchronous layout of
+    // the whole detail (~120 ms with 45 credits on a mid-range phone).
+    if (screen.scrollTop) screen.scrollTop = 0;
     screen.hidden = false;
     page?.classList.add('na-client-detail-open');
-    screen.scrollTop = 0;
     if (!panel || naClientReducedMotion()) {
       naClientResetWorkspaceVisual(screen);
       return;
@@ -779,8 +782,8 @@ function labCategorySummary(client, category) {
     if (direction === 'replace' || naClientReducedMotion() || !content.firstElementChild) {
       naClientViewEpoch += 1;
       naClientResetViewMotion(content);
+      if (screen.scrollTop) screen.scrollTop = 0;
       content.innerHTML = html;
-      screen.scrollTop = 0;
       naClientSetMotionState(content, 'open');
       return;
     }
@@ -797,8 +800,8 @@ function labCategorySummary(client, category) {
     naClientViewCancel = naClientWatchTransition(current, 'transform', duration + 90, function () {
       if (epoch !== naClientViewEpoch) return;
       naClientViewCancel = null;
+      if (screen.scrollTop) screen.scrollTop = 0;
       content.innerHTML = html;
-      screen.scrollTop = 0;
       var incoming = content.firstElementChild;
       if (!incoming) {
         naClientResetViewMotion(content);
@@ -2267,6 +2270,20 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       });
     }).observe(list,{childList:true,subtree:true});
   }
+  // P2-2: la búsqueda de Clientes redibuja 130 ms después de la última tecla (antes
+  // renormalizaba todos los créditos en cada tecla). Reemplaza el oninput del campo; el
+  // marcado de index.html sigue idéntico al de LAB.
+  var naCliSearchTimer = 0;
+  root._naCliSearchInput = function () {
+    clearTimeout(naCliSearchTimer);
+    naCliSearchTimer = setTimeout(function () {
+      naCliSearchTimer = 0;
+      if (typeof cliRender !== 'function') return;
+      cliRender();
+    }, 130);
+  };
+  var naCliSearchField = document.getElementById('cliSearch');
+  if (naCliSearchField) naCliSearchField.oninput = root._naCliSearchInput;
   naBindRuntime();
 
 })(window);

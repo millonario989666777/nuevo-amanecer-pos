@@ -59,7 +59,7 @@ test('header exposes transport as syncing and reserves green for current replica
 
 test('commerce remains fail closed until CANON is ready and ACTIVE',()=>{
   // Only sale.create may reuse the local projection of the previous sale receipt.
-  assert.match(canonical,/var commandReady = ready \|\| \(saleOnlyReady && action === 'sale\.create'\);/);
+  assert.match(canonical,/var commandReady = ready \|\| \(saleOnlyReady && action === 'sale\.create'\) \|\| \(closeOnlyReady && action === 'cash\.close'\);/);
   assert.match(canonical,/!commandReady \|\| changed \|\| !data \|\| data\.read_only !== false \|\| data\.mode !== 'ACTIVE'/);
   assert.match(canonical,/fail\('CANONICAL_COMMERCE_CLOSED'\)/);
 });

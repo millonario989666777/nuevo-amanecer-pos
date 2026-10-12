@@ -343,8 +343,10 @@
       node.style.cssText = 'padding:10px;margin:10px 0;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:13px;overflow-wrap:anywhere';
       body.insertBefore(node, body.querySelector('.mbtns'));
     }
+    node.style.background = '#fef2f2'; node.style.borderColor = '#fecaca'; node.style.color = '#991b1b';
     node.textContent = message || '';
     node.hidden = !message;
+    return node;
   }
 
   function blockingSale(error, record) {
@@ -529,6 +531,45 @@
   }
   // C-P1: the close dialog shows the expected cash of a FRESH server read and
   // keeps "Confirmar cierre" disabled until that read confirms it.
+  // P1-2: a read that could not finish (red lenta) offers "Reintentar sincronización"
+  // with visible progress instead of a dead end. full=true re-reads everything (the close
+  // dialog totals); otherwise only what the close needs (status + cash-sessions + accounts).
+  function isSyncFailure(error) {
+    return /CANONICAL_READ_(?:TIMEOUT|5\d\d|429)|AUTHORITY_UNAVAILABLE|Failed to fetch|NetworkError|Load failed/i.test(clean(error && (error.code || error.message)));
+  }
+  function offerSyncRetry(full, onSynced) {
+    var node = root.document.getElementById('cajCloseStatus');
+    if (!node || typeof root.document.createElement !== 'function') return null;
+    var button = root.document.createElement('button');
+    button.type = 'button';
+    button.className = 'mbtn na-sync-retry';
+    button.textContent = 'Reintentar sincronización';
+    button.style.cssText = 'display:block;width:100%;margin-top:8px;min-height:44px;background:#fff;border:1.5px solid #fca5a5;color:#991b1b';
+    button.addEventListener('click', function () {
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Sincronizando…';
+      function progress(event) {
+        var detail = event && event.detail || {};
+        if (detail.total > 0) button.textContent = 'Sincronizando… ' + Math.min(detail.done, detail.total) + ' de ' + detail.total;
+      }
+      root.addEventListener('na:canonical-progress', progress);
+      var client = api();
+      var work = full || !client || typeof client.prepareCommand !== 'function' ? refreshCanonical() : client.prepareCommand('cash.close');
+      Promise.resolve(work).then(function () {
+        root.removeEventListener('na:canonical-progress', progress);
+        var done = closeStatus('Datos de caja sincronizados. Ya puedes confirmar el cierre.');
+        if (done) { done.style.background = '#f0fdf4'; done.style.borderColor = '#bbf7d0'; done.style.color = '#166534'; }
+        if (typeof onSynced === 'function') onSynced();
+      }, function (error) {
+        root.removeEventListener('na:canonical-progress', progress);
+        closeStatus('Todavía no se pudo sincronizar (' + clean(error && error.message) + '). Revisa la señal y vuelve a intentarlo.');
+        offerSyncRetry(full, onSynced);
+      });
+    });
+    node.appendChild(button);
+    return button;
+  }
   var basePrepCierre = root.prepCierre;
   if (typeof basePrepCierre === 'function') root.prepCierre = function () {
     var result = basePrepCierre.apply(this, arguments);
@@ -543,8 +584,13 @@
       if (typeof root._naRefreshClosingCashTotals === 'function' && typeof root.cajTotales === 'function') root._naRefreshClosingCashTotals(root.cajTotales());
       if (button && !closingBusy) { button.disabled = false; button.textContent = label; }
     }).catch(function () {
-      closeStatus('Sin confirmar: no se pudo leer la caja del servidor. Revisa la conexión y vuelve a abrir el cierre.');
+      closeStatus('Sin confirmar: no se pudo leer la caja del servidor. Revisa la conexión.');
       if (button && !closingBusy) button.textContent = 'Sin confirmar';
+      offerSyncRetry(true, function () {
+        if (!modal.classList.contains('open')) return;
+        if (typeof root._naRefreshClosingCashTotals === 'function' && typeof root.cajTotales === 'function') root._naRefreshClosingCashTotals(root.cajTotales());
+        if (button && !closingBusy) { button.disabled = false; button.textContent = label; }
+      });
     });
     return result;
   };
@@ -579,6 +625,7 @@
     } catch (error) {
       var message = closeFailure(error);
       closeStatus(message);
+      if (isSyncFailure(error)) offerSyncRetry(false);
       if (error && error.code === 'CASH_CLOSE_QUARANTINED_SALES') { try { renderReview(); } catch (_) {} }
       notify(message, 'error');
       return false;

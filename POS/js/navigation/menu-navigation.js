@@ -426,9 +426,14 @@
     return Number(sale.total || sale.monto || 0) || 0;
   }
 
+  var moneyFormat = null;
   function money(value) {
     var amount = Number(value);
-    return 'S/ ' + (Number.isFinite(amount) ? amount : 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    amount = Number.isFinite(amount) ? amount : 0;
+    if (!moneyFormat && typeof Intl !== 'undefined' && Intl.NumberFormat) {
+      try { moneyFormat = new Intl.NumberFormat('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); } catch (_) { moneyFormat = null; }
+    }
+    return 'S/ ' + (moneyFormat ? moneyFormat.format(amount) : amount.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }));
   }
 
   function syncMobileMoney() {
@@ -477,29 +482,48 @@
     return row;
   }
 
+  // P2-1: the Inicio activity list is only built while Inicio is on screen. Updates that
+  // arrive on other pages (each abono, cierre, search keystroke) just mark it dirty; the
+  // #pageMenu class observer rebuilds it when the cashier returns to Inicio.
+  var mobileActivityDirty = false;
+  function homeOnScreen() {
+    var menu = document.getElementById('pageMenu');
+    return !menu || !menu.classList || menu.classList.contains('active');
+  }
+  function activityRecord(record) {
+    var source = record.source;
+    if (record.sale) {
+      var credit = source.metodo === 'credito' || source.metodoPago === 'credito' || source.estado === 'credito';
+      return { icon:credit ? 'people' : 'sale', tone:credit ? 'credit' : 'sale', title:(credit ? 'Venta a crédito ' : 'Venta ') + String(source.id || source.ventaId || 'reciente').replace(/^V-/, '#'), detail:String(source.clienteNombre || source.customerName || 'Consumidor final'), amount:money(saleAmount(source)) };
+    }
+    var payment = source.tipo === 'cob';
+    var expense = source.tipo === 'gas' || source.tipo === 'egr';
+    return { icon:payment ? 'payment' : expense ? 'expense' : 'cash', tone:payment ? 'payment' : expense ? 'expense' : 'cash', title:payment ? 'Abono registrado' : expense ? 'Egreso registrado' : 'Ingreso de caja', detail:activityClient(source), amount:money(source.monto) };
+  }
   function refreshMobileActivity() {
     syncMobileMoney();
     if (!isMobile()) return;
     refreshMobileProfile();
     updateDrawerSelection();
+    if (!homeOnScreen()) { mobileActivityDirty = true; return; }
+    mobileActivityDirty = false;
     var list = document.getElementById('naMobileActivityList');
     if (!list || typeof list.replaceChildren !== 'function') return;
+    // Sort on the timestamp only; names and amounts are formatted for the 6 shown rows.
     var records = saleRows().filter(function (sale) { return sale && !sale.anulada; }).map(function (sale) {
-      var credit = sale.metodo === 'credito' || sale.metodoPago === 'credito' || sale.estado === 'credito';
-      return { source:sale, stamp:saleStamp(sale), icon:credit ? 'people' : 'sale', tone:credit ? 'credit' : 'sale', title:(credit ? 'Venta a crédito ' : 'Venta ') + String(sale.id || sale.ventaId || 'reciente').replace(/^V-/, '#'), detail:String(sale.clienteNombre || sale.customerName || 'Consumidor final'), amount:money(saleAmount(sale)) };
+      return { source:sale, stamp:saleStamp(sale), sale:true };
     });
     var movements = typeof cajMovs !== 'undefined' ? cajMovs : root.cajMovs;
     (Array.isArray(movements) ? movements : []).forEach(function (movement) {
       // Cash projection already contains sales. Show each sale only once.
       if (!movement || movement.ventaId || movement.anulado) return;
-      var payment = movement.tipo === 'cob';
-      var expense = movement.tipo === 'gas' || movement.tipo === 'egr';
-      records.push({ source:movement, stamp:saleStamp(movement), icon:payment ? 'payment' : expense ? 'expense' : 'cash', tone:payment ? 'payment' : expense ? 'expense' : 'cash', title:payment ? 'Abono registrado' : expense ? 'Egreso registrado' : 'Ingreso de caja', detail:activityClient(movement), amount:money(movement.monto) });
+      records.push({ source:movement, stamp:saleStamp(movement), sale:false });
     });
     records.sort(function (a, b) { return b.stamp - a.stamp; });
     var fragment = document.createDocumentFragment ? document.createDocumentFragment() : node('div');
-    records.slice(0, 6).forEach(function (record) {
-      fragment.appendChild(activityRow(record.icon, record.title, record.detail, record.amount, record.tone, activityWhen(record.source, record.stamp)));
+    records.slice(0, 6).forEach(function (entry) {
+      var record = activityRecord(entry);
+      fragment.appendChild(activityRow(record.icon, record.title, record.detail, record.amount, record.tone, activityWhen(entry.source, entry.stamp)));
     });
     if (!records.length) fragment.appendChild(activityRow('sale', 'Sin movimientos recientes', 'La actividad aparecerá aquí al registrar movimientos.', '', 'muted'));
     list.replaceChildren(fragment);
@@ -661,6 +685,31 @@
     }
   }
 
+  // P2-4/P2-5: with the on-screen keyboard open the modal overlay is sized to the visible
+  // area (iOS ignores interactive-widget) so its sticky action bar stays above the keyboard,
+  // and the focused field is centred. Layout only: no data, storage or network.
+  var keyboardSafeBound = false;
+  function bindKeyboardSafeModals() {
+    var viewport = root.visualViewport;
+    if (keyboardSafeBound || !viewport || typeof viewport.addEventListener !== 'function') return;
+    keyboardSafeBound = true;
+    var frame = 0;
+    function sync() {
+      frame = 0;
+      var rootStyle = document.documentElement && document.documentElement.style;
+      if (!rootStyle) return;
+      var layoutHeight = Number(root.innerHeight) || 0, visible = Number(viewport.height) || 0;
+      var keyboard = isMobile() && visible > 0 && layoutHeight - visible > 120 && Math.abs((Number(viewport.scale) || 1) - 1) < 0.01;
+      if (!keyboard) { rootStyle.removeProperty('--na-visual-height'); return; }
+      rootStyle.setProperty('--na-visual-height', Math.round(visible) + 'px');
+      var active = document.activeElement;
+      if (active && /^(?:INPUT|SELECT|TEXTAREA)$/.test(active.tagName || '') && active.closest && active.closest('.modal-overlay.open') && typeof active.scrollIntoView === 'function') {
+        try { active.scrollIntoView({ block:'center' }); } catch (_) { active.scrollIntoView(); }
+      }
+    }
+    viewport.addEventListener('resize', function () { if (!frame) frame = root.requestAnimationFrame(sync); });
+  }
+
   function bind() {
     var menu = document.getElementById('pageMenu');
     if (!menu || menu.getAttribute('data-na-menu-nav-bound') === '1') return;
@@ -668,6 +717,7 @@
     prepareCards(menu);
     ensureMobileHome();
     bindMobileHomeEvents();
+    bindKeyboardSafeModals();
 
     menu.addEventListener('pointerdown', function (event) {
       if (!event || event.pointerType === 'mouse') return;
