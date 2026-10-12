@@ -9,6 +9,7 @@ const MIGRATIONS=[
   '0016_canonical_generic_sale_lines.sql',
   '0017_canonical_live_customers.sql',
   '0018_canonical_customer_credit_policy.sql',
+  '0024_pos_roles_owner_pin.sql', // roles ride in the auth read (no extra trip)
 ];
 
 test('Turso credit-policy happy path is one browser POST and two Worker-to-Turso trips',async t=>{

@@ -10,7 +10,7 @@ import { tursoSqlite } from './turso-sqlite-protocol.mjs';
 
 const source = (name) => readFileSync(new URL('../../POS/js/' + name, import.meta.url), 'utf8');
 const SALE_SCRIPTS = ['canonical-sale-intent', 'canonical-sale-outbox', 'canonical-sale-projection', 'canonical-sale-integration', 'canonical-sale-view'];
-const MIGRATIONS = ['0014_canonical_live_products.sql', '0015_canonical_inventory_adjust.sql', '0016_canonical_generic_sale_lines.sql', '0017_canonical_live_customers.sql', '0018_canonical_customer_credit_policy.sql'];
+const MIGRATIONS = ['0014_canonical_live_products.sql', '0015_canonical_inventory_adjust.sql', '0016_canonical_generic_sale_lines.sql', '0017_canonical_live_customers.sql', '0018_canonical_customer_credit_policy.sql', '0024_pos_roles_owner_pin.sql'];
 // The legacy app declares these helpers as top-level `const`, which are NOT
 // window properties (P1-2): the integration must find them lexically.
 const LEXICAL = `let cart=[],productos=[],ventas=[],clientes=[],creditos=[],cajEstado={},cajMovs=[],posProc=false,posPayM='efectivo';

@@ -13,6 +13,7 @@ import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
+import { handleRoles, ownerGate, ROLE_PATHS } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -55,7 +56,7 @@ export default {
         if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }), isRead);
         return cors(await handleA6(request, url, env, { json, authorizeRead, authorizeSession }), isRead);
       }
-      if (request.method === 'OPTIONS' && (url.pathname === '/health' || url.pathname.startsWith('/auth/') || url.pathname.startsWith('/commands/') || url.pathname.startsWith('/imports/') || url.pathname.startsWith('/sync/operations') || url.pathname.startsWith('/read/'))) {
+      if (request.method === 'OPTIONS' && (url.pathname === '/health' || url.pathname.startsWith('/auth/') || url.pathname === '/settings' || url.pathname.startsWith('/commands/') || url.pathname.startsWith('/imports/') || url.pathname.startsWith('/sync/operations') || url.pathname.startsWith('/read/'))) {
         return cors(new Response(null, { status: 204 }), isRead);
       }
       if (request.method === 'GET' && url.pathname === '/health') {
@@ -64,6 +65,9 @@ export default {
       if (url.pathname === '/auth/activate') {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
         return await activateSession(request, env);
+      }
+      if (ROLE_PATHS.has(url.pathname)) {
+        return cors(await handleRoles(request, url, env, { json, authorizeSession, getDatabase }));
       }
       if (url.pathname === '/auth/session') {
         if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, OPTIONS' });
@@ -103,6 +107,10 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
+        if (financialCommand === 'product.update') {
+          const gated = await ownerGate(request, env, auth, financialCommand, json, getDatabase(env));
+          if (gated) return gated;
+        }
         return financialCommand === 'product.update'
           ? await updateCanonicalProduct(request, env, auth, json)
           : await createCanonicalProduct(request, env, auth, json);
@@ -127,6 +135,8 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
+        const gated = await ownerGate(request, env, auth, financialCommand, json, getDatabase(env));
+        if (gated) return gated;
         return await setCanonicalCustomerCreditPolicy(request, env, auth, json);
       }
       if (INVENTORY_COMMANDS.has(financialCommand)) {
@@ -135,6 +145,8 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
+        const gated = await ownerGate(request, env, auth, financialCommand, json, getDatabase(env));
+        if (gated) return gated;
         return await adjustCanonicalInventory(request, env, auth, json);
       }
       if (financialCommand === 'credit-account.create') {
@@ -167,6 +179,10 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
+        if (financialCommand === 'adjustment.create' || financialCommand === 'compensation.create') {
+          const gated = await ownerGate(request, env, auth, financialCommand, json, getDatabase(env));
+          if (gated) return gated;
+        }
         return await createCanonicalFinancial(financialCommand, request, env, auth, json);
       }
       if (url.pathname === IMPORT_STAGE_PATH) {
@@ -274,19 +290,26 @@ async function authorizeSession(request, env) {
   if (env.READ_TOKEN && constantTimeEqual(provided, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
   const tokenHash = await sha256Hex(provided);
   const db = getDatabase(env);
-  const session = await db.prepare(
+  const sessionSql = (roleColumn) =>
     `SELECT s.session_id, s.status AS session_status, d.device_id, d.role,
-            d.status AS principal_status, d.credential_hash
+            d.status AS principal_status, d.credential_hash${roleColumn}
        FROM auth_sessions s
        JOIN devices d ON d.device_id = 'session:' || s.session_id
-      WHERE s.token_hash = ?1`
-  ).bind(tokenHash).first();
+      WHERE s.token_hash = ?1`;
+  // pos_role (migration 0024) rides in the same read; before 0024 every device is the owner.
+  let session;
+  try {
+    session = await db.prepare(sessionSql(',\n            (SELECT r.pos_role FROM pos_device_roles r WHERE r.device_id = d.device_id) AS pos_role')).bind(tokenHash).first();
+  } catch (error) {
+    if (!/no such table/i.test(String(error?.message || error))) throw error;
+    session = await db.prepare(sessionSql('')).bind(tokenHash).first();
+  }
   if (!session || !constantTimeEqual(tokenHash, session.credential_hash)) return json({ error: 'unauthorized' }, 401);
   if (session.session_status !== 'active' || session.principal_status !== 'active') return json({ error: 'session_revoked' }, 403);
   if (session.role !== 'writer') return json({ error: 'read_only_session' }, 403);
   // Authorization is intentionally read-only. It must not create a write race
   // or interfere with the atomic business/canonical batch that follows.
-  return { sessionId: session.session_id, principalId: session.device_id, credentialHash: tokenHash };
+  return { sessionId: session.session_id, principalId: session.device_id, credentialHash: tokenHash, posRole: session.pos_role === 'empleado' ? 'empleado' : 'owner' };
 }
 
 function randomToken() {
@@ -868,7 +891,7 @@ function cors(response, isRead = false) {
   response.headers.set('access-control-allow-headers',
     isRead
       ? 'authorization, x-read-token, x-session-token'
-      : 'authorization, content-type, x-activation-secret, x-session-token');
+      : 'authorization, content-type, x-activation-secret, x-session-token, x-owner-approval');
   response.headers.set('access-control-max-age', '600');
   return response;
 }
