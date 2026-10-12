@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of d6f95ee: #568/#569 are client-only; #570 changes canonical read paging (sale-items and credit-accounts tuple cursor without NUL) to stop repeated rows at page boundaries. No schema changes, no live sale. Rollback to fd431f6 (current live Worker source).",
-  "target_commit": "d6f95eee9d6131581239f16691c38e32ef8f459d",
-  "rollback_ref": "fd431f6d7fafcdc76a234f3d5a607d029d7695b8",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 6fb215f (#572): PIN lockout per device plus global 20/15min, owner reviews for employee discounts below catalog and employee cash close with difference. Uses tables from additive migration 0025, applied in run 38308732410 after a verified R2 backup. No schema changes in this deploy, no live sale. Rollback to d6f95ee (current live Worker source).",
+  "target_commit": "6fb215fdcaeff1ff960b5632ed94d2bd794aa55f",
+  "rollback_ref": "d6f95eee9d6131581239f16691c38e32ef8f459d",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 14,
-  "previous_run_id": 38299145291,
+  "attempt": 15,
+  "previous_run_id": 38304839598,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "CANON_READ_TUPLE_CURSOR_DEDUPE"
+  "optimization": "G_SERVER_REVIEWS_PIN_LOCKOUT"
 }
