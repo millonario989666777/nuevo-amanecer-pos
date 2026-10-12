@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of e70891e (#592): adds read-only GET /auth/record-meta (who attended each sale/payment) and payment comments in pos_sale_notes (key pay:<operation_id>). No schema changes, no live sale. Rollback to 7957909 (current live Worker source).",
-  "target_commit": "e70891e67ed0a61743216461ccfb4614cd169a2c",
-  "rollback_ref": "79579090bf7b84b9786912a3c5225ca18b49c41b",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 3c72767 (#595, includes #594): adds GET/POST /auth/purchases (purchase register with supplier and cost; stock via inventory.adjust ENTRADA per line, idempotent), tables from migration 0028 run 38321350983. No schema changes in this deploy, no live sale. Rollback to e70891e (current live Worker source).",
+  "target_commit": "3c72767f5a28cd11666f8d502357ee28031139bd",
+  "rollback_ref": "e70891e67ed0a61743216461ccfb4614cd169a2c",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 19,
-  "previous_run_id": 38319672719,
+  "attempt": 20,
+  "previous_run_id": 38320387264,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_ITEM10B_RECORD_META"
+  "optimization": "E2_ITEM11_PURCHASES"
 }
