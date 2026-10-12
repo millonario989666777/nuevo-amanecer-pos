@@ -151,3 +151,6 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 .na-review-actions button,.na-review-close{border:0;border-radius:10px;padding:8px 10px;background:#15803d;color:#fff;font-weight:700;cursor:pointer}
 .na-review-actions .danger{background:#b91c1c}
 .na-review-close{margin-top:12px;width:100%;background:#0f172a}
+
+/* Historial (Etapa 2): las tarjetas fuera de pantalla no se pintan ni se maquetan (scroll fluido con cientos de ventas). */
+#ventasContent .v-list-wrap>.v-chunk{contain:layout style paint}

@@ -190,16 +190,16 @@ function _naSecRenderSales(){
   _naSecCancelSalesRows();
   // Tandas pequeñas (20) en tiempo libre para que el desplazamiento no se trabe.
   let next=0,busy=false;const FIRST=20,STEP=20,PER_TRIGGER=60;
-  const chunk=n=>{const end=Math.min(rows.length,next+n);const frag=document.createDocumentFragment();for(;next<end;next++)_naSecRenderSaleCard(frag,rows[next],next);list.insertBefore(frag,list.querySelector(':scope > .na-sales-more'));};
+  // Cada tanda va en su propio bloque contenido: agregar una tanda no recalcula ni repinta las anteriores.
+  const chunk=n=>{const end=Math.min(rows.length,next+n);const box=document.createElement('div');box.className='v-chunk';for(;next<end;next++)_naSecRenderSaleCard(box,rows[next],next);list.insertBefore(box,list.querySelector(':scope > .na-sales-more'));};
   chunk(FIRST);
   if(next<rows.length&&typeof IntersectionObserver==='function'){
     const sentinel=_naSecAppend(list,'div','na-sales-more');sentinel.style.cssText='height:1px';
     const pump=(left,observer)=>_naSecIdle(deadline=>{
       if(observer!==_naSecSalesObserver||!list.isConnected){busy=false;return;}
-      // Una tarjeta a la vez mientras quede tiempo libre en el cuadro (pausas < 50 ms).
-      const t0=performance.now();let n=0;
-      do{chunk(1);n++;}while(next<rows.length&&n<STEP&&(deadline&&!deadline.didTimeout?deadline.timeRemaining()>3:performance.now()-t0<8));
-      left-=n;
+      // Una tanda de STEP tarjetas por tiempo libre (pausas < 50 ms).
+      const before=next;chunk(STEP);
+      left-=next-before;
       if(next>=rows.length){busy=false;_naSecCancelSalesRows();return;}
       if(left>0)pump(left,observer);else busy=false;
     },200);
