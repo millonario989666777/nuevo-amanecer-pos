@@ -56,8 +56,8 @@
   function igvSetting() {
     var on = showIgvLine();
     return '<div class="cfg-panel na-igv-panel"><div class="cfg-panel-title">Línea de IGV en el total</div>'
-      + '<div class="cfg-panel-sub">Muestra u oculta la línea "IGV (18%)" en Nueva venta. No cambia el precio ni el cálculo.</div>'
-      + '<label class="na-igv-switch"><input type="checkbox" id="naIgvLine"' + (on ? ' checked' : '') + (canEdit() ? '' : ' disabled') + '> Mostrar "IGV (18%)" en el total</label></div>';
+      + '<div class="cfg-panel-sub">Una sola opción para la línea "IGV (18%)" en Nueva venta y en el ticket. No cambia el precio ni el cálculo.</div>'
+      + '<label class="na-igv-switch"><input type="checkbox" id="naIgvLine"' + (on ? ' checked' : '') + (canEdit() ? '' : ' disabled') + '> Mostrar "IGV (18%)" en pantalla y en el ticket</label></div>';
   }
   function sectionSave(cont) {
     if (cont.querySelector('.na-cfg-save')) return;
@@ -139,6 +139,8 @@
     if (e.target && e.target.id === 'naIgvLine' && canEdit()) {
       try { root.localStorage.setItem(IGV_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
       syncIgvRow();
+      // Misma opción para el ticket (appConfig.ticket.showIGV); se guarda con el botón Guardar de la sección.
+      try { if (root.appConfig) { root.appConfig.ticket = root.appConfig.ticket || {}; root.appConfig.ticket.showIGV = !!e.target.checked; } } catch (_) {}
     }
   });
 
