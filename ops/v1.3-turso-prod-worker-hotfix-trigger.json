@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 7957909 (#588): adds GET/POST /auth/sale-notes (sale note stored apart in pos_sale_notes, applied by migration 0027 run 38319599253; never changes amounts). No schema changes in this deploy, no live sale. Rollback to cc18286 (current live Worker source).",
-  "target_commit": "79579090bf7b84b9786912a3c5225ca18b49c41b",
-  "rollback_ref": "cc18286b57094474090ea379926999198a785f32",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of e70891e (#592): adds read-only GET /auth/record-meta (who attended each sale/payment) and payment comments in pos_sale_notes (key pay:<operation_id>). No schema changes, no live sale. Rollback to 7957909 (current live Worker source).",
+  "target_commit": "e70891e67ed0a61743216461ccfb4614cd169a2c",
+  "rollback_ref": "79579090bf7b84b9786912a3c5225ca18b49c41b",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 18,
-  "previous_run_id": 38310918185,
+  "attempt": 19,
+  "previous_run_id": 38319672719,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_ITEM10_SALE_NOTES"
+  "optimization": "E2_ITEM10B_RECORD_META"
 }
