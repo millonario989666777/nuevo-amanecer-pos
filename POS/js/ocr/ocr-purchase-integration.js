@@ -138,6 +138,43 @@
       if(elements.reviewStatus) elements.reviewStatus.textContent=String(message||'');
     }
 
+    // Confirmación explícita de factura repetida: botón rojo propio, nunca un
+    // segundo toque sobre «Aplicar compra».
+    var duplicateButton = null;
+    function showDuplicateConfirm() {
+      if (!doc || typeof doc.createElement !== 'function') return;
+      if (!duplicateButton) {
+        duplicateButton = doc.createElement('button');
+        duplicateButton.type = 'button';
+        duplicateButton.id = 'ocrPurchaseDuplicateConfirm';
+        duplicateButton.textContent = 'Sí, es otra compra';
+        if (duplicateButton.setAttribute) duplicateButton.setAttribute('aria-label', 'Sí, es otra compra: registrar esta factura otra vez');
+        if (duplicateButton.style) duplicateButton.style.cssText = 'display:block;width:100%;margin:8px 0;min-height:44px;padding:10px 16px;border:2px solid #b91c1c;border-radius:8px;background:#fee2e2;color:#991b1b;font-weight:800;cursor:pointer';
+        duplicateButton.addEventListener('click', confirmDuplicate);
+        // Debajo del aviso de la revisión (arriba del modal), no en el pie.
+        var target = elements.reviewStatus || elements.status;
+        var anchor = target && target.parentNode;
+        if (anchor && typeof anchor.insertBefore === 'function') anchor.insertBefore(duplicateButton, target.nextSibling || null);
+        else if (elements.apply && elements.apply.parentNode && elements.apply.parentNode.appendChild) elements.apply.parentNode.appendChild(duplicateButton);
+      }
+      duplicateButton.hidden = false;
+      if (duplicateButton.style) duplicateButton.style.display = '';
+      var box = elements.reviewStatus;
+      if (box && box.style) { box.dataset && (box.dataset.duplicate = '1'); box.style.background = '#fee2e2'; box.style.color = '#991b1b'; box.style.borderColor = '#fca5a5'; }
+    }
+    function hideDuplicateConfirm() {
+      if (!duplicateButton) return;
+      duplicateButton.hidden = true;
+      if (duplicateButton.style) duplicateButton.style.display = 'none';
+      var box = elements.reviewStatus;
+      if (box && box.style && box.dataset && box.dataset.duplicate) { delete box.dataset.duplicate; box.style.background = ''; box.style.color = ''; box.style.borderColor = ''; }
+    }
+    function confirmDuplicate() {
+      if (!currentBatch) return { ok: false, errors: [{ code: 'REVIEW_REQUIRED' }] };
+      currentBatch.duplicateAcknowledged = true;
+      return applyReviewed();
+    }
+
     function setBusy(button, busy) {
       if (button) button.disabled = !!busy;
     }
@@ -165,6 +202,7 @@
         return false;
       }
       currentBatch = null;
+      hideDuplicateConfirm();
       clearSource();
       if (reviewController && typeof reviewController.destroy === 'function') reviewController.destroy();
       reviewController = null;
@@ -281,12 +319,13 @@
         try { already = findAppliedDocument(currentBatch.operationId); } catch (_) { already = null; }
         if (already && already.lines > 0) {
           if (!currentBatch.duplicateAcknowledged) {
-            currentBatch.duplicateAcknowledged = true;
             var when = already.at ? ' el ' + String(already.at).slice(0, 10) : '';
             setStatus('error', 'Esta factura ' + currentBatch.identity.series + ' (RUC ' + currentBatch.identity.ruc
-              + ') ya fue ingresada' + when + '. No se aplicó nada. Si de verdad es otra compra con los mismos datos, pulsa «Aplicar compra» otra vez para registrarla como nueva.');
+              + ') ya fue ingresada' + when + '. No se aplicó nada. Solo si de verdad es otra compra con los mismos datos, pulsa «Sí, es otra compra».');
+            showDuplicateConfirm();
             return { ok: false, errors: [{ code: 'DOCUMENT_ALREADY_APPLIED', appliedAt: already.at || null }] };
           }
+          hideDuplicateConfirm();
           currentBatch.operationId = currentBatch.operationId + '-R' + Date.now().toString(36);
         }
       }
@@ -338,6 +377,7 @@
           ? 'Compra aplicada: ' + appliedCount + ' movimiento(s).'
           : (duplicateCount ? 'Esta compra ya había sido aplicada; no se duplicó inventario.' : 'No hubo movimientos para aplicar.'));
         closeReview();
+        hideDuplicateConfirm();
         selectedFile = null;
         clearSource();
         currentBatch = null;
@@ -389,6 +429,7 @@
       selectImage: selectImage,
       processSelectedImage: processSelectedImage,
       applyReviewed: applyReviewed,
+      confirmDuplicate: confirmDuplicate,
       closeReview: closeReview,
       destroy: destroy,
       getCurrentBatch: function () { return currentBatch; },

@@ -26,15 +26,16 @@
   // Estado puro (sin DOM) para poder probarlo.
   function compute() {
     var c = canonical(), o = outbox();
-    var state = { retrying: 0, blocked: 0, otherDay: null, items: [] };
+    var state = { retrying: 0, blocked: 0, otherDay: null, offline: false, items: [] };
     if (!c) return state;
+    try { state.offline = !!(root.navigator && root.navigator.onLine === false); } catch (_) {}
     try {
       var intents = o && typeof o.snapshot === 'function' ? (o.snapshot().intents || []) : [];
-      if (intents.length) { state.retrying += intents.length; state.items.push(intents.length + ' venta(s) por enviar'); }
+      if (intents.length) { state.retrying += intents.length; state.items.push(intents.length === 1 ? '1 venta por enviar' : intents.length + ' ventas por enviar'); }
     } catch (_) {}
     try {
       var held = o && typeof o.quarantine === 'function' ? (o.quarantine().entries || []).filter(function (e) { return e && e.status === 'QUARANTINED'; }) : [];
-      if (held.length) { state.blocked += held.length; state.items.push(held.length + ' venta(s) en revisión'); }
+      if (held.length) { state.blocked += held.length; state.items.push(held.length === 1 ? '1 venta en revisión' : held.length + ' ventas en revisión'); }
     } catch (_) {}
     try {
       var pending = typeof c.pendingSnapshot === 'function' ? c.pendingSnapshot() : null;
@@ -57,11 +58,12 @@
 
   function view(state) {
     var count = state.retrying + state.blocked;
-    if (!count && !state.otherDay) return null;
+    if (!count && !state.otherDay && !state.offline) return null;
     var red = state.blocked > 0 || !!state.otherDay;
     var parts = [];
-    if (state.blocked) parts.push(state.blocked + ' rechazada(s) o bloqueada(s)');
-    if (state.retrying) parts.push(state.retrying + ' pendiente(s) · reintentando');
+    if (state.offline) parts.push('Sin conexión · ventas guardadas aquí');
+    if (state.blocked) parts.push(state.blocked === 1 ? '1 operación rechazada o bloqueada' : state.blocked + ' operaciones rechazadas o bloqueadas');
+    if (state.retrying) parts.push((state.retrying === 1 ? '1 operación pendiente' : state.retrying + ' operaciones pendientes') + ' · reintentando');
     if (state.otherDay) parts.push('La caja abierta es del ' + state.otherDay + ': ciérrala y abre la de hoy');
     return { tone: red ? 'red' : 'amber', count: count, text: parts.join(' · '), detail: state.items.join('\n') };
   }

@@ -104,9 +104,19 @@ test('C-P2: the "caja de otro día" warning is shown once per till, not on every
   assert.doesNotMatch(src, /toast\('⚠️ Caja de otro día, ciérrala primero'/);
   const helper = src.match(/let _naOtherDayTillWarned='';\nfunction _naWarnOtherDayTill\(\)\{.*\}/)[0];
   const toasts = [];
-  const ctx = { cajEstado: { sessionId: 'S1', fechaApertura: '2026-10-11' }, obtenerHoy: () => '2026-10-12', toast: (m) => toasts.push(m) };
+  const ctx = { cajEstado: { sessionId: 'S1', fechaApertura: '2026-10-11' }, obtenerHoy: () => '2026-10-12', toast: (m) => toasts.push(m), window: {}, NuevoAmanecerCanonical: { enabled: () => false } };
   const vmMod = { runInNewContext: (code, c) => new Function(...Object.keys(c), code + ';for(let i=0;i<5;i++)_naWarnOtherDayTill();')(...Object.values(c)) };
   vmMod.runInNewContext(helper, ctx);
   assert.equal(toasts.length, 1);
   assert.match(toasts[0], /La caja abierta es del 2026-10-11/);
+});
+
+test('Seguimiento Etapa 1: en CANON con la franja cargada no se repite el aviso como toast', () => {
+  const src = read('POS/js/legacy-inline/inline-01.js');
+  const helper = src.match(/let _naOtherDayTillWarned='';\nfunction _naWarnOtherDayTill\(\)\{.*\}/)[0];
+  const toasts = []; let renders = 0;
+  const ctx = { cajEstado: { sessionId: 'S1', fechaApertura: '2026-10-11' }, obtenerHoy: () => '2026-10-12', toast: (m) => toasts.push(m),
+    window: { NuevoAmanecerStatusBanner: { render() { renders++; } } }, NuevoAmanecerCanonical: { enabled: () => true } };
+  new Function(...Object.keys(ctx), helper + ';for(let i=0;i<3;i++)_naWarnOtherDayTill();')(...Object.values(ctx));
+  assert.equal(toasts.length, 0); assert.equal(renders, 3);
 });

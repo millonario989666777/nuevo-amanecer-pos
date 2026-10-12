@@ -196,3 +196,11 @@
   #pageMenu:not(.na-mobile-ready) { visibility:hidden; }
   .page.na-enter-fade, #pagePOS .na-cart-pulse, #pagePOS .lab-cart-pulse { animation:none!important; }
 }
+
+/* Seguimiento Etapa 1: en Clientes el título no se parte en tres líneas y la
+   insignia de conexión ("Sin conexión · datos guardados") va debajo del título. */
+#pageClientes .top-mod-bar { flex-wrap:wrap; row-gap:4px }
+#pageClientes .top-mod-bar > .top-mod-title { order:0; flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+#pageClientes .top-mod-bar > .top-btn-nuevo { order:1; flex:none }
+#pageClientes .top-mod-bar::after { content:''; order:2; flex-basis:100%; height:0 }
+#pageClientes .top-mod-bar > #cliAuthorityBadge { order:3; flex:none; font-size:11px !important; padding:3px 8px !important }
