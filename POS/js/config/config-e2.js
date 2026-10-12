@@ -165,6 +165,16 @@
       root.switchCfgCategory.__naE2 = true;
     }
     if (!install.__resize) { install.__resize = true; root.addEventListener('resize', function () { flatten(); }); }
+    var cfgPage = doc.getElementById('pageConfig');
+    if (cfgPage && !install.__obs && typeof root.MutationObserver === 'function') {
+      install.__obs = true; var wasActive = cfgPage.classList.contains('active');
+      new root.MutationObserver(function () {
+        var now = cfgPage.classList.contains('active');
+        if (now && !wasActive) { addBack(); if (root.innerWidth <= 960) showList(); else summaries(); }
+        wasActive = now;
+      }).observe(cfgPage, { attributes: true, attributeFilter: ['class'] });
+      if (wasActive && root.innerWidth <= 960) showList();
+    }
     addBack(); summaries();
   }
   root.NA_CONFIG_E2 = { read: read, clamp: clamp, apply: apply, showList: showList, syncIgvRow: syncIgvRow, MIN: MIN, MAX: MAX };
