@@ -10,6 +10,9 @@
   var COMMANDS = ['sale.create', 'product.create', 'product.update', 'customer.create', 'customer.contact.set', 'customer.credit-policy.set', 'inventory.adjust', 'credit-account.create', 'payment.create', 'payment.batch', 'cash.open', 'cash.close', 'adjustment.create', 'compensation.create', 'expense.create'];
   var FINANCIAL_METHODS = ['efectivo', 'yape', 'plin', 'transferencia'];
   var READ_TIMEOUT_MS = 8000;
+  // Every command POST has a deadline. On timeout the journal stays PENDING
+  // without last_error and the SAME operation_id is replayed (idempotent).
+  var WRITE_TIMEOUT_MS = 15000;
   var REPLICA_SCHEMA_VERSION = 2;
   var HOSTED_API_ORIGIN = null;
   try {
@@ -22,7 +25,7 @@
       }
     }
   } catch (_) {}
-  var binding = null, data = null, ready = false, loading = null, changed = false, replicaState = { source: 'none', cache: null, validation: 'pending' };
+  var binding = null, data = null, ready = false, saleOnlyReady = false, loading = null, changed = false, replicaState = { source: 'none', cache: null, validation: 'pending' };
 
   // FASE7 LAB experimental: bulk snapshot (1 request) vs FASE6 13-request wave.
   // Enable via localStorage na_canon_bulk_snapshot=1 or window.__NA_CANON_BULK_SNAPSHOT=true.
@@ -142,7 +145,7 @@
   }
   async function configure(options) {
     return withWriterLock(function () {
-    ready = false;
+    ready = false; saleOnlyReady = false;
     var existing = journal();
     var candidate = {
       endpoint: String(options && options.endpoint || '').replace(/\/+$/, ''),
@@ -220,7 +223,7 @@
   function promotePublishedReplica(replica) {
     if (publishedReplica !== replica || !data) return publishReplica(replica, 'revalidated');
     data.mode = replica.mode; data.read_only = replica.read_only !== false; data.minimum_client_contract = replica.minimum_client_contract;
-    ready = true; replicaState = { source: 'revalidated', cache: copy(replicaState.cache), validation: 'current', unchanged: true };
+    ready = true; saleOnlyReady = false; replicaState = { source: 'revalidated', cache: copy(replicaState.cache), validation: 'current', unchanged: true };
   }
   function publishReplica(replica, source) {
     publishedReplica = replica;
@@ -231,7 +234,7 @@
       inventoryMovements: copy(replica.inventory_movements || []), cashMovements: copy(replica.cash_movements || []), cashSessions: copy(replica.cash_sessions || []), financialEvents: copy(replica.financial_events || []), expenses: copy(replica.expenses || []),
       mode: provisional ? 'CANONICAL_READ_ONLY' : (replica.mode || 'CANONICAL_READ_ONLY'),
       read_only: provisional || replica.read_only !== false, minimum_client_contract: provisional ? 'a6-gate-p-v1' : (replica.minimum_client_contract || 'a6-gate-p-v1') };
-    ready = true; replicaState = { source: source, cache: { cached_at: replica.cached_at, promotion_id: replica.promotion_id, authority_epoch: replica.authority_epoch,
+    ready = true; saleOnlyReady = false; replicaState = { source: source, cache: { cached_at: replica.cached_at, promotion_id: replica.promotion_id, authority_epoch: replica.authority_epoch,
       revision: replica.revision, financial_revision: replica.financial_revision }, validation: provisional ? 'validating' : 'current' };
   }
   function operationalBootstrapSeed(current, expected) {
@@ -246,7 +249,7 @@
   }
   function notifyReplicaUpdate() { try { if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-updated', { detail: sourceState() })); } catch (_) {} }
   function notifyConnectionVerified() { try { if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-connected')); } catch (_) {} }
-  function readFetch(url, options, includeJson) {
+  function readFetch(url, options, includeJson, timeoutMs) {
     return new Promise(function (resolve, reject) {
       var settled = false;
       var controller = typeof root.AbortController === 'function' ? new root.AbortController() : null;
@@ -255,7 +258,7 @@
         settled = true;
         if (controller) controller.abort();
         reject(new Error('CANONICAL_READ_TIMEOUT'));
-      }, READ_TIMEOUT_MS);
+      }, timeoutMs || READ_TIMEOUT_MS);
       var requestOptions = Object.assign({}, options || {});
       if (controller) requestOptions.signal = controller.signal;
       Promise.resolve(root.fetch(url, requestOptions)).then(function (response) {
@@ -565,7 +568,7 @@
         pageLimitRetried = true; loading = null;
         try { return await refresh(); } finally { pageLimitRetried = false; }
       }
-      ready = false; replicaState.validation = root.navigator.onLine === false ? 'offline' : (data ? 'stale' : 'unavailable'); notifyReplicaUpdate(); throw error; } finally { loading = null; }
+      ready = false; saleOnlyReady = false; replicaState.validation = root.navigator.onLine === false ? 'offline' : (data ? 'stale' : 'unavailable'); notifyReplicaUpdate(); throw error; } finally { loading = null; }
   }
   function snapshot() { return copy(data || { products: [], customers: [], credits: [], payments: [], creditAccounts: [], sales: [], saleItems: [], inventoryMovements: [], cashMovements: [], cashSessions: [], financialEvents: [], expenses: [] }); }
   function sourceState() { return copy(replicaState); }
@@ -579,7 +582,12 @@
   }
   function assertAction(action) {
     if (!COMMANDS.includes(action)) fail('UNSUPPORTED_CANONICAL_ACTION');
-    if (!ready || changed || !data || data.read_only !== false || data.mode !== 'ACTIVE' || data.minimum_client_contract !== CONTRACT || root.navigator.onLine === false) fail('CANONICAL_COMMERCE_CLOSED');
+    // After a confirmed sale.create the replica holds a local projection of
+    // that receipt (stock + revision). It is good enough for the NEXT queued
+    // sale (the Worker re-checks every revision atomically) but never for cash
+    // or other commands, which wait for a full read.
+    var commandReady = ready || (saleOnlyReady && action === 'sale.create');
+    if (!commandReady || changed || !data || data.read_only !== false || data.mode !== 'ACTIVE' || data.minimum_client_contract !== CONTRACT || root.navigator.onLine === false) fail('CANONICAL_COMMERCE_CLOSED');
     assertBinding(binding);
     return true;
   }
@@ -776,6 +784,16 @@
     });
   }
 
+  function pendingSaleUnits(productId) {
+    var outbox = root.NuevoAmanecerCanonicalSaleOutbox, intents = [];
+    try { intents = outbox && typeof outbox.snapshot === 'function' ? outbox.snapshot().intents || [] : []; }
+    catch (_) { fail('INSUFFICIENT_PROJECTED_STOCK'); }
+    return intents.reduce(function (sum, intent) {
+      return sum + (Array.isArray(intent && intent.items) ? intent.items : []).reduce(function (units, item) {
+        return units + (item && item.product_id === productId && item.generic_line === undefined && Number.isSafeInteger(item.quantity) ? item.quantity : 0);
+      }, 0);
+    }, 0);
+  }
   function makeInventoryPayload(input) {
     input=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
     if(!validId(input.product_id))fail('INVALID_CANONICAL_INVENTORY');
@@ -784,6 +802,10 @@
     var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
     if(!product||Number(product.tracks_inventory)!==1||!uint(product.stock_revision)||typeof product.current_stock_quantity!=='number'||!Number.isFinite(product.current_stock_quantity)||product.current_stock_quantity<0)fail('INVALID_CANONICAL_PRODUCT');
     if(type==='SALIDA'&&input.quantity>product.current_stock_quantity)fail('INSUFFICIENT_CANONICAL_STOCK');
+    // Sales already charged but still queued will take their units when they
+    // reach CANON. A SALIDA may only use what is left after them; otherwise the
+    // queued sale is rejected and the cash and the stock stop matching.
+    if(type==='SALIDA'&&input.quantity>product.current_stock_quantity-pendingSaleUnits(product.product_id))fail('INSUFFICIENT_PROJECTED_STOCK');
     // Optional caller-supplied operation_id (e.g. OCR purchase "OCR-PURCHASE-<hash>:<line>")
     // so a re-applied document maps to the SAME operation and can never double-count.
     var common=commonPayload();
@@ -875,6 +897,12 @@
       payment: { cash_cents: inputPayment.cash_cents, digital_cents: inputPayment.digital_cents, credit_cents: inputPayment.credit_cents }, items: items });
     if (inputPayment.digital_method != null) payload.payment.digital_method = inputPayment.digital_method;
     if (inputPayment.reference !== undefined) payload.payment.reference = inputPayment.reference;
+    // The till the cash was received in. The Worker rejects the sale with
+    // cash_session_closed instead of counting yesterday's cash in today's till.
+    if (intent.session_id !== undefined) {
+      if (!validId(intent.session_id) || inputPayment.cash_cents <= 0) fail('INVALID_CANONICAL_INTENT');
+      payload.session_id = intent.session_id;
+    }
     if (intent.customer_id !== undefined) {
       if (!validId(intent.customer_id) || !data.customers.some(function (item) { return item.customer_id === intent.customer_id; })) fail('INVALID_CANONICAL_CUSTOMER');
       payload.customer_id = intent.customer_id;
@@ -1193,6 +1221,31 @@
     } catch (_) {}
   }
 
+  // Project ONLY the stock effect of a freshly created sale so the next queued
+  // sale carries the right expected_stock_revision. Any doubt (replay, unknown
+  // product, revision already moved) returns false and forces a full read.
+  function projectConfirmedSaleReceipt(record, result) {
+    if (!record || record.command !== 'sale.create' || !record.payload || !result || result.status !== 'created' ||
+        result.operation_id !== record.payload.operation_id || result.sale_id !== record.payload.sale_id ||
+        !data || !Array.isArray(data.products) || !Array.isArray(record.payload.items)) return false;
+    var updates = [];
+    for (var i = 0; i < record.payload.items.length; i += 1) {
+      var item = record.payload.items[i];
+      if (item.generic_line !== undefined) continue;
+      var product = data.products.find(function (row) { return row && row.product_id === item.product_id; });
+      if (!product || Number(product.stock_revision) !== item.expected_stock_revision) return false;
+      var tracks = Number(product.tracks_inventory);
+      if (tracks === 0) continue;
+      if (tracks !== 1 || typeof product.current_stock_quantity !== 'number' || product.current_stock_quantity < item.quantity) return false;
+      updates.push([product, item.quantity]);
+    }
+    updates.forEach(function (entry) {
+      entry[0].current_stock_quantity -= entry[1];
+      entry[0].stock_revision = Number(entry[0].stock_revision) + 1;
+    });
+    return true;
+  }
+
   function projectConfirmedCustomerCreditPolicy(record, result) {
     if (!record || record.command !== 'customer.credit-policy.set' || !record.payload || !result ||
         !data || !Array.isArray(data.customers)) return false;
@@ -1361,13 +1414,8 @@
         headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.token },
         body: JSON.stringify(record.payload)
       };
-      if (payment) {
-        var transport = await readFetch(expected.endpoint + record.route, requestOptions, true);
-        response = transport.response; result = transport.result;
-      } else {
-        response = await root.fetch(expected.endpoint + record.route, requestOptions);
-        result = await response.json();
-      }
+      var transport = await readFetch(expected.endpoint + record.route, requestOptions, true, payment ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+      response = transport.response; result = transport.result;
     } catch (_) { fail('CANONICAL_FINANCIAL_PENDING'); }
     unchanged();
     if (!response.ok) {
@@ -1390,12 +1438,18 @@
     publishConfirmedSaleReceipt(record, result);
     var policyProjected = projectConfirmedCustomerCreditPolicy(record, result);
     var cashProjected = projectConfirmedCashReceipt(record, result);
-    if (!policyProjected && !cashProjected) ready = false;
+    if (!policyProjected && !cashProjected) {
+      var saleProjected = projectConfirmedSaleReceipt(record, result);
+      ready = false;
+      saleOnlyReady = saleProjected;
+    }
     return copy(confirmed.receipt);
   }
   async function prepareCommand(command) {
     // Reuse a remotely validated snapshot. Backend authority/revision/CAS checks
     // and retry status verification remain mandatory; a full scan adds no guard.
+    // A queued sale may also reuse the local projection of the previous sale
+    // receipt: draining N sales costs N POSTs, not N full reads.
     try { if (replicaState.validation === 'current') { assertAction(command); return legacySnapshot(); } } catch (_) {}
     await refresh();
     assertAction(command);
@@ -1557,6 +1611,52 @@
       if (!record || record.state !== 'PENDING') fail('NO_CANONICAL_FINANCIAL_PENDING');
       return sendPending(record);
     });
+  }
+  // Generic exit for any non-sale command that CANON rejected definitively
+  // (4xx except 429: nothing was committed). The full record is archived and
+  // the single journal slot is freed, so a failed cash.open, egreso, gasto,
+  // abono or inventory movement never freezes sales or the cash close.
+  var COMMAND_LABELS = { 'cash.open': 'abrir caja', 'cash.close': 'cerrar caja', 'adjustment.create': 'movimiento de caja', 'expense.create': 'gasto',
+    'payment.create': 'abono', 'payment.batch': 'abonos', 'compensation.create': 'compensación', 'inventory.adjust': 'movimiento de inventario',
+    'product.create': 'producto nuevo', 'customer.create': 'cliente nuevo', 'customer.contact.set': 'datos del cliente',
+    'customer.credit-policy.set': 'línea de crédito', 'credit-account.create': 'cuenta de crédito' };
+  async function releaseRejectedFinancial(operationId) {
+    return withWriterLock(function () {
+      var record = journal();
+      if (!record || record.state !== 'PENDING' || record.command === 'sale.create' || !record.payload ||
+          (operationId !== undefined && operationId !== null && record.payload.operation_id !== operationId)) return false;
+      if (!(record.last_status >= 400 && record.last_status < 500 && record.last_status !== 429) || !record.last_error) return false;
+      var key = 'na_canonical_rejected_operations', archive = stored(key);
+      if (archive === null) archive = [];
+      if (!Array.isArray(archive)) fail('INVALID_CANONICAL_REJECTED_ARCHIVE');
+      if (!archive.some(function (item) { return item && item.payload && item.payload.operation_id === record.payload.operation_id; }))
+        archive.push(Object.assign(copy(record), { released_at: new Date().toISOString() }));
+      var raw = JSON.stringify(archive.slice(-100));
+      root.localStorage.setItem(key, raw);
+      if (root.localStorage.getItem(key) !== raw) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      root.localStorage.removeItem(JOURNAL);
+      if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      ready = false; saleOnlyReady = false;
+      try {
+        var runtime = root.NuevoAmanecerCanonicalUIAdapter && root.NuevoAmanecerCanonicalUIAdapter.runtime;
+        if (runtime && typeof runtime.notify === 'function') runtime.notify('CANON rechazó «' + (COMMAND_LABELS[record.command] || record.command) + '» (' + record.last_error +
+          '). No se aplicó nada; revisa y vuelve a registrarlo si corresponde. Las ventas siguen funcionando.', 'error');
+      } catch (_) {}
+      return true;
+    });
+  }
+  // C-P0-1: a cash/expense/payment operation stranded in the single journal
+  // must never freeze the POS. A definitive 4xx proves nothing committed: it is
+  // archived and released. A lost ACK / 429 / 5xx is replayed with the SAME
+  // operation_id (idempotent). Sales and the close keep their own recovery.
+  async function settleStrandedFinancial() {
+    var record = journal();
+    if (!record || record.state !== 'PENDING' || !record.payload || record.command === 'sale.create' || record.command === 'cash.close') return null;
+    var operationId = record.payload.operation_id;
+    if (record.last_error && record.last_status >= 400 && record.last_status < 500 && record.last_status !== 429)
+      return (await releaseRejectedFinancial(operationId)) ? { status: 'RELEASED', command: record.command, operation_id: operationId } : null;
+    var receipt = await retryPending();
+    return { status: 'REPLAYED', command: record.command, operation_id: operationId, receipt: receipt };
   }
   async function releaseRejectedCashClose() {
     return withWriterLock(function () {
@@ -1824,7 +1924,7 @@
       // Start the revalidation (its requests leave now) before rendering the cached view.
       bootCache = cached;
       var validating = refresh();
-      validating.catch(function () { replicaState.validation = 'offline'; notifyReplicaUpdate(); });
+      validating.catch(function () { replicaState.validation = root.navigator.onLine === false ? 'offline' : 'stale'; notifyReplicaUpdate(); }); // online 500 => 'stale': auto-retried
       notifyReplicaUpdate();
       return snapshot();
     }
@@ -1836,10 +1936,10 @@
     if (!adapter || typeof adapter.snapshot !== 'function') fail('CANONICAL_UI_ADAPTER_UNAVAILABLE');
     return adapter.snapshot(data);
   }
-  root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; } });
-  root.addEventListener('offline', function () { ready = false; });
+  root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; saleOnlyReady = false; } });
+  root.addEventListener('offline', function () { ready = false; saleOnlyReady = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
     createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);

@@ -16,6 +16,8 @@ function storage(initial) {
 function locks() {
   let held = false;
   return { async request(name, options, callback) {
+    // Store lock: short, waits (never ifAvailable). Drain lock: ifAvailable.
+    if (name === 'na-canonical-sale-outbox-store') { assert.equal(options.ifAvailable, undefined); return callback({ name }); }
     assert.equal(name, 'na-canonical-sale-outbox'); assert.deepEqual(copy(options), { mode: 'exclusive', ifAvailable: true });
     if (held) return callback(null);
     held = true; try { return await callback({ name }); } finally { held = false; }
@@ -106,7 +108,8 @@ test('recoverable queue keeps retrying after three failures, bounded at 60s, and
   assert.equal(delays[0], 1000);
   assert.ok(delays.some(delay => delay === 60000), 'backoff must reach a safe ceiling');
   assert.ok(delays.every(delay => delay <= 60000), 'backoff must stay bounded');
-  assert.equal(timers.length, 0);
+  // Only the single deferred post-drain reconciliation (P1-B) remains; no retry loop.
+  assert.deepEqual(timers.map(t => t.delay), [1500]);
 });
 
 

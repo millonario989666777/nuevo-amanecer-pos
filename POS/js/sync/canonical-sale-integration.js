@@ -82,6 +82,58 @@
       else root.posProc = value;
     } catch (_) { root.posProc = value; }
   }
+  // Legacy helpers are top-level `const` in inline-02/core-utils: they live in
+  // the shared lexical scope, NOT on window. Resolve them lexically first.
+  function lexical(name) {
+    var fn = null;
+    try {
+      if (name === 'sessionOpen' && typeof _naSessionOpen === 'function') fn = _naSessionOpen;
+      else if (name === 'unitsSold' && typeof _naUnitsSold === 'function') fn = _naUnitsSold;
+      else if (name === 'tracksStock' && typeof _naTracksStock === 'function') fn = _naTracksStock;
+      else if (name === 'unitsPerQty' && typeof _naUnitsPerQty === 'function') fn = _naUnitsPerQty;
+      else if (name === 'clean' && typeof _naClean === 'function') fn = _naClean;
+      else if (name === 'getBusiness' && typeof _naGetBusiness === 'function') fn = _naGetBusiness;
+    } catch (_) { fn = null; }
+    if (fn) return fn;
+    var legacy = { sessionOpen: '_naSessionOpen', unitsSold: '_naUnitsSold', tracksStock: '_naTracksStock', unitsPerQty: '_naUnitsPerQty', clean: '_naClean', getBusiness: '_naGetBusiness' }[name];
+    return legacy && typeof root[legacy] === 'function' ? root[legacy] : null;
+  }
+  function liveCashState() {
+    try { if (typeof cajEstado !== 'undefined') return cajEstado; } catch (_) {}
+    return root.cajEstado || null;
+  }
+  function closedTillMessage() {
+    var state = liveCashState();
+    if (state && state.abierta && !state.cerrada && state.fechaApertura) {
+      var parts = String(state.fechaApertura).split('-');
+      var label = parts.length === 3 ? parts[2] + '/' + parts[1] : String(state.fechaApertura);
+      return 'La caja del ' + label + ' sigue abierta: ciérrala en Caja y abre la de hoy para vender.';
+    }
+    return 'La caja no está abierta';
+  }
+  // The canonical till open right now: a cash sale is bound to it so the
+  // Worker never counts it in a later till.
+  function openCanonicalSession() {
+    try {
+      var sessions = (root.NuevoAmanecerCanonical.snapshot().cashSessions || []).filter(function (item) { return item && item.status === 'OPEN'; });
+      return sessions.length === 1 && typeof sessions[0].session_id === 'string' && sessions[0].session_id ? sessions[0].session_id : null;
+    } catch (_) { return null; }
+  }
+  var CAPTURE_ERRORS = {
+    VENTA_MODO_CAJA_UNSUPPORTED: 'La venta por mayor (caja) todavía no está disponible con CANON. Vende por unidades.',
+    UNITS_PER_QTY_UNSUPPORTED: 'La venta por mayor (caja) todavía no está disponible con CANON. Vende por unidades.',
+    VENTA_SIN_STOCK: 'CANON no permite vender sin stock. Quita del carrito los productos sin stock.',
+    STOCK_NEGATIVO: 'CANON no permite vender sin stock. Quita del carrito los productos sin stock.',
+    MIXED_PAYMENT_INVALID: 'El pago mixto no cuadra con el total. Revisa el efectivo (máximo 2 decimales).',
+    PRICE_INVALID: 'Un precio del carrito no es válido (máximo 2 decimales).',
+    BUSY: 'Se está cerrando la caja o guardando otra venta. Espera unos segundos y vuelve a cobrar; el carrito se conserva.',
+    OUTBOX_STORAGE_WRITE_FAILED: 'El navegador no pudo guardar la venta (almacenamiento lleno o bloqueado).',
+    VENTA_LIBRE_UNSUPPORTED: 'La venta libre no está disponible en este cobro.'
+  };
+  function captureErrorMessage(error) {
+    var code = String(error && (error.code || error.message) || '');
+    return (CAPTURE_ERRORS[code] || 'No se guardó la venta.') + ' Tus productos siguen en el carrito.';
+  }
   function clearLiveCart() {
     if (runtime()) return runtime().clearCart();
     try {
@@ -161,8 +213,10 @@
     var rawBase = canonical.snapshot();
     var base = { products: rawBase.products || [], customers: rawBase.customers || [], credits: rawBase.credits || [], sales: rawBase.sales || [] };
     projection = copy(projector.project(base, outbox.snapshot()));
-    if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection', { detail: copy(projection) }));
-    return copy(projection);
+    // P1-A (mobile): no listener reads the projection from the event and the
+    // callers ignore the return value: two extra deep copies per sale removed.
+    if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection', { detail: { source: 'capture' } }));
+    return true;
   }
   function syncOutboxInBackground(outbox) {
     if (!outbox || typeof outbox.sync !== 'function') return;
@@ -183,8 +237,14 @@
     try {
       var client = root.NuevoAmanecerCanonical;
       var pendingGate = client && typeof client.pendingSnapshot === 'function' ? client.pendingSnapshot() : null;
-      if (pendingGate && pendingGate.state === 'PENDING' && pendingGate.last_error) {
-        failClosed('CANON rechazó una venta pendiente (' + String(pendingGate.last_error) + '). No se encolan más ventas hasta recuperar o descartar esa operación.', null);
+      var queue = root.NuevoAmanecerCanonicalSaleOutbox;
+      // Capture is local-first: only a definitive sale.create rejection that
+      // the background drain cannot resolve by itself stops new sales. Cash,
+      // abono or inventory commands, 429/5xx and session errors never do.
+      if (pendingGate && pendingGate.state === 'PENDING' && pendingGate.command === 'sale.create' && pendingGate.last_error &&
+          [400, 404, 409].indexOf(pendingGate.last_status) !== -1 && !(queue && typeof queue.autoResolves === 'function' && queue.autoResolves(pendingGate))) {
+        var blockedSale = pendingGate.payload && pendingGate.payload.sale_id || '';
+        failClosed('La venta ' + blockedSale + ' fue rechazada por CANON (' + String(pendingGate.last_error) + ') y no se pudo apartar para revisión. Recarga la página; no la cobres de nuevo.', null);
         return;
       }
     } catch (_) {}
@@ -199,7 +259,9 @@
     }
     var cart = liveCart();
     if (!cart.length) { failClosed('El carrito está vacío.', null); return; }
-    if (typeof root._naSessionOpen === 'function' && !root._naSessionOpen()) { failClosed('La caja no está abierta', null); return; }
+    var sessionOpen = lexical('sessionOpen');
+    if (sessionOpen && !sessionOpen()) { failClosed(closedTillMessage(), null); return; }
+    var unitsSold = lexical('unitsSold'), tracksStock = lexical('tracksStock'), unitsPerQty = lexical('unitsPerQty');
     var productsById = new Map();
     liveProducts().forEach(function (product) {
       productsById.set(String(product.id), product);
@@ -207,13 +269,13 @@
     var reservedByProduct = new Map();
     cart.forEach(function (item) {
       var key = String(item.id);
-      var units = root._naUnitsSold ? root._naUnitsSold(item) : Number(item.qty);
+      var units = unitsSold ? unitsSold(item) : Number(item.qty);
       reservedByProduct.set(key, (reservedByProduct.get(key) || 0) + units);
     });
     for (var i = 0; i < cart.length; i += 1) {
       var item = cart[i];
       var product = productsById.get(String(item.id));
-      if (product && (!root._naTracksStock || root._naTracksStock(product))) {
+      if (product && (!tracksStock || tracksStock(product))) {
         var reserved = reservedByProduct.get(String(item.id)) || 0;
         if (reserved > Number(product.stock)) { failClosed('Stock insuficiente para ' + (product.name || item.name || item.id) + ': quedan ' + product.stock + ' unidades', null); return; }
       }
@@ -234,7 +296,8 @@
     if (method === 'mixto') reference = mixed.reference;
     else if (['yape', 'plin', 'transferencia'].includes(method)) {
       var referenceInput = root.document && root.document.getElementById('mDigitalRef');
-      reference = typeof root._naClean === 'function' ? root._naClean(referenceInput && referenceInput.value) : String(referenceInput && referenceInput.value || '').trim();
+      var cleanText = lexical('clean');
+      reference = cleanText ? cleanText(referenceInput && referenceInput.value) : String(referenceInput && referenceInput.value || '').trim();
     }
     try {
       if (reference && (liveSales().some(function (sale) { return !sale.anulada && sale.paymentRef === reference; }) || pendingReferenceExists(reference))) {
@@ -262,7 +325,7 @@
       payment_method: method,
       items: cart.map(function (item) {
         var line = { quantity: Number(item.qty), precio: item.precio,
-          unitsPerQty: root._naUnitsPerQty ? root._naUnitsPerQty(item) : 1,
+          unitsPerQty: unitsPerQty ? unitsPerQty(item) : 1,
           ventaModo: item.ventaModo, modo: item.modo, ventaLibre: !!item.ventaLibre,
           ventaSinStock: !!item.ventaSinStock, unidadesSinStock: item.unidadesSinStock };
         if (item.ventaLibre) {
@@ -275,7 +338,13 @@
         return line;
       })
     };
-    if (method === 'mixto') input.payment = { cash_cents: cents(mixed.cash), digital_cents: cents(mixed.digital), digital_method: mixed.digitalMethod, reference: reference };
+    if (method === 'mixto') {
+      // Work in integer cents: digital is exactly total - cash, never two
+      // independently rounded amounts that can miss the total by 1 céntimo.
+      var totalCents = cart.reduce(function (sum, item) { return sum + cents(item.precio) * Number(item.qty); }, 0);
+      var cashCents = cents(mixed.cash);
+      input.payment = { cash_cents: cashCents, digital_cents: totalCents - cashCents, digital_method: mixed.digitalMethod, reference: reference };
+    }
     else if (['yape', 'plin', 'transferencia'].includes(method)) input.payment = { reference: reference };
     if (customer && method !== 'credito') input.customer_id = customer.id;
     if (method === 'credito') {
@@ -286,7 +355,10 @@
       if (creditV2 && Array.isArray(creditV2.installment_dates) && creditV2.installment_dates.length) input.installment_dates = copy(creditV2.installment_dates);
     }
     var receiptItems=copy(cart),receiptReceived=method==='efectivo'?Number(root.document.getElementById('mMontoRec')?.value):method==='mixto'?mixed.cash:cart.reduce(function(sum,item){return sum+Number(item.qty)*Number(item.precio);},0);
-    var receiptCashier=root._naCashierSnapshot?.()||{nombre:root._naGetBusiness?.().cajero||''};
+    var cashTill = (method === 'efectivo' || method === 'mixto') ? openCanonicalSession() : null;
+    if (cashTill) input.session_id = cashTill;
+    var getBusiness = lexical('getBusiness');
+    var receiptCashier=root._naCashierSnapshot?.()||{nombre:getBusiness?getBusiness().cajero||'':''};
     var durable = false;
     var ownsBusy = true;
     setBusy(true);
@@ -323,7 +395,7 @@
         updateAfterCommit(saleId, false);
         try { projectCurrentOutbox(); } catch (_) {}
         failClosed('Venta ' + saleId + ' guardada localmente · pendiente de sincronización.', error);
-      } else failClosed('No se guardó la venta. Tus productos siguen en el carrito.', error);
+      } else failClosed(captureErrorMessage(error), error);
     } finally { if (ownsBusy) setBusy(false); }
   }
   function wrappedConfirm() {

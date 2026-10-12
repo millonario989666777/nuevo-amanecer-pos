@@ -109,8 +109,31 @@ test('crash after the quarantine copy finishes the move on next sync without a s
  assert.equal(outbox.quarantine().entries.length,1);
 });
 
-for (const [status,error] of [[401,'unauthorized'],[403,'session_revoked'],[403,'read_only_session'],[409,'canonical_not_active'],[409,'stale_authority'],[409,'cash_session_closed'],[409,'cash_session_required'],[409,'some_unknown_reason']]) {
- test(`system/cash/unknown ${status} ${error}: nothing goes to quarantine, the whole queue stays, close blocked`,async t=>{
+// TEST OBSOLETE (old design kept cash/unknown 409 in the main queue, which froze
+// every later sale). New invariant: definitive cash/unknown rejections move to the
+// durable review list, cash ones are never annullable, and close stays blocked.
+for (const [status,error] of [[409,'cash_session_closed'],[409,'cash_session_required'],[409,'some_unknown_reason']]) {
+ test(`cash/unknown ${status} ${error}: sales go to the durable review list, never annullable when cash, close blocked`,async t=>{
+  const {f,d,outbox,build}=await setup(t,async url=>{if(url.endsWith('/commands/sale.create'))return Response.json({error},{status});});
+  for (const id of ['V-085','V-086','V-087']) await outbox.enqueue(build(cash(id)));
+  const before=outbox.snapshot().intents.map(x=>x.operation_id);
+  await outbox.sync(); await outbox.sync();
+  assert.equal(outbox.snapshot().intents.length,0);
+  assert.deepEqual([...outbox.quarantine().entries.map(x=>x.intent.operation_id)],[...before]);
+  assert.ok(outbox.quarantine().entries.every(x=>x.reason===error));
+  if (error.startsWith('cash_session')) {
+   assert.equal(outbox.quarantineAnnullable(outbox.quarantine().entries[0]),false);
+   await assert.rejects(outbox.resolveQuarantined(before[0],'archive'),/QUARANTINE_CHARGED_SALE_NOT_ANNULLABLE/);
+   assert.equal(outbox.quarantineRebindsOnRetry(outbox.quarantine().entries[0].reason),true);
+  }
+  d.el('cajContado').value='1074.50';
+  assert.equal(await d.context.cerrarCaja(),false);
+  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+  assert.equal(f.sql('SELECT COUNT(*) n FROM sales').n,0);
+ });
+}
+for (const [status,error] of [[401,'unauthorized'],[403,'session_revoked'],[403,'read_only_session'],[409,'canonical_not_active'],[409,'stale_authority']]) {
+ test(`system ${status} ${error}: nothing goes to quarantine, the whole queue stays, close blocked`,async t=>{
   const {f,d,outbox,build}=await setup(t,async url=>{if(url.endsWith('/commands/sale.create'))return Response.json({error},{status});});
   for (const id of ['V-085','V-086','V-087']) await outbox.enqueue(build(cash(id)));
   const before=outbox.snapshot().intents.map(x=>x.operation_id);

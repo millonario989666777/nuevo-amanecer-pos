@@ -105,6 +105,13 @@
 
     try {
       var client = api();
+      // C-P0-1: never stay frozen behind a stranded operation; never register twice.
+      var stranded = typeof client.settleStrandedFinancial === 'function' ? await client.settleStrandedFinancial() : null;
+      if (stranded && stranded.status === 'REPLAYED' && stranded.command === 'expense.create') {
+        closeModal(); renderExpenseViews();
+        notify('El gasto anterior sí llegó al servidor. Revisa la lista antes de registrar otro.', 'success');
+        return true;
+      }
       var snapshot = typeof client.prepareCommand === 'function' ? await client.prepareCommand('expense.create') : await refreshCanonical();
       var input = {
         amount_cents: amountCents,
@@ -115,7 +122,12 @@
         note: note
       };
       var cash = snapshot && snapshot.cashState;
-      if (cash && cash.abierta && cash.sessionId && date === today()) input.session_id = cash.sessionId;
+      // C-P2: only the till of THAT business day takes the expense; a till left
+      // open from another day never absorbs today's cash.
+      var sameDayTill = cash && cash.abierta && cash.sessionId && date === today() && (!cash.fechaApertura || cash.fechaApertura === date);
+      if (sameDayTill) input.session_id = cash.sessionId;
+      else if (cash && cash.abierta && cash.fechaApertura && cash.fechaApertura !== date && (method || 'efectivo') === 'efectivo')
+        notify('La caja abierta es del ' + cash.fechaApertura + ': este gasto se guarda fuera de la caja. Cierra esa caja y abre la de hoy.', 'warning');
 
       var receipt = await api().createExpense(input);
       Promise.resolve().then(refreshCanonical).then(renderExpenseViews).catch(function (error) {

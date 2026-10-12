@@ -76,6 +76,47 @@ function normalizeInstallments(value,total) {
   return sum===total ? out : null;
 }
 
+// Sale rejection diagnosis shared by the fast path and the normal path.
+// A revision CAS mismatch is 'stale_stock' (a retry with the fresh revision may
+// pass). Fewer units than requested is a definitive 'insufficient_stock': the
+// client must move that sale to review instead of retrying it forever.
+function saleStockFailure(product, item) {
+  if (!product || ![0,1].includes(product.tracks_inventory)) return { error:'stale_stock', product_id:item.product_id };
+  if (product.tracks_inventory===1 && (product.current_stock_quantity===null || Number(product.current_stock_quantity)<item.quantity)) {
+    return { error:'insufficient_stock', product_id:item.product_id,
+      available_quantity:product.current_stock_quantity===null?0:Math.max(0,Number(product.current_stock_quantity)) };
+  }
+  if (Number(product.stock_revision)!==item.expected_stock_revision) return { error:'stale_stock', product_id:item.product_id };
+  return null;
+}
+// Explicit reasons instead of the generic canonical_sale_conflict. All reads go
+// in the caller's existing batch (same Turso pipeline: no extra subrequest).
+function saleConflictReads(db, body) {
+  const reads = [{ key:'saleId', statement:db.prepare('SELECT operation_id FROM sales WHERE sale_id=?1').bind(body.sale_id) }];
+  if (body.payment && body.payment.reference) reads.push({ key:'reference',
+    statement:db.prepare('SELECT sale_id FROM sales WHERE payment_reference=?1').bind(body.payment.reference) });
+  if (body.session_id) reads.push({ key:'session',
+    statement:db.prepare('SELECT status FROM canonical_cash_state WHERE promotion_id=?1 AND session_id=?2').bind(body.promotion_id,body.session_id) });
+  return reads;
+}
+function cashStateRead(db, body) {
+  return db.prepare(`SELECT (SELECT COUNT(*) FROM canonical_cash_sessions WHERE promotion_id=?1) AS sessions,
+    (SELECT COUNT(*) FROM canonical_cash_state WHERE promotion_id=?1 AND status='OPEN') AS open_sessions`).bind(body.promotion_id);
+}
+function saleConflictError(body, rows) {
+  if (rows.saleId && rows.saleId.operation_id!==body.operation_id) return { error:'sale_id_conflict', sale_id:body.sale_id, operation_id:body.operation_id };
+  if (rows.reference) return { error:'payment_reference_conflict', operation_id:body.operation_id };
+  // The sale is bound to the till it was charged in: never move it to another one.
+  if (body.session_id && rows.session!==undefined && (!rows.session || rows.session.status!=='OPEN'))
+    return { error:'cash_session_closed', session_id:body.session_id, operation_id:body.operation_id };
+  return null;
+}
+function cashStateError(body, row) {
+  if (!body.session_id && body.payment && body.payment.cash_cents>0 && row && Number(row.sessions)>0 && Number(row.open_sessions)===0)
+    return { error:'cash_session_required', operation_id:body.operation_id };
+  return null;
+}
+
 export function validateCanonicalSale(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'invalid_body' };
   for (const key of ['operation_id','sale_id','promotion_id','client_contract']) if (!validId(body[key])) return { error: `invalid_${key}` };
@@ -163,6 +204,12 @@ async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json) {
     reads.push(db.prepare(fastProductSql()).bind(body.promotion_id,item.product_id));
     return index;
   });
+  const conflictIndexes = saleConflictReads(db, body).map(read => {
+    reads.push(read.statement);
+    return { key:read.key, index:reads.length-1 };
+  });
+  let cashIndex = -1;
+  if (!body.session_id && body.payment.cash_cents>0) { cashIndex = reads.length; reads.push(cashStateRead(db, body)); }
   let customerIndex = -1;
   if (body.customer_id) {
     customerIndex = reads.length;
@@ -198,14 +245,14 @@ async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json) {
   if (rows[2] || rows[3]) return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
 
   for (let index=0; index<body.items.length; index++) {
-    const item=body.items[index], product=rows[productIndexes[index]];
-    if (!product || ![0,1].includes(product.tracks_inventory) ||
-        Number(product.stock_revision) !== item.expected_stock_revision ||
-        (product.tracks_inventory===1 && (product.current_stock_quantity===null || Number(product.current_stock_quantity)<item.quantity))) {
-      return json({error:'stale_stock',product_id:item.product_id},409);
-    }
+    const item=body.items[index], failure=saleStockFailure(rows[productIndexes[index]],item);
+    if (failure) return json(failure,409);
   }
   if (customerIndex>=0 && !rows[customerIndex]) return json({error:'customer_not_found'},409);
+  const conflictRows = {};
+  conflictIndexes.forEach(entry => { conflictRows[entry.key] = rows[entry.index]; });
+  const conflict = saleConflictError(body, conflictRows) || cashStateError(body, cashIndex>=0 ? rows[cashIndex] : null);
+  if (conflict) return json(conflict,409);
   return json({error:'canonical_sale_conflict',operation_id:body.operation_id},409);
 }
 
@@ -539,6 +586,7 @@ export async function createCanonicalSale(request, env, auth, json) {
       .bind(body.promotion_id,body.customer_id,body.credit_account.account_id,body.credit_account.name));
   }
 
+  const conflictIndexes=saleConflictReads(db,body).map(read=>({key:read.key,index:addRead(read.statement)}));
   const payloadHashPromise=sha256Hex(stableStringify(body));
   let validation;
   if (String(env?.DB_PROVIDER || '').trim().toLowerCase() === 'turso' || typeof db?._pipeline === 'function') {
@@ -577,13 +625,14 @@ export async function createCanonicalSale(request, env, auth, json) {
       products.push({product_id:item.product_id,current_stock_quantity:0,stock_revision:0,tracks_inventory:0,provenance:'GENERIC'});
       continue;
     }
-    const product=row;
-    if (!product || ![0,1].includes(product.tracks_inventory) || Number(product.stock_revision) !== item.expected_stock_revision ||
-        (product.tracks_inventory === 1 && (product.current_stock_quantity === null || Number(product.current_stock_quantity) < item.quantity))) {
-      return json({error:'stale_stock',product_id:item.product_id},409);
-    }
+    const product=row, stockFailure=saleStockFailure(product,item);
+    if (stockFailure) return json(stockFailure,409);
     products.push(product);
   }
+  const conflictRows={};
+  conflictIndexes.forEach(entry=>{ conflictRows[entry.key]=validation[entry.index]; });
+  const saleConflict=saleConflictError(body,conflictRows);
+  if (saleConflict) return json(saleConflict,409);
 
   if (body.customer_id && !validation[readIndex.customer]) return json({error:'customer_not_found'},409);
 
@@ -711,6 +760,11 @@ export async function createCanonicalSale(request, env, auth, json) {
       if(now&&now.limit_cents!=null&&Number(now.debt_cents)+body.total_cents>Number(now.limit_cents))
         return json({error:'credit_limit_exceeded',customer_id:body.customer_id,limit_cents:Number(now.limit_cents),debt_cents:Number(now.debt_cents),
           available_cents:Math.max(0,Number(now.limit_cents)-Number(now.debt_cents)),requested_cents:body.total_cents},409);
+    }
+    // Only after a failed batch: the cash trigger fires when no till is open.
+    if(!body.session_id&&body.payment.cash_cents>0){
+      let cashRow=null; try { cashRow=await cashStateRead(db,body).first(); } catch { cashRow=null; }
+      const cashError=cashStateError(body,cashRow); if(cashError)return json(cashError,409);
     }
     return json({error:'canonical_sale_conflict',operation_id:body.operation_id},409); }
   return json({status:'created',operation_id:body.operation_id,sale_id:body.sale_id,promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false},201);

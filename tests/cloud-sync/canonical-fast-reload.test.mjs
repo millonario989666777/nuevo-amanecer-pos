@@ -269,8 +269,11 @@ test('antes de la confirmación las escrituras se rechazan; si la revalidación 
   const replica = replicaStore();
   const ls = storage();
   await device(f, { token: TOKEN, deviceId: 'fast-10', localStorage: ls, globals: replica.globals });
+  // Real storage keys (the old list named keys that do not exist, so it proved nothing).
   ls.setItem('na_canonical_sale_outbox_v1', '{"marker":"queue-untouched"}');
-  const queueKeys = () => JSON.stringify(['na_canonical_sale_outbox_v1', 'na_canonical_journal', 'na_canonical_sale_quarantine_v1'].map((k) => ls.getItem(k)));
+  ls.setItem('na_canonical_sale_outbox_v1_quarantine', '{"marker":"quarantine-untouched"}');
+  ls.setItem('na_canonical_sale_journal', '{"marker":"journal-untouched"}');
+  const queueKeys = () => JSON.stringify(['na_canonical_sale_outbox_v1', 'na_canonical_sale_journal', 'na_canonical_sale_outbox_v1_quarantine'].map((k) => ls.getItem(k)));
   const keysBefore = queueKeys();
   let mode = 'ok', release = null;
   const tab = await device(f, {
