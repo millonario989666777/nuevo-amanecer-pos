@@ -313,7 +313,7 @@ for(const width of [320,360,390,430]) test(`approved phone checkout ${width}: to
  expect(after!.y+after!.height).toBeLessThanOrEqual(methodBox!.y);
  expect(await method.evaluate(el=>getComputedStyle(el,'::after').display)).toBe('none');
  const quick=await page.locator('#mCashQuickInline button:visible').allTextContents();
- expect(quick).toEqual(['S/ 10','S/ 20','S/ 50']);
+ expect(quick).toEqual(['Exacto','S/ 10','S/ 20','S/ 50','S/ 100']);
 });
 
 test('phone checkout uses reference line icons and separates the currency from the cash amount',async({page})=>{
