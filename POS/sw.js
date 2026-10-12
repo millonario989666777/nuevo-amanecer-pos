@@ -50,6 +50,7 @@ const PRECACHE_URLS = [
   './css/experience-v2/animations/modals.css',
   './css/experience-v2/animations/notifications.css',
   './js/core/utils.js',
+  './js/core/lima-time.js',
   './js/sync/outbox.js',
   './js/sync/hosted-canonical-guard.js',
   './js/adapters/canonical-ui-adapter.js',

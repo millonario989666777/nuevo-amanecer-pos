@@ -254,13 +254,19 @@
   function localParts(value) {
     var raw = text(value);
     var parsed = raw ? new Date(raw) : null;
-    if (!parsed || !Number.isFinite(parsed.getTime())) {
+    // Only a zoned instant (Z / ±hh:mm) is converted; a date-only or unzoned
+    // historical value is already a business-local wall time and is kept verbatim.
+    var zoned = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(raw);
+    if (!parsed || !Number.isFinite(parsed.getTime()) || !zoned) {
       return { date: /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : '', time: /^\d{4}-\d{2}-\d{2}T/.test(raw) ? raw.slice(11, 16) : '', timestamp: raw || null };
     }
+    // Business time is Lima (UTC-5, no DST), independent of the device zone:
+    // 2026-10-12T01:25:00Z is shown as 2026-10-11 20:25 in Historial and Caja.
     function pad(v) { return String(v).padStart(2, '0'); }
+    var lima = new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
     return {
-      date: parsed.getFullYear() + '-' + pad(parsed.getMonth() + 1) + '-' + pad(parsed.getDate()),
-      time: pad(parsed.getHours()) + ':' + pad(parsed.getMinutes()),
+      date: lima.getUTCFullYear() + '-' + pad(lima.getUTCMonth() + 1) + '-' + pad(lima.getUTCDate()),
+      time: pad(lima.getUTCHours()) + ':' + pad(lima.getUTCMinutes()),
       timestamp: raw
     };
   }
