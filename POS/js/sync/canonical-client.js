@@ -365,8 +365,11 @@
   var TARGETED_ROUTES = {
     'payment.create': ['credits', 'credit-payments', 'cash-sessions', 'cash-movements', 'financial-events'],
     'payment.batch': ['credits', 'credit-payments', 'cash-sessions', 'cash-movements', 'financial-events'],
-    'cash.close': ['cash-sessions', 'cash-movements']
+    'cash.close': ['cash-sessions', 'cash-movements'],
+    // Etapa 2: una venta ya no relee las 16 colecciones (antes ~17 GET por venta).
+    'sale.create': ['products', 'sales', 'sale-items', 'inventory-movements', 'cash-sessions', 'cash-movements', 'financial-events']
   };
+  var SALE_CREDIT_ROUTES = ['credits', 'customers'];
   var afterCommit = null;
   // The replica last published from a complete (or targeted) authority read.
   function authorityBase(requireCurrent) {
@@ -379,6 +382,7 @@
   function authorityBaseRevision() { var base = authorityBase(true); return base ? base.financial_revision : null; }
   function rememberCommit(command, payload, baseRevision, created) {
     var routes = TARGETED_ROUTES[command];
+    if (routes && command === 'sale.create' && payload && (payload.payment_method === 'credito' || payload.credit_due || payload.customer_id)) routes = routes.concat(SALE_CREDIT_ROUTES);
     var delta = command === 'payment.batch' ? (payload && Array.isArray(payload.payments) ? payload.payments.length : 0) : 1;
     if (!created || !routes || baseRevision === null || !delta || (afterCommit && afterCommit.base !== baseRevision)) { afterCommit = null; return; }
     if (!afterCommit) afterCommit = { base: baseRevision, delta: 0, routes: [] };
