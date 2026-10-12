@@ -156,12 +156,12 @@
     }
     if (typeof root.goPage === 'function' && !root.goPage.__naE2) {
       var bg = root.goPage;
-      root.goPage = function (id) { var r = bg.apply(this, arguments); if (id === 'pageConfig') { addBack(); if (root.innerWidth <= 960) showList(); else summaries(); } return r; };
+      root.goPage = function (id) { var r = bg.apply(this, arguments); if (id === 'pageConfig') { addBack(); if (root.innerWidth <= 767) showList(); else summaries(); } return r; };
       root.goPage.__naE2 = true;
     }
     if (typeof root.switchCfgCategory === 'function' && !root.switchCfgCategory.__naE2) {
       var bs = root.switchCfgCategory;
-      root.switchCfgCategory = function () { var r = bs.apply(this, arguments); if (userPick || root.innerWidth > 960) showDetail(); userPick = false; return r; };
+      root.switchCfgCategory = function () { var r = bs.apply(this, arguments); if (userPick || root.innerWidth > 767) showDetail(); userPick = false; return r; };
       root.switchCfgCategory.__naE2 = true;
     }
     if (!install.__resize) { install.__resize = true; root.addEventListener('resize', function () { flatten(); }); }
@@ -170,10 +170,10 @@
       install.__obs = true; var wasActive = cfgPage.classList.contains('active');
       new root.MutationObserver(function () {
         var now = cfgPage.classList.contains('active');
-        if (now && !wasActive) { addBack(); if (root.innerWidth <= 960) showList(); else summaries(); }
+        if (now && !wasActive) { addBack(); if (root.innerWidth <= 767) showList(); else summaries(); }
         wasActive = now;
       }).observe(cfgPage, { attributes: true, attributeFilter: ['class'] });
-      if (wasActive && root.innerWidth <= 960) showList();
+      if (wasActive && root.innerWidth <= 767) showList();
     }
     addBack(); summaries();
   }

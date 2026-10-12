@@ -13,7 +13,7 @@ async function openConfig(page,width){
 // sin acordeones ni íconos "i". En tablet/PC: lista a la izquierda y formulario a la derecha.
 for(const width of [320,360,390,430,768,1024,1366,1920])test('settings '+width,async({page})=>{
   await openConfig(page,width);
-  if(width<=960){
+  if(width<768){
     await expect(page.locator('#cfgSidebar [data-cfgcat="negocio"]')).toBeVisible();
     await expect(page.locator('#cfgNombre')).toBeHidden();
     await page.locator('#cfgSidebar [data-cfgcat="negocio"]').click();

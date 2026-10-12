@@ -32,7 +32,7 @@ html.na-ap-custom #btnPagar,html.na-ap-custom #btnRapido,html.na-ap-custom .pm-b
 #pageConfig .cfg-topbar-simple>.top-btn-nuevo{display:none!important}
 .na-cfg-back{display:none;min-height:40px;padding:6px 10px;border:0;border-radius:8px;background:var(--teal-light,#e0f7f4);color:var(--teal-dark,#00796b);font:inherit;font-weight:800;cursor:pointer}
 /* Celular y tablet chica: lista de secciones -> pantalla de la sección. */
-@media(max-width:960px){
+@media(max-width:767px){
   #pageConfig .cfg-menu-toggle{display:none!important}
   #pageConfig.na-cfg-detail .na-cfg-back{display:inline-flex;align-items:center}
   #pageConfig.na-cfg-list .cfg-content{display:none!important}
