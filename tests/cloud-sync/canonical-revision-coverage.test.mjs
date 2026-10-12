@@ -16,6 +16,7 @@ const LEDGER = new Set([
   'canonical_sale_context', 'canonical_financial_operations', 'canonical_expense_operations', 'canonical_product_operations',
   'canonical_inventory_operations', 'canonical_customer_operations', 'canonical_customer_credit_policy_operations',
   'canonical_reconciliation_credits', 'canonical_credit_baseline_adjustments', 'canonical_customer_contacts',
+  'canonical_product_revisions',
 ]);
 // Written only in the same atomic batch as a ledger row above.
 const WITH_LEDGER = new Set([

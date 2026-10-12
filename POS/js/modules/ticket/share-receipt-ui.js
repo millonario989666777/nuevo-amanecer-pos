@@ -22,7 +22,15 @@
   async function saveContact(){
     if(contactBusy||!contactId||!authorized())return;
     const name=document.getElementById('naContactName').value.trim().replace(/\s+/g,' '),raw=document.getElementById('naContactPhone').value.trim(),phone=root.NAReceiptShare.normalizePhone(raw);
-    if(!name){notice('El nombre es obligatorio');return;}if(raw&&!phone){notice('Número de WhatsApp inválido. Usa +51 y 9 dígitos para Perú.');return;}
+    if(!name){notice('El nombre es obligatorio');return;}
+    const current=customers().find(c=>String(c.id)===String(contactId)),storedPhone=String(current?.tel||current?.phone||'').trim();
+    // P2-6: changing only the name must not be blocked by an old landline. Legacy
+    // keeps the stored text; CANON can only store a WhatsApp, so say exactly why.
+    const keepStoredPhone=!!raw&&!phone&&raw===storedPhone;
+    if(keepStoredPhone&&canonicalContactUi()){notice('El teléfono guardado ('+storedPhone+') no es un WhatsApp válido. Escribe un celular (+51 9…) o bórralo para guardar solo el nombre.');return;}
+    if(raw&&!phone&&!keepStoredPhone){notice('Número de WhatsApp inválido. Usa +51 y 9 dígitos para Perú.');return;}
+    const samePhone=phone?customers().find(c=>String(c.id)!==String(contactId)&&root.NAReceiptShare.normalizePhone(c.tel||c.phone||'')===phone):null;
+    if(samePhone){notice('Ya existe «'+(samePhone.nombre||samePhone.name||'otro cliente')+'» con ese WhatsApp. Usa otro número o edita esa ficha.');return;}
     const targetId=contactId,button=document.getElementById('naContactSave');contactBusy=true;button.disabled=true;
     let confirmed=false;
     try{
@@ -40,11 +48,18 @@
         await canonical.refresh();
       }else{
         const client=customers().find(c=>String(c.id)===targetId);if(!client)throw new Error('Cliente no encontrado');
-        const previous={nombre:client.nombre,tel:client.tel};client.nombre=name;client.tel=phone?'+'+phone:'';
+        const previous={nombre:client.nombre,tel:client.tel};client.nombre=name;client.tel=phone?'+'+phone:(keepStoredPhone?storedPhone:'');
         try{const result=await saveAllData();if(!_naWasPersisted(result))throw new Error('No existe guardado permanente verificado');confirmed=true;}catch(error){Object.assign(client,previous);throw error;}
       }
       document.getElementById('naCustomerContact').classList.remove('open');root.cliRender?.();notice('Datos del cliente guardados','success');
-    }catch(error){const message=confirmed?'Datos CONFIRMADOS. Recarga para actualizar la vista; no repitas el guardado.':'No se guardaron los datos. '+(root.NuevoAmanecerCanonical?.pendingSnapshot?.()?.last_error||error.message);document.getElementById('naContactStatus').textContent=message;notice(message,confirmed?'success':'error');}
+    }catch(error){
+      const rejected=root.NuevoAmanecerCanonical?.pendingSnapshot?.();
+      if(!confirmed&&rejected?.command==='customer.contact.set'&&rejected.last_error==='customer_phone_conflict'){
+        try{await root.NuevoAmanecerCanonical.discardRejectedCustomerContact?.();}catch(_){}
+        const message='Ese WhatsApp ya pertenece a otro cliente. No se guardaron los cambios; usa otro número.';
+        document.getElementById('naContactStatus').textContent=message;notice(message);return;
+      }
+      const message=confirmed?'Datos CONFIRMADOS. Recarga para actualizar la vista; no repitas el guardado.':'No se guardaron los datos. '+(root.NuevoAmanecerCanonical?.pendingSnapshot?.()?.last_error||error.message);document.getElementById('naContactStatus').textContent=message;notice(message,confirmed?'success':'error');}
     finally{contactBusy=false;button.disabled=false;}
   }
   function settingsHtml(){const s=root.NAReceiptShare.settings();return '<div class="cfg-panel"><div class="cfg-panel-title">Compartir comprobantes por WhatsApp</div><div class="cfg-setting-list"><div class="cfg-setting"><label class="cfg-setting-title" for="cfgReceiptFormat">Formato predeterminado</label><select id="cfgReceiptFormat" class="cfg-input" onchange="NAReceiptUI.changeSettings()"><option value="image"'+(s.format==='image'?' selected':'')+'>Imagen PNG</option><option value="text"'+(s.format==='text'?' selected':'')+'>Texto</option><option value="pdf"'+(s.format==='pdf'?' selected':'')+'>PDF</option></select></div><div class="cfg-setting"><label for="cfgReceiptAsk">Preguntar al finalizar ventas, créditos y abonos</label><input id="cfgReceiptAsk" type="checkbox"'+(s.ask?' checked':'')+' onchange="NAReceiptUI.changeSettings()"></div></div><details class="na-receipt-help"><summary>ℹ️ Cómo funciona el envío</summary><p>Texto abre el chat del número guardado. Imagen y PDF abren el menú de compartir: elige WhatsApp y el contacto. Confirma el envío en WhatsApp. Cancelar conserva la operación.</p></details></div>';}

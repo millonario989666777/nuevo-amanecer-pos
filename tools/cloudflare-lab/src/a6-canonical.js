@@ -478,7 +478,23 @@ export async function canonicalRead(url,db,json,options={}){
 
 async function loadCollectionRows(db,type,before,page,schema=null){
   const sqlName=type.replaceAll('-','_');let rows;
-  if(sqlName==='products'&&before.mode==='ACTIVE'&&await liveProductSchemaAvailable(db,schema)){
+  if(sqlName==='products'&&before.mode==='ACTIVE'&&await liveProductSchemaAvailable(db,schema)&&await productRevisionSchemaAvailable(db,schema)){
+    // product.update overlay: latest metadata revision wins, joined in the same
+    // statement (no extra subrequest). Stock columns always come from the base row.
+    const cols=(alias)=>TABLES.products.map(column=>column==='product_id'?`${alias}.product_id`
+      :column==='legacy_alternate_code'?`CASE WHEN r.product_id IS NULL THEN ${alias}.legacy_alternate_code ELSE NULL END AS legacy_alternate_code`
+      :PRODUCT_REVISION_FIELDS.includes(column)?`CASE WHEN r.product_id IS NULL THEN ${alias}.${column} ELSE r.${column} END AS ${column}`
+      :`${alias}.${column}`).join(',');
+    const latest=`LEFT JOIN canonical_product_revisions r ON r.promotion_id=?1 AND r.product_id=%A.product_id
+      AND r.revision=(SELECT MAX(x.revision) FROM canonical_product_revisions x WHERE x.promotion_id=?1 AND x.product_id=%A.product_id)`;
+    rows=await db.prepare(`SELECT * FROM (
+      SELECT 'I:' || p.product_id AS read_key,${cols('p')},'IMPORT' AS provenance,NULL AS operation_id,NULL AS created_at,COALESCE(r.revision,0) AS metadata_revision
+        FROM products p ${latest.replaceAll('%A','p')} WHERE p.promotion_id=?1
+      UNION ALL
+      SELECT 'L:' || l.product_id AS read_key,${cols('l')},'LIVE' AS provenance,l.operation_id,l.created_at,COALESCE(r.revision,0) AS metadata_revision
+        FROM canonical_live_products l ${latest.replaceAll('%A','l')} WHERE l.promotion_id=?1
+    ) WHERE read_key>?2 ORDER BY read_key LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
+  } else if(sqlName==='products'&&before.mode==='ACTIVE'&&await liveProductSchemaAvailable(db,schema)){
     rows=await db.prepare(`SELECT * FROM (
       SELECT 'I:' || product_id AS read_key,${TABLES.products.join(',')},'IMPORT' AS provenance,NULL AS operation_id,NULL AS created_at
         FROM products WHERE promotion_id=?1
@@ -822,6 +838,15 @@ async function debtReconciliationLedgerCount(db,promotionId){
     (SELECT COUNT(*) FROM canonical_credit_baseline_adjustments WHERE promotion_id=?1) AS count`).bind(promotionId).first();
   return Number(row?.count)||0;
 }
+const PRODUCT_REVISION_FIELDS=['name','sku','barcode','alternate_codes_json','category','brand','description','icon','cost_cents','price_cents','box_price_cents','units_per_box','stock_min_quantity','expiry_date'];
+async function productRevisionSchemaAvailable(db,schema=null){
+  if(schema)return hasAll(schema,PRODUCT_REVISION_SCHEMA_TABLES);
+  const row=await db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='canonical_product_revisions'").first();return Number(row?.n)===1;
+}
+async function productRevisionLedgerCount(db,promotionId){
+  if(!promotionId||!await productRevisionSchemaAvailable(db))return 0;
+  const row=await db.prepare('SELECT COUNT(*) n FROM canonical_product_revisions WHERE promotion_id=?1').bind(promotionId).first();return Number(row?.n)||0;
+}
 async function customerContactSchemaAvailable(db,schema=null){
   if(schema)return hasAll(schema,CUSTOMER_CONTACT_SCHEMA_TABLES);
   const row=await db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='canonical_customer_contacts'").first();return Number(row?.n)===1;
@@ -836,7 +861,7 @@ async function readControl(db){
     (SELECT COUNT(*) FROM canonical_sale_context WHERE promotion_id=c.active_promotion_id)+
     (SELECT COUNT(*) FROM canonical_financial_operations WHERE promotion_id=c.active_promotion_id)
     ELSE NULL END AS financial_revision FROM canonical_control c WHERE c.id=1`).first();
-  if(row?.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+await expenseLedgerCount(db,row.active_promotion_id)+await productLedgerCount(db,row.active_promotion_id)+await inventoryLedgerCount(db,row.active_promotion_id)+await customerLedgerCount(db,row.active_promotion_id)+await customerCreditPolicyLedgerCount(db,row.active_promotion_id)+await debtReconciliationLedgerCount(db,row.active_promotion_id)+await customerContactLedgerCount(db,row.active_promotion_id);
+  if(row?.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+await expenseLedgerCount(db,row.active_promotion_id)+await productLedgerCount(db,row.active_promotion_id)+await inventoryLedgerCount(db,row.active_promotion_id)+await customerLedgerCount(db,row.active_promotion_id)+await customerCreditPolicyLedgerCount(db,row.active_promotion_id)+await debtReconciliationLedgerCount(db,row.active_promotion_id)+await customerContactLedgerCount(db,row.active_promotion_id)+await productRevisionLedgerCount(db,row.active_promotion_id);
   return row;
 }
 // ---------------------------------------------------------------------------
@@ -859,7 +884,8 @@ const CUSTOMER_SCHEMA_TABLES=['canonical_customer_operations','canonical_custome
 const CREDIT_POLICY_SCHEMA_TABLES=['canonical_customer_credit_policy_operations','canonical_customer_credit_policies'];
 const DEBT_RECONCILIATION_SCHEMA_TABLES=['canonical_reconciliation_credits','canonical_credit_baseline_adjustments'];
 const CUSTOMER_CONTACT_SCHEMA_TABLES=['canonical_customer_contacts'];
-const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES])];
+const PRODUCT_REVISION_SCHEMA_TABLES=['canonical_product_revisions'];
+const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES])];
 // Same order and conditions as the legacy readControl ledger additions.
 const LEDGER_REVISION_TERMS=[
   [EXPENSE_SCHEMA_TABLES,['canonical_expense_operations']],
@@ -869,6 +895,7 @@ const LEDGER_REVISION_TERMS=[
   [CREDIT_POLICY_SCHEMA_TABLES,['canonical_customer_credit_policy_operations']],
   [DEBT_RECONCILIATION_SCHEMA_TABLES,['canonical_reconciliation_credits','canonical_credit_baseline_adjustments']],
   [CUSTOMER_CONTACT_SCHEMA_TABLES,['canonical_customer_contacts']],
+  [PRODUCT_REVISION_SCHEMA_TABLES,['canonical_product_revisions']],
 ];
 function hasAll(schema,tables){return tables.every((name)=>schema.has(name));}
 async function loadReadSchema(db){

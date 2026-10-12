@@ -7,7 +7,7 @@
   var LOCK = 'na-canonical-financial-writer';
   var CREDENTIALS_KEY = 'na_cloud_sync_credentials';
   var METHODS = ['efectivo', 'yape', 'plin', 'transferencia', 'credito', 'mixto'];
-  var COMMANDS = ['sale.create', 'product.create', 'customer.create', 'customer.contact.set', 'customer.credit-policy.set', 'inventory.adjust', 'credit-account.create', 'payment.create', 'payment.batch', 'cash.open', 'cash.close', 'adjustment.create', 'compensation.create', 'expense.create'];
+  var COMMANDS = ['sale.create', 'product.create', 'product.update', 'customer.create', 'customer.contact.set', 'customer.credit-policy.set', 'inventory.adjust', 'credit-account.create', 'payment.create', 'payment.batch', 'cash.open', 'cash.close', 'adjustment.create', 'compensation.create', 'expense.create'];
   var FINANCIAL_METHODS = ['efectivo', 'yape', 'plin', 'transferencia'];
   var READ_TIMEOUT_MS = 8000;
   var REPLICA_SCHEMA_VERSION = 2;
@@ -736,6 +736,46 @@
     });
   }
 
+  // product.update: metadata only (price, cost, codes, name, wholesale, stock
+  // minimum). Stock, unit, tax and inventory tracking are never sent here.
+  function makeProductUpdatePayload(input) {
+    input=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
+    var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
+    if(!product||!validId(String(input.product_id||'')))fail('INVALID_CANONICAL_PRODUCT');
+    function text(value,max,required) {
+      if(value===undefined||value===null||String(value).trim()==='') {
+        if(required) fail('INVALID_CANONICAL_PRODUCT');
+        return null;
+      }
+      var out=String(value).trim().replace(/\s+/g,' ');
+      if(out.length>max||/[\x00-\x1f\x7f]/.test(out)) fail('INVALID_CANONICAL_PRODUCT');
+      return out;
+    }
+    var sku=text(input.sku,160,false),barcode=text(input.barcode,160,false);
+    var alternate=Array.isArray(input.alternate_codes)?input.alternate_codes.map(function(value){return text(value,160,true);}):[];
+    if(alternate.length>10) fail('INVALID_CANONICAL_PRODUCT');
+    var codes=[sku,barcode].concat(alternate).filter(Boolean).map(function(value){return value.toLowerCase();});
+    if(new Set(codes).size!==codes.length) fail('INVALID_CANONICAL_PRODUCT');
+    var hasBox=input.box_price_cents!=null;
+    if(!uint(input.cost_cents)||!Number.isSafeInteger(input.price_cents)||input.price_cents<=0||
+       hasBox!==(input.units_per_box!=null)||
+       hasBox&&(!Number.isSafeInteger(input.box_price_cents)||input.box_price_cents<=0||typeof input.units_per_box!=='number'||!Number.isFinite(input.units_per_box)||input.units_per_box<=0)||
+       typeof input.stock_min_quantity!=='number'||!Number.isFinite(input.stock_min_quantity)||input.stock_min_quantity<0||
+       input.expiry_date!=null&&input.expiry_date!==''&&!validDate(input.expiry_date)) fail('INVALID_CANONICAL_PRODUCT');
+    var tracks=Number(product.tracks_inventory)===1;
+    var expected=input.expected_metadata_revision===undefined?(Number(product.metadata_revision)||0):Number(input.expected_metadata_revision);
+    if(!uint(expected)) fail('INVALID_CANONICAL_PRODUCT');
+    return Object.assign(commonPayload(),{
+      product_id:product.product_id,expected_metadata_revision:expected,
+      name:text(input.name,240,true),sku:sku,barcode:barcode,alternate_codes:alternate,
+      category:text(input.category,120,false),brand:text(input.brand,160,false),description:text(input.description,2000,false),
+      icon:text(input.icon,24,false),cost_cents:input.cost_cents,price_cents:input.price_cents,
+      box_price_cents:hasBox?input.box_price_cents:null,units_per_box:hasBox?input.units_per_box:null,
+      stock_min_quantity:tracks?input.stock_min_quantity:0,
+      expiry_date:input.expiry_date?input.expiry_date:null
+    });
+  }
+
   function makeInventoryPayload(input) {
     input=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
     if(!validId(input.product_id))fail('INVALID_CANONICAL_INVENTORY');
@@ -744,7 +784,14 @@
     var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
     if(!product||Number(product.tracks_inventory)!==1||!uint(product.stock_revision)||typeof product.current_stock_quantity!=='number'||!Number.isFinite(product.current_stock_quantity)||product.current_stock_quantity<0)fail('INVALID_CANONICAL_PRODUCT');
     if(type==='SALIDA'&&input.quantity>product.current_stock_quantity)fail('INSUFFICIENT_CANONICAL_STOCK');
-    return Object.assign(commonPayload(),{
+    // Optional caller-supplied operation_id (e.g. OCR purchase "OCR-PURCHASE-<hash>:<line>")
+    // so a re-applied document maps to the SAME operation and can never double-count.
+    var common=commonPayload();
+    if(input.operation_id!=null){
+      if(typeof input.operation_id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(input.operation_id))fail('INVALID_CANONICAL_INVENTORY');
+      common.operation_id=input.operation_id;
+    }
+    return Object.assign(common,{
       product_id:product.product_id,
       movement_type:type,
       quantity:input.quantity,
@@ -959,6 +1006,16 @@
         (payload.administrator_id===null || validId(payload.administrator_id)) &&
         typeof payload.administrator_name==='string' && payload.administrator_name.trim().length>0 && payload.administrator_name.length<=160;
     }
+    if (command === 'product.update') {
+      return validId(payload.product_id) && uint(payload.expected_metadata_revision) &&
+        typeof payload.name==='string' && payload.name.trim().length>0 && payload.name.length<=240 &&
+        uint(payload.cost_cents) && Number.isSafeInteger(payload.price_cents) && payload.price_cents>0 &&
+        (payload.box_price_cents===null) === (payload.units_per_box===null) &&
+        (payload.box_price_cents===null || Number.isSafeInteger(payload.box_price_cents) && payload.box_price_cents>0) &&
+        (payload.units_per_box===null || typeof payload.units_per_box==='number' && Number.isFinite(payload.units_per_box) && payload.units_per_box>0) &&
+        typeof payload.stock_min_quantity==='number' && Number.isFinite(payload.stock_min_quantity) && payload.stock_min_quantity>=0 &&
+        Array.isArray(payload.alternate_codes) && payload.alternate_codes.length<=10;
+    }
     if (command === 'inventory.adjust') {
       return validId(payload.product_id) && ['ENTRADA','SALIDA'].includes(payload.movement_type) &&
         typeof payload.quantity==='number' && Number.isFinite(payload.quantity) && payload.quantity>0 &&
@@ -1046,6 +1103,9 @@
       result.stock_revision_after===record.payload.expected_stock_revision+1 &&
       typeof result.stock_before==='number' && Number.isFinite(result.stock_before) && result.stock_before>=0 &&
       typeof result.stock_after==='number' && Number.isFinite(result.stock_after) && result.stock_after>=0;
+    if (record.command === 'product.update') return result.command===record.command && result.product_id===record.payload.product_id &&
+      result.promotion_id===record.binding.promotion_id && result.authority_epoch===record.binding.authority_epoch &&
+      result.metadata_revision===record.payload.expected_metadata_revision+1;
     if (record.command === 'product.create') return result.command===record.command && result.product_id===record.payload.product_id &&
       result.promotion_id===record.binding.promotion_id && result.authority_epoch===record.binding.authority_epoch;
     // The shipped backend's sale receipt has no command, including on replay.
@@ -1353,9 +1413,9 @@
       assertAction(command);
       if (!sessionCredentials(binding)) fail('CANONICAL_COMMERCE_CLOSED');
       var record = { state: 'PENDING', binding: copy(binding), command: command, route: '/commands/' + command,
-        payload: command === 'sale.create' ? (input && input.version === 1 ? makeIntentPayload(input) : makePayload(input)) : command === 'product.create' ? makeProductPayload(input) : command === 'customer.create' ? makeCustomerPayload(input) : command === 'customer.contact.set' ? makeCustomerContactPayload(input) : command === 'customer.credit-policy.set' ? makeCustomerCreditPolicyPayload(input) : command === 'inventory.adjust' ? makeInventoryPayload(input) : command === 'credit-account.create' ? makeCreditAccountPayload(input) : command === 'expense.create' ? makeExpensePayload(input) : makeFinancialPayload(command, input) };
+        payload: command === 'sale.create' ? (input && input.version === 1 ? makeIntentPayload(input) : makePayload(input)) : command === 'product.create' ? makeProductPayload(input) : command === 'product.update' ? makeProductUpdatePayload(input) : command === 'customer.create' ? makeCustomerPayload(input) : command === 'customer.contact.set' ? makeCustomerContactPayload(input) : command === 'customer.credit-policy.set' ? makeCustomerCreditPolicyPayload(input) : command === 'inventory.adjust' ? makeInventoryPayload(input) : command === 'credit-account.create' ? makeCreditAccountPayload(input) : command === 'expense.create' ? makeExpensePayload(input) : makeFinancialPayload(command, input) };
       record.receipt_ids = {};
-      if (command === 'product.create') record.receipt_ids.product_id = record.payload.product_id;
+      if (command === 'product.create' || command === 'product.update') record.receipt_ids.product_id = record.payload.product_id;
       if (command === 'customer.create') record.receipt_ids.customer_id = record.payload.customer_id;
       if (command === 'customer.credit-policy.set') record.receipt_ids.customer_id = record.payload.customer_id;
       if (command === 'expense.create') record.receipt_ids.expense_id = record.payload.expense_id;
@@ -1479,6 +1539,7 @@
   }
 
   function createProduct(input) { return createCommand('product.create', input); }
+  function updateProduct(input) { return createCommand('product.update', input); }
   function setCustomerContact(input){return createCommand('customer.contact.set',input);}
   function createCustomer(input) { return createCommand('customer.create', input); }
   function setCustomerCreditPolicy(input) { return createCommand('customer.credit-policy.set', input, true); }
@@ -1538,9 +1599,12 @@
   async function discardRejectedProduct() {
     return withWriterLock(function () {
       var record=journal();
-      if(!record || record.state!=='PENDING' || record.command!=='product.create') return false;
-      var safeErrors=['invalid_product_request','duplicate_product_code','product_id_conflict','product_code_conflict','operation_id_conflict','stale_authority','canonical_not_active','canonical_product_conflict'];
-      if(![400,409].includes(record.last_status) || !safeErrors.includes(record.last_error)) return false;
+      if(!record || record.state!=='PENDING' || !['product.create','product.update'].includes(record.command)) return false;
+      var safeErrors=['invalid_product_request','invalid_product_update','duplicate_product_code','product_id_conflict','product_code_conflict','product_not_found','stale_product','product_update_schema_not_ready','operation_id_conflict','stale_authority','canonical_not_active','canonical_product_conflict'];
+      // A Worker without product.update (404 not_found) or without its table
+      // (503) wrote nothing, so the edit intent can be dropped safely.
+      var missingUpdate=record.command==='product.update'&&(record.last_status===404&&['not_found','HTTP_404'].includes(record.last_error)||record.last_status===503&&record.last_error==='product_update_schema_not_ready');
+      if(!missingUpdate && (![400,409].includes(record.last_status) || !safeErrors.includes(record.last_error))) return false;
       root.localStorage.removeItem(JOURNAL);
       if(root.localStorage.getItem(JOURNAL)!==null) fail('CANONICAL_STORAGE_NOT_DURABLE');
       return true;
@@ -1550,7 +1614,7 @@
     return withWriterLock(function () {
       var record=journal();
       if(!record||record.state!=='PENDING'||record.command!=='customer.create')return false;
-      var safeErrors=['invalid_customer_request','customer_id_conflict','customer_document_conflict','operation_id_conflict','stale_authority','canonical_not_active','canonical_customer_conflict'];
+      var safeErrors=['invalid_customer_request','invalid_customer_document','invalid_customer_phone','customer_phone_conflict','customer_id_conflict','customer_document_conflict','operation_id_conflict','stale_authority','canonical_not_active','canonical_customer_conflict'];
       if(![400,409].includes(record.last_status)||!safeErrors.includes(record.last_error))return false;
       root.localStorage.removeItem(JOURNAL);
       if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');
@@ -1558,7 +1622,7 @@
     });
   }
   async function discardRejectedCustomerContact(){
-    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||![400,409].includes(r.last_status)||!['invalid_customer_contact','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
+    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||![400,409].includes(r.last_status)||!['invalid_customer_contact','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict','customer_phone_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
   }
   async function discardRejectedCustomerCreditPolicy() {
     return withWriterLock(function () {
@@ -1776,6 +1840,6 @@
   root.addEventListener('offline', function () { ready = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
     pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal,
-    createProduct: createProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
+    createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState });
 })(globalThis);

@@ -398,7 +398,7 @@ function _naProductVisibility(product,now=Date.now()){
 function _naProductMatchesVisibleSearch(product,query,now=Date.now()){
   const raw=String(query??''),search=sinTildes(raw.toLowerCase()),hasQuery=raw.trim().length>0;
   if(!hasQuery)return!_naProductVisibility(product,now).hidden;
-  return sinTildes((product?.name||'').toLowerCase()).includes(search)||sinTildes(product?.descripcion||'').includes(search)||sinTildes((product?.marca||'').toLowerCase()).includes(search)||(product?.sku||'').toLowerCase().includes(search)||(product?.barcode||'').includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search));
+  return sinTildes((product?.name||'').toLowerCase()).includes(search)||sinTildes(String(product?.descripcion||'').toLowerCase()).includes(search)||sinTildes((product?.marca||'').toLowerCase()).includes(search)||(product?.sku||'').toLowerCase().includes(search)||String(product?.barcode||'').toLowerCase().includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search));
 }
 function _naProductManualVisibilityPatch(product,nextActive,now=Date.now()){
   const activo=nextActive!==false;

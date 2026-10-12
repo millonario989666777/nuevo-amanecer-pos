@@ -17,6 +17,35 @@ function clean(value,max,required=false){
   return out;
 }
 
+// P1-4: one phone rule for create and contact.set (same as the POS
+// NAReceiptShare.normalizePhone): Peru mobile 9 digits starting with 9
+// (optionally prefixed 51 / +51 / 0051) or + country code with 9-15 digits.
+export function normalizeCustomerPhone(raw){
+  raw=String(raw??'').trim();if(!raw||!/^[+\d\s().-]+$/.test(raw))return null;
+  let n=raw.replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);
+  if(/^9\d{8}$/.test(n))n='51'+n;
+  if(n.startsWith('51'))return /^519\d{8}$/.test(n)?'+'+n:null;
+  return (raw.startsWith('+')||raw.startsWith('00'))&&/^[1-9]\d{8,14}$/.test(n)?'+'+n:null;
+}
+export function validCustomerDocument(doc){return /^(\d{8}|\d{11})$/.test(doc);}
+// Digits-only SQL key of a stored phone ('+51 987-654-321' -> '51987654321').
+const PHONE_DIGITS=(column)=>`replace(replace(replace(replace(replace(replace(COALESCE(${column},''),' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
+// Effective phone per customer: latest contact.set revision if any, else base row.
+export async function phoneConflict(db,promotionId,e164,exceptCustomerId,contactsReady){
+  if(!e164)return null;
+  const full=e164.slice(1),local=full.startsWith('51')?full.slice(2):full;
+  const latest=contactsReady?`LEFT JOIN canonical_customer_contacts k ON k.promotion_id=b.promotion_id AND k.customer_id=b.customer_id
+      AND k.revision=(SELECT MAX(x.revision) FROM canonical_customer_contacts x WHERE x.promotion_id=b.promotion_id AND x.customer_id=b.customer_id)`:'';
+  const phone=contactsReady?'CASE WHEN k.customer_id IS NULL THEN b.phone ELSE k.phone END':'b.phone';
+  const row=await db.prepare(`SELECT customer_id,name FROM (
+      SELECT b.customer_id,${contactsReady?'CASE WHEN k.customer_id IS NULL THEN b.name ELSE k.name END':'b.name'} AS name,${phone} AS phone FROM (
+        SELECT promotion_id,customer_id,name,phone FROM customers WHERE promotion_id=?1
+        UNION ALL SELECT promotion_id,customer_id,name,phone FROM canonical_live_customers WHERE promotion_id=?1
+      ) b ${latest}
+    ) WHERE customer_id<>?4 AND ${PHONE_DIGITS('phone')} IN (?2,?3) LIMIT 1`).bind(promotionId,full,local,exceptCustomerId||'').first();
+  return row||null;
+}
+
 function normalize(body){
   if(!body||typeof body!=='object'||Array.isArray(body))return{error:'invalid_customer_request'};
   const allowed=new Set([
@@ -37,25 +66,32 @@ function normalize(body){
     return clean(value,max,false);
   };
   const document=optional(body.document,32);
-  const phone=optional(body.phone,64);
+  const rawPhone=optional(body.phone,64);
   const address=optional(body.address,500);
   if((body.document!=null&&String(body.document).trim()!==''&&!document)||
-     (body.phone!=null&&String(body.phone).trim()!==''&&!phone)||
+     (body.phone!=null&&String(body.phone).trim()!==''&&!rawPhone)||
      (body.address!=null&&String(body.address).trim()!==''&&!address))
     return{error:'invalid_customer_request'};
   if(!Number.isInteger(body.color)||body.color<0||body.color>7)
     return{error:'invalid_customer_request',field:'color'};
-  return{value:{
+  if(document&&!validCustomerDocument(document))return{error:'invalid_customer_document',field:'document'};
+  const phone=rawPhone?normalizeCustomerPhone(rawPhone):null;
+  if(rawPhone&&!phone)return{error:'invalid_customer_phone',field:'phone'};
+  const value={
     operation_id:body.operation_id,customer_id:body.customer_id,promotion_id:body.promotion_id,
     authority_epoch:body.authority_epoch,expected_control_revision:body.expected_control_revision,
     client_contract:body.client_contract,created_at:body.created_at,name,document,phone,address,color:body.color
-  }};
+  };
+  // The idempotency hash keeps the pre-normalization shape so an intent sent
+  // to the previous Worker still replays as already_processed.
+  return{value,hashValue:{...value,phone:rawPhone}};
 }
 
 async function schemaReady(db){
-  const row=await db.prepare(`SELECT COUNT(*) AS count FROM sqlite_master
-    WHERE type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers')`).first();
-  return Number(row?.count)===3;
+  const row=await db.prepare(`SELECT
+    (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers')) AS count,
+    (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='canonical_customer_contacts') AS contacts`).first();
+  return Number(row?.count)===3?{contacts:Number(row?.contacts)===1}:null;
 }
 
 async function authorityError(db,auth,body){
@@ -106,7 +142,7 @@ export async function createCanonicalCustomer(request,env,auth,json){
   let raw;try{raw=await request.json();}catch{return json({error:'invalid_json'},400);}
   const checked=normalize(raw);
   if(checked.error)return json({error:checked.error,...(checked.field?{field:checked.field}:{})},400);
-  const body=checked.value,db=getDatabase(env);
+  const body=checked.value,hashBody=checked.hashValue,db=getDatabase(env);
 
   let ready;
   try{ready=await schemaReady(db);}catch{return json({error:'canonical_customer_stage_error',stage:'schema'},500);}
@@ -117,7 +153,7 @@ export async function createCanonicalCustomer(request,env,auth,json){
 
   let requestHash,existing;
   try{
-    requestHash=await sha256Hex(stableStringify(body));
+    requestHash=await sha256Hex(stableStringify(hashBody));
     existing=await db.prepare('SELECT request_hash,result_json FROM canonical_customer_operations WHERE operation_id=?1')
       .bind(body.operation_id).first();
   }catch{return json({error:'canonical_customer_stage_error',stage:'existing'},500);}
@@ -140,6 +176,10 @@ export async function createCanonicalCustomer(request,env,auth,json){
   try{docOwner=await documentConflict(db,body);}
   catch{return json({error:'canonical_customer_stage_error',stage:'document'},500);}
   if(docOwner)return json({error:'customer_document_conflict',customer_id:docOwner},409);
+  let phoneOwner;
+  try{phoneOwner=await phoneConflict(db,body.promotion_id,body.phone,body.customer_id,ready.contacts);}
+  catch{return json({error:'canonical_customer_stage_error',stage:'phone'},500);}
+  if(phoneOwner)return json({error:'customer_phone_conflict',customer_id:phoneOwner.customer_id,customer_name:phoneOwner.name},409);
 
   const result={
     status:'created',command:'customer.create',operation_id:body.operation_id,

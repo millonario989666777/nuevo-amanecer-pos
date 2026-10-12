@@ -8,7 +8,7 @@ import { handleA6, isA6Path, canonicalRuntimeDenied } from './a6-canonical.js';
 import { createCanonicalSale, createCanonicalCreditAccount, canUseCanonicalSaleFastPath, CANONICAL_CLIENT_CONTRACT } from './a6-commerce.js';
 import { createCanonicalFinancial, createCanonicalPaymentBatch, FINANCIAL_COMMANDS } from './a6-financial.js';
 import { createCanonicalExpense, EXPENSE_COMMAND } from './a6-expenses.js';
-import { createCanonicalProduct, PRODUCT_COMMANDS } from './a6-products.js';
+import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from './a6-products.js';
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
@@ -103,7 +103,9 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
-        return await createCanonicalProduct(request, env, auth, json);
+        return financialCommand === 'product.update'
+          ? await updateCanonicalProduct(request, env, auth, json)
+          : await createCanonicalProduct(request, env, auth, json);
       }
       if (financialCommand === 'customer.contact.set') {
         if (request.method !== 'POST') return json({error:'method_not_allowed'},405);

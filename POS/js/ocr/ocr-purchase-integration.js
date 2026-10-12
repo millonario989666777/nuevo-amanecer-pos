@@ -221,7 +221,17 @@
       setBusy(elements.apply, true);
       setStatus('progress', 'Aplicando compra confirmada…');
       try {
-        var result = await deps.apply(reviewed, {
+        var canonical = settings.canonicalInventory
+          || (root && root.NuevoAmanecerCanonicalInventoryBridge) || null;
+        var canonicalOn = false;
+        try { canonicalOn = !!(canonical && typeof canonical.enabled === 'function' && canonical.enabled()); } catch (_) { canonicalOn = false; }
+        // P0-2: in CANON the legacy local persistence is blocked by design; apply the
+        // purchase through idempotent canonical inventory.adjust ENTRADA commands.
+        var result = canonicalOn && typeof canonical.applyPurchase === 'function'
+          ? await canonical.applyPurchase(reviewed, { operationId: currentBatch.operationId })
+          : canonicalOn
+            ? { ok: false, errors: [{ code: 'CANONICAL_OCR_UNAVAILABLE', message: 'La carga de compras por OCR no está disponible en CANON en esta versión. Registra cada producto con Entrada en Inventario.' }] }
+            : await deps.apply(reviewed, {
           operationId: currentBatch.operationId,
           products: getProducts(),
           inventoryMovements: getMovements(),
@@ -236,6 +246,11 @@
             return error && error.code === 'ROLLBACK_PERSISTENCE_NOT_VERIFIED';
           });
           var firstError = errors[0];
+          if (result && result.canonical) {
+            setStatus('error', messageFrom(firstError, 'No se pudo aplicar la compra en CANON.'));
+            try { refreshInventory(); } catch (_) {}
+            return result;
+          }
           setStatus('error', rollbackUnverified
             ? 'El inventario se restauró en memoria, pero no se pudo verificar la persistencia del rollback.'
             : messageFrom(firstError, 'No se pudo aplicar la compra. El inventario fue restaurado.'));

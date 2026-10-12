@@ -70,7 +70,7 @@ test('customer.create persists, survives F5/second device and works in sale + cr
   const row=f.sql("SELECT * FROM canonical_live_customers WHERE document='87654321'");
   assert.ok(row?.customer_id);
   assert.equal(row.name,'Cliente LIVE E2E');
-  assert.equal(row.phone,'987654321');
+  assert.equal(row.phone,'+51987654321','P1-4: el teléfono se guarda normalizado a E.164');
   assert.equal(row.address,'Jr. Prueba 123');
   assert.equal(row.total_purchases_cents,0);
   assert.equal(f.sql('SELECT provenance FROM canonical_customer_registry WHERE customer_id=?',row.customer_id).provenance,'LIVE');
@@ -126,11 +126,13 @@ test('customer.create rejects duplicate IMPORT/LIVE document and duplicate custo
   const imported=f.sql("SELECT customer_id,document FROM customers WHERE document IS NOT NULL AND trim(document)<>'' ORDER BY customer_id LIMIT 1");
   assert.ok(imported?.document);
 
+  // P1-4: new documents must be DNI (8) or RUC (11) digits. The synthetic
+  // imported document ('000C') is not, so it is rejected before the duplicate check.
   await assert.rejects(
     tab.api.createCustomer({name:'Duplicado IMPORT',document:imported.document,phone:null,address:null,color:1}),
-    /CANONICAL_FINANCIAL_REJECTED_409/
+    /^\d{8}$|^\d{11}$/.test(imported.document)?/CANONICAL_FINANCIAL_REJECTED_409/:/CANONICAL_FINANCIAL_REJECTED_400/
   );
-  assert.equal(tab.api.pendingSnapshot().last_error,'customer_document_conflict');
+  assert.equal(tab.api.pendingSnapshot().last_error,/^\d{8}$|^\d{11}$/.test(imported.document)?'customer_document_conflict':'invalid_customer_document');
   assert.equal(await tab.api.discardRejectedCustomer(),true);
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_live_customers').n,0);
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_customer_operations').n,0);
@@ -183,7 +185,10 @@ test('lost ACK retries the same customer operation and never creates a duplicate
   const operation=pending.payload.operation_id;
 
   fillCustomer(tab,{cNombre:'NO CREAR SEGUNDO',cDni:'99999999'});
-  assert.equal(await tab.context.NuevoAmanecerCanonicalCustomerBridge.save(),true);
+  // P1-5: the pending customer is confirmed, but the different form is kept
+  // (not silently discarded) so the cashier can register it next.
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCustomerBridge.save(),false);
+  assert.equal(tab.el('cNombre').value,'NO CREAR SEGUNDO');
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_live_customers').n,1);
   assert.equal(f.sql('SELECT operation_id FROM canonical_customer_operations').operation_id,operation);
   assert.equal(tab.api.pendingSnapshot(),null);
