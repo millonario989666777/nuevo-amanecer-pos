@@ -24,21 +24,35 @@ function _naSecSaleMethod(value){
   const method=Object.prototype.hasOwnProperty.call(mpLbl,value)?value:'efectivo';
   return{className:mpCls[method]||'mp-ef',label:mpLbl[method]||mpLbl.efectivo};
 }
-function _naSecRenderSaleKpis(){
+// Etapa 2: los 4 totales se pintan al instante con su valor guardado o «—» (misma altura, CLS 0)
+// y se calculan después del primer pintado, en tiempo libre, sobre TODAS las ventas del período.
+let _naSecKpiMemo=null,_naSecKpiJob=0;
+function _naSecIdle(fn,timeout){if(typeof requestIdleCallback==='function')return requestIdleCallback(fn,{timeout:timeout||300});return setTimeout(()=>fn({timeRemaining:()=>8,didTimeout:true}),16);}
+function _naSecKpiKey(){return [ventasTab,_naF8RangeFromPeriod('today').from,ventas.length,(typeof gastos!=='undefined'&&gastos)?gastos.length:0,(typeof cajMovs!=='undefined'&&cajMovs)?cajMovs.length:0].join('|');}
+function _naSecComputeKpis(){
   const range=ventasTab==='hoy'?_naF8RangeFromPeriod('today'):ventasTab==='semana'?_naF8RangeFromPeriod('week'):{from:'0000-01-01',to:'9999-12-31'};
-  const report=_naF8BuildReport(range),container=document.getElementById('ventasKPI');
+  const sales=_naF8SaleRows(range),expenses=_naF8UnifiedExpenses(range),metrics=_naF8SaleMetrics(sales);
+  const operating=_naF8Money(expenses.filter(e=>!_naF8IsInvestment(e)).reduce((a,e)=>a+_naNumber(e.monto),0));
+  return [metrics.revenue,metrics.gross,operating,_naF8Money(metrics.gross-operating)];
+}
+function _naSecRenderSaleKpis(){
+  const container=document.getElementById('ventasKPI');
   if(!container)return;
+  const key=_naSecKpiKey(),memo=_naSecKpiMemo&&_naSecKpiMemo.key===key&&_naSecKpiMemo.ventas===ventas?_naSecKpiMemo.values:null;
   container.replaceChildren();
-  [
-    ['teal',fmt(report.metrics.revenue),'Ventas'],
-    ['green',fmt(report.metrics.gross),'Ganancia bruta'],
-    ['amber',fmt(report.operating),'Gastos operativos'],
-    ['purple',fmt(report.net),'Ganancia neta']
-  ].forEach(([tone,value,label])=>{
+  const vals=[];
+  [['teal','Ventas'],['green','Ganancia bruta'],['amber','Gastos operativos'],['purple','Ganancia neta']].forEach(([tone,label],i)=>{
     const card=_naSecAppend(container,'div',`vkpi ${tone}`);
-    _naSecAppend(card,'div','vkpi-val',value);
+    vals.push(_naSecAppend(card,'div','vkpi-val',memo?fmt(memo[i]):'—'));
     _naSecAppend(card,'div','vkpi-lbl',label);
   });
+  if(memo)return;
+  const job=++_naSecKpiJob;
+  requestAnimationFrame(()=>_naSecIdle(()=>{
+    if(job!==_naSecKpiJob||!container.isConnected)return;
+    const values=_naSecComputeKpis();_naSecKpiMemo={key,ventas,values};
+    vals.forEach((el,i)=>{if(el.isConnected)el.textContent=fmt(values[i]);});
+  },400));
 }
 function _naSecRenderTopProducts(container){
   const totals=new Map();
@@ -174,17 +188,26 @@ function _naSecRenderSales(){
   // Etapa 2: se pinta primero una página y el resto por tandas al acercarse al final.
   // Totales, conteos, filtros, búsqueda y exportación siguen usando TODAS las ventas (rows/ventas).
   _naSecCancelSalesRows();
-  let next=0;const FIRST=30,STEP=60;
-  const chunk=n=>{const end=Math.min(rows.length,next+n);for(;next<end;next++)_naSecRenderSaleCard(list,rows[next],next);};
+  // Tandas pequeñas (20) en tiempo libre para que el desplazamiento no se trabe.
+  let next=0,busy=false;const FIRST=20,STEP=20,PER_TRIGGER=60;
+  // Cada tanda va en su propio bloque contenido: agregar una tanda no recalcula ni repinta las anteriores.
+  const chunk=n=>{const end=Math.min(rows.length,next+n);const box=document.createElement('div');box.className='v-chunk';for(;next<end;next++)_naSecRenderSaleCard(box,rows[next],next);list.insertBefore(box,list.querySelector(':scope > .na-sales-more'));};
   chunk(FIRST);
   if(next<rows.length&&typeof IntersectionObserver==='function'){
     const sentinel=_naSecAppend(list,'div','na-sales-more');sentinel.style.cssText='height:1px';
+    const pump=(left,observer)=>_naSecIdle(deadline=>{
+      if(observer!==_naSecSalesObserver||!list.isConnected){busy=false;return;}
+      // Una tanda de STEP tarjetas por tiempo libre (pausas < 50 ms).
+      const before=next;chunk(STEP);
+      left-=next-before;
+      if(next>=rows.length){busy=false;_naSecCancelSalesRows();return;}
+      if(left>0)pump(left,observer);else busy=false;
+    },200);
     const observer=new IntersectionObserver(entries=>{
       if(observer!==_naSecSalesObserver||!list.isConnected){observer.disconnect();return;}
-      if(!entries.some(e=>e.isIntersecting))return;
-      chunk(STEP);list.appendChild(sentinel);
-      if(next>=rows.length)_naSecCancelSalesRows();
-    },{rootMargin:'800px 0px'});
+      if(!entries.some(e=>e.isIntersecting)||busy)return;
+      busy=true;pump(PER_TRIGGER,observer);
+    },{rootMargin:'1200px 0px'});
     _naSecSalesObserver=observer;observer.observe(sentinel);
   }else chunk(rows.length);
   _naSecSalesRendered();
