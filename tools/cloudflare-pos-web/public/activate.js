@@ -13,6 +13,9 @@
   const activateButton = document.getElementById('activateButton');
   const openPos = document.getElementById('openPos');
   const retryButton = document.getElementById('retryButton');
+  const pairPanel = document.getElementById('pairPanel');
+  const pairCode = document.getElementById('pairCode');
+  const pairButton = document.getElementById('pairButton');
 
   async function refreshShellOnly() {
     panel.hidden = true;
@@ -64,11 +67,13 @@
   function clearSession() {
     localStorage.removeItem(BINDING_KEY);
     localStorage.removeItem(CREDENTIALS_KEY);
+    localStorage.removeItem('na_pos_role_v1');
   }
 
   function showActivation(message) {
     setStatus(message, message.includes('incorrecta') || message.includes('falló') ? 'error' : '');
     panel.hidden = false;
+    if (pairPanel) pairPanel.hidden = false;
     openPos.hidden = true;
     retryButton.hidden = false;
     input.focus();
@@ -111,6 +116,7 @@
 
   async function checkExisting() {
     panel.hidden = true;
+    if (pairPanel) pairPanel.hidden = true;
     openPos.hidden = true;
     retryButton.hidden = true;
     setStatus('Comprobando sesión de este navegador…');
@@ -165,6 +171,7 @@
       }
       const authority = await fetchAuthority(body.session_token);
       saveSession(body.session_token, authority);
+      localStorage.removeItem('na_pos_role_v1');
       input.value = '';
       panel.hidden = true;
       retryButton.hidden = true;
@@ -179,6 +186,36 @@
     }
   }
 
+  // Etapa 2 (G): un aparato de empleado se vincula con un código de un solo uso creado por el dueño.
+  async function pair() {
+    const code = String(pairCode.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 10) { showActivation('Escribe el código completo (10 letras y números).'); return; }
+    pairButton.disabled = true; pairCode.disabled = true;
+    setStatus('Vinculando este aparato…');
+    try {
+      const response = await fetch(API + '/auth/pair', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'omit', redirect: 'error',
+        body: JSON.stringify({ code }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 401) { showActivation('El código es incorrecto o ya venció. Pide uno nuevo al dueño.'); return; }
+      if (!response.ok || typeof body.session_token !== 'string' || !body.session_token) { showActivation('La vinculación falló. Vuelve a intentarlo.'); return; }
+      const authority = await fetchAuthority(body.session_token);
+      saveSession(body.session_token, authority);
+      try { localStorage.setItem('na_pos_role_v1', JSON.stringify({ role: 'empleado', at: Date.now() })); } catch {}
+      panel.hidden = true; if (pairPanel) pairPanel.hidden = true; retryButton.hidden = true;
+      setStatus('Aparato de empleado vinculado. ' + environmentName() + ' está listo.', 'ok');
+      openPos.hidden = false;
+    } catch {
+      showActivation('No se pudo conectar con ' + environmentName() + '. Comprueba internet y vuelve a intentar.');
+    } finally {
+      pairButton.disabled = false; pairCode.disabled = false; pairCode.value = '';
+    }
+  }
+  if (pairButton) {
+    pairButton.addEventListener('click', pair);
+    pairCode.addEventListener('keydown', event => { if (event.key === 'Enter') pair(); });
+  }
   activateButton.addEventListener('click', activate);
   input.addEventListener('keydown', event => {
     if (event.key === 'Enter') activate();

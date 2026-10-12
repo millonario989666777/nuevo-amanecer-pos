@@ -117,6 +117,8 @@ const PRECACHE_URLS = [
   './js/canon-phone-sale.js',
   './js/canon-desktop-dashboard.js',
   './js/config/config-e2.js',
+  './js/config/config-g.js',
+  './js/config/pos-roles-client.js',
   './js/core/lazy-assets.js'
 ];
 const LAZY_URLS = [

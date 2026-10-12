@@ -31,9 +31,13 @@
     var el = doc.getElementById('posIgv'); var row = el && el.closest ? el.closest('.total-row') : null;
     if (row) row.hidden = !showIgvLine();
   }
+  // Etapa 2 (G): falla cerrada. Solo el aparato del dueño y con el permiso cargado.
   function canEdit() {
-    try { if (typeof root._naF10HasPermission === 'function') return !!root._naF10HasPermission('configuration'); } catch (_) {}
-    return true;
+    try {
+      if (!root.NA_ROLES || !root.NA_ROLES.isOwner()) return false;
+      if (typeof root._naF10HasPermission !== 'function') return false;
+      return !!root._naF10HasPermission('configuration');
+    } catch (_) { return false; }
   }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
@@ -48,7 +52,7 @@
     }).join('');
     return '<div class="cfg-panel na-ap-panel" id="naAppearancePanel"><div class="cfg-panel-title">Tamaños en este dispositivo</div>'
       + '<div class="cfg-panel-sub">Se guarda solo en este celular o computadora. Entre 85% y 125% para que Total y Cobrar siempre se vean.</div>'
-      + (edit ? '' : '<div class="na-ap-note">Solo el dueño o un administrador puede cambiar estos tamaños.</div>')
+      + (edit ? '' : '<div class="na-ap-note">Solo el dueño puede cambiar estos tamaños.</div>')
       + rows
       + '<div class="na-ap-preview" aria-hidden="true"><div class="na-ap-pv-title">Venta actual</div><div class="na-ap-pv-cards"><div class="na-ap-pv-card">Producto</div><div class="na-ap-pv-card">Producto</div><div class="na-ap-pv-card">Producto</div></div><div class="na-ap-pv-text">Total S/ 12.50</div><button type="button" class="na-ap-pv-btn" tabindex="-1">Cobrar</button></div>'
       + '<div class="na-ap-actions"><button type="button" class="na-ap-reset"' + (edit ? '' : ' disabled') + '>Restablecer</button></div></div>';
