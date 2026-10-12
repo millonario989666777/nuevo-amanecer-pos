@@ -153,8 +153,8 @@ body.na-pos-phone-device #mCobro #mCashAdvanced .pay-quick-row{display:none!impo
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-amount-input-wrap{height:48px;border:1px solid #d7dde5;border-radius:12px;padding:0 14px}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-amount-input-wrap>span{font-size:17px}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-amount-input{min-width:0;height:46px!important;text-align:right;font-size:22px!important;padding:8px!important}
-body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}
-body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button{height:44px;border:1px solid #e2e8f0;border-radius:12px;background:#f3f4f6;box-shadow:none;font-size:15px}
+body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0}
+body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button{height:44px;border:1px solid #e2e8f0;border-radius:12px;background:#f3f4f6;box-shadow:none;font-size:13px;padding:0 2px;white-space:nowrap}
 body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button.active{border-color:#159c98;background:#e5f7f5;color:#0f766e}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row{margin-top:3px;padding:13px 0 0;border:0;border-top:1px solid #e5e7eb;border-radius:0;background:transparent}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row span{font-size:15px;color:#64748b}
@@ -177,7 +177,7 @@ body.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"].activ
 
 
 /* Approved cash panel details: quick amounts and change stay readable on phones. */
-body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button:nth-child(n+4){display:none!important}
+body.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button:nth-child(n+6){display:none!important}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row{margin-top:2px;padding:8px 12px;border:0;border-radius:10px;background:#e7f7f6}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row span{color:#64748b}
 body.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row strong{color:#0f8a82}

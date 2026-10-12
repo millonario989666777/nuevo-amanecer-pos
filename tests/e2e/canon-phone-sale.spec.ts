@@ -264,13 +264,13 @@ for(const width of [320,360,390,430]) test(`phone checkout reference layout ${wi
 });
 
 
-for(const width of [320,360,390,430]) test(`approved phone cash layout ${width}: concise received amount, three presets and highlighted change`,async({page})=>{
+for(const width of [320,360,390,430]) test(`approved phone cash layout ${width}: concise received amount, five presets and highlighted change`,async({page})=>{
  await page.setViewportSize({width,height:844});await page.goto('/index.html');
  await page.evaluate(()=>window.NA_MENU_NAVIGATION.navigate('pagePOS'));
  await page.evaluate(()=>window.eval(`cart=[{id:'CASH-DESIGN',name:'Producto prueba',precio:7.7,qty:1}];posPayM='efectivo';document.getElementById('mMontoRec').value='7.70';_naRenderCashQuickOptions(7.7);calcCambio();document.getElementById('mCobro').classList.add('open');`));
  await expect(page.locator('#mCashAdvanced')).toBeVisible();
  await expect(page.locator('#mCashAdvanced .pay-amount-head label')).toHaveText('Efectivo recibido');
- await expect(page.locator('#mCashQuickInline button:visible')).toHaveCount(3);
+ await expect(page.locator('#mCashQuickInline button:visible')).toHaveCount(5);
  const changeStyle=await page.locator('#mCambio').evaluate(el=>({background:getComputedStyle(el.parentElement!).backgroundColor,radius:getComputedStyle(el.parentElement!).borderRadius}));
  expect(changeStyle.background).not.toBe('rgba(0, 0, 0, 0)');expect(changeStyle.radius).not.toBe('0px');
  const split=await page.locator('#mCobro .pay-methods [data-method="mixto"]').evaluate(el=>({background:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderTopWidth}));
@@ -313,7 +313,7 @@ for(const width of [320,360,390,430]) test(`approved phone checkout ${width}: to
  expect(after!.y+after!.height).toBeLessThanOrEqual(methodBox!.y);
  expect(await method.evaluate(el=>getComputedStyle(el,'::after').display)).toBe('none');
  const quick=await page.locator('#mCashQuickInline button:visible').allTextContents();
- expect(quick).toEqual(['S/ 10','S/ 20','S/ 50']);
+ expect(quick).toEqual(['Exacto','S/ 10','S/ 20','S/ 50','S/ 100']);
 });
 
 test('phone checkout uses reference line icons and separates the currency from the cash amount',async({page})=>{
