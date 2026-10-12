@@ -176,3 +176,18 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 .na-sale-note{display:flex;flex-direction:column;gap:4px;margin:8px 0}
 .na-sale-note label{font:800 12px 'Nunito',sans-serif;color:#475569}
 .na-sale-note input{height:40px;border:1px solid #cbd5e1;border-radius:10px;padding:0 10px;font:600 14px 'Nunito',sans-serif;box-sizing:border-box;width:100%}
+
+/* Ítem 11: compras con proveedor y costo */
+.na-pur-box{max-width:560px;width:calc(100vw - 24px);max-height:88vh;overflow:auto}
+.na-pur-head{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.na-pur-head input,.na-pur-line input{height:40px;border:1px solid #cbd5e1;border-radius:10px;padding:0 8px;font:600 14px 'Nunito',sans-serif;min-width:0;box-sizing:border-box}
+.na-pur-line{display:grid;grid-template-columns:minmax(0,1fr) 64px 82px 36px;gap:6px;margin-bottom:6px}
+.na-pur-del{height:40px;border:0;border-radius:10px;background:#f1f5f9;color:#475569;font-weight:900}
+.na-pur-add{border:1px dashed #94a3b8;background:#fff;border-radius:10px;height:38px;width:100%;font:800 13px 'Nunito',sans-serif;color:#0f766e}
+.na-pur-total{margin:8px 0 2px;font:900 14px 'Nunito',sans-serif;color:#0f172a}
+.na-pur-hint{margin:0 0 6px;color:#64748b;font-size:12px}
+.na-pur-item{border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-bottom:6px}
+.na-pur-item summary{cursor:pointer;font-size:14px}.na-pur-item summary small{display:block;color:#64748b}
+.na-pur-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0;border-top:1px solid #f1f5f9}
+@media(max-width:420px){.na-pur-head{grid-template-columns:1fr}}
+@media(max-width:480px){.na-pur-line{grid-template-columns:1fr 1fr 36px}.na-pur-line .na-pur-prod{grid-column:1/-1}.na-pur-line{padding-bottom:6px;border-bottom:1px solid #f1f5f9}}

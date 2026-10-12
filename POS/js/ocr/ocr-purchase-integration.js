@@ -341,7 +341,7 @@
         // P0-2: in CANON the legacy local persistence is blocked by design; apply the
         // purchase through idempotent canonical inventory.adjust ENTRADA commands.
         var result = canonicalOn && typeof canonical.applyPurchase === 'function'
-          ? await canonical.applyPurchase(reviewed, { operationId: currentBatch.operationId })
+          ? await canonical.applyPurchase(reviewed, { operationId: currentBatch.operationId, supplier: currentBatch.identity && currentBatch.identity.ruc ? 'RUC ' + currentBatch.identity.ruc : '', documentRef: currentBatch.identity && currentBatch.identity.series || '' })
           : canonicalOn
             ? { ok: false, errors: [{ code: 'CANONICAL_OCR_UNAVAILABLE', message: 'La carga de compras por OCR no está disponible en CANON en esta versión. Registra cada producto con Entrada en Inventario.' }] }
             : await deps.apply(reviewed, {
