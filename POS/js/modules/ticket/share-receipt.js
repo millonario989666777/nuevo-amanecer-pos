@@ -165,6 +165,7 @@
       field('Saldo pendiente',known(cr.saldo)?money(cr.saldo):data.fresh?money(amount):'No registrado');
       if(cr.vence||data.due||sale.credit_due)field('Vencimiento',cr.vence||data.due||sale.credit_due);
     }
+    if(data.kind!=='payment'&&sale.nota)field('Nota',String(sale.nota).slice(0,300));
     // Estado de outbox permanece interno; nunca se imprime ni se comparte.
     if(!root._naF11ReceiptZonesEnabled&&data.kind!=='payment'){const summary=accountSummary(data,sale,cr);if(summary)accountLines(summary,width).forEach(line=>lines.push(line));}
     return{kind:data.kind,id:String((data.kind==='payment'&&(pay.id||pay.pagoId||pay.operation_id))||sale.id||cr.id||'comprobante'),customerName:sale.clienteNombre||'Sin cliente',phone:normalizePhone(customer.tel||customer.phone||''),lines,text:lines.join('\n'),width,mm:built.mm||80};
@@ -281,7 +282,7 @@
   function shareSale(id){const sale=sales().find(s=>String(s.id)===String(id));if(!sale){notify('Venta no encontrada');return;}open(saleInput(sale));}
   function shareCredit(id){const cr=credits().find(c=>String(c.id)===String(id));if(!cr){notify('Crédito no encontrado');return;}const sale=sales().find(s=>String(s.id)===String(cr.ventaId));open({kind:'credit',credit:cr,sale,customer:customerFor(cr.cliId||cr.clienteId)});}
   function sharePayment(creditId,paymentId){const cr=credits().find(c=>String(c.id)===String(creditId)),pay=cr?.pagos?.find(p=>String(p.id||p.pagoId)===String(paymentId));if(!cr||!pay){notify('Pago no encontrado');return;}const sale=sales().find(s=>String(s.id)===String(cr.ventaId));open({kind:'payment',credit:cr,sale,payment:pay,customer:customerFor(cr.cliId||cr.clienteId)});}
-  function onSale(sale,customer,extra={}){safely({kind:'sale',sale,customer,fresh:true,...extra});}
+  function onSale(sale,customer,extra={}){const c=root.__naSaleNoteCapture;if(c&&sale&&typeof sale==='object'&&!sale.nota){sale={...sale,nota:c.note};[sale.sale_id,sale.id,sale.operation_id,sale.operation].forEach(k=>{if(k!=null&&k!==''&&!c.ids.includes(String(k)))c.ids.push(String(k));});}safely({kind:'sale',sale,customer,fresh:true,...extra});}
   function onPayment(credit,receipt,amountCents,method,reference,createdAt){
     if(!credit||!receipt?.operation_id)return;
     const balance=receipt.balance_cents??receipt.current_balance_cents;

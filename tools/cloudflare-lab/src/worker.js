@@ -12,6 +12,7 @@ import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
+import { saleNoteRoute } from './pos-sale-notes.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
@@ -72,6 +73,12 @@ export default {
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
         return await listSaleAnnulments(env, json);
+      }
+      // Ítem 10: nota opcional de venta (registro aparte, nunca cambia montos).
+      if (url.pathname === '/auth/sale-notes') {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        return cors(await saleNoteRoute(request, env, auth, json));
       }
       if (ROLE_PATHS.has(url.pathname)) {
         return cors(await handleRoles(request, url, env, { json, authorizeSession, getDatabase }));
