@@ -767,6 +767,16 @@ function _naClearCanonicalOperationalView(){_naCanonicalViewApplied=false;ventas
 function _naClearCanonicalLegacyView(){_naCanonicalViewApplied=false;
   productos=[];clientes=[];creditos=[];_naClearCanonicalOperationalView();
 }
+// Etapa 1.4 (auditoría 2026-10-12): el estado de caja del equipo se reconstruye
+// SIEMPRE con las cajas del servidor (cash-sessions) en cada actualización, aunque
+// el resto de la vista se reutilice. Así no queda una caja vieja tras un cierre y
+// apertura en otro equipo, un cierre con respuesta perdida o una reconexión.
+function _naRebuildCanonicalCashState(){
+  try{
+    const adapter=window.NuevoAmanecerCanonicalUIAdapter,snap=NuevoAmanecerCanonical.snapshot();
+    if(adapter&&typeof adapter.cashState==='function'&&snap&&Array.isArray(snap.cashSessions))cajEstado=adapter.cashState(snap.cashSessions);
+  }catch(_){}
+}
 function _naApplyCanonicalLegacyView(canonical){
   if(!canonical||!Array.isArray(canonical.products)||!Array.isArray(canonical.customers)||!Array.isArray(canonical.credits)||!Array.isArray(canonical.sales)||!Array.isArray(canonical.expenses)||!Array.isArray(canonical.cashMovements)||!Array.isArray(canonical.inventoryMovements)||!canonical.cashState)throw new Error('CANONICAL_OPERATIONAL_SNAPSHOT_INVALID');
   productos=canonical.products;clientes=canonical.customers;creditos=canonical.credits;ventas=canonical.sales;gastos=canonical.expenses;cajMovs=canonical.cashMovements;inventoryMovements=canonical.inventoryMovements;cajEstado=canonical.cashState;
@@ -801,6 +811,7 @@ window.addEventListener('na:canonical-updated',()=>{
     const reuse=state.unchanged===true&&_naCanonicalViewApplied&&!_naCanonicalLoadError;
     const canonical=reuse?null:NuevoAmanecerCanonical.legacySnapshot();
     if(!reuse){_naApplyCanonicalLegacyView(canonical);_naCanonicalViewApplied=true;renderCategorySelects();}
+    else _naRebuildCanonicalCashState();
     _naCanonicalLoadError=null;_naSchedulePageRender(_naActivePageId());
     const connectionReady=state.validation==='current',connectionSyncing=state.validation==='validating';
     _naSetHeaderConnectionState(connectionReady?'connected':connectionSyncing?'update':'disconnected',connectionReady?'Conectado':connectionSyncing?'Sincronizando CANON…':'Desconectado');

@@ -53,10 +53,10 @@ test('startup outbox waits for current replica instead of racing bootstrap',()=>
   assert.ok(current>=0 && queue>current && sync>queue);
 });
 
-test('online recovery refreshes authority first when runtime is not current',()=>{
+test('online recovery refreshes authority first (always, Etapa 1.4: also when the replica looks current)',()=>{
   const listeners=outbox.slice(outbox.indexOf("root.addEventListener('online'"),outbox.indexOf("root.addEventListener('na:canonical-updated'"));
-  assert.match(listeners,/state\.validation !== 'current'/);
-  assert.match(listeners,/canonical\.refresh\(\)/);
+  assert.doesNotMatch(listeners,/state\.validation !== 'current'/);
+  assert.match(listeners,/canonical\.refresh\(\)\.then\(function \(\) \{ return resume\(\); \}/);
 });
 
 

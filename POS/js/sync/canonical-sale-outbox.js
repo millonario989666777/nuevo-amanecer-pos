@@ -656,6 +656,7 @@
       fail('QUARANTINE_ACTION_INVALID');
     });
   }
+  var lastServerRead = Date.now();
   function start() {
     if (started) return;
     started = true;
@@ -686,9 +687,11 @@
       root.addEventListener('online', function () {
         retryCount = 0;
         var canonical = root.NuevoAmanecerCanonical;
+        // Etapa 1.4: al reconectar se relee CANON siempre (también cajas), aunque
+        // la réplica figure como vigente; na:canonical-updated reanuda la cola.
         if (canonical && typeof canonical.enabled === 'function' && canonical.enabled() && typeof canonical.refresh === 'function') {
-          var state = typeof canonical.sourceState === 'function' ? canonical.sourceState() : null;
-          if (!state || state.validation !== 'current') return canonical.refresh().catch(function () {});
+          lastServerRead = Date.now();
+          return canonical.refresh().then(function () { return resume(); }, function () { return resume(); });
         }
         return resume();
       });
@@ -696,7 +699,16 @@
     }
     if (root.document && typeof root.document.addEventListener === 'function') {
       root.document.addEventListener('visibilitychange', function () {
-        if (!root.document.hidden) resume();
+        if (root.document.hidden) return;
+        // Volver a la app tras >60 s: releer CANON (cajas abiertas/cerradas en otro
+        // equipo). Una lectura por minuto como máximo: cuida el plan gratuito.
+        var canonical = root.NuevoAmanecerCanonical;
+        if (Date.now() - lastServerRead > 60000 && root.navigator.onLine !== false && canonical && typeof canonical.enabled === 'function'
+          && canonical.enabled() && typeof canonical.refresh === 'function' && !syncing) {
+          lastServerRead = Date.now();
+          return canonical.refresh().then(function () { return resume(); }, function () { return resume(); });
+        }
+        resume();
       });
     }
     return resume();
