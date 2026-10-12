@@ -467,7 +467,7 @@ export async function canonicalRead(url,db,json,options={}){
   const rows=await loadCollectionRows(db,type,before,page,plan.schema);
   const after=await plan.current();
   if(!sameControl(before,after))return json({error:'authority_changed'},409);
-  const source=rows.results??[],selected=source.slice(0,page.limit),last=selected.at(-1);let lastKey=null;if(last)lastKey=last.read_key??(sqlName==='sale_items'?`${last.sale_id}\0${String(last.line_number).padStart(20,'0')}`:last[TABLES[sqlName]?.[0]??(sqlName==='sales'?'sale_id':'movement_id')]);
+  const source=rows.results??[],selected=source.slice(0,page.limit),last=selected.at(-1);let lastKey=null;if(last)lastKey=tupleCursor(sqlName,last)??last.read_key??last[TABLES[sqlName]?.[0]??(sqlName==='sales'?'sale_id':'movement_id')];
   for(const item of selected){
     delete item.read_key;
     // Preserve the imported read shape; only LIVE entries carry ledger metadata.
@@ -532,9 +532,9 @@ async function loadCollectionRows(db,type,before,page,schema=null){
     }
   } else if(sqlName==='credit_accounts'){
     rows=before.mode==='ACTIVE'
-      ? await db.prepare(`SELECT customer_id || char(0) || account_id AS read_key,customer_id,account_id,name,mode,created_at
-          FROM canonical_credit_accounts WHERE promotion_id=?1 AND customer_id || char(0) || account_id>?2
-          ORDER BY customer_id,account_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all()
+      ? await (()=>{const [c,a]=tupleKey(page.key);return db.prepare(`SELECT customer_id,account_id,name,mode,created_at
+          FROM canonical_credit_accounts WHERE promotion_id=?1 AND (customer_id>?2 OR (customer_id=?2 AND ?4 IS NOT NULL AND account_id>?4))
+          ORDER BY customer_id,account_id LIMIT ?3`).bind(before.active_promotion_id,c,page.limit+1,a).all();})()
       : {results:[]};
   } else if(sqlName==='credits'&&before.mode==='ACTIVE'){
     const reconciliationReady=await debtReconciliationSchemaAvailable(db,schema);
@@ -608,8 +608,8 @@ async function loadCollectionRows(db,type,before,page,schema=null){
       credit_delta_cents,cash_delta_cents,payment_method,reference,reason,compensates_operation_id,created_at FROM canonical_financial_events
       WHERE promotion_id=?1 AND event_id>?2 ORDER BY event_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='sale_items'&&before.mode==='ACTIVE'&&await genericSaleSchemaAvailable(db,schema)){
-    const keyExpr="r.sale_id || char(0) || printf('%020d',r.line_number)";
-    rows=await db.prepare(`SELECT ${keyExpr} AS read_key,
+    const [ks,kl]=tupleKey(page.key);
+    rows=await db.prepare(`SELECT
       r.sale_id,r.line_number,r.operation_id,r.product_id,r.quantity,r.unit_price_cents,r.line_total_cents,r.created_at,
       CASE WHEN g.sale_id IS NULL THEN 'PRODUCT' ELSE 'GENERIC' END AS line_type,
       g.name AS generic_name,g.code AS generic_code
@@ -617,9 +617,9 @@ async function loadCollectionRows(db,type,before,page,schema=null){
       JOIN sale_items r ON r.sale_id=x.sale_id
       LEFT JOIN canonical_generic_sale_lines g
         ON g.sale_id=r.sale_id AND g.line_number=r.line_number AND g.operation_id=r.operation_id
-      WHERE x.promotion_id=?1 AND ${keyExpr}>?2
+      WHERE x.promotion_id=?1 AND (r.sale_id>?2 OR (r.sale_id=?2 AND ?4 IS NOT NULL AND r.line_number>?4))
       ORDER BY r.sale_id,r.line_number LIMIT ?3`)
-      .bind(before.active_promotion_id,page.key,page.limit+1).all();
+      .bind(before.active_promotion_id,ks,page.limit+1,kl).all();
   } else if(sqlName==='inventory_movements'&&before.mode==='ACTIVE'){
     const liveProductsReady=await liveProductSchemaAvailable(db,schema);
     const inventoryAdjustReady=await inventoryLedgerAvailable(db,schema);
@@ -651,7 +651,9 @@ async function loadCollectionRows(db,type,before,page,schema=null){
     }
   } else if(TABLES[sqlName]){const key=TABLES[sqlName][0];rows=await db.prepare(`SELECT ${TABLES[sqlName].join(',')} FROM ${sqlName} WHERE promotion_id=?1 AND ${key}>?2 ORDER BY ${key} LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();}
   else if(before.mode==='ACTIVE'){
-    const key=sqlName==='sale_items'?"r.sale_id || char(0) || printf('%020d',r.line_number)":sqlName==='sales'?'r.sale_id':'r.movement_id';
+    const key=sqlName==='sale_items'?'r.sale_id,r.line_number':sqlName==='sales'?'r.sale_id':'r.movement_id';
+    const [ks,kl]=sqlName==='sale_items'?tupleKey(page.key):[page.key,null];
+    const where=sqlName==='sale_items'?'(r.sale_id>?2 OR (r.sale_id=?2 AND ?4 IS NOT NULL AND r.line_number>?4))':`${key}>?2`;
     const liveProductsReady=sqlName==='inventory_movements'?await liveProductSchemaAvailable(db,schema):false;
     const join=sqlName==='inventory_movements'?(liveProductsReady?`(
       SELECT movement_id,promotion_id FROM canonical_inventory_effects
@@ -661,9 +663,10 @@ async function loadCollectionRows(db,type,before,page,schema=null){
     const cashSession=sqlName==='cash_movements'?`,(SELECT s.session_id FROM canonical_cash_state s
       WHERE s.promotion_id=x.promotion_id AND r.rowid>s.cash_movement_watermark AND r.rowid<=s.closing_watermark
       ORDER BY s.opened_at DESC LIMIT 1) AS session_id`:'';
-    rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName].split(',').map(c=>'r.'+c).join(',')}${context}${cashSession} FROM ${join} WHERE x.promotion_id=?1 AND ${key}>?2 ORDER BY ${key} LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
+    rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName].split(',').map(c=>'r.'+c).join(',')}${context}${cashSession} FROM ${join} WHERE x.promotion_id=?1 AND ${where} ORDER BY ${key} LIMIT ?3`).bind(...(sqlName==='sale_items'?[before.active_promotion_id,ks,page.limit+1,kl]:[before.active_promotion_id,page.key,page.limit+1])).all();
   }
-  else {const key=sqlName==='sale_items'?"sale_id || char(0) || printf('%020d',line_number)":sqlName==='sales'?'sale_id':'movement_id';rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName]} FROM ${sqlName} WHERE ${key}>?1 ORDER BY ${key} LIMIT ?2`).bind(page.key,page.limit+1).all();}
+  else if(sqlName==='sale_items'){const [ks,kl]=tupleKey(page.key);rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName]} FROM sale_items WHERE (sale_id>?1 OR (sale_id=?1 AND ?3 IS NOT NULL AND line_number>?3)) ORDER BY sale_id,line_number LIMIT ?2`).bind(ks,page.limit+1,kl).all();}
+  else {const key=sqlName==='sales'?'sale_id':'movement_id';rows=await db.prepare(`SELECT ${A3_PUBLIC_COLUMNS[sqlName]} FROM ${sqlName} WHERE ${key}>?1 ORDER BY ${key} LIMIT ?2`).bind(page.key,page.limit+1).all();}
   if(sqlName==='customers'&&before.mode==='ACTIVE'&&await customerContactSchemaAvailable(db,schema)){
     const selected=rows.results??[];
     if(selected.length){
@@ -724,7 +727,7 @@ async function canonicalSnapshot(db,json,before,plan){
       const last=selected.at(-1);
       const sqlName=type.replaceAll('-','_');
       let lastKey=null;
-      if(last)lastKey=last.read_key??(sqlName==='sale_items'?`${last.sale_id}\0${String(last.line_number).padStart(20,'0')}`:last[TABLES[sqlName]?.[0]??(sqlName==='sales'?'sale_id':'movement_id')]);
+      if(last)lastKey=tupleCursor(sqlName,last)??last.read_key??last[TABLES[sqlName]?.[0]??(sqlName==='sales'?'sale_id':'movement_id')];
       for(const item of selected){
         delete item.read_key;
         if(sqlName==='credit_payments'&&item.provenance==='IMPORT')for(const field of ['provenance','operation_id','credit_provenance','credit_delta_cents','cash_delta_cents','session_id','reason','compensates_operation_id'])delete item[field];
@@ -757,6 +760,10 @@ async function readProvenance(promotionId,url,db,json){
 // heaviest page (products) far from the Workers Free CPU limit (measured ~6.6 ms).
 const CANONICAL_READ_PAGE_MAX=250;
 function pageLimit(params,max=100){const raw=params.get('limit');if(raw!==null&&!/^\d+$/.test(raw))return null;const limit=raw===null?25:Number(raw);return Number.isSafeInteger(limit)&&limit>=1&&limit<=max?limit:null;}
+// Cursores de dos columnas sin NUL: algunos motores SQLite truncan TEXT en \0 y la página siguiente
+// repetía la última fila. La clave es JSON [a,b] y la consulta compara la tupla.
+function tupleKey(key){if(!key)return['',null];try{const v=JSON.parse(key);if(Array.isArray(v)&&v.length===2&&typeof v[0]==='string')return v;}catch{}const i=String(key).indexOf('\0');return i<0?[String(key),null]:[String(key).slice(0,i),null];}
+function tupleCursor(sqlName,last){if(sqlName==='sale_items')return JSON.stringify([String(last.sale_id),Number(last.line_number)]);if(sqlName==='credit_accounts')return JSON.stringify([String(last.customer_id),String(last.account_id)]);return null;}
 function parsePage(params,controlRow){const limit=pageLimit(params,CANONICAL_READ_PAGE_MAX);if(limit===null)return{error:'invalid_limit'};const token=params.get('cursor');if(token===null)return{limit,key:''};try{const c=decodeCursor(token);if(c.promotion_id!==controlRow.active_promotion_id||c.authority_epoch!==Number(controlRow.authority_epoch)||c.revision!==Number(controlRow.revision)||(controlRow.mode==='ACTIVE'&&c.financial_revision!==controlRow.financial_revision)||typeof c.key!=='string'||c.key.length>512)return{error:'stale_cursor'};return{limit,key:c.key};}catch{return{error:'invalid_cursor'};}}
 function parseAdminPage(params,promotionId,type){const limit=pageLimit(params);if(limit===null)return{error:'invalid_limit'};const token=params.get('cursor');if(token===null)return{limit,name:'',row:0,key:''};try{const c=decodeCursor(token);if(!plainExact(c,['promotion_id','entity_type','name','row','key'])||c.promotion_id!==promotionId||c.entity_type!==type||typeof c.name!=='string'||c.name.length>240||!Number.isSafeInteger(c.row)||c.row<1||typeof c.key!=='string'||c.key.length>240)throw new Error();return{limit,name:c.name,row:c.row,key:c.key};}catch{return{error:'invalid_cursor'};}}
 function encodeCursor(value){const bytes=new TextEncoder().encode(JSON.stringify(value));let binary='';for(const b of bytes)binary+=String.fromCharCode(b);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}

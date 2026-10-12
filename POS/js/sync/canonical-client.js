@@ -78,6 +78,19 @@
       else root.localStorage.setItem(PAGE_LIMIT_KEY, String(value));
     } catch (_) {}
   }
+  // Las páginas se leen por cursor; si una fila llega dos veces (borde de página) se queda una sola
+  // copia por su identidad, para que una venta nunca muestre su línea duplicada ni infle el total.
+  var ROW_IDENTITY = {
+    'sale-items': function (r) { return r.sale_id + '\u0001' + r.line_number; }, saleItems: function (r) { return r.sale_id + '\u0001' + r.line_number; },
+    sales: function (r) { return r.sale_id; }, 'inventory-movements': function (r) { return r.movement_id; }, inventoryMovements: function (r) { return r.movement_id; },
+    'cash-movements': function (r) { return r.movement_id; }, cashMovements: function (r) { return r.movement_id; }
+  };
+  function dedupeRows(kind, rows) {
+    var id = ROW_IDENTITY[kind]; if (!id || !Array.isArray(rows)) return rows;
+    var seenIds = new Set(), out = [];
+    for (var i = 0; i < rows.length; i++) { var row = rows[i], k = row && id(row); if (k == null || k.indexOf('undefined') === 0) { out.push(row); continue; } if (seenIds.has(k)) continue; seenIds.add(k); out.push(row); }
+    return out;
+  }
   var SNAPSHOT_KEYS = ['products','customers','credits','credit_payments','credit_accounts','sales','sale_items','inventory_movements','cash_movements','cash_sessions','financial_events','expenses'];
 
   function copy(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -600,7 +613,7 @@
           if (cursor && seen.has(cursor)) fail('REPEATED_CANONICAL_CURSOR');
           seen.add(cursor);
         } while (cursor);
-        return { route: route, name: name, items: items, digest: digest };
+        return { route: route, name: name, items: dedupeRows(route, items), digest: digest };
       }
       function applyEntries(results) {
         results.forEach(function (result) {
