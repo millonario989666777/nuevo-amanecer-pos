@@ -1637,7 +1637,8 @@
         ['cash.close','adjustment.create','expense.create','compensation.create'].includes(record.command);
       var requestOptions = {
         method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.token },
+        headers: Object.assign({ 'content-type': 'application/json', authorization: 'Bearer ' + session.token },
+          typeof record.owner_approval === 'string' && record.owner_approval ? { 'x-owner-approval': record.owner_approval } : {}),
         body: JSON.stringify(record.payload)
       };
       var transport = await readFetch(expected.endpoint + record.route, requestOptions, true, payment ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
@@ -1716,6 +1717,12 @@
         if (target.credit_id != null) record.receipt_ids = { credit_id: target.credit_id, credit_provenance: target.credit_provenance };
       }
       if (!validPayload(command, record.payload)) fail('INVALID_CANONICAL_PAYLOAD');
+      // Etapa 2 (G): un aparato empleado pide el PIN del dueño ANTES de guardar la operación;
+      // si cancela, no queda nada pendiente. La aprobación se valida en el servidor.
+      if (root.NA_ROLES && typeof root.NA_ROLES.beforeCommand === 'function') {
+        var ownerApproval = await root.NA_ROLES.beforeCommand(command, record.payload.operation_id);
+        if (ownerApproval) record.owner_approval = String(ownerApproval).slice(0, 80);
+      }
       durableJournal(record);
       // New durable sale intents come from prepareCommand() with a validated
       // current replica. The Worker re-checks authority, stock and cash

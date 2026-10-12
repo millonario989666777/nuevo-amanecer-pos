@@ -36,6 +36,17 @@
       </div>
       <p class="hint">La clave se envía directamente al Worker CANON y no se guarda en esta página. El navegador conserva únicamente la sesión autorizada.</p>
     </section>
+    <section id="pairPanel" hidden>
+      <details id="pairDetails">
+        <summary>Soy empleado: tengo un código</summary>
+        <label for="pairCode">Código del dueño</label>
+        <div class="row">
+          <input id="pairCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="11" placeholder="XXXXX-XXXXX">
+          <button id="pairButton" type="button">Vincular</button>
+        </div>
+        <p class="hint">El dueño crea el código en Configuración › Aparatos conectados. Sirve una sola vez y dura 15 minutos.</p>
+      </details>
+    </section>
     <div class="actions">
       <a id="openPos" class="button" href="/app/" hidden>Abrir Punto de Venta</a>
       <button id="retryButton" class="secondary" type="button" hidden>Volver a comprobar</button>

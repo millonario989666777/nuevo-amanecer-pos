@@ -55,3 +55,24 @@ html.na-ap-custom #pagePOS #btnPagar{height:calc(64px * var(--na-ap-buttons,1))!
 html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:calc(48px * var(--na-ap-buttons,1))!important;min-height:calc(48px * var(--na-ap-buttons,1))!important;font-size:calc(17px * var(--na-ap-buttons,1))!important}
 html.na-ap-custom #mCobro #mBtnConf{height:calc(48px * var(--na-ap-buttons,1))!important}
 html.na-ap-custom body.na-pos-phone-device #mCobro #mBtnConf{height:calc(44px * var(--na-ap-buttons,1))!important;min-height:calc(44px * var(--na-ap-buttons,1))!important}
+/* Etapa 2 (G): solo el dueño ve Configuración; secciones nuevas; Reseteo en rojo al final. */
+html.na-role-locked #topSettingsBtn,html.na-role-locked [data-page="pageConfig"],html.na-role-locked [data-menu-target="pageConfig"],html.na-role-locked [onclick*="pageConfig"]{display:none!important}
+#cfgSidebar .na-cfg-danger{margin-top:18px!important;border-top:1px solid #fecaca!important;color:#b91c1c!important}
+#cfgSidebar .na-cfg-danger strong{color:#b91c1c!important}
+.na-g-form{display:grid;gap:10px;max-width:420px}.na-g-form label{display:grid;gap:4px;font-size:13px;font-weight:700}
+.na-g-form .cfg-input{margin:0;width:100%;text-align:left;min-height:44px}
+.na-g-dev{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb)}
+.na-g-dev small{display:block;font-size:12px;color:var(--slate,#64748b)}
+.na-g-revoke{min-height:40px;padding:6px 12px;border:1px solid #fecaca;border-radius:8px;background:#fff;color:#b91c1c;font:inherit;font-weight:800;cursor:pointer}
+.na-g-code{margin-top:12px;padding:14px;border:2px dashed var(--teal,#00a99d);border-radius:12px}
+.na-g-code-val{font-size:28px;font-weight:900;letter-spacing:.12em;color:var(--teal-dark,#00796b)}
+.na-g-code ol{margin:8px 0 0 18px;font-size:13px}
+.na-pin-overlay{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.na-pin-box{background:#fff;border-radius:16px;padding:18px;width:min(360px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.na-pin-title{font-size:17px;font-weight:900}.na-pin-detail{font-size:13px;color:#475569;margin:6px 0 12px}
+.na-pin-input{width:100%;min-height:48px;font-size:22px;letter-spacing:.3em;text-align:center;border:1.5px solid #cbd5e1;border-radius:10px}
+.na-pin-msg{min-height:18px;font-size:12px;color:#b91c1c;margin-top:6px}
+.na-pin-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.na-pin-actions button{min-height:44px;padding:8px 16px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font:inherit;font-weight:800;cursor:pointer}
+.na-pin-actions .na-pin-ok{background:var(--teal,#00a99d);border-color:var(--teal,#00a99d);color:#fff}
+.na-pin-input::placeholder{letter-spacing:normal;font-size:15px}
