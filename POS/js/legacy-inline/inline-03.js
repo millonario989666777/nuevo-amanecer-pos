@@ -707,7 +707,7 @@ abrirDescuento=function(){if(!_naSecurity.rules.allowDiscounts){toast('Los descu
 const _naSecOriginalAplicarDescuento=aplicarDescuentoPorcentaje;
 aplicarDescuentoPorcentaje=function(value){const max=Math.max(0,Number(_naSecurity.rules.maxDiscount)||0),requested=Math.max(0,Number(value)||0);if(requested>max){toast(`El descuento máximo permitido es ${max}%`,'error');value=max;}_naAudit('Descuento aplicado',`${Number(value)||0}%`);return _naSecOriginalAplicarDescuento(value);};
 const _naSecOriginalAnularV=anularV;
-anularV=async function(id){if(!_naAuthorize('anularVenta',`Anular la venta ${id}`))return;_naAudit('Anulación autorizada',id);return await _naSecOriginalAnularV(id);};
+anularV=async function(id){if(window.NuevoAmanecerCanonical?.enabled?.()&&window.NA_ANNUL)return await window.NA_ANNUL.annul(id);if(!_naAuthorize('anularVenta',`Anular la venta ${id}`))return;_naAudit('Anulación autorizada',id);return await _naSecOriginalAnularV(id);};
 const _naSecOriginalCerrarCaja=cerrarCaja;
 cerrarCaja=function(){if(cajCloseProc)return;if(!_naAuthorize('cerrarCaja','Cerrar caja del día'))return;_naAudit('Cierre de caja autorizado');return _naSecOriginalCerrarCaja();};
 const _naSecOriginalResetModule=resetModule;

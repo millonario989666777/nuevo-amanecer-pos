@@ -39,11 +39,11 @@
     try { var c = JSON.parse(root.localStorage.getItem(CACHE) || 'null'); if (c && c.role) setState(c); else paint(); } catch (_) { paint(); }
   })();
 
-  async function api(path, body, method) {
+  async function api(path, body, method, extraHeaders) {
     var c = creds(); if (!c) throw new Error('SIN_SESION');
     var r = await root.fetch(c.endpoint.replace(/\/+$/, '') + path, {
       method: method || (body ? 'POST' : 'GET'), credentials: 'omit', redirect: 'error', cache: 'no-store',
-      headers: Object.assign({ authorization: 'Bearer ' + c.token }, body ? { 'content-type': 'application/json' } : {}),
+      headers: Object.assign({ authorization: 'Bearer ' + c.token }, body ? { 'content-type': 'application/json' } : {}, extraHeaders || {}),
       body: body ? JSON.stringify(body) : undefined
     });
     var data = {}; try { data = await r.json(); } catch (_) {}

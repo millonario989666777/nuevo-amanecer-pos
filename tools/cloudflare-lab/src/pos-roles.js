@@ -150,9 +150,10 @@ async function requirePinIfSet(db, pin, deviceId) {
 }
 
 // Puerta para comandos del dueño. null = permitido.
-export async function ownerGate(request, env, auth, action, json, db) {
+export async function ownerGate(request, env, auth, action, json, db, always = false) {
   const role = auth.posRole || await posRoleFor(db, auth.principalId);
-  if (role === 'owner') return null;
+  // always: la acción pide el PIN del dueño también en su propio aparato (anular venta).
+  if (role === 'owner' && !always) return null;
   const approvalId = String(request.headers.get('x-owner-approval') || '');
   let operationId = null;
   try { operationId = (await request.clone().json())?.operation_id ?? null; } catch { operationId = null; }
@@ -166,7 +167,7 @@ export async function ownerGate(request, env, auth, action, json, db) {
       return null; // reintento idempotente de la misma operación aprobada
     }
   }
-  return json({ error: 'owner_approval_required', action, pos_role: 'empleado' }, 403);
+  return json({ error: 'owner_approval_required', action, pos_role: role === 'owner' ? 'owner' : 'empleado' }, 403);
 }
 
 export async function handleRoles(request, url, env, { json, authorizeSession, getDatabase }) {
