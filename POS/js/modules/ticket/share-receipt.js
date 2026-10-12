@@ -12,7 +12,7 @@
     let n=raw.replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);
     if(/^9\d{8}$/.test(n))n='51'+n;
     if(n.startsWith('51'))return /^519\d{8}$/.test(n)?n:'';
-    return (raw.startsWith('+')||raw.startsWith('00'))&&/^[1-9]\d{7,14}$/.test(n)?n:'';
+    return (raw.startsWith('+')||raw.startsWith('00'))&&/^[1-9]\d{8,14}$/.test(n)?n:'';
   }
   function textUrl(phone,text){const number=normalizePhone(phone);if(!number)throw new Error('Ingresa un número de WhatsApp válido, con código de país');return 'https://wa.me/'+number+'?text='+encodeURIComponent(text);}
   function money(value){return'S/ '+Number(value).toFixed(2);}

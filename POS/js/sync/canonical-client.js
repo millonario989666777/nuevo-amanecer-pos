@@ -1607,7 +1607,7 @@
     return withWriterLock(function () {
       var record=journal();
       if(!record||record.state!=='PENDING'||record.command!=='customer.create')return false;
-      var safeErrors=['invalid_customer_request','customer_id_conflict','customer_document_conflict','operation_id_conflict','stale_authority','canonical_not_active','canonical_customer_conflict'];
+      var safeErrors=['invalid_customer_request','invalid_customer_document','invalid_customer_phone','customer_phone_conflict','customer_id_conflict','customer_document_conflict','operation_id_conflict','stale_authority','canonical_not_active','canonical_customer_conflict'];
       if(![400,409].includes(record.last_status)||!safeErrors.includes(record.last_error))return false;
       root.localStorage.removeItem(JOURNAL);
       if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');
@@ -1615,7 +1615,7 @@
     });
   }
   async function discardRejectedCustomerContact(){
-    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||![400,409].includes(r.last_status)||!['invalid_customer_contact','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
+    return withWriterLock(function(){const r=journal();if(!r||r.state!=='PENDING'||r.command!=='customer.contact.set'||![400,409].includes(r.last_status)||!['invalid_customer_contact','customer_not_found','stale_contact','operation_id_conflict','stale_authority','customer_contact_conflict','customer_phone_conflict'].includes(r.last_error))return false;root.localStorage.removeItem(JOURNAL);if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');return true;});
   }
   async function discardRejectedCustomerCreditPolicy() {
     return withWriterLock(function () {
