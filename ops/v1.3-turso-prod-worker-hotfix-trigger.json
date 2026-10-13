@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2). Turso-only Worker redeploy of 9a7f512 (#612): GET /auth/purchases?id= status lookup; same purchase id with different contents returns 409 purchase_payload_mismatch and applies nothing. No schema changes, no live sale. Rollback to 3c72767 (current live Worker source).",
-  "target_commit": "9a7f512b4b4a84e152958d0eb45f3a8f6db86329",
-  "rollback_ref": "3c72767f5a28cd11666f8d502357ee28031139bd",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 3792807 (#616): GET /auth/purchases?id= also returns stored lines with applied flag. Read-only addition, no schema changes, no live sale. Rollback to 9a7f512 (current live Worker source).",
+  "target_commit": "37928079efaca82ebd9d87e0e79e5ae57ba4c9e1",
+  "rollback_ref": "9a7f512b4b4a84e152958d0eb45f3a8f6db86329",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 21,
-  "previous_run_id": 38321417286,
+  "attempt": 22,
+  "previous_run_id": 38416531111,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_BOT6_PURCHASE_ID"
+  "optimization": "E2_BOT6_PARTIAL_PURCHASE"
 }
