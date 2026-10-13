@@ -1055,7 +1055,7 @@ function labCategorySummary(client, category) {
       '<label class="na-v2-batch-amount"><span>Monto total que está abonando</span><input id="naV2BatchAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" oninput="naCanonBatchAmountChanged()"></label>' +
       '<div class="na-v2-batch-actions"><button type="button" class="na-v2-batch-auto" onclick="naCanonBatchAutoSelect()">Aplicar automáticamente</button></div>' +
       '<div class="na-v2-batch-method-row"><label><span>Método de pago</span><select id="naV2BatchMethod" onchange="naCanonBatchMethodChanged()">' +
-        '<option value="efectivo">💵 Efectivo</option><option value="yape">📲 Yape</option><option value="plin">📲 Plin</option><option value="transferencia">🏦 Transferencia</option>' +
+        '<option value="efectivo">Efectivo</option><option value="yape">Yape</option><option value="plin">Plin</option><option value="transferencia">Transferencia</option>' +
       '</select></label><label id="naV2BatchReferenceWrap" hidden><span>Número de operación</span><input id="naV2BatchReference" maxlength="80" autocomplete="off" placeholder="Ej: 00078257" oninput="naCanonBatchPaymentChanged()"></label></div>' +
       '<div class="na-v2-batch-summary" id="naV2BatchSummary">Selecciona las deudas que deseas pagar.</div>' +
       '<button type="button" class="na-v2-batch-submit" id="naV2BatchSubmit" onclick="naCanonSubmitBatchPayment()" disabled>Registrar pago</button>' +
