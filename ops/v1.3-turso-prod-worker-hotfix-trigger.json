@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 8290aa8 (#628): POST /auth/dni-lookup (saved customers first, then Decolecta from the Worker; 3 s; employee limits). Syncs DECOLECTA_API_TOKEN secret by stdin. No schema changes, no live sale. Rollback to 2feb9bb.",
-  "target_commit": "8290aa8e2df60d4c0a0cfaf7788bc9b5af789785",
-  "rollback_ref": "2feb9bbfd2f7867060ff841b5e54b5894a816afe",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of #630: DNI lookup fetch uses redirect 'manual' (Workers rejects 'error'). No schema changes, no live sale. Rollback to 8290aa8.",
+  "target_commit": "a913412e8025044de7bb568cdc0086552a356d88",
+  "rollback_ref": "8290aa8e2df60d4c0a0cfaf7788bc9b5af789785",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 25,
-  "optimization": "DNI_DECOLECTA_LOOKUP"
+  "attempt": 26,
+  "optimization": "DNI_REDIRECT_FIX"
 }
