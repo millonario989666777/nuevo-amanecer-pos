@@ -190,7 +190,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
       return json({ pos_role: role, owner_pin_set: pinSet, roles_ready: true, device_id: auth.principalId, label });
     }
     if (path === '/settings' && request.method === 'GET') {
-      const rows = (await db.prepare('SELECT key,value_json,revision,updated_at FROM pos_settings ORDER BY key').all()).results || [];
+      const rows = (await db.prepare('SELECT key,value_json,revision,updated_at FROM pos_settings WHERE key NOT LIKE \'internal:%\' ORDER BY key').all()).results || [];
       return json({ settings: rows.map(r => ({ key: r.key, value: JSON.parse(r.value_json), revision: Number(r.revision), updated_at: r.updated_at })) });
     }
     if (path === '/auth/reviews' && request.method === 'GET') {

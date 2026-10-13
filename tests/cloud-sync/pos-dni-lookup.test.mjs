@@ -1,0 +1,110 @@
+// Búsqueda de DNI al agregar cliente. Solo fixtures locales: nunca llama a Decolecta de verdad.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { a6Fixture } from './a6-fixture.mjs';
+import { dniLookupRoute, queryDecolecta, DECOLECTA_URL, LIMITS } from '../../tools/cloudflare-lab/src/pos-dni-lookup.js';
+
+const read = n => readFileSync(new URL('../../infra/database/migrations/' + n, import.meta.url), 'utf8');
+const FAKE = 'fake-test-token';
+async function setup(t) {
+  const f = await a6Fixture(t);
+  f.database.exec(read('0010_session_auth.sql').replace(/DROP INDEX[^;]*;/, ''));
+  f.database.exec(read('0024_pos_roles_owner_pin.sql'));
+  f.addDevice('owner-phone', 'writer', 'active', 'owner-token');
+  f.env.DECOLECTA_API_TOKEN = FAKE;
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), auth: init?.headers?.authorization });
+    return new Response(JSON.stringify({ first_name: 'ANA', first_last_name: 'PEREZ', second_last_name: 'RUIZ', full_name: 'PEREZ RUIZ, ANA', document_number: '12345678', extra: 'no-debe-salir' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  f.calls = calls;
+  return f;
+}
+const H = token => ({ authorization: 'Bearer ' + token, 'content-type': 'application/json' });
+async function call(f, path, token, body) {
+  const r = await f.fetch('http://localhost' + path, { method: 'POST', headers: H(token), body: JSON.stringify(body) });
+  return { status: r.status, body: await r.json() };
+}
+async function employee(f) {
+  await call(f, '/auth/owner-pin', 'owner-token', { new_pin: '2468' });
+  const code = await call(f, '/auth/pairing-code', 'owner-token', { label: 'Caja 2', pin: '2468' });
+  const paired = await call(f, '/auth/pair', null, { code: code.body.code });
+  return paired.body.session_token;
+}
+
+test('nuevo DNI: el Worker consulta con su secreto y devuelve solo nombre y apellidos', async t => {
+  const f = await setup(t);
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '12345678' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { status: 'found', name: 'ANA PEREZ RUIZ', first_name: 'ANA', last_names: 'PEREZ RUIZ' });
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].url, DECOLECTA_URL + '?numero=12345678');
+  assert.equal(f.calls[0].auth, 'Bearer ' + FAKE);
+  assert.ok(!JSON.stringify(r.body).includes(FAKE));
+});
+
+test('DNI ya guardado: abre esa ficha y no gasta consulta', async () => {
+  const seen = [];
+  const db = { prepare: sql => ({ bind: (...args) => ({ first: async () => { seen.push([sql, args]); return /canonical_live_customers/.test(sql) && args[0] === '87654321' ? { customer_id: 'c-1', name: 'Cliente  Uno' } : null; } }) }) };
+  let fetched = 0;
+  const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
+  const req = new Request('http://localhost/auth/dni-lookup', { method: 'POST', body: JSON.stringify({ dni: '87654321' }) });
+  const r = await dniLookupRoute(req, { DECOLECTA_API_TOKEN: FAKE }, { posRole: 'empleado', principalId: 'd' }, json, db, { fetch: async () => { fetched++; } });
+  assert.deepEqual(await r.json(), { status: 'existing', customer_id: 'c-1', name: 'Cliente Uno' });
+  assert.equal(fetched, 0);
+  assert.ok(seen.every(([sql]) => !/pos_settings/.test(sql)), 'no cuenta consulta');
+});
+
+test('DNI inválido, sin sesión y sin secreto', async t => {
+  const f = await setup(t);
+  assert.equal((await call(f, '/auth/dni-lookup', 'owner-token', { dni: '1234' })).status, 400);
+  assert.equal((await call(f, '/auth/dni-lookup', 'bad', { dni: '12345678' })).status, 401);
+  delete f.env.DECOLECTA_API_TOKEN;
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '12345678' });
+  assert.deepEqual(r.body, { status: 'manual', reason: 'not_configured' });
+  assert.equal(f.calls.length, 0);
+});
+
+test('empleado: límite por minuto; contadores ocultos en /settings', async t => {
+  const f = await setup(t);
+  const tok = await employee(f);
+  assert.ok(tok);
+  for (let i = 0; i < LIMITS.employeePerMinute; i++) { const r = await call(f, '/auth/dni-lookup', tok, { dni: '1000000' + i }); assert.equal(r.body.status, 'found', JSON.stringify(r)); }
+  const over = await call(f, '/auth/dni-lookup', tok, { dni: '20000000' });
+  assert.equal(over.status, 429);
+  assert.deepEqual(over.body, { status: 'manual', reason: 'minute_limit' });
+  assert.equal(f.calls.length, LIMITS.employeePerMinute);
+  const s = await f.fetch('http://localhost/settings', { headers: H('owner-token') });
+  const keys = (await s.json()).settings.map(x => x.key);
+  assert.ok(!keys.some(k => k.startsWith('internal:')));
+});
+
+test('tope mensual del negocio', async t => {
+  const f = await setup(t);
+  f.env.DNI_LOOKUP_MONTHLY_CAP = '2';
+  await call(f, '/auth/dni-lookup', 'owner-token', { dni: '11111111' });
+  await call(f, '/auth/dni-lookup', 'owner-token', { dni: '22222222' });
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '33333333' });
+  assert.deepEqual(r.body, { status: 'manual', reason: 'monthly_limit' });
+  assert.equal(f.calls.length, 2);
+});
+
+test('servicio lento o caído: pasa a nombre manual', async () => {
+  const slow = (_u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' }))));
+  assert.deepEqual(await queryDecolecta('12345678', 't', slow, 30), { status: 'timeout' });
+  assert.deepEqual(await queryDecolecta('12345678', 't', async () => { throw new Error('offline'); }), { status: 'provider_error' });
+  assert.deepEqual(await queryDecolecta('12345678', 't', async () => new Response('{}', { status: 404 })), { status: 'not_found' });
+  assert.deepEqual(await queryDecolecta('12345678', 't', async () => new Response('{}', { status: 401 })), { status: 'provider_auth' });
+});
+
+test('el celular nunca llama a Decolecta ni ve la clave', () => {
+  const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  assert.ok(!/decolecta/i.test(client.replace(/^\s*\/\*[\s\S]*?\*\//, '')));
+  assert.match(client, /\/auth\/dni-lookup/);
+  assert.match(client, /TIMEOUT_MS = 3000/);
+  assert.match(readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8'), /js\/config\/pos-dni-lookup-client\.js/);
+  assert.match(readFileSync(new URL('../../POS/sw.js', import.meta.url), 'utf8'), /'\.\/js\/config\/pos-dni-lookup-client\.js'/);
+});

@@ -834,7 +834,7 @@ function _baseCliRender(){
     }).join('');
 }
 function toggleCliCard(id){document.getElementById(`cc-${id}`).classList.toggle('open');}
-function _naResetClienteForm(){['cNombre','cDni','cTel','cDir','cLinea'].forEach(id=>{const input=document.getElementById(id);if(input)input.value='';});}
+function _naResetClienteForm(){['cNombre','cDni','cTel','cDir','cLinea'].forEach(id=>{const input=document.getElementById(id);if(input)input.value='';});const dniHint=document.getElementById('cDniHint');if(dniHint){dniHint.textContent='';dniHint.hidden=true;}}
 function abrirModalCli(){document.getElementById('mCliTitle').textContent='➕ Nuevo cliente';_naResetClienteForm();document.getElementById('mCli').classList.add('open');}
 
 
