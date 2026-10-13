@@ -24,13 +24,28 @@
     el.textContent = text || ''; el.hidden = !text;
   }
   function call(name) { var a = [].slice.call(arguments, 1); var fn = root[name]; if (typeof fn === 'function') try { return fn.apply(root, a); } catch (_) {} }
+  // cerrarModal y toast son «const» del script clásico: no están en window, se llaman por nombre.
+  function closeCli() {
+    try { if (typeof cerrarModal === 'function') { cerrarModal('mCli'); return; } } catch (_) {} // eslint-disable-line no-undef
+    var m = doc.getElementById('mCli'); if (m) m.classList.remove('open');
+  }
+  function say(msg, kind) {
+    try { if (typeof toast === 'function') { toast(msg, kind); return; } } catch (_) {} // eslint-disable-line no-undef
+    call('toast', msg, kind);
+  }
   function openExisting(found, dni) {
-    call('cerrarModal', 'mCli');
-    call('setModule', 'clientes');
-    var s = doc.getElementById('cliSearch'); if (s) s.value = dni;
-    call('cliRender');
-    var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) card.classList.add('open');
-    call('toast', 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.', 'info');
+    closeCli();
+    var opened = false;
+    if (found.id != null && typeof root.naCanonOpenClientAccount === 'function') {
+      try { if (typeof root.goPage === 'function') root.goPage('pageClientes'); else call('setModule', 'clientes'); root.naCanonOpenClientAccount(found.id); opened = true; } catch (_) { opened = false; }
+    }
+    if (!opened) {
+      call('setModule', 'clientes');
+      var s = doc.getElementById('cliSearch'); if (s) s.value = dni;
+      call('cliRender');
+      var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) { card.classList.add('open'); opened = true; }
+    }
+    say(opened ? 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.' : 'Este DNI ya es de «' + clean(found.name) + '». Búsquelo en Clientes.', 'info');
   }
   var MANUAL = 'No se encontró el nombre. Escríbalo a mano.';
   var SLOW = 'La búsqueda tarda. Escriba el nombre a mano; si llega, se completa solo.';
@@ -47,7 +62,8 @@
     var reason = String(out.reason || '');
     // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
     if (reason === 'not_found') asked[dni] = { name: null };
-    if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
+    if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
+    else if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
     else if (reason === 'not_found') hint(MANUAL);
     else hint('No se pudo buscar ahora. Escriba el nombre a mano.');
   }
@@ -59,7 +75,7 @@
     if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
     var local = findLocal(dni);
     if (local) { hint(''); openExisting(local, dni); return; }
-    if (clean(nameEl.value)) { hint(''); return; }
+    if (clean(nameEl.value)) { hint('Ya hay un nombre escrito. Bórrelo si quiere buscarlo por DNI.'); return; }
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
     if (inflight === dni) return; // input + change + paste del mismo DNI: una sola consulta
@@ -70,7 +86,7 @@
     root.setTimeout(function () { if (!done && my === seq) hint(SLOW); }, TIMEOUT_MS);
     var out;
     try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
-    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: e && e.message === 'SIN_SESION' ? 'no_session' : 'network' }; }
+    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) ? 'no_session' : 'network' }; }
     done = true; if (inflight === dni) inflight = null;
     if (my !== seq && clean(doc.getElementById('cDni') && doc.getElementById('cDni').value) !== dni) return;
     apply(out, dni);
