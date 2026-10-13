@@ -1,5 +1,7 @@
-/* Etapa 2 · Configuración v9 (aprobada por el admin) — solo PC y tablet (>= 701 px).
-   En teléfono (<= 700 px) no se crea nada visible: la Configuración del teléfono sigue igual.
+/* Etapa 2 · Configuración v9 (aprobada por el admin) — PC, tablet y teléfono.
+   En teléfono (<= 700 px) solo cambia la pantalla de Configuración (lista de temas -> tema a pantalla
+   completa con «‹ Configuración»). Tema y modo nocturno: en PC/tablet en toda la app; en teléfono
+   solo dentro de Configuración. El resto del teléfono no cambia.
    Cada control usa un ajuste real de la app. Lo que se comparte entre aparatos se guarda en el
    servidor (/settings, solo el admin) con guardado automático; lo de "este aparato" en el aparato.
    Íconos de línea estilo Lucide (https://lucide.dev), licencia ISC. Copyright (c) Lucide Contributors. */
@@ -55,7 +57,7 @@
     ['pers', 'Personal y seguridad', 'shield', 'PIN, aparatos y permisos', [['pin', 'Usuarios y PIN', 'user', 'PIN del admin y cajeros'], ['devs', 'Aparatos conectados', 'phone', 'Aparatos que usan esta tienda'], ['perm', 'Bloqueos y permisos', 'shield', 'Qué se puede usar y cuándo se pide PIN']]],
     ['sis', 'Sistema', 'palette', 'Apariencia, copia y estado', [['apar', 'Apariencia', 'palette', 'Color, modo y tamaño en este aparato'], ['backup', 'Copia de seguridad', 'db', 'Guarda una copia de tus datos'], ['estado', 'Estado del sistema', 'act', 'Conexión y operaciones pendientes']]]
   ];
-  var st = { top: 'prod', tab: {}, tkType: 'ticket', tkSub: 'enc' };
+  var st = { top: 'prod', tab: {}, tkType: 'ticket', tkSub: 'enc', open: false };
   try { var saved = JSON.parse(root.sessionStorage.getItem('na_v9_nav') || '{}'); if (saved.top) st.top = saved.top; if (saved.tab) st.tab = saved.tab; } catch (_) {}
   function remember() { try { root.sessionStorage.setItem('na_v9_nav', JSON.stringify({ top: st.top, tab: st.tab })); } catch (_) {} }
 
@@ -207,7 +209,14 @@
   var appliedDark = null;
   function applyAppearance() {
     var html = doc.documentElement, d = ap();
-    if (!wide()) { html.removeAttribute('data-na-theme'); if (appliedDark !== null && doc.body) { doc.body.classList.toggle('dark', false); appliedDark = null; } return; }
+    var box = doc.getElementById('naCfgV9');
+    if (!wide()) {
+      html.removeAttribute('data-na-theme'); if (appliedDark !== null && doc.body) { doc.body.classList.toggle('dark', false); appliedDark = null; }
+      // Teléfono: el tema y el modo se aplican solo a la pantalla de Configuración.
+      if (box) { var pd = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : !!(doc.body && doc.body.classList.contains('dark')); box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', pd); box.classList.toggle('na9-lt', !pd); }
+      return;
+    }
+    if (box) { box.removeAttribute('data-na9-theme'); box.classList.remove('na9-dk', 'na9-lt'); }
     html.setAttribute('data-na-theme', d.theme);
     if (!d.mode) return; // sin elección guardada: se respeta el día/noche de siempre
     var dark = d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches));
@@ -309,7 +318,7 @@
         + note('El número es la serie y el código de la venta (por ejemplo ' + esc(f.serie) + '-V-000123).');
       else if (sb === 'campos') L = '<div class="na9-cols2">' + row('Cliente', '', sw('fmt.showClient', !!f.showClient)) + row('DNI/RUC del cliente', '', sw('fmt.showDoc', !!f.showDoc)) + row('IGV desglosado', '', sw('fmt.showIGV', !!f.showIGV)) + row('Método de pago', '', sw('fmt.showPayment', !!f.showPayment)) + '</div>';
       else L = '<div class="na9-cols2">' + sel('Ancho del papel', 'fmt.ancho', f.ancho, [['58mm', '58 mm'], ['80mm', '80 mm'], ['A4', 'Hoja A4']]) + '</div>'
-        + note('Para imprimir: abre la venta, toca el ticket y elige «' + TN[ty] + '» en la parte de arriba.');
+        + note(wide() ? 'Para imprimir: abre la venta, toca el ticket y elige «' + TN[ty] + '» en la parte de arriba.' : 'Para imprimir ' + TN[ty] + ' usa la PC o la tablet: abre la venta, toca el ticket y elige «' + TN[ty] + '» arriba.');
     }
     return note('<b>Solo formatos de impresión.</b> Boleta y Factura no son comprobantes electrónicos SUNAT; la app no emite comprobantes fiscales.', 'warn')
       + '<div class="na9-tkbar"><div class="na9-seg">' + ['ticket', 'boleta', 'factura'].map(function (x) { return '<button type="button" class="' + (x === ty ? 'on' : '') + '" data-act="tkty" data-t="' + x + '">' + TN[x] + '</button>'; }).join('') + '</div>'
@@ -324,7 +333,7 @@
       + '<div class="na9-lbl">Tamaño de letra y botones: <b id="na9Zv">' + zn + ' (' + z + '%)</b></div>'
       + '<div class="na9-zbtns"><button type="button" class="na9-btn sec na9-zb" data-act="zdn" aria-label="Más chico">A−</button>' + ZP.map(function (x) { return '<button type="button" class="na9-btn sec na9-zp' + (z === x[1] ? ' on' : '') + '" data-act="zset" data-z="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '<button type="button" class="na9-btn sec na9-zb" data-act="zup" aria-label="Más grande">A+</button></div>'
       + '<label class="na9-zslider"><input type="range" min="85" max="125" step="5" data-na9="zoom" value="' + z + '" aria-label="Tamaño de letra y botones"></label>'
-      + '<p class="na9-muted">Se guarda solo en este aparato. En el teléfono la pantalla no cambia.</p>';
+      + '<p class="na9-muted">' + (wide() ? 'Se guarda solo en este aparato.' : 'Se guarda solo en este aparato. En el teléfono el color y el modo nocturno se ven solo en Configuración; el tamaño cambia en toda la app.') + '</p>';
   }
   function estadoBody() {
     var online = root.navigator.onLine !== false, pend = 0, blocked = 0;
@@ -349,9 +358,10 @@
     return el;
   }
   function topById(id) { for (var i = 0; i < TOP.length; i++) if (TOP[i][0] === id) return TOP[i]; return null; }
+  var CHEV = '<svg class="na9-i na9-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
   function render() {
-    if (!wide()) return;
     var el = shell(); if (!el) return;
+    var mob = !wide(); el.classList.toggle('na9-mob', mob); el.classList.toggle('na9-open', mob && st.open);
     var nav = doc.getElementById('na9Nav'), main = doc.getElementById('na9Main');
     unmountLegacy();
     if (!canEdit()) {
@@ -360,8 +370,8 @@
       return;
     }
     nav.hidden = false;
-    nav.innerHTML = '<h2>Configuración</h2>' + TOP.map(function (t) { return '<button type="button" class="na9-it' + (t[0] === st.top ? ' on' : '') + '" data-top="' + t[0] + '">' + I(t[2]) + '<span class="na9-tt">' + esc(t[1]) + '<small>' + esc(t[3]) + '</small></span></button>'; }).join('')
-      + '<div class="na9-reset"><button type="button" class="na9-it' + (st.top === 'reset' ? ' on' : '') + '" data-top="reset">' + I('reset') + '<span class="na9-tt">Reseteo<small>Volver a descargar de la nube</small></span></button></div>';
+    nav.innerHTML = '<h2>Configuración</h2>' + TOP.map(function (t) { return '<button type="button" class="na9-it' + (t[0] === st.top ? ' on' : '') + '" data-top="' + t[0] + '">' + I(t[2]) + '<span class="na9-tt">' + esc(t[1]) + '<small>' + esc(t[3]) + '</small></span>' + CHEV + '</button>'; }).join('')
+      + '<div class="na9-reset"><button type="button" class="na9-it' + (st.top === 'reset' ? ' on' : '') + '" data-top="reset">' + I('reset') + '<span class="na9-tt">Reseteo<small>Volver a descargar de la nube</small></span>' + CHEV + '</button></div>';
     var h;
     if (st.top === 'reset') h = '<div class="na9-card"><div class="na9-hd"><h3>Reseteo</h3><p>Volver a descargar los datos de la nube</p></div><div class="na9-bd">' + resetBody() + '</div></div>';
     else {
@@ -370,7 +380,8 @@
         + t[4].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (x[0] === cur[0]) + '" class="na9-tab' + (x[0] === cur[0] ? ' on' : '') + '" data-tab="' + x[0] + '">' + I(x[2]) + esc(x[1]) + '</button>'; }).join('')
         + '</div><div class="na9-bd" data-sec="' + cur[0] + '">' + body(cur[0]) + '</div></div>';
     }
-    main.innerHTML = h;
+    if (mob) h = '<button type="button" class="na9-back" data-act="back"><svg class="na9-i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Configuración</button>' + h;
+    main.innerHTML = h; applyAppearance();
     var host = main.querySelector('.na9-legacy-host');
     if (host) mountLegacy(host, host.dataset.legacy, host.dataset.only ? new RegExp(host.dataset.only) : null);
     if (main.querySelector('#naDevList') && root.NA_CONFIG_G && root.NA_CONFIG_G.loadDevices) Promise.resolve(root.NA_CONFIG_G.loadDevices()).then(function () { relabel(doc.getElementById('na9Main')); });
@@ -425,10 +436,11 @@
   async function onClick(e) {
     var t = e.target; if (!t || !t.closest) return;
     if (!t.closest('#naCfgV9')) return;
-    var top = t.closest('[data-top]'); if (top) { st.top = top.dataset.top; remember(); render(); return; }
+    var top = t.closest('[data-top]'); if (top) { st.top = top.dataset.top; st.open = true; remember(); render(); if (!wide()) try { root.scrollTo(0, 0); } catch (_) {} return; }
     var tab = t.closest('[data-tab]'); if (tab) { st.tab[st.top] = tab.dataset.tab; remember(); render(); return; }
     var a = t.closest('[data-act]'); if (!a) return;
     var act = a.dataset.act;
+    if (act === 'back') { st.open = false; render(); try { root.scrollTo(0, 0); } catch (_) {} return; }
     if (act === 'tkty') { st.tkType = a.dataset.t; render(); return; }
     if (act === 'tksub') { st.tkSub = a.dataset.t; render(); return; }
     if (act === 'theme' || act === 'mode') { setAp(act, a.dataset.t); render(); badge('Guardado ✓ (este aparato)'); return; }
@@ -456,16 +468,16 @@
     // En PC/tablet la Configuración nueva es la única que lee y escribe; el panel viejo no captura campos ocultos.
     if (typeof root._naCaptureVisibleConfig === 'function' && !root._naCaptureVisibleConfig.__na9) {
       var cap = root._naCaptureVisibleConfig;
-      var w = function () { if (wide() && doc.getElementById('naCfgV9') && legacy.cat !== 'negocio') return; return cap.apply(this, arguments); };
+      var w = function () { if (doc.getElementById('naCfgV9') && legacy.cat !== 'negocio') return; return cap.apply(this, arguments); };
       w.__na9 = true; root._naCaptureVisibleConfig = w;
     }
     applyAppearance();
     var page = doc.getElementById('pageConfig');
     if (page && !install.obs && root.MutationObserver) {
       install.obs = true; var was = page.classList.contains('active');
-      new root.MutationObserver(function () { var now = page.classList.contains('active'); if (now && !was) render(); if (!now && was) unmountLegacy(); was = now; }).observe(page, { attributes: true, attributeFilter: ['class'] });
+      new root.MutationObserver(function () { var now = page.classList.contains('active'); if (now && !was) { if (!wide()) st.open = false; render(); } if (!now && was) unmountLegacy(); was = now; }).observe(page, { attributes: true, attributeFilter: ['class'] });
     }
-    if (wide()) { shell(); if (page && page.classList.contains('active')) render(); }
+    shell(); applyAppearance(); if (page && page.classList.contains('active')) render();
   }
   if (!install.events) {
     install.events = true;
@@ -474,20 +486,19 @@
     doc.addEventListener('input', onChange);
     var onWidth = function () {
       applyAppearance();
-      if (wide()) { var p = doc.getElementById('pageConfig'); shell(); if (p && p.classList.contains('active')) render(); }
-      else { unmountLegacy(); try { root.renderCfgContent(currentCfgCategory); } catch (_) {} } // eslint-disable-line no-undef
+      var p = doc.getElementById('pageConfig'); shell(); if (p && p.classList.contains('active')) render();
     };
     if (MQ.addEventListener) MQ.addEventListener('change', onWidth); else if (MQ.addListener) MQ.addListener(onWidth);
     if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', applyAppearance);
-    root.addEventListener('na:role', function () { var p = doc.getElementById('pageConfig'); if (wide() && p && p.classList.contains('active')) render(); });
-    root.addEventListener('online', function () { var p = doc.getElementById('pageConfig'); if (wide() && p && p.classList.contains('active')) render(); });
-    root.addEventListener('offline', function () { var p = doc.getElementById('pageConfig'); if (wide() && p && p.classList.contains('active')) render(); });
+    root.addEventListener('na:role', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
+    root.addEventListener('online', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
+    root.addEventListener('offline', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
   }
   // La barra superior de día/noche sigue funcionando: en PC/tablet recuerda la elección.
   function wrapDark() {
     if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
     var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } return r; };
+    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } else applyAppearance(); return r; };
     root.toggleDark.__na9 = true;
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { install(); wrapDark(); }); else { install(); wrapDark(); }
