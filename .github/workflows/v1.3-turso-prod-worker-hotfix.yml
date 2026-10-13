@@ -121,6 +121,32 @@ jobs:
           cat /tmp/post-health.json || true
           exit 1
 
+      - name: Sync Decolecta DNI secret to the Worker (value never printed)
+        working-directory: tools/cloudflare-lab
+        shell: bash
+        env:
+          DECOLECTA_API_TOKEN: ${{ secrets.DECOLECTA_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DECOLECTA_API_TOKEN:-}" ]; then
+            echo "DECOLECTA_SECRET_SYNC=SKIPPED (GitHub secret not set; DNI lookup stays manual)"
+            exit 0
+          fi
+          printf '%s' "$DECOLECTA_API_TOKEN" | npx wrangler secret put DECOLECTA_API_TOKEN --config ../cloudflare-prod/wrangler.turso-prod.jsonc > /dev/null
+          npx wrangler secret list --config ../cloudflare-prod/wrangler.turso-prod.jsonc | grep -Fq '"DECOLECTA_API_TOKEN"'
+          echo "DECOLECTA_SECRET_SYNC=PASS"
+
+      - name: Verify production health after secret sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            code="$(curl -sS -o /tmp/post-secret-health.json -w '%{http_code}' "$PROD_WORKER_URL/health" || true)"
+            if [ "$code" = "200" ] && grep -Fq '"ok":true' /tmp/post-secret-health.json; then echo "POST_SECRET_HEALTH=PASS"; exit 0; fi
+            sleep 1
+          done
+          exit 1
+
       - name: Roll back code on Turso if deploy verification fails
         if: ${{ failure() && env.HOTFIX_DEPLOY_ATTEMPTED == '1' }}
         shell: bash
