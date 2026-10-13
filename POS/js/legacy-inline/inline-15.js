@@ -29,7 +29,7 @@ gasRender=function(){
       _naSecAppend(info,'div','gasto-desc',expense.desc||'Gasto');
       const meta=_naSecAppend(info,'div','gasto-meta');
       _naSecAppend(meta,'span','gasto-cat',expense.cat||'Otro');
-      _naSecAppend(meta,'span','',`💳 ${expense.metodo||''}`);
+      _naSecAppend(meta,'span','',` ${expense.metodo||''}`).insertAdjacentHTML('afterbegin','<i class="na-ic na-ic-card" aria-hidden="true"></i>');
       if(expense.nota)_naSecAppend(meta,'span','',expense.nota);
       _naSecAppend(card,'div','gasto-monto',`-${fmt(expense.monto)}`);
     });

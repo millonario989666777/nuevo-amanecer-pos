@@ -355,7 +355,7 @@
     var r = clean(reason);
     if (!r) return '';
     if ((root.navigator && root.navigator.onLine === false) || /OFFLINE|Failed to fetch|NetworkError|Load failed|AUTHORITY_UNAVAILABLE|TIMEOUT|network/i.test(r)) return ' (sin conexión)';
-    if (/_5\d\d\b|_5\d\d$|internal|storage|service_unavailable/i.test(r)) return ' (falla del servidor)';
+    if (/_5\d\d\b|_5\d\d$|internal|storage|service_unavailable/i.test(r)) return ' (el servidor respondió con un error)';
     if (/429/.test(r)) return ' (servidor ocupado)';
     var out = root.NuevoAmanecerCanonicalSaleOutbox;
     try { if (out && typeof out.reasonText === 'function' && !/^[A-Z_0-9]+$/.test(r)) return ' (' + out.reasonText(r) + ')'; } catch (_) {}
@@ -890,6 +890,7 @@
     return !!box;
   }
   root.NuevoAmanecerCanonicalCashBridge = Object.freeze({
+    closing: function () { return !!closingPromise; },
     enabled: enabled,
     showReview: showReview,
     originalHandlers: function () { return Object.assign({}, original); }

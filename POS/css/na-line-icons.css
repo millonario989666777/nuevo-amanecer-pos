@@ -49,13 +49,13 @@ body.dark .p-img.na-noimg{background:#1e293b!important;box-shadow:none!important
    oscuro; la barra Cancelar/Confirmar queda pegada al borde inferior de la ventana. */
 @media (max-width:700px){
   #mPagoCred .modal,#mCierre .modal{overflow-x:hidden!important;overflow-y:auto!important;max-height:calc(var(--na-vvh,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overscroll-behavior:contain}
-  #mPagoCred,#mCierre{overflow:hidden!important}
+  #mPagoCred,#mCierre{overflow:clip!important}
   #mPagoCred .mbody>.mbtns,#mCierre .mbody>.mbtns{bottom:0!important;background:#fff!important}
   body.dark #mPagoCred .mbody>.mbtns,body.dark #mCierre .mbody>.mbtns{background:var(--card,#1e293b)!important}
   /* Con teclado: la ventana empieza en y>=0 (arriba del área visible), título fijo arriba y sin relleno blanco bajo la barra. */
-  #mPagoCred,#mCierre{top:0!important;bottom:auto!important;height:var(--na-vvh,100dvh)!important;align-items:flex-start!important;padding-top:max(8px,env(safe-area-inset-top))!important}
+  #mPagoCred,#mCierre{top:0!important;bottom:auto!important;height:var(--na-vvh,100dvh)!important;align-items:flex-start!important;padding-top:max(8px,env(safe-area-inset-top))!important;padding-bottom:8px!important;box-sizing:border-box!important}
   #mPagoCred .modal,#mCierre .modal{margin-top:0!important}
-  #mPagoCred .mhead,#mCierre .mhead{position:sticky;top:0;z-index:5;background:inherit}
+  #mPagoCred .mhead,#mCierre .mhead{position:sticky;top:0;z-index:5}
 }
 /* Franja de estado: ícono de línea por CSS (reloj = revisando, prohibido = rechazado). */
 .na-sb-text[data-icon]::before{content:"";display:inline-block;width:1em;height:1em;margin-right:.35em;vertical-align:-.15em;background:currentColor;-webkit-mask:var(--na-sb-ic) center/contain no-repeat;mask:var(--na-sb-ic) center/contain no-repeat}
@@ -119,3 +119,6 @@ body.dark .p-img.na-noimg{background:#1e293b!important;box-shadow:none!important
 .btn-rm>.na-ic{width:18px;height:18px;vertical-align:middle}
 .na-mobile-menu-toggle>.na-ic{width:22px;height:22px;vertical-align:middle}
 .gasto-icon>.na-ic,.cfg-screen-head-icon>.na-ic,.cfg-setting-icon>.na-ic{width:1.3em;height:1.3em;vertical-align:middle}
+/* Botón de menú del encabezado: contraste ≥3:1 en claro y oscuro (sin cambiar el diseño). */
+.na-mobile-menu-toggle:has(>.na-ic){background-image:none!important;color:#19344c}
+body.dark .na-mobile-menu-toggle{color:#e2e8f0!important}

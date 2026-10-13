@@ -859,8 +859,22 @@
     }
   }
 
+  // Al abrir la ficha del cliente (también tras recargar): un abono «no confirmado» se dibuja en ámbar
+  // junto al botón de cobro y se revisa con el servidor con su MISMO id. Devuelve true si lo dibujó.
+  function showPendingOnCard() {
+    if (!enabled()) return false;
+    var p = null; try { p = pendingRecord(); } catch (_) {}
+    if (!p || !/^payment\.(batch|create)$/.test(p.command) || p.last_error || p.invalid) return false;
+    var pl = p.payload || {}, amt = Number(pl.amount_cents || 0);
+    if (!amt) Object.keys(pl).forEach(function (k) { if (Array.isArray(pl[k])) pl[k].forEach(function (x) { amt += Number(x && x.amount_cents || 0); }); });
+    batchNotice('checking', 'Abono' + (amt ? ' de S/ ' + (amt / 100).toFixed(2) : '') + ' no confirmado, revisando… No lo repitas.');
+    var b = root.document && root.document.getElementById('naV2BatchSubmit'), box = b && b.parentElement && b.parentElement.querySelector('.na-pay-net-batch');
+    if (!box || box.hidden || !/checking/.test(box.className)) return false;
+    scheduleReview(800);
+    return true;
+  }
   root.NuevoAmanecerCanonicalCreditPaymentBridge = Object.freeze({
-    busy: function () { return !!busy; },
+    showPendingOnCard: showPendingOnCard,
     enabled: enabled,
     confirm: confirm,
     confirmBatch: confirmBatch,
