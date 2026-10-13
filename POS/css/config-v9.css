@@ -1,6 +1,8 @@
-/* Configuración v9 — solo PC y tablet (>= 701 px). En teléfono no se muestra nada de esto. */
-#naCfgV9,#na9TkFormat{display:none}
-@media (min-width:701px){
+/* Configuración v9 — PC, tablet y teléfono. En teléfono solo cambia Configuración; temas y nocturno
+   en teléfono se aplican solo dentro de #naCfgV9 (el resto de la app no cambia). */
+#na9TkFormat{display:none}
+#naCfgV9 .na9-chev,#naCfgV9 .na9-back{display:none}
+@media all{
   html body #pageConfig.page>.cfg-topbar-simple,html body #pageConfig.page>.cfg-layout.cfg-shell,html body #pageConfig.page>.cfg-mobile-overlay{display:none!important}
   html body #pageConfig #naCfgV9 #cfgContent.na9-legacy{display:block!important;position:static!important;transform:none!important;visibility:visible!important;width:auto!important;height:auto!important;max-height:none!important;overflow:visible!important}
   #naCfgV9{--na9-acc:var(--teal-dark);--na9-sub:var(--slate);--na9-red:var(--red);display:flex;flex:1;min-height:0;width:100%;background:var(--bg);color:var(--dark);font-size:15px;position:relative}
@@ -67,6 +69,8 @@
   #naCfgV9 .na9-legacy-host{min-width:0}#naCfgV9 #cfgContent.na9-legacy{padding:0;overflow:visible;background:transparent}
   #naCfgV9 #cfgContent.na9-legacy>.cfg-screen-head{display:none}
   #naCfgV9 .na-g-devs{display:flex;flex-direction:column;gap:8px}
+}
+@media (min-width:701px){
   #na9TkFormat{display:inline-block;font:inherit;font-size:13px;font-weight:800;border-radius:8px;border:0;padding:5px 8px;background:rgba(255,255,255,.92);color:#0f172a}
 }
 @media (min-width:1025px) and (pointer:fine){#naCfgV9 .na9-zbtns{display:flex}#naCfgV9 .na9-zslider{display:none}}
@@ -76,6 +80,11 @@
 }
 @media (min-width:701px) and (max-height:820px){#naCfgV9 .na9-hd{padding:8px 20px}#naCfgV9 .na9-hd p{display:none}#naCfgV9 .na9-bd{padding:10px 18px;gap:8px}}
 
+/* Configuración en modo claro: acento y textos secundarios con contraste AA. */
+@media (min-width:701px){
+  body:not(.dark) #naCfgV9{--na9-sub:#475569;--na9-red:#b91c1c}
+  html:not([data-na-theme]) body:not(.dark) #naCfgV9,html[data-na-theme=verde] body:not(.dark) #naCfgV9{--na9-acc:#00756a}
+}
 /* Temas (solo PC y tablet). Verde = el aspecto de siempre: no cambia nada. Colores con contraste AA para texto blanco. */
 @media (min-width:701px){
   html[data-na-theme=naranja] body{--teal:#c2410c;--teal-dark:#9a3412;--teal-light:#fff1e6}
@@ -86,9 +95,6 @@
   html[data-na-theme=azul] body.dark{--teal:#8aa9e0;--teal-dark:#a9c0ea;--teal-light:#2a3247}
   html[data-na-theme=celeste] body.dark{--teal:#78bcdc;--teal-dark:#9fd0e8;--teal-light:#263843}
   html[data-na-theme=simple] body.dark{--teal:#c3c8cf;--teal-dark:#e4e6e8;--teal-light:#2e333b;--bg:#111827}
-  /* Configuración en modo claro: acento y textos secundarios con contraste AA. */
-  body:not(.dark) #naCfgV9{--na9-sub:#475569;--na9-red:#b91c1c}
-  html:not([data-na-theme]) body:not(.dark) #naCfgV9,html[data-na-theme=verde] body:not(.dark) #naCfgV9{--na9-acc:#00756a}
   /* Punto de venta: el color del tema también en botones y etiquetas (Verde queda como siempre). */
   html[data-na-theme=naranja] #pagePOS{--pos-ref-teal:#c2410c;--pos-ref-teal-dark:#9a3412}
   html[data-na-theme=azul] #pagePOS{--pos-ref-teal:#1d4ed8;--pos-ref-teal-dark:#1e3a8a}
@@ -118,4 +124,51 @@
   body.dark #pagePOS .pos-module-identity{background:#fff;border-radius:10px;padding:2px 10px 2px 2px}
   body.dark #pagePOS .pos-module-copy strong{color:#10183a}body.dark #pagePOS .pos-module-copy span{color:#657188}
   #pagePOS .pos-module-mark{color:#ff6a00}#pagePOS .pos-module-mark svg{stroke:#ff6a00}
+}
+
+/* Teléfono (<= 700 px): solo la pantalla de Configuración. Paleta propia dentro de #naCfgV9. */
+@media (max-width:700px){
+  #naCfgV9.na9-lt{--teal:#00bca4;--teal-dark:#009e8a;--teal-light:#e0f7f4;--dark:#1e293b;--slate:#64748b;--border:#e2e8f0;--white:#fff;--bg:#f8fafc;--red:#ef4444;--red-light:#fef2f2;--green-light:#f0fdf4;--amber:#f59e0b;--amber-light:#fffbeb;--na9-sub:#475569;--na9-red:#b91c1c;--na9-acc:#00756a;color-scheme:light}
+  #naCfgV9.na9-dk{--teal:#00d4b8;--teal-dark:#00bca4;--teal-light:#003d35;--dark:#f1f5f9;--slate:#94a3b8;--border:#2d3748;--white:#1a2234;--bg:#111827;--red:#f87171;--red-light:#3d0d0d;--green-light:#0d2e0d;--amber:#fbbf24;--amber-light:#2d1d00;--na9-sub:#a3b1c6;--na9-red:#f0a0a0;--na9-acc:var(--teal-dark);color-scheme:dark}
+  #naCfgV9.na9-lt[data-na9-theme=naranja]{--teal:#c2410c;--teal-dark:#9a3412;--teal-light:#fff1e6;--na9-acc:#9a3412}
+  #naCfgV9.na9-lt[data-na9-theme=azul]{--teal:#1d4ed8;--teal-dark:#1e3a8a;--teal-light:#e8efff;--na9-acc:#1e3a8a}
+  #naCfgV9.na9-lt[data-na9-theme=celeste]{--teal:#0369a1;--teal-dark:#075985;--teal-light:#e0f2fe;--na9-acc:#075985}
+  #naCfgV9.na9-lt[data-na9-theme=simple]{--teal:#374151;--teal-dark:#1f2937;--teal-light:#f3f4f6;--bg:#fafafa;--na9-acc:#1f2937}
+  #naCfgV9.na9-dk[data-na9-theme=naranja]{--teal:#e09a66;--teal-dark:#f0b48a;--teal-light:#3d3029}
+  #naCfgV9.na9-dk[data-na9-theme=azul]{--teal:#8aa9e0;--teal-dark:#a9c0ea;--teal-light:#2a3247}
+  #naCfgV9.na9-dk[data-na9-theme=celeste]{--teal:#78bcdc;--teal-dark:#9fd0e8;--teal-light:#263843}
+  #naCfgV9.na9-dk[data-na9-theme=simple]{--teal:#c3c8cf;--teal-dark:#e4e6e8;--teal-light:#2e333b;--bg:#111827}
+  #naCfgV9.na9-dk .na9-btn:not(.sec):not(.red),#naCfgV9.na9-dk .na9-seg button.on{background:var(--teal-dark);color:#0f172a}
+  #naCfgV9.na9-dk .na9-sw input:checked+span{background:var(--teal-dark)}#naCfgV9.na9-dk .na9-sw span{background:#4a515c}
+  #naCfgV9.na9-dk .na9-badge{background:#24402e;color:#a8e0b8}#naCfgV9.na9-dk .na9-badge.off{background:#3a2626;color:#f0b8b8}
+  #naCfgV9.na9-dk .na9-btn.red{background:#e58b8b;color:#1a1d21}
+  #naCfgV9.na9-dk input,#naCfgV9.na9-dk select{color-scheme:dark}
+  html body #pageConfig.page>#naCfgV9{display:block;flex:none;min-height:calc(100vh - 58px);font-size:16px}
+  #naCfgV9 .na9-nav{width:auto;border-right:0;padding:10px 0 20px;overflow:visible;min-height:inherit}
+  #naCfgV9 .na9-nav h2{margin:6px 16px 8px;font-size:20px}
+  #naCfgV9 .na9-it{min-height:64px;font-size:17px;padding:10px 16px;border-radius:0;margin:0;border-bottom:1px solid var(--border)}
+  #naCfgV9 .na9-it.on{background:none;color:var(--dark);font-weight:400}#naCfgV9 .na9-it.on::after{display:none}
+  #naCfgV9 .na9-it .na9-tt{flex:1}#naCfgV9 .na9-it .na9-tt small{font-size:13px}
+  #naCfgV9 .na9-chev{display:block;color:var(--slate);width:18px;height:18px}
+  #naCfgV9 .na9-reset{margin-top:10px}#naCfgV9 .na9-reset .na9-it.on{background:none;color:var(--na9-red)}
+  #naCfgV9 .na9-main{display:none;padding:0;overflow:visible}
+  #naCfgV9.na9-open .na9-nav{display:none}#naCfgV9.na9-open .na9-main{display:block}
+  #naCfgV9 .na9-back{display:flex;align-items:center;gap:6px;width:100%;min-height:52px;border:0;border-bottom:1px solid var(--border);background:var(--teal-light);font:inherit;font-size:17px;font-weight:800;color:var(--na9-acc);padding:0 14px;cursor:pointer}
+  #naCfgV9 .na9-card{border-radius:0;border-left:0;border-right:0;max-width:none}
+  #naCfgV9 .na9-hd{padding:14px 16px}
+  #naCfgV9 .na9-tabs{flex-wrap:nowrap;overflow-x:auto;padding:6px 10px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}#naCfgV9 .na9-tabs::-webkit-scrollbar{display:none}
+  #naCfgV9 .na9-tab{white-space:nowrap;flex:none;min-height:48px;font-size:16px}
+  #naCfgV9 .na9-bd{padding:14px}
+  #naCfgV9 .na9-row{min-height:56px;flex-wrap:wrap}
+  #naCfgV9 .na9-cols2,#naCfgV9 .na9-cols3,#naCfgV9 .na9-split{grid-template-columns:1fr}
+  #naCfgV9 .na9-btn{min-height:50px}#naCfgV9 .na9-btn.sm{min-height:46px}
+  #naCfgV9 input[type=text],#naCfgV9 input[type=number],#naCfgV9 input[type=password],#naCfgV9 input:not([type]),#naCfgV9 select{min-height:48px}
+  #naCfgV9 .na9-sw{width:56px;height:32px}#naCfgV9 .na9-sw span::before{width:26px;height:26px}#naCfgV9 .na9-sw input:checked+span::before{transform:translateX(24px)}
+  #naCfgV9 .na9-tkbar{flex-direction:column;align-items:stretch}#naCfgV9 .na9-tkbar .na9-seg{width:100%}#naCfgV9 .na9-tkbar .na9-seg button{flex:1;min-height:46px}
+  #naCfgV9 .na9-stabs{overflow-x:auto;flex-wrap:nowrap}#naCfgV9 .na9-stabs button{white-space:nowrap;flex:none;min-height:44px}
+  #naCfgV9 .na9-seg button{min-height:46px}
+  #naCfgV9 .na9-themes{grid-template-columns:1fr 1fr}
+  #naCfgV9 .na9-zbtns{display:none!important}#naCfgV9 .na9-zslider{display:block!important}#naCfgV9 .na9-zslider input{height:44px}
+  #naCfgV9 .na9-pvbox{max-height:none}
+  #naCfgV9 .na9-saved{position:fixed;right:10px;bottom:10px;z-index:60}
 }
