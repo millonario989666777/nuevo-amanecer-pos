@@ -121,4 +121,5 @@ body.dark .p-img.na-noimg{background:#1e293b!important;box-shadow:none!important
 .gasto-icon>.na-ic,.cfg-screen-head-icon>.na-ic,.cfg-setting-icon>.na-ic{width:1.3em;height:1.3em;vertical-align:middle}
 /* Botón de menú del encabezado: contraste ≥3:1 en claro y oscuro (sin cambiar el diseño). */
 .na-mobile-menu-toggle:has(>.na-ic){background-image:none!important;color:#19344c}
-body.dark .na-mobile-menu-toggle{color:#e2e8f0!important}
+body.dark:not(.na-pos-reference-active) .na-mobile-menu-toggle{color:#e2e8f0!important}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle{color:#19344c!important}
