@@ -24,13 +24,28 @@
     el.textContent = text || ''; el.hidden = !text;
   }
   function call(name) { var a = [].slice.call(arguments, 1); var fn = root[name]; if (typeof fn === 'function') try { return fn.apply(root, a); } catch (_) {} }
+  // cerrarModal y toast son «const» del script clásico: no están en window, se llaman por nombre.
+  function closeCli() {
+    try { if (typeof cerrarModal === 'function') { cerrarModal('mCli'); return; } } catch (_) {} // eslint-disable-line no-undef
+    var m = doc.getElementById('mCli'); if (m) m.classList.remove('open');
+  }
+  function say(msg, kind) {
+    try { if (typeof toast === 'function') { toast(msg, kind); return; } } catch (_) {} // eslint-disable-line no-undef
+    call('toast', msg, kind);
+  }
   function openExisting(found, dni) {
-    call('cerrarModal', 'mCli');
-    call('setModule', 'clientes');
-    var s = doc.getElementById('cliSearch'); if (s) s.value = dni;
-    call('cliRender');
-    var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) card.classList.add('open');
-    call('toast', 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.', 'info');
+    closeCli();
+    var opened = false;
+    if (found.id != null && typeof root.naCanonOpenClientAccount === 'function') {
+      try { if (typeof root.goPage === 'function') root.goPage('pageClientes'); else call('setModule', 'clientes'); root.naCanonOpenClientAccount(found.id); opened = true; } catch (_) { opened = false; }
+    }
+    if (!opened) {
+      call('setModule', 'clientes');
+      var s = doc.getElementById('cliSearch'); if (s) s.value = dni;
+      call('cliRender');
+      var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) { card.classList.add('open'); opened = true; }
+    }
+    say(opened ? 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.' : 'Este DNI ya es de «' + clean(found.name) + '». Búsquelo en Clientes.', 'info');
   }
   var MANUAL = 'No se encontró el nombre. Escríbalo a mano.';
   var SLOW = 'La búsqueda tarda. Escriba el nombre a mano; si llega, se completa solo.';
@@ -60,7 +75,7 @@
     if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
     var local = findLocal(dni);
     if (local) { hint(''); openExisting(local, dni); return; }
-    if (clean(nameEl.value)) { hint(''); return; }
+    if (clean(nameEl.value)) { hint('Ya hay un nombre escrito. Bórrelo si quiere buscarlo por DNI.'); return; }
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
     if (inflight === dni) return; // input + change + paste del mismo DNI: una sola consulta

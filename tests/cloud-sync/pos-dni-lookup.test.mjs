@@ -138,3 +138,11 @@ test('celular: sesión vencida/desconectada da mensaje claro y solo «not_found�
   assert.match(client, /Sesión vencida o aparato desconectado: vuelva a vincular/);
   assert.equal((client.match(/asked\[dni\] = \{ name: null \}/g) || []).length, 1);
 });
+
+test('DNI existente: cierra con cerrarModal real, abre la cuenta y avisa según lo que pasó', () => {
+  const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  assert.match(client, /typeof cerrarModal === 'function'/);
+  assert.match(client, /naCanonOpenClientAccount\(found\.id\)/);
+  assert.match(client, /opened \? /);
+  assert.match(client, /Ya hay un nombre escrito/);
+});
