@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 3792807 (#616): GET /auth/purchases?id= also returns stored lines with applied flag. Read-only addition, no schema changes, no live sale. Rollback to 9a7f512 (current live Worker source).",
-  "target_commit": "37928079efaca82ebd9d87e0e79e5ae57ba4c9e1",
-  "rollback_ref": "9a7f512b4b4a84e152958d0eb45f3a8f6db86329",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 62f4ef1 (#619): Historial always lists incomplete purchases; POST /auth/purchases/close-partial (owner only, PIN, reason) returns 503 purchase_schema_not_ready until migration 0029 is applied; same-id after partial close returns 409. No schema changes in this deploy, no live sale. Rollback to 3792807.",
+  "target_commit": "62f4ef1551063c26d96952c253574c6beaaad10a",
+  "rollback_ref": "37928079efaca82ebd9d87e0e79e5ae57ba4c9e1",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 22,
+  "attempt": 23,
   "previous_run_id": 38416531111,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_BOT6_PARTIAL_PURCHASE"
+  "optimization": "E2_BOT6_CLOSE_PARTIAL"
 }
