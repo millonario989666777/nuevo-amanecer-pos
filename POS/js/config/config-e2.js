@@ -35,6 +35,8 @@
   function canEdit() {
     try {
       if (!root.NA_ROLES || !root.NA_ROLES.isOwner()) return false;
+      // Aparato del dueño confirmado por el servidor: Configuración abre aunque se cambie el cajero de turno.
+      if (root.NA_ROLES.confirmed) return true;
       if (typeof root._naF10HasPermission !== 'function') return false;
       return !!root._naF10HasPermission('configuration');
     } catch (_) { return false; }

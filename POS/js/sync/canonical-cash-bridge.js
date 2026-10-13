@@ -724,7 +724,19 @@
     return false;
   }
   root.cerrarCaja = function () {
-    if (closingPromise && Date.now() - closingAt < STALE_CLOSE_MS) return quickCloseCheck();
+    // Con el primer cierre aún en vuelo, el segundo toque espera su respuesta del servidor (con tiempo límite).
+    // Solo si no responde a tiempo se pregunta el estado directamente.
+    if (closingPromise) {
+      var inflight = closingPromise, stEl = root.document && root.document.getElementById('cajCloseStatus'), prevTxt = stEl ? stEl.textContent : '';
+      var WAIT = 'Esperando la respuesta del servidor sobre el cierre…';
+      closeStatus(WAIT);
+      var restore = function (v) { var el = root.document && root.document.getElementById('cajCloseStatus'); if (el && el.textContent === WAIT) closeStatus(prevTxt); return v; };
+      return withTimeout(inflight, Math.max(1000, STALE_CLOSE_MS - (Date.now() - closingAt))).then(restore, function (e) { restore();
+        if (String(e && e.message) !== 'TIMEOUT') return false;
+        if (closingPromise === inflight) closingPromise = null;
+        return quickCloseCheck();
+      });
+    }
     var p = cerrarCajaRun.apply(this, arguments); closingPromise = p; closingAt = Date.now();
     var done = function () { if (closingPromise === p) closingPromise = null; };
     if (p && p.then) p.then(done, done);
@@ -845,9 +857,17 @@
   }
   root.NuevoAmanecerCashClosePending.reconcile = reconcilePendingClose;
   var reconciledOps = {};
-  function reconcileSoon(op) {
-    if (op) { if (reconciledOps[op] && Date.now() - reconciledOps[op] < 30000) return; reconciledOps[op] = Date.now(); }
-    setTimeout(function () { reconcilePendingClose().then(function (out) { if (out && out.status === 'CLOSED') closeStatus(closedSummary(out)); }); }, 0);
+  // No se pierde: si otra conciliación o el cierre están en curso, se reintenta luego (hasta ~30 s).
+  function reconcileSoon(op, tries) {
+    tries = tries || 0;
+    if (op && !tries) { if (reconciledOps[op] && Date.now() - reconciledOps[op] < 30000) return; reconciledOps[op] = Date.now(); }
+    setTimeout(function () {
+      if ((reconciling || closingPromise) && tries < 20) { reconcileSoon(op, tries + 1); return; }
+      reconcilePendingClose().then(function (out) {
+        if (out && out.status === 'CLOSED') closeStatus(closedSummary(out));
+        else if (!out && tries < 20) { try { if (pendingClose(api())) reconcileSoon(op, tries + 1); } catch (_) {} }
+      });
+    }, tries ? 1500 : 0);
   }
   // Ventana de cierre abierta: si la caja figura cerrada en el servidor, la ventana lo dice (nunca queda
   // «sigue abierta» mientras Caja muestra Cerrada).

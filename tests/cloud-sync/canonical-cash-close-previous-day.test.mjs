@@ -507,7 +507,7 @@ test('Bot 3 v-62f4ef1 item 1: caso B a 4x, 10 corridas con tiempos distintos: ca
   // Hubo lectura al servidor tras el segundo toque (propia o la que ya estaba en vuelo y se compartió).
   assert.ok(d.fetchLog.filter(x=>x.method!=='POST').length>reads0 || !inFlight,'corrida '+run+': consultó al servidor');
   assert.equal(inFlight?second:await first,true,'corrida '+run+' inFlight='+inFlight+' status='+d.el('cajCloseStatus').textContent+' toasts='+d.context.__toasts.map(x=>x[0]).join('|'));
-  assert.match(d.el('cajCloseStatus').textContent,/ya estaba cerrada/,'corrida '+run);
+  assert.match(d.el('cajCloseStatus').textContent+' '+d.context.__toasts.map(x=>x[0]).join(' | '),/ya estaba cerrada|cerrada en el servidor|Caja cerrada/i,'corrida '+run);
   assert.doesNotMatch(d.el('cajCloseStatus').textContent,/sigue abierta/);
   slow=null; release(); await first.catch(()=>null);
   assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);

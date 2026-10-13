@@ -293,3 +293,18 @@ html body #pageConfig.page>#naCfgV9.na9{display:block;flex:none;min-height:calc(
 #naCfgV9.na9 .na9-zslider input{height:44px}
 #naCfgV9.na9 .na9-pvbox{max-height:none}
 #naCfgV9.na9 .na9-saved{right:10px;bottom:10px}}
+#naCfgV9.na9 .na9-err{display:block;margin-top:4px;font-size:12px;font-weight:700;color:#b91c1c}
+body.dark #naCfgV9.na9 .na9-err{color:#fca5a5}
+#naCfgV9.na9 input[aria-invalid="true"]{border-color:#dc2626!important}
+@media (max-width:700px){
+  #naCfgV9.na9 .na9-cols2,#naCfgV9.na9 .na9-cols3,#naCfgV9.na9 .na9-split{grid-template-columns:minmax(0,1fr)}
+  #naCfgV9.na9 .na9-pvbox,#naCfgV9.na9 .na9-split>div{min-width:0;max-width:100%;overflow-x:auto}
+  #naCfgV9.na9 .na9-split .na9-row .na9-sw{width:56px;height:32px}
+  #naCfgV9.na9 .na9-row{min-height:44px}
+}
+@media (max-width:420px){
+  #naCfgV9.na9 .na9-seg{width:100%;max-width:100%}
+  #naCfgV9.na9 .na9-seg button{flex:1 1 0;min-width:0;padding:8px 6px;font-size:14px}
+  #naCfgV9.na9 .na9-stabs{flex-wrap:nowrap;width:100%}
+  #naCfgV9.na9 .na9-stabs button{flex:1 1 0;min-width:0;padding:6px 4px;font-size:13px;white-space:normal;line-height:1.15;min-height:44px}
+}

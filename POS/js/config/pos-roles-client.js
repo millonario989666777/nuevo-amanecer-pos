@@ -50,14 +50,28 @@
     if (!r.ok) { var e = new Error(data.error || ('HTTP_' + r.status)); e.status = r.status; e.data = data; throw e; }
     return data;
   }
+  // Aparato desconectado por el dueño: se dice claramente (no se muestra la pantalla de venta).
+  var REVOKED_KEY = 'na_device_revoked_v1';
+  function revokedScreen(on) {
+    var old = doc.getElementById('naRevoked');
+    if (!on) { if (old) old.remove(); return; }
+    if (old || !doc.body) return;
+    var o = doc.createElement('div'); o.id = 'naRevoked'; o.className = 'na-pin-overlay'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true');
+    o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">Este aparato fue desconectado</div><div class="na-pin-detail">El dueño lo desconectó. Aquí ya no se puede vender ni cobrar. Pide al dueño un código nuevo para volver a conectarlo.</div><div class="na-pin-actions"><button type="button" class="na-pin-ok">Entendido</button></div></div>';
+    o.querySelector('button').addEventListener('click', function () { o.remove(); });
+    doc.body.appendChild(o);
+  }
+  try { if (root.localStorage.getItem(REVOKED_KEY)) { if (doc.body) revokedScreen(true); else doc.addEventListener('DOMContentLoaded', function () { revokedScreen(true); }); } } catch (_) {}
   async function refresh() {
     if (!cloud()) { setState({ role: 'owner' }); state.ready = true; return state; }
     try {
       var me = await api('/auth/me');
       state.confirmed = true;
+      try { root.localStorage.removeItem(REVOKED_KEY); } catch (_) {} revokedScreen(false);
       setState({ role: me.pos_role, pinSet: me.owner_pin_set, label: me.label, deviceId: me.device_id }, true);
     } catch (e) {
       state.confirmed = false;
+      if (e.status === 403 && e.message === 'session_revoked') { try { root.localStorage.setItem(REVOKED_KEY, '1'); } catch (_) {} revokedScreen(true); }
       if (e.status === 401 || e.status === 403) setState({ role: 'unknown' }, true); else paint();
     }
     state.ready = true; return state;
