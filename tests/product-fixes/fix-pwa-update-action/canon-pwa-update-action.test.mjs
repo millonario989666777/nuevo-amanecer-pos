@@ -40,7 +40,7 @@ test('legacy clients migrate once, then future updates wait for the real button'
   const install = between(sw, "self.addEventListener('install'", "self.addEventListener('activate'");
   const message = between(sw, "self.addEventListener('message'", "self.addEventListener('fetch'");
   assert.match(install, /caches\.has\(MANUAL_UPDATE_MARKER_CACHE\)/);
-  assert.match(install, /manualModeEnabled\s*\?\s*undefined\s*:\s*self\.skipWaiting\(\)/);
+  assert.match(install, /manualModeEnabled\s*\?\s*undefined\s*:[\s\S]*?open\.length && self\.registration\.active\) \? undefined : self\.skipWaiting\(\)/);
   assert.match(message, /NA_ENABLE_MANUAL_UPDATES/);
   assert.match(message, /caches\.open\(MANUAL_UPDATE_MARKER_CACHE\)/);
   assert.match(message, /NA_ACTIVATE_UPDATE/);

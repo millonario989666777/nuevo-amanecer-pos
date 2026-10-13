@@ -133,7 +133,7 @@
     if(el&&typeof el.scrollTop==='number')return el.scrollTop||0;
     return window.scrollY||document.documentElement.scrollTop||0;
   }
-  function resetState(owner,noRead){upGestureCount=0;touchDelta=0;touchActive=false;touchOwner=null;scrollAnchor=noRead?0:currentScroll(owner);wheelGroupDir=null;wheelGroupDist=0;wheelGroupActive=false;wheelOwner=null;if(wheelTimer){clearTimeout(wheelTimer);wheelTimer=null;}}
+  function resetState(owner,noRead){upGestureCount=0;touchDelta=0;touchActive=false;touchOwner=null;scrollAnchor=null;/* se lee al primer scroll (sin forzar layout al navegar) */wheelGroupDir=null;wheelGroupDist=0;wheelGroupActive=false;wheelOwner=null;if(wheelTimer){clearTimeout(wheelTimer);wheelTimer=null;}}
   function significantDown(owner){var st=currentScroll(owner);if(st<=NEAR_TOP){show();resetState(owner);return;}hide();cancelGesture();scrollAnchor=st;}
   function isExcluded(el){
     while(el&&el!==document.body){
@@ -189,6 +189,7 @@
       if(!tb())return;
       var st=currentScroll(owner);
       if(st<=NEAR_TOP){show();resetState(owner);return;}
+      if(scrollAnchor===null)scrollAnchor=st;
       var delta=st-scrollAnchor;
       if(delta>=DOWN_HIDE_MIN){hide();scrollAnchor=st;upGestureCount=0;}
     });

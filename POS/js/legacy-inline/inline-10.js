@@ -5,7 +5,7 @@ function _naSaleItemTitle(item){const name=String(item?.name||item?.nombre||'').
 function _naSecElement(tag,className,text){
   const element=document.createElement(tag);
   if(className)element.className=className;
-  if(text!==undefined)element.textContent=String(text);
+  if(text!==undefined){element.textContent=String(text);if(className&&window.NA_ICON_SWAP)window.NA_ICON_SWAP(element);} // emoji inicial -> ícono de línea (sin observador)
   return element;
 }
 function _naSecAppend(parent,tag,className,text){

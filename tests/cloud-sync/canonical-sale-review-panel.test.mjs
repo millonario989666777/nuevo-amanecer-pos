@@ -46,7 +46,7 @@ test('quarantined sale stays visible in Caja across repeated redraws, with verif
   const block=dom.document.getElementById('cajContentReview');
   assert.equal(block.parentNode,dom.caja,'redraw '+i+': block still inside Caja');
   const shown=dom.text(block);
-  assert.match(shown,/V-085/); assert.match(shown,/product_not_found/); assert.match(shown,/No las cobres de nuevo/);
+  assert.match(shown,/V-085/); assert.match(shown,/el producto no existe/); assert.match(shown,/No las cobres de nuevo/);
   const kinds=[];(function walk(n){if(n.attrs&&n.attrs['data-review'])kinds.push(n.attrs['data-review'].split(':')[0]);n.children.forEach(walk);})(block);
   assert.deepEqual(kinds.sort(),['retry','verify'],'annul only after verify proves absence');
   assert.equal(dom.caja.children.filter(c=>c.id==='cajContentReview').length,1,'never duplicated');

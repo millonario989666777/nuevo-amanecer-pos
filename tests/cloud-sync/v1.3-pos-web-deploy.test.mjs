@@ -118,7 +118,7 @@ test('hosted PWA stages a complete build and applies it through the explicit upd
   assert.match(serviceWorker, /cache\.addAll\(/);
   assert.match(serviceWorker, /MANUAL_UPDATE_MARKER_CACHE/);
   assert.match(serviceWorker, /caches\.has\(MANUAL_UPDATE_MARKER_CACHE\)/);
-  assert.match(serviceWorker, /manualModeEnabled\s*\?\s*undefined\s*:\s*self\.skipWaiting\(\)/);
+  assert.match(serviceWorker, /manualModeEnabled\s*\?\s*undefined\s*:[\s\S]*?open\.length && self\.registration\.active\) \? undefined : self\.skipWaiting\(\)/);
   assert.match(serviceWorker, /NA_ENABLE_MANUAL_UPDATES/);
   assert.match(serviceWorker, /NA_ACTIVATE_UPDATE/);
   assert.match(serviceWorker, /self\.clients\.claim\(\)/);

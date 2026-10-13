@@ -440,3 +440,24 @@ test('Bot 2 item 1: pending close already applied on the server + queued sale of
  assert.equal(q.length,1); assert.equal(q[0].reason,'cash_closed_before_sale'); assert.equal(q[0].status,'QUARANTINED');
  assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='V-085'").n,0);
 });
+
+test('Bot 3 item 5: al cargar/reconectar con un cierre pendiente que el servidor ya aplicó, se muestra el cierre real sin tocar Confirmar', async t => {
+ let lose=true;
+ const {f,d}=await yesterdaySession(t,async(url,o,run)=>{ if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run();throw Error('lost ACK');} });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ assert.equal(d.api.pendingSnapshot().command,'cash.close');
+ const out=await d.context.NuevoAmanecerCashClosePending.reconcile();
+ assert.equal(out.status,'CLOSED');
+ assert.equal(d.api.pendingSnapshot(),null);
+ assert.ok(d.context.__toasts.some(([m])=>/ya estaba cerrada/.test(m)));
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+ assert.equal(ui(d).state.cerrada,true);
+});
+test('Bot 3 item 5: si el servidor sigue con la caja abierta, la reconexión NO cierra ni descarta nada', async t => {
+ const {f,d}=await yesterdaySession(t,async url=>{ if(url.endsWith('/commands/cash.close'))return Response.json({error:'financial_storage_error'},{status:503}); });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ assert.equal(await d.context.NuevoAmanecerCashClosePending.reconcile(),null);
+ assert.equal(d.api.pendingSnapshot().command,'cash.close');
+ assert.equal(posts(d,'cash.close').length,1);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+});

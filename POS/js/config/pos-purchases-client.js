@@ -216,6 +216,17 @@
     dropOp(a.id);
     return out;
   }
+  // Cerrar como parcial: solo el dueño; PIN comprobado con la ventana abierta (el error queda dentro de ella).
+  async function closePartial(id, reason) {
+    var R = root.NA_ROLES; if (!R || !R.askPin) return null;
+    var done = null;
+    var ok = await R.askPin('Cerrar compra como parcial', 'Escribe el PIN del dueño. Lo que ya sumó stock se conserva; lo demás queda sin aplicar.', async function (pin) {
+      try { done = await R.api('/auth/purchases/close-partial', { purchase_id: id, reason: reason, pin: pin }); return { ok: true, value: true }; }
+      catch (e) { if (e.message === 'owner_only') return { msg: 'Solo el aparato del dueño puede cerrar una compra como parcial.', stop: true };
+        if (e.message === 'owner_pin_invalid') return { msg: R.message(e) }; return { msg: R.message(e), stop: e.message === 'owner_pin_locked' }; }
+    });
+    return ok ? done : null;
+  }
   async function openHistory() {
     var w = overlay('naPurchaseHistory', '<h3>Compras registradas</h3><div class="na-pur-list">Cargando…</div><div class="na-review-actions" style="justify-content:space-between"><button type="button" class="na-pur-new">Nueva compra</button><button type="button" class="na-pur-close" style="background:#64748b">Cerrar</button></div>');
     w.querySelector('.na-pur-close').onclick = function () { w.remove(); };
@@ -225,23 +236,46 @@
       var out = await root.NA_ROLES.api('/auth/purchases');
       var byId = {}; products().forEach(function (p) { byId[String(p.id)] = p.nombre || p.name || p.id; });
       var rows = out.purchases || [];
+      var lock = root.NA_ICON ? root.NA_ICON('lock') : '';
+      var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join(''); };
       list.innerHTML = rows.length ? rows.map(function (p) {
-        return '<details class="na-pur-item"><summary><strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents) +
-          (p.status !== 'aplicada' ? ' · <em>incompleta</em>' : '') + (p.document_ref ? '<small>' + esc(p.document_ref) + '</small>' : '') + '</summary>' +
-          (p.status !== 'aplicada' ? '<button type="button" class="na-pur-finish-h" data-id="' + esc(p.purchase_id) + '" style="margin:6px 0;min-height:40px;border-radius:10px;border:1px solid #b45309;background:#fffbeb;color:#92400e;font-weight:800;padding:0 12px">Terminar compra</button><div class="na-pur-err" role="status" hidden></div>' : '') +
-          (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join('') + '</details>';
+        var head = '<strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents);
+        if (p.status === 'en_curso') {
+          // Incompleta: fila ámbar con los botones SIEMPRE visibles (fuera del detalle plegado).
+          return '<div class="na-pur-item na-pur-open" data-id="' + esc(p.purchase_id) + '"><div class="na-pur-open-head">' + head + ' · <em>incompleta</em>' + (p.document_ref ? ' <small>' + esc(p.document_ref) + '</small>' : '') + '</div>' +
+            '<div class="na-pur-open-actions"><button type="button" class="na-pur-finish-h">Terminar compra</button><button type="button" class="na-pur-partial-h">' + lock + ' Cerrar como parcial</button></div>' +
+            '<input class="na-pur-reason" type="text" maxlength="300" placeholder="Motivo (obligatorio)" hidden><div class="na-pur-err" role="status" hidden></div>' +
+            '<details><summary>Ver líneas</summary>' + detail(p) + '</details></div>';
+        }
+        return '<details class="na-pur-item"><summary>' + head + (p.status === 'cerrada_parcial' ? ' · <em>cerrada como parcial</em>' : '') + (p.document_ref ? '<small>' + esc(p.document_ref) + '</small>' : '') + '</summary>' +
+          (p.closure ? '<div class="na-pur-row"><span>Motivo del cierre</span><span>' + esc(p.closure.reason) + '</span></div>' : '') + detail(p) + '</details>';
       }).join('') : '<p>Todavía no hay compras registradas.</p>';
-      [].slice.call(list.querySelectorAll('.na-pur-finish-h')).forEach(function (b) {
-        var row = rows.find(function (r) { return String(r.purchase_id) === b.getAttribute('data-id'); });
+      [].slice.call(list.querySelectorAll('.na-pur-open')).forEach(function (item) {
+        var row = rows.find(function (r) { return String(r.purchase_id) === item.getAttribute('data-id'); });
+        var b = item.querySelector('.na-pur-finish-h'), pb = item.querySelector('.na-pur-partial-h'), box = item.querySelector('.na-pur-err'), why = item.querySelector('.na-pur-reason');
+        var say = function (t, ok) { box.className = 'na-pur-err' + (ok ? ' info' : ''); box.textContent = t; box.hidden = false; };
         b.onclick = async function () {
-          var box = b.nextElementSibling; if (busy || !row) return;
+          if (busy || !row) return;
           busy = true; b.disabled = true; b.textContent = 'Terminando…';
           try {
             var out = await finishPurchase(row);
-            box.className = 'na-pur-err info'; box.textContent = 'Compra completa: ' + (out.applied || []).length + ' línea(s) que faltaban sumaron stock; las demás ya estaban.'; box.hidden = false; b.remove();
+            say('Compra completa: ' + (out.applied || []).length + ' línea(s) que faltaban sumaron stock; las demás ya estaban.', true); item.querySelector('.na-pur-open-actions').remove(); item.classList.remove('na-pur-open');
             try { await root.NuevoAmanecerCanonical.refresh(); } catch (_) {}
-          } catch (e) { var c = e && (e.data && e.data.error || e.message); box.className = 'na-pur-err'; box.textContent = '⚠ ' + (ERR[c] || 'No se pudo terminar la compra. Vuelve a intentar; no se duplicará.'); box.hidden = false; b.disabled = false; b.textContent = 'Terminar compra'; }
+          } catch (e) { var c = e && (e.data && e.data.error || e.message); var d = e && e.data && e.data.detail && e.data.detail.error;
+            say(d === 'product_not_found' ? 'Un producto de esta compra ya no existe. Puedes cerrarla como parcial (solo el dueño).' : (ERR[c] || 'No se pudo terminar la compra. Vuelve a intentar; no se duplicará.')); b.disabled = false; b.textContent = 'Terminar compra'; }
           finally { busy = false; }
+        };
+        pb.onclick = async function () {
+          if (busy || !row) return;
+          if (why.hidden) { why.hidden = false; why.focus(); say('Escribe el motivo y vuelve a tocar «Cerrar como parcial». Se conserva lo que ya sumó stock; lo demás queda sin aplicar.', true); return; }
+          var reason = why.value.trim(); if (reason.length < 3) { say('Escribe el motivo (mínimo 3 letras).'); why.focus(); return; }
+          busy = true;
+          try {
+            var res = await closePartial(row.purchase_id, reason);
+            if (!res) { say('Cierre cancelado. No se cambió nada.', true); return; }
+            say('Compra cerrada como parcial: ' + res.applied_lines.length + ' línea(s) quedan aplicadas y ' + res.missing_lines.length + ' sin aplicar. El stock no cambió.', true);
+            item.querySelector('.na-pur-open-actions').remove(); why.remove(); item.classList.remove('na-pur-open'); dropOp(row.purchase_id);
+          } finally { busy = false; }
         };
       });
     } catch (e) { list.textContent = 'No se pudo cargar el historial (' + (e && e.message || 'sin conexión') + ').'; }
@@ -260,6 +294,6 @@
       src.appendChild(c);
     }
   }
-  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps, _submit: submit, _finish: finishPurchase, _historyFinishArgs: historyFinishArgs };
+  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps, _submit: submit, _finish: finishPurchase, _closePartial: closePartial, _historyFinishArgs: historyFinishArgs };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', installButtons); else installButtons();
 })(window);
