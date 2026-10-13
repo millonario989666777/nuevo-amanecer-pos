@@ -241,8 +241,8 @@ test('lost ACK after commit: retry reuses the same operation_id and never duplic
   const pending = tab.api.pendingSnapshot();
   assert.equal(pending.command, 'payment.create');
 
-  // The user taps again (even with other values): the SAME operation is retried.
-  fill(tab, { amount: '5', method: 'yape', reference: 'OP-OTHER' });
+  // Same values again: the SAME operation is retried and confirmed (no second payment).
+  fill(tab, { amount: '3', method: 'yape', reference: 'OP-ACK-1' });
   const statusBeforeRetry = tab.fetchLog.filter(x => x.url.endsWith('/read/canonical/status')).length;
   assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), true);
   const rows = f.all("SELECT * FROM canonical_financial_events WHERE event_type='PAYMENT'");
@@ -446,4 +446,49 @@ test('Caso A: sin red antes de enviar no se manda nada y el aviso rojo queda en 
   assert.equal(tab.fetchLog.filter(x => x.url.endsWith('/commands/payment.create')).length, 0, 'nothing sent');
   assert.equal(tab.api.pendingSnapshot(), null, 'no pending operation created');
   assert.deepEqual(tab.context.__closed, [], 'modal stays open');
+});
+
+test('Bot 3: abono no confirmado + formulario con otro monto: primero se resuelve el anterior (mismo id), aviso en el modal, y el nuevo usa otro id', async (t) => {
+  const f = await activeCanon(t);
+  let dropAck = true;
+  const tab = await device(f, {
+    token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url, options, forward) {
+      if (url.endsWith('/commands/payment.create') && dropAck) { dropAck = false; await forward(); throw new TypeError('network lost after commit'); }
+      return null;
+    },
+  });
+  fill(tab, { amount: '3', method: 'yape', reference: 'OP-B3-1' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
+  const firstOp = tab.api.pendingSnapshot().payload.operation_id;
+  fill(tab, { amount: '2', method: 'yape', reference: 'OP-B3-2' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false, 'old one resolved, new amount not charged in the same tap');
+  assert.equal(tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.netState(), 'done');
+  assert.deepEqual(tab.context.__closed, [], 'modal stays open');
+  let rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT'");
+  assert.deepEqual(rows.map(r => r.operation_id), [firstOp]);
+  assert.equal(tab.api.pendingSnapshot(), null);
+  await tab.api.refresh();
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), true);
+  rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT'");
+  assert.equal(rows.length, 2);
+  assert.notEqual(rows[1].operation_id, firstOp, 'new payment uses a new id');
+});
+
+test('Bot 3 servidor: el mismo id de abono con otro monto o crédito -> 409 operation_id_conflict, no se aplica nada', async (t) => {
+  const f = await activeCanon(t);
+  let sent = null;
+  const tab = await device(f, {
+    token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url, options) { if (url.endsWith('/commands/payment.create')) sent = { url, headers: options.headers, body: JSON.parse(options.body) }; return null; },
+  });
+  fill(tab, { amount: '3', method: 'yape', reference: 'OP-SRV-1' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), true);
+  const before = f.all("SELECT * FROM canonical_financial_events WHERE event_type='PAYMENT'").length;
+  for (const change of [{ amount_cents: sent.body.amount_cents + 100 }, { credit_id: 'otro-credito' }]) {
+    const r = await f.fetch(sent.url, { method: 'POST', headers: sent.headers, body: JSON.stringify({ ...sent.body, ...change }) });
+    assert.equal(r.status, 409);
+    assert.equal((await r.json()).error, 'operation_id_conflict');
+  }
+  assert.equal(f.all("SELECT * FROM canonical_financial_events WHERE event_type='PAYMENT'").length, before);
 });

@@ -44,12 +44,13 @@
         '<p style="margin:0 0 8px;color:#475569;font-size:14px">Se devolverá el stock' + (sale.metodo === 'efectivo' || (sale.paymentBreakdown && sale.paymentBreakdown.efectivo) ? ' y se sacará de la caja el efectivo cobrado' : '') +
         '. La venta queda en el historial como ANULADA. Pide el PIN del dueño.</p>' +
         '<textarea id="naAnnulReason" rows="2" maxlength="200" placeholder="Motivo (obligatorio)" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:8px;font:inherit"></textarea>' +
+        '<div class="na-pur-err na-annul-err" role="alert" hidden></div>' +
         '<div class="na-review-actions" style="margin-top:12px;justify-content:flex-end"><button type="button" class="na-annul-cancel" style="background:#64748b">Cancelar</button><button type="button" class="na-annul-ok danger">Anular venta</button></div></div>';
       doc.body.appendChild(wrap);
       var ta = wrap.querySelector('textarea'); setTimeout(function () { ta.focus(); }, 50);
       function done(v) { wrap.remove(); resolve(v); }
       wrap.querySelector('.na-annul-cancel').onclick = function () { done(null); };
-      wrap.querySelector('.na-annul-ok').onclick = function () { var v = ta.value.trim(); if (!v) { toast('Escribe el motivo de la anulación'); return; } done(v); };
+      wrap.querySelector('.na-annul-ok').onclick = function () { var v = ta.value.trim(); if (!v) { var e = wrap.querySelector('.na-annul-err'); if (e) { e.textContent = 'Escribe el motivo de la anulación'; e.hidden = false; } else toast('Escribe el motivo de la anulación'); return; } done(v); };
     });
   }
   var ERR = {

@@ -30,3 +30,75 @@
   function isDefaultProductIcon(v) { v = String(v == null ? '' : v).trim(); return !v || v === '📦' || v === 'box'; }
   root.NA_ICON = icon; root.NA_ICON_TEXT = iconText; root.NA_ICON_IS_DEFAULT_PRODUCT = isDefaultProductIcon;
 })(window);
+
+/* Emoji que quedaban en Inventario, Gastos, Ventas y Caja: se cambian por íconos de línea en cuanto
+   aparecen (MutationObserver corre antes de pintar, así no hay salto). La marca (logo) no se toca. */
+(function (root) {
+  'use strict';
+  var doc = root.document; if (!doc || !root.NA_ICON) return;
+  var X = {
+    cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.9-1"/>',
+    bars: '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V7M18 17v-8"/>',
+    down: '<path d="M22 17 13.5 8.5 8.5 13.5 2 7"/><path d="M16 17h6v-6"/>',
+    folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1Z"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+    ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+    swap: '<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>',
+    in: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+    out: '<path d="M12 15V3M7 8l5-5 5 5M5 21h14"/>',
+    pen: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+    hand: '<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7.1-.9l.5.3a2 2 0 0 0 1.4.3L21 4"/><path d="m21 3 1 11h-2M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8"/>',
+    cashout: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M8 12h8"/>'
+  };
+  var base = root.NA_ICON;
+  function ic(n) { return X[n] ? '<svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + X[n] + '</svg>' : base(n); }
+  var MAP = {
+    '📦': 'box', '⚠️': 'alert', '⚠': 'alert', '🛒': 'cart', '📅': 'cal', '🚫': 'ban', '💰': 'cash', '📊': 'bars',
+    '📋': 'clip', '🔒': 'lock', '🔓': 'unlock', '📈': 'trend', '📉': 'down', '🗂️': 'folder', '🗂': 'folder', '🏆': 'star',
+    '📑': 'file', '🧾': 'receipt', '🔍': 'search', '👥': 'users', '🤝': 'hand', '💵': 'cash', '💸': 'cashout',
+    '📥': 'in', '📤': 'out', '✏️': 'pen', '✏': 'pen', '🟢': 'dot', '🔀': 'swap', '⚙️': 'gear', '📲': 'phone'
+  };
+  var KEYS = Object.keys(MAP).sort(function (a, b) { return b.length - a.length; });
+  var SEL = '.top-mod-title,.tab,.mov-ic,.mp,.ei,.prod-icon-sm,.bn-title,.btn-abrir-cj,.btn-cerrar-cj,.cjsg-icon,.bci,.btn-act,.mhead-title';
+  function lead(t) { t = t.replace(/^\s+/, ''); for (var i = 0; i < KEYS.length; i++) if (t.indexOf(KEYS[i]) === 0) return KEYS[i]; return null; }
+  function fix(el) {
+    if (!el || el.nodeType !== 1 || el.closest('.pos-module-mark,.g-logo,.brand')) return;
+    var n = el.firstChild; while (n && n.nodeType === 3 && !n.nodeValue.trim()) n = n.nextSibling;
+    if (!n || n.nodeType !== 3) return;
+    var k = lead(n.nodeValue); if (!k) return;
+    var rest = n.nodeValue.replace(/^\s+/, '').slice(k.length).replace(/^\uFE0F/, '');
+    var tmp = doc.createElement('span'); tmp.innerHTML = ic(MAP[k]);
+    if (MAP[k] === 'dot') tmp.firstChild.style.color = '#16a34a';
+    el.insertBefore(tmp.firstChild, n);
+    n.nodeValue = rest.trim() ? ' ' + rest.replace(/^\s+/, '') : '';
+    el.classList.add('na-li-host');
+  }
+  function scan(r) { if (r.matches && r.matches(SEL)) fix(r); if (r.querySelectorAll) r.querySelectorAll(SEL).forEach(fix); }
+  root.NA_ICON_SWAP = scan;
+  function start() {
+    scan(doc.body);
+    new root.MutationObserver(function (ms) { ms.forEach(function (m) { m.addedNodes.forEach(function (x) { if (x.nodeType === 1) scan(x); else if (x.parentNode && x.parentNode.nodeType === 1) fix(x.parentNode); }); }); })
+      .observe(doc.body, { childList: true, subtree: true });
+  }
+  if (doc.body) start(); else doc.addEventListener('DOMContentLoaded', start);
+})(window);
+
+/* Ventanas en el celular: altura real visible (visualViewport, no 100vh) en --na-vvh, y al abrir el
+   teclado el campo enfocado se desplaza a la vista, así el botón de acción siempre se alcanza. */
+(function (root) {
+  'use strict';
+  var doc = root.document, vv = root.visualViewport; if (!doc) return;
+  var MODAL = '.modal-overlay .modal,.na-review-box,.na-pin-box';
+  function setH() { var h = vv ? vv.height : root.innerHeight; doc.documentElement.style.setProperty('--na-vvh', Math.round(h) + 'px'); }
+  function reveal() {
+    var a = doc.activeElement; if (!a || !a.closest || !a.closest(MODAL) || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+    try { a.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) {}
+  }
+  setH();
+  if (vv) vv.addEventListener('resize', function () { setH(); setTimeout(reveal, 60); });
+  root.addEventListener('resize', setH);
+  doc.addEventListener('focusin', function () { setTimeout(reveal, 300); });
+})(window);

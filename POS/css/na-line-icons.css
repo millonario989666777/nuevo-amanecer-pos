@@ -19,3 +19,22 @@ body.dark .p-img>.na-li-product{color:#64748b}
 .toast:not(.show){visibility:hidden}
 .toast:empty{display:none!important}
 .search-box .na-li-search{width:15px;height:15px;color:#64748b;flex:none}
+
+/* Íconos que reemplazan emoji en títulos, pestañas y botones: tamaño fijo, alineados al texto. */
+.na-li-host>.na-li{width:1.1em;height:1.1em;vertical-align:-.18em;flex:none}
+.prod-icon-sm>.na-li,.ei>.na-li,.cjsg-icon>.na-li,.bci>.na-li{width:1.4em;height:1.4em;vertical-align:middle}
+.btn-act>.na-li{width:16px;height:16px;vertical-align:middle}
+/* Pago en PC/tablet: íconos de línea (los mismos del celular) en vez de emoji. */
+#mCobro .pmi-emoji{display:none!important}
+#mCobro .pmi-icon{display:inline-flex!important;align-items:center;justify-content:center;color:currentColor}
+#mCobro .pmi-icon svg{display:block;width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#mCobro .pmi-icon .digital-arrow{stroke:#1685e8;stroke-width:3}
+/* Ventanas en el celular (Cobro, abono, compra, PIN, anulación, cierre): nunca más altas que la pantalla
+   visible; el contenido se desplaza por dentro. Sin cambio de diseño ni pie fijo. */
+@media (max-width:700px){
+  .modal-overlay .modal{max-height:calc(var(--na-vvh,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  #mCobro .modal.pay-modal{overflow-y:hidden}
+  .na-review-overlay,.na-pin-overlay{height:var(--na-vvh,100dvh);bottom:auto;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+  .na-review-box,.na-pur-box,.na-pin-box{max-height:calc(var(--na-vvh,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overflow-y:auto;overscroll-behavior:contain}
+}
+.mov-ic>.na-li{width:1.3em;height:1.3em;vertical-align:middle}

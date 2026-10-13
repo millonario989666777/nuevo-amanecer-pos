@@ -83,3 +83,4 @@ html.na-role-unconfirmed #topSettingsBtn,html.na-role-unconfirmed [data-page="pa
 /* Aviso "Sin conexión"/"Comprobando permisos" de Configuración: tarjeta flotante que no bloquea la venta. */
 .na-offline-banner{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:9999;width:min(92vw,420px);pointer-events:none}
 .na-offline-banner .na-pin-box{pointer-events:auto;box-shadow:0 10px 30px rgba(15,23,42,.25)}
+@media(max-width:700px){.na-offline-banner{top:auto;bottom:calc(96px + env(safe-area-inset-bottom))}}

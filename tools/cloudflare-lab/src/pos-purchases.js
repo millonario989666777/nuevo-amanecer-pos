@@ -36,6 +36,13 @@ export async function purchasesRoute(request, env, auth, json) {
   const ready = !!(await db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='pos_purchases'").first());
   if (request.method === 'GET') {
     if (!ready) return json({ purchases: [], ready: false });
+    // Estado de una compra puntual (la app lo consulta antes de cambiar de id): applied | in_progress | not_found.
+    const one = new URL(request.url).searchParams.get('id');
+    if (one != null) {
+      if (!ID.test(one)) return json({ error: 'invalid_identity' }, 400);
+      const r = await db.prepare('SELECT purchase_id,status,line_count,total_cost_cents,created_at,completed_at FROM pos_purchases WHERE purchase_id=?1').bind(one).first();
+      return json({ purchase_id: one, status: !r ? 'not_found' : r.status === 'aplicada' ? 'applied' : 'in_progress', purchase: r || null });
+    }
     const rows = (await db.prepare('SELECT purchase_id,supplier,document_ref,total_cost_cents,line_count,status,created_at,completed_at FROM pos_purchases ORDER BY created_at DESC LIMIT 300').all()).results || [];
     const ids = rows.map(r => r.purchase_id);
     const lines = ids.length ? ((await db.prepare(`SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id IN (${ids.map((_, i) => '?' + (i + 1)).join(',')}) ORDER BY purchase_id,line_number`).bind(...ids).all()).results || []) : [];
@@ -50,6 +57,15 @@ export async function purchasesRoute(request, env, auth, json) {
   const total = b.lines.reduce((s, l) => s + (l.unit_cost_cents == null ? 0 : Math.round(l.unit_cost_cents * l.quantity)), 0);
 
   let claim = await db.prepare('SELECT * FROM pos_purchases WHERE purchase_id=?1').bind(b.operation_id).first();
+  // Mismo id con otro contenido (líneas, cantidades, costos, proveedor o comprobante): 409 y no se aplica nada.
+  // Se compara contra lo guardado en la primera llamada (pos_purchases + pos_purchase_lines); no hace falta migración.
+  if (claim) {
+    const stored = (await db.prepare('SELECT line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results || [];
+    const want = [...b.lines].sort((x, y) => x.line - y.line).map(l => [l.line, String(l.product_id), Number(l.quantity), l.unit_cost_cents ?? null]);
+    const have = stored.map(l => [Number(l.line_number), String(l.product_id), Number(l.quantity), l.unit_cost_cents == null ? null : Number(l.unit_cost_cents)]);
+    const same = JSON.stringify(want) === JSON.stringify(have) && (claim.supplier ?? null) === supplier && (claim.document_ref ?? null) === doc;
+    if (!same) return json({ error: 'purchase_payload_mismatch', purchase_id: b.operation_id, status: claim.status === 'aplicada' ? 'applied' : 'in_progress' }, 409);
+  }
   if (claim && claim.status === 'aplicada') return json({ status: 'already_processed', purchase_id: b.operation_id, idempotent: true }, 200);
   if (!claim) {
     const stmts = [db.prepare(`INSERT INTO pos_purchases(purchase_id,promotion_id,supplier,document_ref,total_cost_cents,line_count,status,principal_id,created_at)
