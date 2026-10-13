@@ -133,7 +133,7 @@
       try { if (typeof root.invRender === 'function') root.invRender(); } catch (_) {}
       return { stop: (applied > 1 ? 'Las ' + applied + ' compras anteriores sí se registraron' : 'La compra anterior sí se registró') + ' y ya sumó stock. Esta compra todavía NO se registró: revisa el stock y, si es otra compra, pulsa «Registrar compra» de nuevo.', info: true };
     }
-    if (half) return { stop: 'La compra anterior quedó a medias (algunas líneas pueden haber sumado stock; mira el Historial). Esta compra todavía NO se registró: se registrará como nueva al pulsar «Registrar compra» de nuevo.' };
+    if (half) return { stop: 'La compra anterior quedó a medias (algunas líneas pueden haber sumado stock). Puedes terminarla en Historial con «Terminar compra». Esta compra todavía NO se registró: se registrará como nueva al pulsar «Registrar compra» de nuevo.' };
     var nid = 'PUR-' + root.crypto.randomUUID(); m[nid] = { fp: fp, at: Date.now() }; writeOps(m);
     return { id: nid };
   }
@@ -204,6 +204,18 @@
       } finally { busy = false; btn.disabled = false; btn.textContent = 'Registrar compra'; }
     };
   }
+  // Terminar una compra incompleta desde el Historial: MISMO id y mismas líneas guardadas en el servidor;
+  // el servidor salta las líneas que ya sumaron stock (idempotente).
+  function historyFinishArgs(row) {
+    return { id: String(row.purchase_id), lines: (row.lines || []).map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) }; }),
+      meta: { supplier: row.supplier || '', documentRef: row.document_ref || '' } };
+  }
+  async function finishPurchase(row) {
+    var a = historyFinishArgs(row);
+    var out = await (root.NA_PURCHASES && root.NA_PURCHASES._submitHook || submit)(a.id, a.lines, a.meta);
+    dropOp(a.id);
+    return out;
+  }
   async function openHistory() {
     var w = overlay('naPurchaseHistory', '<h3>Compras registradas</h3><div class="na-pur-list">Cargando…</div><div class="na-review-actions" style="justify-content:space-between"><button type="button" class="na-pur-new">Nueva compra</button><button type="button" class="na-pur-close" style="background:#64748b">Cerrar</button></div>');
     w.querySelector('.na-pur-close').onclick = function () { w.remove(); };
@@ -216,8 +228,22 @@
       list.innerHTML = rows.length ? rows.map(function (p) {
         return '<details class="na-pur-item"><summary><strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents) +
           (p.status !== 'aplicada' ? ' · <em>incompleta</em>' : '') + (p.document_ref ? '<small>' + esc(p.document_ref) + '</small>' : '') + '</summary>' +
-          (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? '—' : money(l.unit_cost_cents)) + '</span></div>'; }).join('') + '</details>';
+          (p.status !== 'aplicada' ? '<button type="button" class="na-pur-finish-h" data-id="' + esc(p.purchase_id) + '" style="margin:6px 0;min-height:40px;border-radius:10px;border:1px solid #b45309;background:#fffbeb;color:#92400e;font-weight:800;padding:0 12px">Terminar compra</button><div class="na-pur-err" role="status" hidden></div>' : '') +
+          (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join('') + '</details>';
       }).join('') : '<p>Todavía no hay compras registradas.</p>';
+      [].slice.call(list.querySelectorAll('.na-pur-finish-h')).forEach(function (b) {
+        var row = rows.find(function (r) { return String(r.purchase_id) === b.getAttribute('data-id'); });
+        b.onclick = async function () {
+          var box = b.nextElementSibling; if (busy || !row) return;
+          busy = true; b.disabled = true; b.textContent = 'Terminando…';
+          try {
+            var out = await finishPurchase(row);
+            box.className = 'na-pur-err info'; box.textContent = 'Compra completa: ' + (out.applied || []).length + ' línea(s) que faltaban sumaron stock; las demás ya estaban.'; box.hidden = false; b.remove();
+            try { await root.NuevoAmanecerCanonical.refresh(); } catch (_) {}
+          } catch (e) { var c = e && (e.data && e.data.error || e.message); box.className = 'na-pur-err'; box.textContent = '⚠ ' + (ERR[c] || 'No se pudo terminar la compra. Vuelve a intentar; no se duplicará.'); box.hidden = false; b.disabled = false; b.textContent = 'Terminar compra'; }
+          finally { busy = false; }
+        };
+      });
     } catch (e) { list.textContent = 'No se pudo cargar el historial (' + (e && e.message || 'sin conexión') + ').'; }
   }
   function installButtons() {
@@ -234,6 +260,6 @@
       src.appendChild(c);
     }
   }
-  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps, _submit: submit };
+  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps, _submit: submit, _finish: finishPurchase, _historyFinishArgs: historyFinishArgs };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', installButtons); else installButtons();
 })(window);

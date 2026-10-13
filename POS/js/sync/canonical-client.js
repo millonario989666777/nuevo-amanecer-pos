@@ -1957,6 +1957,26 @@
       return { session_id: session.session_id, status: session.status };
     });
   }
+  // Cierre pendiente (sin respuesta o 5xx) cuando una lectura NUEVA del servidor muestra la caja todavía
+  // ABIERTA: ese cierre no se aplicó. Se archiva (no se borra) y se libera el turno para cerrar con el monto actual.
+  async function releaseUncommittedCashClose() {
+    return withWriterLock(function () {
+      var record = journal();
+      if (!record || record.state !== 'PENDING' || record.command !== 'cash.close') return null;
+      var session = (data.cashSessions || []).find(function (item) { return item.session_id === record.payload.session_id; });
+      if (!session || session.status !== 'OPEN') return null;
+      var key = 'na_canonical_cash_close_rejections', archive = stored(key);
+      if (archive === null) archive = [];
+      if (!Array.isArray(archive)) fail('INVALID_CANONICAL_CASH_ARCHIVE');
+      if (!archive.some(function (item) { return item && item.payload && item.payload.operation_id === record.payload.operation_id; })) archive.push(Object.assign(copy(record), { released_reason: 'server_session_open' }));
+      var raw = JSON.stringify(archive);
+      root.localStorage.setItem(key, raw);
+      if (root.localStorage.getItem(key) !== raw) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      root.localStorage.removeItem(JOURNAL);
+      if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      return { session_id: session.session_id, status: 'OPEN', previous_counted_cents: record.payload.counted_cents };
+    });
+  }
   async function discardRejectedPayment() {
     return withWriterLock(function () {
       var record = journal();
@@ -2215,7 +2235,7 @@
   root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; saleOnlyReady = false; closeOnlyReady = false; } });
   root.addEventListener('offline', function () { ready = false; saleOnlyReady = false; closeOnlyReady = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, releaseUncommittedCashClose: releaseUncommittedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
     createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, commandContext: function () { return commonPayload(); }, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState, ping: ping, readProgress: function () { return copy(readProgress); } });
 })(globalThis);

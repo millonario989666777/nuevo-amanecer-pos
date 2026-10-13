@@ -154,19 +154,23 @@ test('archive storage failure retains the rejected intent and leaves cash open',
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });
-test('an uncertain 503 never archives or replaces the pending close operation',async t=>{
+test('Bot 2 item 1: a 503 close is checked with the server first; caja still open -> old close archived (kept), new close with the amount typed now',async t=>{
  let unavailable=true;
  const {f,first}=await fixture(t,{onFetch:async(url)=>{
   if(url.endsWith('/commands/cash.close')&&unavailable)return Response.json({error:'financial_storage_error'},{status:503});
  }});
  await assert.rejects(first.api.closeCash({counted_cents:110000}),/REJECTED_503/);
- const before=JSON.stringify(first.api.pendingSnapshot());
+ const oldOp=first.api.pendingSnapshot().payload.operation_id;
  assert.equal(await first.context.cerrarCaja(),false);
- assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
- assert.equal(first.localStorage.getItem('na_canonical_cash_close_rejections'),null);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+ const archive=JSON.parse(first.localStorage.getItem('na_canonical_cash_close_rejections'));
+ assert.equal(archive[0].payload.operation_id,oldOp,'old close archived, never deleted');
  unavailable=false;
+ first.el('cajContado').value='1200';
  assert.equal(await first.context.cerrarCaja(),true);
- assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+ const c=f.sql('SELECT * FROM canonical_cash_closures');
+ assert.equal(c.counted_cents,120000,'closes with the amount typed now');
+ assert.notEqual(c.close_operation_id,oldOp);
 });
 test('cash closure holds the sale outbox store lock until acknowledgement, preventing a new stranded local sale',async t=>{
  let entered,release;

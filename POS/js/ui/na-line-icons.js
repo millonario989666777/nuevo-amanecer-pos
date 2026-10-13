@@ -51,6 +51,9 @@
     out: '<path d="M12 15V3M7 8l5-5 5 5M5 21h14"/>',
     pen: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
     hand: '<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7.1-.9l.5.3a2 2 0 0 0 1.4.3L21 4"/><path d="m21 3 1 11h-2M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8"/>',
+    bank: '<path d="M3 21h18M5 21V10M19 21V10M9 21V10M15 21V10M2 10l10-6 10 6"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
     cashout: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M8 12h8"/>'
   };
   var base = root.NA_ICON;
@@ -59,10 +62,10 @@
     '📦': 'box', '⚠️': 'alert', '⚠': 'alert', '🛒': 'cart', '📅': 'cal', '🚫': 'ban', '💰': 'cash', '📊': 'bars',
     '📋': 'clip', '🔒': 'lock', '🔓': 'unlock', '📈': 'trend', '📉': 'down', '🗂️': 'folder', '🗂': 'folder', '🏆': 'star',
     '📑': 'file', '🧾': 'receipt', '🔍': 'search', '👥': 'users', '🤝': 'hand', '💵': 'cash', '💸': 'cashout',
-    '📥': 'in', '📤': 'out', '✏️': 'pen', '✏': 'pen', '🟢': 'dot', '🔀': 'swap', '⚙️': 'gear', '📲': 'phone'
+    '📥': 'in', '📤': 'out', '✏️': 'pen', '✏': 'pen', '🟢': 'dot', '🔀': 'swap', '⚙️': 'gear', '📲': 'phone', '✅': 'check', '💚': 'cash', '⏳': 'clock', '⛔': 'ban', '🏦': 'bank'
   };
   var KEYS = Object.keys(MAP).sort(function (a, b) { return b.length - a.length; });
-  var SEL = '.top-mod-title,.tab,.mov-ic,.mp,.ei,.prod-icon-sm,.bn-title,.btn-abrir-cj,.btn-cerrar-cj,.cjsg-icon,.bci,.btn-act,.mhead-title';
+  var SEL = '.top-mod-title,.tab,.mov-ic,.mp,.mbtn,.abp-lbl,.cc-row>span,#difLbl,.na-cash-hist-row>span,.ei,.prod-icon-sm,.bn-title,.btn-abrir-cj,.btn-cerrar-cj,.cjsg-icon,.bci,.btn-act,.mhead-title';
   function lead(t) { t = t.replace(/^\s+/, ''); for (var i = 0; i < KEYS.length; i++) if (t.indexOf(KEYS[i]) === 0) return KEYS[i]; return null; }
   function fix(el) {
     if (!el || el.nodeType !== 1 || el.closest('.pos-module-mark,.g-logo,.brand')) return;

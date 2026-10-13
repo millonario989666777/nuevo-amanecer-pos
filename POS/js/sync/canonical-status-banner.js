@@ -102,7 +102,7 @@
     el.style.color = v.tone === 'red' ? '#991b1b' : '#92400e';
     el.style.borderBottom = '1px solid ' + (v.tone === 'red' ? '#fca5a5' : '#fcd34d');
     var text = el.querySelector ? el.querySelector('.na-sb-text') : null;
-    if (text) { text.textContent = (v.tone === 'red' ? '⛔ ' : '⏳ ') + v.text; text.title = v.detail; }
+    if (text) { text.textContent = v.text; text.title = v.detail; text.setAttribute && text.setAttribute('data-icon', v.tone === 'red' ? 'ban' : 'clock'); }
     var ver = el.querySelector ? el.querySelector('.na-sb-ver') : null;
     if (ver) ver.textContent = v.review ? 'Resolver' : 'Ver';
     return v;

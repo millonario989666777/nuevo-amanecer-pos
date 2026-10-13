@@ -41,7 +41,7 @@ test('409 cash sale: copied to quarantine, FIFO keeps draining, POS keeps workin
  await d.api.createPayment({credit_id:credits.credit_id,amount_cents:100,payment_method:'efectivo'});
  assert.equal(await d.context.cerrarCaja(),false);
  const text=d.el('cajCloseStatus').textContent;
- assert.ok(text.includes('Venta bloqueante: '+bad.sale_id),text);
+ assert.ok(text.includes('Venta pendiente: '+bad.sale_id),text);
  assert.match(text,/No la cobres de nuevo/);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });
@@ -71,7 +71,7 @@ test('credit sale with a customer missing on the server never blocks the queue; 
  assert.equal(f.sql('SELECT COUNT(*) n FROM sales WHERE operation_id=?',good.operation_id).n,1);
  d.el('cajContado').value='1074.50';
  assert.equal(await d.context.cerrarCaja(),false,'any unreconciled sale blocks this close');
- assert.ok(d.el('cajCloseStatus').textContent.includes('Venta bloqueante: '+bad.sale_id));
+ assert.ok(d.el('cajCloseStatus').textContent.includes('Venta pendiente: '+bad.sale_id));
  assert.equal((await outbox.resolveQuarantined(bad.operation_id,'verify')).status,'NOT_REGISTERED');
  await assert.rejects(outbox.resolveQuarantined(bad.operation_id,'archive'),/QUARANTINE_ANNUL_NEEDS_PROMOTION_PROOF/,'no journal: absence cannot be proven, no annul');
  assert.equal(outbox.quarantineAnnullable(outbox.quarantine().entries[0]),false);

@@ -60,7 +60,7 @@ test('adapter → local durable commit → Turso sync → receipt → history, s
   assert.equal(vm.runInContext('posProc',tab.context),false);
   assert.equal(tab.context.cart,undefined);
   assert.ok(tab.context.__closed.includes('mCobro'),'close lexical modal');
-  assert.ok(tab.toasts.some(([m])=>/registrada/i.test(m)),'local committed toast');
+  assert.ok(tab.toasts.some(([m])=>/guardada/i.test(m)),'local committed toast (no success before the server)');
   assert.equal(tab.context.NuevoAmanecerCanonicalSaleOutbox.snapshot().intents.length,1);
   assert.equal(tab.fetchLog.slice(before).some(row=>new URL(row.url).pathname==='/commands/sale.create'),false,'local commit must not wait for network');
   assert.equal((await tab.context.NuevoAmanecerCanonicalSaleOutbox.sync()).status,'DRAINED');
