@@ -72,7 +72,7 @@ function _naSecCartItem(parent,item){
   _naSecAppend(quantity,'span','qty-num',item.qty);
   quantity.appendChild(_naSecCartButton('+','increase',item._lineKey));
   _naSecAppend(row,'div','ci-sub',fmt(_naNumber(item.precio)*_naNumber(item.qty)));
-  row.appendChild(_naSecCartButton('🗑','remove',item._lineKey));
+  {const rm=_naSecCartButton('','remove',item._lineKey);rm.innerHTML='<i class="na-ic na-ic-trash" aria-hidden="true"></i>';rm.setAttribute('aria-label','Quitar');row.appendChild(rm);}
 }
 posUpdateCart=function(){
   const parts=_naTaxBreakdownForSaleItems(cart,!!appConfig.igvActive),count=cart.reduce((sum,item)=>sum+_naNumber(item.qty),0),units=cart.reduce((sum,item)=>sum+_naUnitsSold(item),0),badge=document.getElementById('cartBadge');

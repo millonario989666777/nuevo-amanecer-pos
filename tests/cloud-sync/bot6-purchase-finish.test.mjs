@@ -61,6 +61,9 @@ test('B6-9 cerrar como parcial: conserva lo aplicado, no toca stock, idempotente
   assert.ok(Math.abs(stockOf(f, '00003') - (q0 + 2)) < 1e-9); assert.equal(kardex(f, 'b6-9'), k0);
   const retry = await call(f, '/auth/purchases', 'owner-token', P(f, 'b6-9', L));
   assert.equal(retry.status, 409); assert.equal(retry.body.status, 'closed'); assert.equal(kardex(f, 'b6-9'), k0);
+  const L2 = [{ line: 1, product_id: '00003', quantity: 5, unit_cost_cents: 300 }];
+  const diff = await call(f, '/auth/purchases', 'owner-token', P(f, 'b6-9', L2));
+  assert.equal(diff.status, 409); assert.equal(diff.body.error, 'purchase_closed_partial', 'cerrada gana a contenido distinto'); assert.equal(kardex(f, 'b6-9'), k0);
   const st = await call(f, '/auth/purchases?id=b6-9', 'owner-token'); assert.equal(st.body.status, 'closed_partial');
   const audit = f.sql('SELECT reason,principal_id FROM pos_purchase_closures WHERE purchase_id=?', 'b6-9'); assert.equal(audit.reason, 'Producto dado de baja');
 });

@@ -24,7 +24,7 @@ gasRender=function(){
     subtotalNode.style.color='var(--red)';
     expenses.forEach(expense=>{
       const card=_naSecAppend(container,'div','gasto-card egreso');
-      _naSecAppend(card,'div','gasto-icon',CAT_ICONS[expense.cat]||'📋');
+      _naSecAppend(card,'div','gasto-icon','').innerHTML=CAT_ICONS[expense.cat]||'<i class="na-ic na-ic-clip" aria-hidden="true"></i>';
       const info=_naSecAppend(card,'div','gasto-info');
       _naSecAppend(info,'div','gasto-desc',expense.desc||'Gasto');
       const meta=_naSecAppend(info,'div','gasto-meta');

@@ -84,7 +84,7 @@ function _naSecCashClosing(container,totals){
   outer.style.cssText='padding:12px 13px';
   const summary=_naSecAppend(outer,'div');
   summary.style.cssText='background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:9px';
-  _naSecAppend(summary,'div','','📊 Resumen del turno').style.cssText='font-size:12px;font-weight:800;color:var(--dark);margin-bottom:11px';
+  {const h=_naSecAppend(summary,'div','','Resumen del turno');h.style.cssText='font-size:12px;font-weight:800;color:var(--dark);margin-bottom:11px';h.insertAdjacentHTML('afterbegin','<i class="na-ic na-ic-bars" aria-hidden="true"></i> ');}
   [
     ['Fondo inicial',fmt(cajEstado.fondo),'var(--dark)'],
     ['Ventas del día',`+${fmt(totals.ven)}`,'#15803d'],
@@ -110,7 +110,7 @@ function _naSecCashClosing(container,totals){
     _naSecAppend(closed,'div','','Caja cerrada correctamente').style.cssText='font-size:14px;font-weight:800;color:#15803d';
     _naSecAppend(closed,'div','',`Hora: ${cajEstado.horaCierre||''} · Cajero: ${_naSecCashCashierText()}`).style.cssText='font-size:11px;color:var(--slate);margin-top:3px';
   }else{
-    const close=_naSecCashButton('','🔒 Proceder al cierre de caja','close');
+    const close=_naSecCashButton('','Proceder al cierre de caja','close');close.insertAdjacentHTML('afterbegin','<i class="na-ic na-ic-lock" aria-hidden="true"></i> ');
     close.style.cssText="width:100%;background:var(--dark);color:var(--white);border:none;border-radius:11px;padding:14px;font-size:14px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif";
     outer.appendChild(close);
   }

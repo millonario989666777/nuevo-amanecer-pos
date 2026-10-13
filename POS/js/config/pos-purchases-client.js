@@ -7,6 +7,7 @@
 (function (root) {
   'use strict';
   var doc = root.document, OPS = 'na_purchase_pending_ops_v2', OPS_V1 = 'na_purchase_pending_op_v1', busy = false;
+  root.NAPurchaseBusy = function () { return !!busy; };
   function cloud() { try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()); } catch (_) { return false; } }
   function toast(m, k) { try { root.toast(m, k || 'error'); } catch (_) {} }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -236,13 +237,14 @@
       var out = await root.NA_ROLES.api('/auth/purchases');
       var byId = {}; products().forEach(function (p) { byId[String(p.id)] = p.nombre || p.name || p.id; });
       var rows = out.purchases || [];
-      var lock = root.NA_ICON ? root.NA_ICON('lock') : '';
+      var lock = '<i class="na-ic na-ic-lock" aria-hidden="true"></i>';
       var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join(''); };
       list.innerHTML = rows.length ? rows.map(function (p) {
         var head = '<strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents);
         if (p.status === 'en_curso') {
           // Incompleta: fila ámbar con los botones SIEMPRE visibles (fuera del detalle plegado).
-          return '<div class="na-pur-item na-pur-open" data-id="' + esc(p.purchase_id) + '"><div class="na-pur-open-head">' + head + ' · <em>incompleta</em>' + (p.document_ref ? ' <small>' + esc(p.document_ref) + '</small>' : '') + '</div>' +
+          return '<div class="na-pur-item na-pur-open" data-id="' + esc(p.purchase_id) + '"><div class="na-pur-open-head"><strong>' + esc(p.supplier || 'Sin proveedor') + '</strong>' + (p.document_ref ? ' <small>' + esc(p.document_ref) + '</small>' : '') + '</div>' +
+            '<div class="na-pur-open-sub">' + money(p.total_cost_cents) + ' · ' + esc((p.created_at || '').slice(0, 10)) + ' · <em>Incompleta</em></div>' +
             '<div class="na-pur-open-actions"><button type="button" class="na-pur-finish-h">Terminar compra</button><button type="button" class="na-pur-partial-h">' + lock + ' Cerrar como parcial</button></div>' +
             '<input class="na-pur-reason" type="text" maxlength="300" placeholder="Motivo (obligatorio)" hidden><div class="na-pur-err" role="status" hidden></div>' +
             '<details><summary>Ver líneas</summary>' + detail(p) + '</details></div>';

@@ -1,3 +1,5 @@
+var _naVWv=typeof window!=='undefined'?window.innerWidth:0;function _naVW(){return _naVWv;}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',function(){_naVWv=window.innerWidth;},{passive:true});
 /*
  * js/core/state.js - estado UI transversal compartido del POS (ETAPA 4, work item STATE).
  *
@@ -61,7 +63,7 @@
     }
     return null;
   }
-  function desktopMode(){return window.innerWidth>700&&!!activePageEl();}
+  function desktopMode(){return _naVW()>700&&!!activePageEl();}
   function isDesktopContainer(el){
     if(!el)return false;
     var keys=DESKTOP_SCROLL_SEL.split(',');
@@ -73,7 +75,7 @@
     return false;
   }
   function scrollOwnerFromTarget(target){
-    if(window.innerWidth<=700)return null;
+    if(_naVW()<=700)return null;
     var page=activePageEl(),el=target;
     while(el&&el!==page){if(isDesktopContainer(el))return el;el=el.parentElement;}
     if(!page||!page.querySelectorAll)return null;
@@ -87,7 +89,7 @@
   function activeScrollEl(preferred){return scrollOwnerFromTarget(preferred);}
   function clientesMotionOwnsMobileScroll(){
     var page=activePageEl(),motion=window.NA_MOTION;
-    return window.innerWidth<=700
+    return _naVW()<=700
       &&page&&page.id==='pageClientes'
       &&motion&&motion.scroll
       &&typeof motion.scroll.enablePreset==='function';
@@ -105,7 +107,7 @@
       if(page.classList.contains('g-page-chrome-hidden'))setChromeHidden(false);
       return false;
     }
-    if(window.innerWidth<=767&&page&&page.id==='pageInventario'
+    if(_naVW()<=767&&page&&page.id==='pageInventario'
       &&page.classList.contains('inv-mobile-simple'))return false;
     if(document.body.classList.contains('module-mobile-scroll')){
       // Clientes ya tiene un único controlador visual (NA_MOTION.scroll).
@@ -197,7 +199,7 @@
   window.addEventListener('scroll',function(){handleScroll(null);},{passive:true});
   /* Scroll no burbujea: capture permite resolver exactamente el owner que emitió. */
   document.addEventListener('scroll',function(e){
-    if(window.innerWidth<=700)return;
+    if(_naVW()<=700)return;
     if(!gesturesActive())return;
     var t=e&&e.target;
     if(!t||t===document)return;

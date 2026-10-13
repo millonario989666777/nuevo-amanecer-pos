@@ -860,6 +860,7 @@
   }
 
   root.NuevoAmanecerCanonicalCreditPaymentBridge = Object.freeze({
+    busy: function () { return !!busy; },
     enabled: enabled,
     confirm: confirm,
     confirmBatch: confirmBatch,

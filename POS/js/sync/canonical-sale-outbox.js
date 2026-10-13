@@ -871,7 +871,7 @@
       return { status: 'REJECTED_TEST_INTENT', operation_id: operationId };
     });
   }
-  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, sessionOf: sessionOfIntent, blocking: function () { return clone(blockingQuarantine()); }, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent,
+  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ busy: function () { return !!syncing; }, VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, sessionOf: sessionOfIntent, blocking: function () { return clone(blockingQuarantine()); }, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent,
     reasonText: reasonText, quarantineRebindsOnRetry: function (reason) { return REBIND_ON_RETRY.indexOf(reason) !== -1; },
     rebindTarget: function () { return openCashSession(root.NuevoAmanecerCanonical); },
     // The drain resolves every sale.create rejection by itself (review list,
