@@ -10,7 +10,7 @@ function load(statusById) {
     document: { getElementById: () => null, querySelector: () => null },
     localStorage: { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
     crypto: { randomUUID: () => 'u' + (++n) },
-    NA_ROLES: { api: async (path) => { calls.push(path); const id = decodeURIComponent(path.split('id=')[1] || ''); if (statusById[id] === 'offline') throw new Error('net'); return { status: statusById[id] || 'not_found' }; } },
+    NA_ROLES: { api: async (path) => { calls.push(path); const id = decodeURIComponent(path.split('id=')[1] || ''); if (statusById[id] === 'offline') throw new Error('net'); const v = statusById[id]; if (v && typeof v === 'object') return v.purchase_id === undefined && !v.status ? v : { purchase_id: id, ...v }; return { purchase_id: id, status: v || 'not_found' }; } },
     NuevoAmanecerCanonical: { refresh: async () => { calls.push('refresh'); } },
   };
   root.window = root;
@@ -49,7 +49,7 @@ test('sin red no se puede comprobar el id viejo: no se crea uno nuevo', async ()
   const { P, store } = load({ 'PUR-u1': 'offline' });
   const a = await P._opFor(L1, M);
   const b = await P._opFor(L2, M);
-  assert.match(b.stop, /sin conexión/);
+  assert.match(b.stop, /No se pudo comprobar/);
   assert.ok(JSON.parse(store.get('na_purchase_pending_ops_v2'))[a.id], 'old id kept');
 });
 
@@ -72,4 +72,32 @@ test('dos compras sin confirmar: la segunda no borra la primera; cada una se ver
   const map = JSON.parse(store.get('na_purchase_pending_ops_v2'));
   assert.ok(map[a.id] && map[b.id], 'ambas siguen guardadas');
   assert.equal(JSON.stringify(P.pendingOps().map(x => x.id).sort()), JSON.stringify([a.id, b.id].sort()));
+});
+
+test('Bot 6 (a): una respuesta que no es el estado de ESA compra (p. ej. la lista del Worker viejo) = no comprobado; no se crea id nuevo', async () => {
+  const st = {};
+  const { P, store } = load(st);
+  const a = await P._opFor(L1, M);
+  st[a.id] = { purchases: [] };                      // Worker anterior: ignora ?id= y devuelve la lista
+  const b = await P._opFor(L2, M);
+  assert.match(b.stop, /No se pudo comprobar/);
+  const map = JSON.parse(store.get('na_purchase_pending_ops_v2'));
+  assert.deepEqual(Object.keys(map), [a.id], 'se conserva el id anterior y no hay id nuevo');
+});
+
+test('Bot 6 (b): compra anterior a medias + compra casi igual: no hay id nuevo; se listan líneas aplicadas y se ofrece terminar con el MISMO id', async () => {
+  const st = {};
+  const { P, store } = load(st);
+  const a = await P._opFor([{ line: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }, { line: 2, product_id: 'B', quantity: 3, unit_cost_cents: 50 }], M);
+  st[a.id] = { status: 'in_progress', purchase: { supplier: 'Sol', document_ref: 'F1' }, lines: [
+    { line_number: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100, applied: true },
+    { line_number: 2, product_id: 'B', quantity: 3, unit_cost_cents: 50, applied: false }] };
+  const b = await P._opFor([{ line: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }, { line: 2, product_id: 'B', quantity: 4, unit_cost_cents: 50 }], M);
+  assert.match(b.stop, /Ya sumaron stock: A \+2\. Faltan: B \+3/);
+  assert.equal(b.finish.id, a.id);
+  assert.equal(JSON.stringify(b.finish.lines), JSON.stringify([{ line: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }, { line: 2, product_id: 'B', quantity: 3, unit_cost_cents: 50 }]));
+  assert.equal(b.finish.meta.supplier, 'Sol');
+  const again = await P._opFor([{ line: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }], M);
+  assert.ok(again.stop && again.finish, 'sigue bloqueado hasta terminar la anterior');
+  assert.deepEqual(Object.keys(JSON.parse(store.get('na_purchase_pending_ops_v2'))), [a.id]);
 });

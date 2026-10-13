@@ -112,3 +112,12 @@ test('Bot 6 caso B: compra a medias + línea editada con el mismo id -> 409, nad
   const same = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-b', bad));
   assert.equal(same.status, 409); assert.equal(same.body.error, 'purchase_line_failed', 'identical retry still allowed');
 });
+
+test('Bot 6 (b) servidor: el estado de una compra a medias dice qué líneas ya sumaron stock', async t => {
+  const f = await setup(t);
+  const bad = [{ line: 1, product_id: '00003', quantity: 2, unit_cost_cents: 350 }, { line: 2, product_id: 'NO-EXISTE', quantity: 1, unit_cost_cents: 100 }];
+  assert.equal((await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-p', bad))).status, 409);
+  const st = await call(f, '/auth/purchases?id=buy-p', 'owner-token');
+  assert.equal(st.body.status, 'in_progress');
+  assert.deepEqual(st.body.lines.map(l => [l.line_number, l.product_id, l.applied]), [[1, '00003', true], [2, 'NO-EXISTE', false]]);
+});

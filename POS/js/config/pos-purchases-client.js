@@ -94,19 +94,38 @@
   function writeOps(m) { try { if (Object.keys(m).length) root.localStorage.setItem(OPS, JSON.stringify(m)); else root.localStorage.removeItem(OPS); } catch (_) {} }
   function dropOp(id) { var m = readOps(); if (id && m[id]) { delete m[id]; writeOps(m); } }
   function pendingOps() { var m = readOps(); return Object.keys(m).map(function (id) { return { id: id, fp: m[id].fp, noted: !!m[id].noted }; }); }
+  var UNVERIFIED = 'No se pudo comprobar la compra anterior. Vuelve a intentar con internet; no se guardó nada nuevo.';
+  function nameOf(pid) { var p = products().find(function (x) { return String(x.id) === String(pid); }); return p ? (p.nombre || p.name || pid) : pid; }
   // Devuelve { id } para enviar, o { stop: mensaje } si antes hay que avisar algo al dueño.
+  // { finish: {...} } = compra anterior a medias que se puede terminar con su MISMO id (solo suma lo que falta).
   async function opFor(lines, meta) {
     var fp = fingerprint(lines, meta), m = readOps(), ids = Object.keys(m);
     for (var i = 0; i < ids.length; i++) if (m[ids[i]].fp === fp) return { id: ids[i] };
     var applied = 0, half = 0;
+    var newProducts = (lines || []).map(function (x) { return String(x.product_id); });
     for (var j = 0; j < ids.length; j++) {
       var id = ids[j]; if (m[id].noted) continue;
       var st;
       try { st = await root.NA_ROLES.api('/auth/purchases?id=' + encodeURIComponent(id)); }
-      catch (_) { return { stop: 'No se pudo comprobar la compra anterior (sin conexión). Vuelve a intentar con internet; no se guardó nada nuevo.' }; }
-      if (st && st.status === 'applied') { applied++; delete m[id]; }
-      else if (st && st.status === 'in_progress') { half++; m[id].noted = true; }
-      else delete m[id]; // not_found: nunca llegó al servidor, no sumó stock
+      catch (_) { return { stop: UNVERIFIED }; }
+      // Solo se acepta una respuesta de estado de ESTA compra; cualquier otra cosa (lista, error) = no comprobado.
+      if (!st || st.purchase_id !== id || ['applied', 'in_progress', 'not_found'].indexOf(st.status) === -1) return { stop: UNVERIFIED };
+      if (st.status === 'applied') { applied++; delete m[id]; }
+      else if (st.status === 'in_progress') {
+        var old = Array.isArray(st.lines) ? st.lines : [];
+        var overlap = old.some(function (l) { return newProducts.indexOf(String(l.product_id)) !== -1; });
+        if (overlap && old.length) {
+          writeOps(m);
+          var done = old.filter(function (l) { return l.applied; }), miss = old.filter(function (l) { return !l.applied; });
+          var desc = function (a) { return a.map(function (l) { return nameOf(l.product_id) + ' +' + l.quantity; }).join(', ') || 'ninguna'; };
+          return { stop: 'La compra anterior quedó a medias. Ya sumaron stock: ' + desc(done) + '. Faltan: ' + desc(miss) +
+            '. Para no duplicar, termínala con «Terminar compra anterior» (solo suma lo que falta). Esta compra NO se registró.',
+            finish: { id: id, lines: old.map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) }; }),
+              meta: { supplier: (st.purchase && st.purchase.supplier) || '', documentRef: (st.purchase && st.purchase.document_ref) || '' } } };
+        }
+        half++; m[id].noted = true;
+      }
+      else delete m[id]; // not_found confirmado: nunca llegó al servidor, no sumó stock
     }
     writeOps(m);
     if (applied) {
@@ -142,6 +161,21 @@
     var settled = false;
     var curId = null;
     function closeW() { if (settled && curId) dropOp(curId); w.remove(); }
+    // Termina la compra anterior a medias con su MISMO id: el servidor salta las líneas ya aplicadas.
+    function finishButton(f) {
+      var b = doc.createElement('button'); b.type = 'button'; b.className = 'na-pur-finish'; b.textContent = 'Terminar compra anterior';
+      b.style.cssText = 'display:block;margin-top:8px;min-height:40px;border-radius:10px;border:1px solid #b91c1c;background:#fff;color:#991b1b;font-weight:800;padding:0 12px';
+      b.onclick = async function () {
+        if (busy) return; busy = true; b.disabled = true; b.textContent = 'Terminando…';
+        try {
+          var out = await submit(f.id, f.lines, f.meta); dropOp(f.id);
+          errBox.classList.add('info'); errBox.textContent = 'Compra anterior completa: ' + (out.applied || []).length + ' línea(s) que faltaban sumaron stock; las demás ya estaban. Ahora puedes registrar esta compra si es distinta.';
+          try { await root.NuevoAmanecerCanonical.refresh(); } catch (_) {}
+        } catch (e) { var c = e && (e.data && e.data.error || e.message); errBox.classList.remove('info'); errBox.textContent = '⚠ ' + (ERR[c] || 'No se pudo terminar la compra anterior. Vuelve a intentar; no se duplicará.'); }
+        finally { busy = false; }
+      };
+      errBox.appendChild(b);
+    }
     w.querySelector('.na-pur-ok').onclick = async function () {
       if (busy) return;
       errBox.hidden = true;
@@ -154,7 +188,7 @@
       try {
         var meta = { supplier: w.querySelector('#naPurSupplier').value.trim(), documentRef: w.querySelector('#naPurDoc').value.trim() };
         var pick = await opFor(r.lines, meta);
-        if (pick.stop) { fail(pick.stop); if (pick.info) errBox.classList.add('info'); return; }
+        if (pick.stop) { fail(pick.stop); if (pick.info) errBox.classList.add('info'); if (pick.finish) finishButton(pick.finish); return; }
         curId = pick.id;
         var out = await submit(pick.id, r.lines, meta);
         dropOp(pick.id); settled = true;
@@ -200,6 +234,6 @@
       src.appendChild(c);
     }
   }
-  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps };
+  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor, pendingOps: pendingOps, _submit: submit };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', installButtons); else installButtons();
 })(window);
