@@ -121,5 +121,13 @@ test('celular: respuesta lenta completa el nombre después; fallo de red no se r
   const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
   assert.ok(!/Promise\.race/.test(client), 'no se descarta la respuesta que llega después de 3 s');
   assert.match(client, /if \(reason === 'not_found'\) asked\[dni\] = \{ name: null \};/);
-  assert.match(client, /reason: 'network'/);
+  assert.match(client, /'network'/);
+});
+
+test('celular: sin exigir Canonical.enabled, varios eventos y una sola consulta por DNI', () => {
+  const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  assert.ok(!/NuevoAmanecerCanonical\.enabled/.test(client));
+  for (const ev of ['input', 'change', 'blur', 'keyup']) assert.ok(client.includes(`'${ev}'`));
+  assert.match(client, /addEventListener\('paste'/);
+  assert.match(client, /if \(inflight === dni\) return;/);
 });

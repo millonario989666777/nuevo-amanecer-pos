@@ -5,9 +5,8 @@
 (function (root) {
   'use strict';
   var doc = root.document; if (!doc) return;
-  var TIMEOUT_MS = 3000, seq = 0, asked = {};
+  var TIMEOUT_MS = 3000, seq = 0, asked = {}, inflight = null;
   function clean(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' '); }
-  function cloud() { try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()); } catch (_) { return false; } }
   function legacyList() { try { return Array.isArray(clientes) ? clientes : []; } catch (_) { return []; } } // eslint-disable-line no-undef
   function canonList() {
     try { var s = root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.snapshot && root.NuevoAmanecerCanonical.snapshot(); return Array.isArray(s && s.customers) ? s.customers : []; } catch (_) { return []; }
@@ -55,28 +54,33 @@
   async function check() {
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
     if (!input || !nameEl) return;
+    var modal = doc.getElementById('mCli'); if (modal && !modal.classList.contains('open')) return;
     var dni = clean(input.value).replace(/\D/g, ''), my = ++seq;
     if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
     var local = findLocal(dni);
     if (local) { hint(''); openExisting(local, dni); return; }
     if (clean(nameEl.value)) { hint(''); return; }
-    if (!cloud() || !root.NA_ROLES || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
+    // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
+    if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
+    if (inflight === dni) return; // input + change + paste del mismo DNI: una sola consulta
     if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
     hint('Buscando DNI…');
-    var done = false;
+    var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
     root.setTimeout(function () { if (!done && my === seq) hint(SLOW); }, TIMEOUT_MS);
     var out;
     try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
-    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: 'network' }; }
-    done = true;
-    if (my !== seq) return;
+    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: e && e.message === 'SIN_SESION' ? 'no_session' : 'network' }; }
+    done = true; if (inflight === dni) inflight = null;
+    if (my !== seq && clean(doc.getElementById('cDni') && doc.getElementById('cDni').value) !== dni) return;
     apply(out, dni);
   }
   function bind() {
     var input = doc.getElementById('cDni'); if (!input || input.dataset.naDni) return;
     input.dataset.naDni = '1'; input.setAttribute('inputmode', 'numeric');
-    input.addEventListener('input', function () { check(); });
+    // Algunos teclados de celular (autocompletar, pegar, dictado) no disparan «input» al final.
+    ['input', 'change', 'blur', 'keyup'].forEach(function (ev) { input.addEventListener(ev, function () { check(); }); });
+    input.addEventListener('paste', function () { root.setTimeout(check, 0); });
   }
   root.NA_DNI_LOOKUP = { check: check, findLocal: findLocal };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', bind); else bind();
