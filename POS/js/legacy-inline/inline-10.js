@@ -100,7 +100,7 @@ function _naSecRenderSaleCard(list,sale,index){
   _naSecAppend(header,'div','v-num',displayId);
   const info=_naSecAppend(header,'div','v-info'),itemsText=_naSecAppend(info,'div','v-items-txt');
   if(sale.anulada)_naSecAppend(itemsText,'span','badge-anulada','ANULADA');
-  if(window.NA_REVIEWS?.isFlagged(sale)){const rv=window.NA_REVIEWS.reviewFor(sale),st=rv?.status;_naSecAppend(itemsText,'span','badge-descuento-revision',st==='aprobado'?'⚠ Descuento aprobado':st==='rechazado'?'⚠ Descuento rechazado':'⚠ Descuento por autorizar');}
+  if(window.NA_REVIEWS?.isFlagged(sale)){const rv=window.NA_REVIEWS.reviewFor(sale),st=rv?.status;_naSecAppend(itemsText,'span','badge-descuento-revision',st==='aprobado'?'Descuento aprobado':st==='rechazado'?'Descuento rechazado':'Descuento por autorizar');}
   const shownBadges=new Set();
   (Array.isArray(sale.items)?sale.items:[]).forEach((item,itemIndex)=>{
     if(itemIndex)itemsText.appendChild(document.createTextNode(', '));

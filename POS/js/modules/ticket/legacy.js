@@ -24,7 +24,7 @@ function _naBuildThermalTicket(v,fromDom=true){
   const cfg=appConfig.ticket||{},mm=fromDom?_naTicketSelectedMm():(cfg.ancho==='custom'?Number(cfg.customMm||60):parseFloat(cfg.ancho)||80),width=_naTicketChars(mm),mode=(fromDom?document.getElementById('tkLayout')?.value:cfg.layoutMode)||'auto',labels=_naTkLabels(width,mode),headerAlign=(fromDom?document.getElementById('tkAlign')?.value:cfg.align)||'center',infoAlign=(fromDom?document.getElementById('tkInfoAlign')?.value:cfg.infoAlign)||'left',paymentAlign=(fromDom?document.getElementById('tkPaymentAlign')?.value:cfg.paymentAlign)||'split',footerAlign=(fromDom?document.getElementById('tkFooterAlign')?.value:cfg.footerAlign)||'center';
   const get=(id,fallback='')=>fromDom?(document.getElementById(id)?.value??fallback):fallback,check=(id,fallback=true)=>fromDom?(document.getElementById(id)?.checked??fallback):fallback;
   const b=_naGetBusiness(),name=get('tkNegocio',(b.nombre||'NUEVO AMANECER').toUpperCase()),ruc=get('tkRuc',b.ruc?`RUC/DNI: ${b.ruc}`:''),address=get('tkDireccion',b.direccion||''),phone=get('tkTelefono',b.telefono?`Tel: ${b.telefono}`:''),pie=get('tkPie',cfg.pie||'GRACIAS POR SU COMPRA');
-  const showHeader=check('tkShowLogo',cfg.showLogo!==false),showNum=check('tkShowNum',cfg.showNum!==false),showOperation=check('tkShowOperation',cfg.showOperation!==false),showIGV=check('tkShowIGV',!!cfg.showIGV),showCurrency=check('tkShowCurrency',cfg.showCurrency!==false),showUnit=check('tkShowUnitPrice',cfg.showUnitPrice!==false),showPayment=check('tkShowPayment',cfg.showPayment!==false),showReceived=check('tkShowReceived',cfg.showReceived!==false),showSep=check('tkShowSep',cfg.showSep!==false);
+  const showHeader=check('tkShowLogo',cfg.showLogo!==false),showNum=check('tkShowNum',cfg.showNum!==false),showOperation=check('tkShowOperation',cfg.showOperation!==false),showIGV=check('tkShowIGV',(()=>{try{const v=localStorage.getItem('na_show_igv_line');return v===null?(cfg.showIGV!==false):v!=='0';}catch(_){return cfg.showIGV!==false;}})()),showCurrency=check('tkShowCurrency',cfg.showCurrency!==false),showUnit=check('tkShowUnitPrice',cfg.showUnitPrice!==false),showPayment=check('tkShowPayment',cfg.showPayment!==false),showReceived=check('tkShowReceived',cfg.showReceived!==false),showSep=check('tkShowSep',cfg.showSep!==false);
   const lines=[],eq='='.repeat(width),dash='-'.repeat(width),sep=showSep?dash:'';
   if(showHeader)lines.push(eq);
   for(const line of _naTkWrap(name.toUpperCase(),width))lines.push(_naTkAlignLine(line,width,headerAlign));
@@ -38,7 +38,7 @@ function _naBuildThermalTicket(v,fromDom=true){
   if(showOperation){const op=_naTkOperation(v);if(op)pushField(labels.operation,op);}
   pushField(labels.date,_naTkFormatDate(v?.fecha||obtenerHoy()));
   pushField(labels.time,v?.hora||nowT());
-  pushField(labels.cashier,v?.cajero||b.cajero||'');
+  pushField(labels.cashier,(globalThis.NA_RECORD_CASHIER?.get?.([v?.sale_id,v?.id,v?.operation_id,v?.operation])?.nombre)||v?.cajeroNombre||v?.cajero||b.cajero||'');
   lines.push('');if(showSep)lines.push(dash);
   const total=totalV(v||{items:[]}),items=v?.items||[];
   if(width>=24){

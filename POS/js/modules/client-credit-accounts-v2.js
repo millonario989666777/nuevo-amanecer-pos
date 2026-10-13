@@ -776,14 +776,34 @@ function labCategorySummary(client, category) {
     }
   }
 
+  // Al redibujar la ficha se conservan monto, método y referencia del abono que se está escribiendo
+  // (mismo cliente). Tras confirmar un abono no se restauran: el formulario vuelve vacío.
+  var NA_V2_DRAFT_IDS = ['naV2BatchAmount', 'naV2BatchMethod', 'naV2BatchReference'];
+  var naV2DraftSkip = false;
+  function naV2DraftCapture(content) {
+    if (!content || naV2DraftSkip || labBatchSubmitInFlight) return null;
+    var out = { clientId:labClientScreenState.clientId, values:{} }, any = false;
+    NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && el.value !== '' && el.value != null) { out.values[id] = el.value; if (id !== 'naV2BatchMethod') any = true; } });
+    return any ? out : null;
+  }
+  function naV2DraftRestore(content, draft) {
+    if (!content || !draft || draft.clientId !== labClientScreenState.clientId) return;
+    var touched = null;
+    NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && draft.values[id] != null && el.value !== draft.values[id]) { el.value = draft.values[id]; touched = touched || el; } });
+    if (touched) { try { touched.dispatchEvent(new Event('input', { bubbles:true })); touched.dispatchEvent(new Event('change', { bubbles:true })); } catch (_) {} }
+  }
+  if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('input', function (e) { var t = e && e.target; if (t && t.isTrusted !== false && t.id && NA_V2_DRAFT_IDS.indexOf(t.id) >= 0 && e.isTrusted) naV2DraftSkip = false; }, true);
+
   function naClientRenderSubview(screen, content, html, direction) {
     direction = direction || 'replace';
     if (!content) return;
+    var naV2Draft = naV2DraftCapture(content);
     if (direction === 'replace' || naClientReducedMotion() || !content.firstElementChild) {
       naClientViewEpoch += 1;
       naClientResetViewMotion(content);
       if (screen.scrollTop) screen.scrollTop = 0;
       content.innerHTML = html;
+      naV2DraftRestore(content, naV2Draft);
       naClientSetMotionState(content, 'open');
       return;
     }
@@ -802,6 +822,7 @@ function labCategorySummary(client, category) {
       naClientViewCancel = null;
       if (screen.scrollTop) screen.scrollTop = 0;
       content.innerHTML = html;
+      naV2DraftRestore(content, naV2Draft);
       var incoming = content.firstElementChild;
       if (!incoming) {
         naClientResetViewMotion(content);
@@ -1326,6 +1347,7 @@ function labCategorySummary(client, category) {
         reference:state.reference
       });
       if (result && result.completed_count > 0) {
+        naV2DraftSkip = true;
         // Never render stale replica data after a durable receipt. Show a
         // post-commit "Pagado" projection immediately, then let the background
         // canonical reconciliation replace it with the authoritative snapshot.

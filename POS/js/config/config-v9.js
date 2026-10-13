@@ -85,7 +85,7 @@
 
   // ---------- controles ----------
   function sw(id, on, opts) { return '<label class="na9-sw"><input type="checkbox" data-na9="' + id + '"' + (on ? ' checked' : '') + (opts || '') + '><span></span></label>'; }
-  function row(label, sub, ctl, tag) { return '<div class="na9-row"><div class="na9-t">' + esc(label) + (tag ? ' <em class="na9-tag">' + esc(tag) + '</em>' : '') + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>' + ctl + '</div>'; }
+  function row(label, sub, ctl, tag) { return '<div class="na9-row' + (/class="na9-sw"/.test(ctl) ? ' na9-row-sw' : '') + '"><div class="na9-t">' + esc(label) + (tag ? ' <em class="na9-tag">' + esc(tag) + '</em>' : '') + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>' + ctl + '</div>'; }
   function num(id, val, min, max, step) { return '<input class="na9-num" type="number" data-na9="' + id + '" value="' + esc(val) + '" min="' + min + '" max="' + max + '" step="' + (step || 1) + '">'; }
   function txt(label, id, val, extra) { return '<label class="na9-f">' + esc(label) + '<input type="text" data-na9="' + id + '" value="' + esc(val) + '"' + (extra || '') + '></label>'; }
   function sel(label, id, val, opts) { return '<label class="na9-f">' + esc(label) + '<select data-na9="' + id + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; }
@@ -149,10 +149,11 @@
     try {
       var b = root._naBuildThermalTicket; var base = b && b.__na9base ? b.__na9base : b; if (typeof base !== 'function') return '';
       // Venta de ejemplo con N° de operación y detalle de crédito, para que esas opciones se vean en la vista previa.
-      var RS = root.NAReceiptShare, orig = RS && RS.ticketExtrasForSale, swapped = false;
-      try { if (RS && Object.isExtensible(RS)) { RS.ticketExtrasForSale = function (v) { return v && v.__na9sample ? { amount: 17, initial: 5, balance: 12, due: (call('obtenerHoy') || '') } : (orig ? orig.apply(RS, arguments) : null); }; swapped = true; } } catch (_) {}
+      // NAReceiptShare está congelado: durante la vista previa se usa una copia con datos de crédito de ejemplo.
+      var RS = root.NAReceiptShare, swapped = false;
+      if (RS) { try { var orig = RS.ticketExtrasForSale; var tmp = Object.assign({}, RS); tmp.ticketExtrasForSale = function (v) { return v && v.__na9sample ? { amount: 17, initial: 5, balance: 12, due: (call('obtenerHoy') || '') } : (orig ? orig.apply(RS, arguments) : null); }; root.NAReceiptShare = tmp; swapped = root.NAReceiptShare === tmp; } catch (_) {} }
       try { return type === 'ticket' ? base.call(root, sampleSale(), false).text : buildFormat(base, type, sampleSale()).text; }
-      finally { if (swapped) { try { if (orig) RS.ticketExtrasForSale = orig; else delete RS.ticketExtrasForSale; } catch (_) {} } }
+      finally { if (swapped) { try { root.NAReceiptShare = RS; } catch (_) {} } }
     } catch (e) { return 'No se pudo generar la vista previa.'; }
   }
   // Selector de formato en la ventana del ticket de una venta (solo PC y tablet; en teléfono no se ve).
@@ -453,9 +454,17 @@
     if (!m) { m = doc.createElement('span'); m.className = 'na9-err'; m.setAttribute('role', 'alert'); lab.appendChild(m); }
     m.textContent = msg; el.setAttribute('aria-invalid', 'true');
   }
+  // Tocar cualquier parte de la fila de un interruptor lo cambia (no solo el interruptor).
+  function onRowTap(e) {
+    var t = e.target; if (!t || !t.closest || !t.closest('#naCfgV9')) return;
+    if (t.closest('input,button,a,select,textarea,label')) return;
+    var r = t.closest('.na9-row-sw'); if (!r) return;
+    var cb = r.querySelector('.na9-sw input[type=checkbox]'); if (!cb || cb.disabled) return;
+    cb.click();
+  }
   function onChange(e) {
     var el = e.target, k = el && el.dataset ? el.dataset.na9 : null; if (!k || !el.closest('#naCfgV9')) return;
-    if (k === 'zoom') { setZoom(Number(el.value)); var zv = doc.getElementById('na9Zv'); if (zv) { var zz = Number(el.value), nm = 'Personalizado'; ZP.forEach(function (x) { if (x[1] === zz) nm = x[0]; }); zv.textContent = nm + ' (' + zz + '%)'; } autosave(false); return; }
+    if (k === 'zoom') { setZoom(Number(el.value)); var zv = doc.getElementById('na9Zv'); if (zv) { var zz = Number(el.value), nm = 'Personalizado'; ZP.forEach(function (x) { if (x[1] === zz) nm = x[0]; }); zv.textContent = nm + ' (' + zz + '%)'; } try { doc.querySelectorAll('#naCfgV9 .na9-zp').forEach(function (b) { b.classList.toggle('on', Number(b.dataset.z) === Number(el.value)); }); } catch (_) {} autosave(false); return; }
     if (!guard()) return;
     var c = C(), v = el.type === 'checkbox' ? el.checked : el.value, live = e.type === 'input';
     if (live && (el.type !== 'text' || k === 'freeShortcut')) return; // números, listas y atajo: al confirmar
@@ -535,6 +544,7 @@
   if (!install.events) {
     install.events = true;
     doc.addEventListener('click', onClick);
+    doc.addEventListener('click', onRowTap);
     doc.addEventListener('change', onChange);
     doc.addEventListener('input', onChange);
     var onWidth = function () {

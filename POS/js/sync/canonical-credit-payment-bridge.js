@@ -219,7 +219,7 @@
       box.textContent = '';
       if (kind) {
         var mark = root.document.createElement('span'); mark.setAttribute('aria-hidden', 'true');
-        if (kind === 'checking') mark.className = 'na-pay-spin'; else mark.textContent = kind === 'done' ? '✓' : '⚠';
+        if (kind === 'checking') mark.className = 'na-pay-spin'; else mark.textContent = kind === 'done' ? '✓' : '!';
         var label = root.document.createElement('span'); label.textContent = text;
         box.append(mark, label);
       }
@@ -306,7 +306,7 @@
     var box = btn.parentElement.querySelector('.na-pay-net-batch');
     if (!box) { box = root.document.createElement('div'); box.className = 'na-pay-net na-pay-net-batch'; box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite'); btn.parentElement.insertBefore(box, btn); }
     box.hidden = !kind; box.className = 'na-pay-net na-pay-net-batch' + (kind ? ' ' + kind : ''); box.textContent = '';
-    if (kind) { var m = root.document.createElement('span'); m.setAttribute('aria-hidden', 'true'); if (kind === 'checking') m.className = 'na-pay-spin'; else m.textContent = '⚠'; var t = root.document.createElement('span'); t.textContent = text; box.append(m, t); }
+    if (kind) { var m = root.document.createElement('span'); m.setAttribute('aria-hidden', 'true'); if (kind === 'checking') m.className = 'na-pay-spin'; else m.textContent = '!'; var t = root.document.createElement('span'); t.textContent = text; box.append(m, t); }
   }
 
   // Un abono "no confirmado" queda atado a su crédito, monto, método y n.º de operación. Si el formulario ya es

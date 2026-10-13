@@ -126,7 +126,7 @@
           <div class="cash-inline-note" id="mCashInlineNote">Monto exacto listo para cobrar.</div>
           <div id="mCashQuickInline" class="cash-quick-inline"></div>
           <button type="button" class="cash-other-btn" onclick="toggleOtherCashAmounts(true)">
-            <span>💵</span>
+            <span><i class="na-ic na-ic-cash" aria-hidden="true"></i></span>
             <span><strong>Otros montos</strong><small>Ingresar efectivo y calcular vuelto</small></span>
             <span class="cash-other-arrow">›</span>
           </button>
@@ -463,7 +463,7 @@
     <label><input type="checkbox" id="tkShowLogo" checked onchange="renderTicketPreview()"> Encabezado destacado</label>
     <label><input type="checkbox" id="tkShowNum" checked onchange="renderTicketPreview()"> N.º de ticket</label>
     <label><input type="checkbox" id="tkShowOperation" checked onchange="renderTicketPreview()"> N.º de operación</label>
-    <label><input type="checkbox" id="tkShowIGV" onchange="renderTicketPreview()"> Desglosar IGV</label>
+    <label><input type="checkbox" id="tkShowIGV" onchange="this.dataset.naUserSet='1';renderTicketPreview()"> Desglosar IGV</label>
     <label><input type="checkbox" id="tkShowCurrency" checked onchange="renderTicketPreview()"> Mostrar S/</label>
     <label><input type="checkbox" id="tkShowUnitPrice" checked onchange="renderTicketPreview()"> Precio unitario</label>
     <label><input type="checkbox" id="tkShowPayment" checked onchange="renderTicketPreview()"> Forma de pago</label>

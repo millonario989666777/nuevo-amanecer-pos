@@ -308,3 +308,9 @@ body.dark #naCfgV9.na9 .na9-err{color:#fca5a5}
   #naCfgV9.na9 .na9-stabs{flex-wrap:nowrap;width:100%}
   #naCfgV9.na9 .na9-stabs button{flex:1 1 0;min-width:0;padding:6px 4px;font-size:13px;white-space:normal;line-height:1.15;min-height:44px}
 }
+/* Pestañas de Configuración a 360: entran en una fila sin cortarse. */
+@media (max-width:420px){
+  #naCfgV9 .na9-tabs,#naCfgV9.na9 .na9-tabs{flex-wrap:nowrap;padding:8px 8px 0;gap:2px}
+  #naCfgV9 .na9-tab,#naCfgV9.na9 .na9-tab{flex:1 1 0;min-width:0;justify-content:center;padding:10px 4px;font-size:14px;min-height:44px;white-space:normal;text-align:center;line-height:1.15}
+}
+#naCfgV9 .na9-row-sw{cursor:pointer}

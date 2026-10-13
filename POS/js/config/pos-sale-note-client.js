@@ -38,14 +38,16 @@
     var meta = lsGet(META, { sales: {}, payments: {} });
     list.forEach(function (v) {
       var ks = keys(v), i;
-      for (i = 0; i < ks.length; i++) { var w = who(meta.sales[ks[i]]); if (w) { v.cajero = v.cajeroNombre = w; break; } }
+      var rc = root.NA_RECORD_CASHIER && root.NA_RECORD_CASHIER.get(ks);
+      if (rc && rc.nombre) { v.cajero = v.cajeroNombre = rc.nombre; if (rc.id) v.cajeroId = rc.id; }
+      else for (i = 0; i < ks.length; i++) { var w = who(meta.sales[ks[i]]); if (w) { v.cajero = v.cajeroNombre = w; break; } }
       for (i = 0; i < ks.length; i++) { var n = server[ks[i]] || local[ks[i]]; if (n) { v.nota = n; break; } }
     });
     var credits; try { credits = creditos; } catch (_) { credits = []; } // eslint-disable-line no-undef
     (Array.isArray(credits) ? credits : []).forEach(function (cr) {
       (Array.isArray(cr && cr.pagos) ? cr.pagos : []).forEach(function (p) {
         var op = String(p.operationId || p.operation_id || p.pagoId || p.id || ''); if (!op) return;
-        var who = meta.payments[op]; if (who) p.cajero = p.cajeroNombre = who;
+        var rp = root.NA_RECORD_CASHIER && root.NA_RECORD_CASHIER.get([op]); var who = rp && rp.nombre ? rp.nombre : meta.payments[op]; if (who) p.cajero = p.cajeroNombre = who;
         var c = server['pay:' + op] || local['pay:' + op]; if (c) p.comentario = c;
       });
     });

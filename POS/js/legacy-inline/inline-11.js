@@ -7,7 +7,7 @@ function _naSecCashButton(className,text,action){
   return button;
 }
 // CANON no guarda quién abrió la caja (canonical_cash_sessions no tiene cajero): no se muestra "Cajero:" vacío.
-function _naSecCashCashierText(){return String(cajEstado?.cajeroNombre||cajEstado?.cajero||'').trim()||'sin registrar';}
+function _naSecCashCashierText(){const own=String(cajEstado?.cajeroNombre||cajEstado?.cajero||'').trim();if(own)return own;const sid=cajEstado?.sessionId||cajEstado?.session_id;const rec=sid&&window.NA_RECORD_CASHIER?window.NA_RECORD_CASHIER.get(['caja:'+sid]):null;return (rec&&rec.nombre)||'sin registrar';}
 // Parte de una venta que quedó a crédito: no es dinero que entra a caja.
 function _naSecCashCreditPart(movement){
   if(!movement||movement.tipo!=='ing')return 0;

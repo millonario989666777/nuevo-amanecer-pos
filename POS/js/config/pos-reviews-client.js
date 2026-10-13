@@ -45,8 +45,8 @@
     var show = cloud() && (closes.length || (isOwner() && discounts.length));
     if (!show) { if (box) box.remove(); return; }
     if (!box) { box = doc.createElement('div'); box.id = 'naReviewNotice'; box.className = 'na-review-notice'; box.setAttribute('role', 'status'); home.insertBefore(box, home.children[1] || null); }
-    var text = closes.length ? '⚠ Cierre pendiente de aprobación del dueño' + (closes.length > 1 ? ' (' + closes.length + ')' : '') : '';
-    if (isOwner() && discounts.length) text += (text ? ' · ' : '⚠ ') + discounts.length + ' descuento' + (discounts.length > 1 ? 's' : '') + ' por autorizar';
+    var text = closes.length ? 'Cierre pendiente de aprobación del dueño' + (closes.length > 1 ? ' (' + closes.length + ')' : '') : '';
+    if (isOwner() && discounts.length) text += (text ? ' · ' : '') + discounts.length + ' descuento' + (discounts.length > 1 ? 's' : '') + ' por autorizar';
     box.innerHTML = '<span>' + esc(text) + '</span>' + (isOwner() ? '<button type="button" class="na-review-open">Revisar</button>' : '');
     var b = box.querySelector('.na-review-open'); if (b) b.onclick = openPanel;
   }
@@ -86,7 +86,7 @@
   function ensureFilter() {
     var sel = doc.getElementById('ventasMetodo'); if (!sel) return;
     var opt = sel.querySelector('option[value="__descuento"]');
-    if (isOwner() && cloud()) { if (!opt) { opt = doc.createElement('option'); opt.value = '__descuento'; opt.textContent = '⚠ Descuento por autorizar'; sel.appendChild(opt); } }
+    if (isOwner() && cloud()) { if (!opt) { opt = doc.createElement('option'); opt.value = '__descuento'; opt.textContent = 'Descuento por autorizar'; sel.appendChild(opt); } }
     else if (opt) { if (sel.value === '__descuento') sel.value = ''; opt.remove(); }
   }
 

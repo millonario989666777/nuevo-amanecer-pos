@@ -420,10 +420,10 @@
 
       <div class="pay-section-label">Método de pago</div>
       <div class="pm-grid pay-methods">
-        <button type="button" class="pm-btn active" data-method="efectivo" onclick="selPM(this)"><span class="pmi"><span class="pmi-emoji" aria-hidden="true">💵</span><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="12" y="7" width="31" height="23" rx="2"/><rect x="5" y="17" width="31" height="23" rx="2"/><circle cx="20.5" cy="28.5" r="5.5"/><path d="M9 22v2m23 9v2m-20-2 2 2m14-16-2 2"/></svg></span></span><span class="pml">Efectivo</span></button>
-        <button type="button" class="pm-btn" data-method="yape" data-digital-group="true" onclick="selPM(this)" aria-pressed="false" aria-describedby="mDigitalMethodHint"><span class="pmi"><span class="pmi-emoji" aria-hidden="true">📲</span><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="19" y="5" width="20" height="38" rx="4"/><path d="M25 10h8m-7 27h6"/><path class="digital-arrow" d="M3 21h13m-5-6 6 6-6 6"/></svg></span></span><span class="pm-copy"><span class="pml">Pago digital</span><small class="pms" id="mDigitalMethodHint">Yape, Plin o transferencia</small></span></button>
-        <button type="button" class="pm-btn" data-method="credito" onclick="selPM(this)"><span class="pmi"><span class="pmi-emoji" aria-hidden="true">🧾</span><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 5h19l7 7v31H14z"/><path d="M33 5v8h7M20 21h14M20 28h14M20 35h10"/></svg></span></span><span class="pml">Crédito</span></button>
-        <button type="button" class="pm-btn" data-method="mixto" onclick="selPM(this)"><span class="pmi"><span class="pmi-emoji" aria-hidden="true">🔀</span><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 14h32"/><path d="m14 28-6 6 6 6M8 34h32"/><path d="m34 8 6 6-6 6"/></svg></span></span><span class="pml">Dividir pago</span></button>
+        <button type="button" class="pm-btn active" data-method="efectivo" onclick="selPM(this)"><span class="pmi"><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="12" y="7" width="31" height="23" rx="2"/><rect x="5" y="17" width="31" height="23" rx="2"/><circle cx="20.5" cy="28.5" r="5.5"/><path d="M9 22v2m23 9v2m-20-2 2 2m14-16-2 2"/></svg></span></span><span class="pml">Efectivo</span></button>
+        <button type="button" class="pm-btn" data-method="yape" data-digital-group="true" onclick="selPM(this)" aria-pressed="false" aria-describedby="mDigitalMethodHint"><span class="pmi"><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="19" y="5" width="20" height="38" rx="4"/><path d="M25 10h8m-7 27h6"/><path class="digital-arrow" d="M3 21h13m-5-6 6 6-6 6"/></svg></span></span><span class="pm-copy"><span class="pml">Pago digital</span><small class="pms" id="mDigitalMethodHint">Yape, Plin o transferencia</small></span></button>
+        <button type="button" class="pm-btn" data-method="credito" onclick="selPM(this)"><span class="pmi"><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 5h19l7 7v31H14z"/><path d="M33 5v8h7M20 21h14M20 28h14M20 35h10"/></svg></span></span><span class="pml">Crédito</span></button>
+        <button type="button" class="pm-btn" data-method="mixto" onclick="selPM(this)"><span class="pmi"><span class="pmi-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 14h32"/><path d="m14 28-6 6 6 6M8 34h32"/><path d="m34 8 6 6-6 6"/></svg></span></span><span class="pml">Dividir pago</span></button>
       </div>
 
       <details class="pay-client-details" id="mClienteDetails">
@@ -435,7 +435,7 @@
         <div id="mCashSimple" class="cash-simple-actions">
           <div class="cash-inline-note" id="mCashInlineNote">Monto exacto listo para cobrar.</div>
           <button type="button" class="cash-other-btn" onclick="toggleOtherCashAmounts(true)">
-            <span>💵</span>
+            <span><i class="na-ic na-ic-cash" aria-hidden="true"></i></span>
             <span><strong>Otros montos</strong><small>Ingresar efectivo y calcular vuelto</small></span>
             <span class="cash-other-arrow">›</span>
           </button>
@@ -779,7 +779,7 @@
     <label><input type="checkbox" id="tkShowLogo" checked onchange="renderTicketPreview()"> Encabezado destacado</label>
     <label><input type="checkbox" id="tkShowNum" checked onchange="renderTicketPreview()"> N.º de ticket</label>
     <label><input type="checkbox" id="tkShowOperation" checked onchange="renderTicketPreview()"> N.º de operación</label>
-    <label><input type="checkbox" id="tkShowIGV" onchange="renderTicketPreview()"> Desglosar IGV</label>
+    <label><input type="checkbox" id="tkShowIGV" onchange="this.dataset.naUserSet='1';renderTicketPreview()"> Desglosar IGV</label>
     <label><input type="checkbox" id="tkShowCurrency" checked onchange="renderTicketPreview()"> Mostrar S/</label>
     <label><input type="checkbox" id="tkShowUnitPrice" checked onchange="renderTicketPreview()"> Precio unitario</label>
     <label><input type="checkbox" id="tkShowPayment" checked onchange="renderTicketPreview()"> Forma de pago</label>
