@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of #630: DNI lookup fetch uses redirect 'manual' (Workers rejects 'error'). No schema changes, no live sale. Rollback to 8290aa8.",
-  "target_commit": "a913412e8025044de7bb568cdc0086552a356d88",
-  "rollback_ref": "8290aa8e2df60d4c0a0cfaf7788bc9b5af789785",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of #632 (DNI lookup reads in parallel). No schema changes, no live sale. Rollback to a913412.",
+  "target_commit": "a786a6ba17981c297b367ee5baa8aa5ca9a78902",
+  "rollback_ref": "a913412e8025044de7bb568cdc0086552a356d88",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 26,
-  "optimization": "DNI_REDIRECT_FIX"
+  "attempt": 27,
+  "optimization": "DNI_MOBILE"
 }
