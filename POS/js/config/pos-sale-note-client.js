@@ -10,7 +10,7 @@
   var doc = root.document, DRAFT = 'na_sale_note_draft_v1', QUEUE = 'na_sale_note_queue_v1', CACHE = 'na_sale_notes_v1', META = 'na_record_meta_v1';
   var busy = false;
   function lsGet(k, d) { try { var v = JSON.parse(root.localStorage.getItem(k)); return v == null ? d : v; } catch (_) { return d; } }
-  function lsSet(k, v) { try { root.localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+  function lsSet(k, v) { memo = null; try { root.localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
   function clean(t) { return String(t || '').replace(/[\x00-\x1f\x7f]+/g, ' ').trim().replace(/\s+/g, ' ').slice(0, 300); }
   function cloud() { try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()); } catch (_) { return false; } }
   function getVentas() { try { return ventas; } catch (_) { return []; } } // eslint-disable-line no-undef
@@ -113,10 +113,18 @@
     return note;
   };
   root.__naCashierLabel = cashierLabel;
+  // Solo lectura: al pintar la lista se llama una vez por abono (cientos). Se lee y se interpreta
+  // cada clave una sola vez por tarea en lugar de una vez por abono; la siguiente tarea vuelve a leer.
+  var memo = null;
+  function lsMemo(k, d) {
+    if (!memo) { memo = {}; setTimeout(function () { memo = null; }, 0); }
+    if (!Object.prototype.hasOwnProperty.call(memo, k)) memo[k] = lsGet(k, d);
+    return memo[k];
+  }
   root.__naPaymentMeta = function (op) {
     if (!op) return null;
-    var meta = lsGet(META, { sales: {}, payments: {} }), server = lsGet(CACHE, {}), c = server['pay:' + op];
-    if (!c) lsGet(QUEUE, []).some(function (q) { if ((q.keys || []).indexOf('pay:' + op) >= 0) { c = q.note; return true; } return false; });
+    var meta = lsMemo(META, { sales: {}, payments: {} }), server = lsMemo(CACHE, {}), c = server['pay:' + op];
+    if (!c) lsMemo(QUEUE, []).some(function (q) { if ((q.keys || []).indexOf('pay:' + op) >= 0) { c = q.note; return true; } return false; });
     var pw = who(meta.payments && meta.payments[op]);
     return pw || c ? { cashier: pw || '', comment: c || '' } : null;
   };

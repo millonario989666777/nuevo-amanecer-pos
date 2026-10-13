@@ -194,3 +194,9 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 
 /* Días para pagar: solo PC/tablet; el teléfono no cambia (usa valor guardado, 30 por defecto) */
 @media(max-width:700px){.na-duedays-field{display:none!important}}
+
+/* PC y tablet: los montos rápidos se ven de entrada (Exacto, S/ 10, 20...). La segunda fila con los
+   mismos montos sobra y se oculta para que el vuelto quede a la vista. Teléfono sin cambios. */
+@media (min-width:701px){
+  body:not(.na-pos-phone-device) #mCobro #mCashAdvanced .pay-quick-row{display:none!important}
+}
