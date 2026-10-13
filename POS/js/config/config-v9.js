@@ -19,6 +19,8 @@
   function canEdit() {
     try {
       if (!R() || !R().isOwner()) return false;
+      // Aparato del dueño confirmado por el servidor: Configuración abre aunque se cambie el cajero de turno.
+      if (R().confirmed) return true;
       if (typeof root._naF10HasPermission !== 'function') return false;
       return !!root._naF10HasPermission('configuration');
     } catch (_) { return false; }
@@ -141,12 +143,16 @@
     root._naBuildThermalTicket = wrapped;
   }
   function sampleSale() {
-    return { id: 'V-000123', operation: '00000123', fecha: (call('obtenerHoy') || ''), hora: (call('nowT') || ''), cajero: biz().cajero || 'Caja principal', metodo: 'efectivo', recibido: 20, vuelto: 3, anulada: false, items: [{ name: 'Arroz 1kg', qty: 2, precio: 4.5 }, { name: 'Aceite 1L', qty: 1, precio: 8 }] };
+    return { id: 'V-000123', operation: '00000123', fecha: (call('obtenerHoy') || ''), hora: (call('nowT') || ''), cajero: biz().cajero || 'Caja principal', metodo: 'yape', paymentRef: '00451287', __na9sample: true, anulada: false, items: [{ name: 'Arroz 1kg', qty: 2, precio: 4.5 }, { name: 'Aceite 1L', qty: 1, precio: 8 }] };
   }
   function previewText(type) {
     try {
       var b = root._naBuildThermalTicket; var base = b && b.__na9base ? b.__na9base : b; if (typeof base !== 'function') return '';
-      return type === 'ticket' ? base.call(root, sampleSale(), false).text : buildFormat(base, type, sampleSale()).text;
+      // Venta de ejemplo con N° de operación y detalle de crédito, para que esas opciones se vean en la vista previa.
+      var RS = root.NAReceiptShare, orig = RS && RS.ticketExtrasForSale, swapped = false;
+      try { if (RS && Object.isExtensible(RS)) { RS.ticketExtrasForSale = function (v) { return v && v.__na9sample ? { amount: 17, initial: 5, balance: 12, due: (call('obtenerHoy') || '') } : (orig ? orig.apply(RS, arguments) : null); }; swapped = true; } } catch (_) {}
+      try { return type === 'ticket' ? base.call(root, sampleSale(), false).text : buildFormat(base, type, sampleSale()).text; }
+      finally { if (swapped) { try { if (orig) RS.ticketExtrasForSale = orig; else delete RS.ticketExtrasForSale; } catch (_) {} } }
     } catch (e) { return 'No se pudo generar la vista previa.'; }
   }
   // Selector de formato en la ventana del ticket de una venta (solo PC y tablet; en teléfono no se ve).
@@ -238,12 +244,7 @@
   function applyAppearance() {
     var html = doc.documentElement, d = ap();
     var box = doc.getElementById('naCfgV9');
-    if (!wide()) {
-      html.removeAttribute('data-na-theme'); if (appliedDark !== null && doc.body) { doc.body.classList.toggle('dark', false); appliedDark = null; }
-      // Teléfono: el tema y el modo se aplican solo a la pantalla de Configuración.
-      if (box) { var pd = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : !!(doc.body && doc.body.classList.contains('dark')); box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', pd); box.classList.toggle('na9-lt', !pd); }
-      return;
-    }
+    // Celular, tablet y PC: el tema y el día/noche se aplican a toda la app (solo colores).
     // PC/tablet: Configuración usa el mismo tema y el día/noche de la app (estilo del prototipo).
     if (box) { var wd = !!(doc.body && doc.body.classList.contains('dark')); var wdm = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : wd; box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', wdm); box.classList.toggle('na9-lt', !wdm); }
     html.setAttribute('data-na-theme', d.theme);
@@ -365,7 +366,7 @@
       + '<div class="na9-zbtns"><button type="button" class="na9-btn sec na9-zb" data-act="zdn" aria-label="Más chico">A−</button>' + ZP.map(function (x) { return '<button type="button" class="na9-btn sec na9-zp' + (z === x[1] ? ' on' : '') + '" data-act="zset" data-z="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '<button type="button" class="na9-btn sec na9-zb" data-act="zup" aria-label="Más grande">A+</button></div>'
       + '<label class="na9-zslider"><input type="range" min="85" max="125" step="5" data-na9="zoom" value="' + z + '" aria-label="Tamaño de letra y botones"></label>'
       + samplePreview()
-      + '<p class="na9-muted">' + (wide() ? 'Se guarda solo en este aparato.' : 'Se guarda solo en este aparato. En el teléfono el color y el modo nocturno se ven solo en Configuración; el tamaño cambia en toda la app.') + '</p>';
+      + '<p class="na9-muted">' + 'Se guarda solo en este aparato. El color, el modo nocturno y el tamaño cambian en toda la app.' + '</p>';
   }
   // Muestra de cómo se ve un producto real con el tamaño elegido (solo lectura).
   function samplePreview() {
@@ -444,15 +445,27 @@
 
   // ---------- eventos ----------
   function guard() { if (canEdit()) return true; toast('Solo el admin puede cambiar la configuración.', 'error'); render(); return false; }
+  // Error en línea debajo del campo (sin aviso flotante).
+  function fieldErr(el, msg) {
+    var lab = el && el.closest ? el.closest('label') : null; if (!lab) return;
+    var m = lab.querySelector('.na9-err');
+    if (!msg) { if (m) m.remove(); el.removeAttribute('aria-invalid'); return; }
+    if (!m) { m = doc.createElement('span'); m.className = 'na9-err'; m.setAttribute('role', 'alert'); lab.appendChild(m); }
+    m.textContent = msg; el.setAttribute('aria-invalid', 'true');
+  }
   function onChange(e) {
     var el = e.target, k = el && el.dataset ? el.dataset.na9 : null; if (!k || !el.closest('#naCfgV9')) return;
-    if (k === 'zoom') { setZoom(Number(el.value)); var zv = doc.getElementById('na9Zv'); if (zv) zv.textContent = el.value + '%'; autosave(false); return; }
+    if (k === 'zoom') { setZoom(Number(el.value)); var zv = doc.getElementById('na9Zv'); if (zv) { var zz = Number(el.value), nm = 'Personalizado'; ZP.forEach(function (x) { if (x[1] === zz) nm = x[0]; }); zv.textContent = nm + ' (' + zz + '%)'; } autosave(false); return; }
     if (!guard()) return;
     var c = C(), v = el.type === 'checkbox' ? el.checked : el.value, live = e.type === 'input';
     if (live && (el.type !== 'text' || k === 'freeShortcut')) return; // números, listas y atajo: al confirmar
-    if (/^biz\./.test(k)) { var key = k.slice(4), clean = String(v).trim().slice(0, 120); c.business = c.business || {}; if (!clean && (key === 'nombre' || key === 'direccion')) return; c.business[key] = clean; try { root._naApplyConfigUI(); } catch (_) {} autosave(true); return; }
+    if (/^biz\./.test(k)) { var key = k.slice(4), clean = String(v).trim().slice(0, 120); c.business = c.business || {};
+      if (key === 'ruc' || key === 'telefono') { var dg = String(v).replace(/\D/g, '').slice(0, key === 'ruc' ? 11 : 15); if (el.value !== dg) el.value = dg; clean = dg; }
+      if (key === 'ruc' && clean && clean.length !== 11) { fieldErr(el, live ? '' : 'El RUC tiene 11 dígitos (van ' + clean.length + ').'); return; }
+      if (!clean && (key === 'nombre' || key === 'direccion')) { fieldErr(el, live ? '' : (key === 'nombre' ? 'El nombre del negocio no puede quedar vacío.' : 'La dirección no puede quedar vacía.')); return; }
+      fieldErr(el, ''); c.business[key] = clean; try { root._naApplyConfigUI(); } catch (_) {} autosave(true); return; }
     if (/^tk\./.test(k)) { var tk = k.slice(3); c.ticket = c.ticket || {}; c.ticket[tk] = v; refreshPreview(); autosave(true); return; }
-    if (/^fmt\./.test(k)) { var fk = k.slice(4); setFmt(st.tkType, fk, fk === 'serie' ? String(v).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) : v); refreshPreview(); autosave(true); return; }
+    if (/^fmt\./.test(k)) { var fk = k.slice(4), fv = fk === 'serie' ? String(v).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) : v; if (fk === 'serie' && el.value !== fv) el.value = fv; setFmt(st.tkType, fk, fv); refreshPreview(); autosave(true); return; }
     if (/^zone\./.test(k)) { try { var s = root._naF11State(); s.settings[k.slice(5)].enabled = !!v; root._naF11PersistState(s); } catch (_) {} refreshPreview(); autosave(true); return; }
     if (/^cred\./.test(k)) { call('creditPolicySetNumber', k.slice(5), v); autosave(true); return; }
     switch (k) {
@@ -538,7 +551,7 @@
   function wrapDark() {
     if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
     var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } applyAppearance(); return r; };
+    root.toggleDark = function () { var r = base.apply(this, arguments); { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } applyAppearance(); return r; };
     root.toggleDark.__na9 = true;
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { install(); wrapDark(); }); else { install(); wrapDark(); }

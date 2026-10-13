@@ -254,3 +254,4 @@ body.dark .na-pur-item.na-pur-open{background:#3b2f12;border-color:#92400e}body.
 /* Recargar (aviso de versión nueva): toque cómodo en tablet/PC */
 @media (min-width:700px){#pwaUpdateAction,#pwaUpdateLater{min-height:44px}}
 body:not(.dark) #mPagoCred .mhead.green{background:#15803d}
+#pagePOS .total-row[hidden]{display:none!important}

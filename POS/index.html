@@ -80,7 +80,7 @@
 </head>
 <body>
 <aside class="pwa-update-prompt" id="pwaUpdatePrompt" hidden role="dialog" aria-live="polite" aria-label="Nueva versión disponible">
-    <div class="pwa-update-icon" aria-hidden="true">⬆️</div>
+    <div class="pwa-update-icon" aria-hidden="true"><i class="na-ic na-ic-upload" aria-hidden="true"></i></div>
     <div class="pwa-update-copy">
         <strong>Nueva versión disponible</strong>
         <span id="pwaUpdateStatus">Lista para actualizar.</span>
@@ -1121,13 +1121,22 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       return false;
     }
     // Cuántas cosas guardadas quedan por revisar (no impiden recargar).
+    // Cuenta ids únicos: una misma venta puede estar en la cola, en el diario y en revisión a la vez.
     function pendingToReview() {
-      var n = 0;
-      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob) { n += (ob.snapshot().intents || []).length; n += ((ob.quarantine && ob.quarantine().entries) || []).filter(function (e) { return e.status === 'QUARANTINED'; }).length; } } catch (_) {}
-      try { var cl = window.NuevoAmanecerCanonical, pr = cl && cl.pendingSnapshot && cl.pendingSnapshot(); if (pr) n++; } catch (_) {}
-      try { var po = JSON.parse(localStorage.getItem('na_purchase_pending_ops_v2') || '{}'); n += Object.keys(po || {}).length; } catch (_) {}
-      return n;
+      var ids = {};
+      function add(k) { if (k) ids[String(k)] = 1; }
+      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob) {
+        (ob.snapshot().intents || []).forEach(function (x) { add(x && (x.sale_id || x.operation_id)); });
+        ((ob.quarantine && ob.quarantine().entries) || []).forEach(function (e) { if (e.status === 'QUARANTINED') add(e.intent && (e.intent.sale_id || e.intent.operation_id) || e.id); }); } } catch (_) {}
+      try { var cl = window.NuevoAmanecerCanonical, pr = cl && cl.pendingSnapshot && cl.pendingSnapshot(); if (pr) { var pl = pr.payload || {}; add(pl.sale_id || pl.operation_id || pr.command); } } catch (_) {}
+      try { var po = JSON.parse(localStorage.getItem('na_purchase_pending_ops_v2') || '{}'); Object.keys(po || {}).forEach(function (k) { add('compra:' + k); }); } catch (_) {}
+      return Object.keys(ids).length;
     }
+    function readyText() { var nr = pendingToReview(); return nr ? 'Versión nueva: recarga. Quedan ' + nr + ' por revisar (se conservan).' : 'Hay una versión nueva, recarga.'; }
+    // Si la cola cambia mientras el aviso está a la vista, el número se actualiza.
+    ['na:canonical-sale-projection', 'na:canonical-updated', 'storage'].forEach(function (ev) {
+      window.addEventListener(ev, function () { if (versionPending && status && prompt && prompt.dataset.state === 'ready') status.textContent = readyText(); });
+    });
     var saleInProgress = moneyOpInProgress;
 
     function afterSaleFinishes(callback) {
@@ -1148,7 +1157,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       // Mientras se descarga, el botón no acepta clics: antes el primer clic esperaba la
       // instalación (hasta 15 s) y parecía no responder.
       if (downloading) setUpdateUi(message || 'Descargando la versión nueva…', 'working', 'Descargando…', false, true);
-      else { var nr = pendingToReview(); setUpdateUi(message || (nr ? 'Versión nueva: recarga. Quedan ' + nr + ' por revisar (se conservan).' : 'Hay una versión nueva, recarga.'), 'ready', 'Recargar', true, true); }
+      else { setUpdateUi(message || readyText(), 'ready', 'Recargar', true, true); }
       try { window.dispatchEvent(new CustomEvent('na:version-update-pending')); } catch (_) {}
     }
 

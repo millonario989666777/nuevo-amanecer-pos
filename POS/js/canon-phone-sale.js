@@ -30,7 +30,10 @@
       page.style.setProperty('--phone-visible-top',(viewport ? viewport.offsetTop : 0) + 'px');
     }
     function scheduleViewport() {
-      if (!viewportFrame) viewportFrame = root.requestAnimationFrame(syncViewport);
+      if (viewportFrame) return;
+      // Antes del primer pintado se espera a que cargue la página; después, en el siguiente cuadro.
+      if (document.readyState !== 'complete') { viewportFrame = -1; root.addEventListener('load', function () { setTimeout(function () { viewportFrame = 0; scheduleViewport(); }, 0); }, { once: true }); return; }
+      viewportFrame = root.requestAnimationFrame(syncViewport);
     }
     root.addEventListener('resize',scheduleViewport);
     if (root.visualViewport) {

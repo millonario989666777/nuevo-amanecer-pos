@@ -82,6 +82,8 @@
     // Mobile safe navigation must stay paint-first and free of page-entry Motion.
     // Clientes restores only its scroll-linked chrome from menu-navigation.js.
     if (Number(root.innerWidth || 0) <= 700 || root.NA_MOBILE_SAFE_NAV_ACTIVE === true) return;
+    // Arranque: la primera pantalla se pinta sin animación de entrada (no compite con el primer pintado).
+    if (root.document && root.document.readyState !== 'complete') return;
     var preset = presetByPage[page.id] || null;
     var token = nextToken(page);
     afterPaint(function () {

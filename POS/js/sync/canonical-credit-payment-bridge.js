@@ -336,6 +336,11 @@
     var b = root.document.getElementById('pagoConfirmBtn'); if (b) b.disabled = false;
   }
 
+  function otherPendingText(pending, cents) {
+    var what = pending && pending.command === 'sale.create' ? 'una venta' + (pending.payload && pending.payload.sale_id ? ' (' + pending.payload.sale_id + ')' : '') + ' sin confirmar'
+      : pending && pending.command === 'cash.close' ? 'un cierre de caja sin confirmar' : 'otra operación sin confirmar';
+    return 'Hay ' + what + '. El abono' + (cents ? ' de S/ ' + (cents / 100).toFixed(2) : '') + ' NO se registró. Espera a que se confirme (se reintenta sola) y vuelve a tocar Confirmar.';
+  }
   async function confirm() {
     if (!enabled()) return false;
     if (busy) return false;
@@ -345,7 +350,10 @@
     var forceRefresh = false;
     if (pending) {
       if (pending.invalid || !['payment.create','payment.batch'].includes(pending.command)) {
-        notify('Hay otra operación en curso. Termínala antes de registrar el pago.', 'error');
+        // Como en el cierre: aviso dentro de la ventana (queda abierta con el monto escrito).
+        var amtTyped = moneyCents(root.document.getElementById('pagoMonto')?.value);
+        showNet('rejected', otherPendingText(pending, amtTyped));
+        try { var ob = root.NuevoAmanecerCanonicalSaleOutbox; if (ob && ob.sync) ob.sync().catch(function () {}); } catch (_) {}
         return false;
       }
       if (pending.last_error) {
@@ -623,7 +631,9 @@
     batchNotice(null);
     if (pending) {
       if (pending.invalid || !['payment.create','payment.batch'].includes(pending.command)) {
-        return batchFailure('Hay otra operación en curso. Termínala antes de cobrar.',
+        batchNotice('rejected', otherPendingText(pending, requestedCents));
+        try { var ob2 = root.NuevoAmanecerCanonicalSaleOutbox; if (ob2 && ob2.sync) ob2.sync().catch(function () {}); } catch (_) {}
+        return batchFailure(otherPendingText(pending, requestedCents),
           requestedCents, [], 'CANONICAL_OTHER_PENDING');
       }
       if (pending.last_error) {

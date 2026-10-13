@@ -19,7 +19,6 @@
   function applyAppearance() {
     if (root.NA_CONFIG_V9) { root.NA_CONFIG_V9.applyAppearance(); return; }
     var html = doc.documentElement, d = ap();
-    if (!wide()) { html.removeAttribute('data-na-theme'); return; }
     html.setAttribute('data-na-theme', d.theme);
     if (!d.mode || !doc.body) return;
     var dark = isDarkMode(d);
@@ -33,12 +32,14 @@
   function wrapDark() {
     if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
     var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} } applyAppearance(); return r; };
+    root.toggleDark = function () { var r = base.apply(this, arguments); { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} } applyAppearance(); return r; };
     root.toggleDark.__na9 = true;
   }
   function canEdit() {
     try {
       var R = root.NA_ROLES; if (!R || !R.isOwner()) return false;
+      // Aparato del dueño confirmado por el servidor: Configuración abre aunque se cambie el cajero de turno.
+      if (R.confirmed) return true;
       if (typeof root._naF10HasPermission !== 'function') return false;
       return !!root._naF10HasPermission('configuration');
     } catch (_) { return false; }

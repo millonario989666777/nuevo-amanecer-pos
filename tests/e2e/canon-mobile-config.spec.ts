@@ -55,7 +55,7 @@ for(const width of [768,1024,1366,1920])test('settings v9 '+width,async({page})=
   await expect(page.locator('#na9Tk')).toContainText(/Sungaro/i);
 });
 
-test('phone: theme and night mode stay inside Configuración',async({page})=>{
+test('phone: theme and night mode apply to the whole app (colors only)',async({page})=>{
   await openConfig(page,390);
   await page.locator('#na9Nav [data-top="sis"]').click();await page.locator('#naCfgV9 [data-tab="apar"]').click();
   await expect(page.locator('#naCfgV9 .na9-th')).toHaveCount(5);
@@ -63,9 +63,9 @@ test('phone: theme and night mode stay inside Configuración',async({page})=>{
   await page.locator('#naCfgV9 [data-act="theme"][data-t="azul"]').click();
   await page.locator('#naCfgV9 [data-act="mode"][data-t="noche"]').click();
   await expect(page.locator('#naCfgV9')).toHaveClass(/na9-dk/);
-  expect(await page.evaluate(()=>[document.documentElement.getAttribute('data-na-theme'),document.body.classList.contains('dark')])).toEqual([null,false]);
+  expect(await page.evaluate(()=>[document.documentElement.getAttribute('data-na-theme'),document.body.classList.contains('dark')])).toEqual(['azul',true]);
   await page.evaluate(()=>window.NA_MENU_NAVIGATION.navigate('pagePOS'));
-  expect(await page.evaluate(()=>[document.documentElement.getAttribute('data-na-theme'),document.body.classList.contains('dark')])).toEqual([null,false]);
+  expect(await page.evaluate(()=>[document.documentElement.getAttribute('data-na-theme'),document.body.classList.contains('dark')])).toEqual(['azul',true]);
 });
 
 test('appearance is clamped 85-125, saved per device',async({page})=>{
