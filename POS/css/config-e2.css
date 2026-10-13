@@ -56,7 +56,8 @@ html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:calc(48px *
 html.na-ap-custom #mCobro #mBtnConf{height:calc(48px * var(--na-ap-buttons,1))!important}
 html.na-ap-custom body.na-pos-phone-device #mCobro #mBtnConf{height:calc(44px * var(--na-ap-buttons,1))!important;min-height:calc(44px * var(--na-ap-buttons,1))!important}
 /* Etapa 2 (G): solo el dueño ve Configuración; secciones nuevas; Reseteo en rojo al final. */
-html.na-role-locked #topSettingsBtn,html.na-role-locked [data-page="pageConfig"],html.na-role-locked [data-menu-target="pageConfig"],html.na-role-locked [onclick*="pageConfig"]{display:none!important}
+html.na-role-empleado #topSettingsBtn,html.na-role-empleado [data-page="pageConfig"],html.na-role-empleado [data-menu-target="pageConfig"],html.na-role-empleado [onclick*="pageConfig"]{display:none!important}
+html.na-role-locked:not(.na-role-empleado) #topSettingsBtn,html.na-role-locked:not(.na-role-empleado) [data-page="pageConfig"],html.na-role-locked:not(.na-role-empleado) [data-menu-target="pageConfig"],html.na-role-locked:not(.na-role-empleado) [onclick*="pageConfig"]{visibility:hidden!important;pointer-events:none!important}
 #cfgSidebar .na-cfg-danger{margin-top:18px!important;border-top:1px solid #fecaca!important;color:#b91c1c!important}
 #cfgSidebar .na-cfg-danger strong{color:#b91c1c!important}
 .na-g-form{display:grid;gap:10px;max-width:420px}.na-g-form label{display:grid;gap:4px;font-size:13px;font-weight:700}
@@ -76,3 +77,9 @@ html.na-role-locked #topSettingsBtn,html.na-role-locked [data-page="pageConfig"]
 .na-pin-actions button{min-height:44px;padding:8px 16px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font:inherit;font-weight:800;cursor:pointer}
 .na-pin-actions .na-pin-ok{background:var(--teal,#00a99d);border-color:var(--teal,#00a99d);color:#fff}
 .na-pin-input::placeholder{letter-spacing:normal;font-size:15px}
+/* Mientras el rol no está confirmado (o no es el dueño), el botón de Configuración no se ve, pero conserva su
+   espacio para que el menú no se mueva cuando se confirma. El empleado confirmado sigue sin verlo (regla de arriba). */
+html.na-role-unconfirmed #topSettingsBtn,html.na-role-unconfirmed [data-page="pageConfig"],html.na-role-unconfirmed [data-menu-target="pageConfig"],html.na-role-unconfirmed [onclick*="pageConfig"]{visibility:hidden!important;pointer-events:none!important}
+/* Aviso "Sin conexión"/"Comprobando permisos" de Configuración: tarjeta flotante que no bloquea la venta. */
+.na-offline-banner{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:9999;width:min(92vw,420px);pointer-events:none}
+.na-offline-banner .na-pin-box{pointer-events:auto;box-shadow:0 10px 30px rgba(15,23,42,.25)}

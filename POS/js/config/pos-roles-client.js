@@ -129,7 +129,9 @@
   // Solo Configuración y pantallas del dueño fallan cerrado; vender, cobrar y la cola siguen igual.
   function offlineNotice() {
     if (doc.querySelector('.na-offline-cfg')) return;
-    var o = doc.createElement('div'); o.className = 'na-pin-overlay na-offline-cfg'; o.setAttribute('role', 'dialog');
+    // Aviso no bloqueante: no tapa la venta y se cierra con «Volver a la venta» o solo a los 8 s.
+    var o = doc.createElement('div'); o.className = 'na-offline-cfg na-offline-banner'; o.setAttribute('role', 'status'); o.setAttribute('aria-live', 'polite');
+    root.setTimeout(function () { if (o.parentNode) o.remove(); }, 8000);
     var online = root.navigator.onLine !== false;
     o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">' + (online ? 'Comprobando permisos…' : 'Sin conexión') + '</div>'
       + '<div class="na-pin-detail">' + (online ? 'Configuración se abre cuando el servidor confirma que eres el dueño. Inténtalo de nuevo en unos segundos.' : 'Sin conexión: Configuración necesita internet para confirmar que eres el dueño.') + '</div>'

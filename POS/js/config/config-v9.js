@@ -253,7 +253,7 @@
       doc.body.classList.toggle('dark', dark); appliedDark = dark;
       try { root.isDark = dark; } catch (_) {}
       try { isDark = dark; } catch (_) {} // eslint-disable-line no-undef
-      var b = doc.getElementById('btnDarkMode'); if (b) b.textContent = dark ? '☀️' : '🌙';
+      var b = doc.getElementById('btnDarkMode'); if (b) { if (root.NA_ICON) b.innerHTML = root.NA_ICON(dark ? 'sun' : 'moon'); else b.textContent = dark ? '☀️' : '🌙'; }
     }
   }
 

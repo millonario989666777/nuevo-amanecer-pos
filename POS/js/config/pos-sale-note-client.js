@@ -23,8 +23,10 @@
     var conf = doc.getElementById('mBtnConf'); if (!conf || doc.getElementById('naSaleNote')) return;
     var box = doc.createElement('div'); box.className = 'na-sale-note';
     box.innerHTML = '<label for="naSaleNote">Nota (opcional)</label><input id="naSaleNote" type="text" maxlength="300" autocomplete="off" placeholder="Ej.: entregar mañana">';
-    var host = conf.closest('.pay-actions') || conf.parentElement;
-    host.parentElement.insertBefore(box, host);
+    // Dentro del cuerpo del cobro, al final: mismos márgenes que el resto del formulario.
+    var modal = conf.closest('.modal'), body = modal && modal.querySelector('.pay-modal-body');
+    if (body) body.appendChild(box);
+    else { var host = conf.closest('.pay-actions') || conf.parentElement; host.parentElement.insertBefore(box, host); }
     var input = box.querySelector('input'); input.value = draft();
     input.addEventListener('input', function () { lsSet(DRAFT, input.value.slice(0, 300)); });
   }

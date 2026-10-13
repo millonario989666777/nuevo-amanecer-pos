@@ -4,14 +4,15 @@ function _naSecProductVisibleInPos(product){
   return !_naTracksStock(product)||_naNumber(product.stock)>0;
 }
 function _naSecRenderProductImage(visual,product,safeImage,size){
-  if(!safeImage){visual.textContent=product?.icon||'📦';return;}
+  const placeholder=()=>{if(window.NA_ICON&&NA_ICON_IS_DEFAULT_PRODUCT(product?.icon))visual.innerHTML=NA_ICON('box','na-li-product');else visual.textContent=product?.icon||'📦';};
+  if(!safeImage){placeholder();return;}
   const image=document.createElement('img');
   image.src=safeImage;
   image.alt=String(product?.name||'Producto');
   if(size)image.style.cssText=`width:${size}px;height:${size}px;object-fit:cover;border-radius:6px`;
   image.addEventListener('error',()=>{
     image.remove();
-    visual.textContent=product?.icon||'📦';
+    placeholder();
   },{once:true});
   visual.appendChild(image);
 }

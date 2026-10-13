@@ -136,6 +136,11 @@
       page.classList.remove('active');
     });
     target.classList.add('active');
+    // El diseño final de la página (p. ej. cabecera compacta de Clientes en celular) se aplica
+    // antes del primer pintado: si se agregaba después, la cabecera se reacomodaba (CLS 0,12).
+    if (document.body && MOBILE_SCROLL_PAGES[pageId]) {
+      document.body.classList.add('module-mobile-scroll');
+    }
 
     var back = document.getElementById('backBtn');
     if (back) back.style.display = 'block';
@@ -149,10 +154,6 @@
       if (configMode) {
         document.documentElement.classList.add('config-page-scroll');
         if (document.body) document.body.classList.add('config-page-scroll');
-      }
-
-      if (document.body && MOBILE_SCROLL_PAGES[pageId]) {
-        document.body.classList.add('module-mobile-scroll');
       }
 
       // Persist only after the destination has painted so storage work never

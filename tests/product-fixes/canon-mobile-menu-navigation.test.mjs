@@ -189,12 +189,11 @@ test('other mobile modules remain on safe navigation without re-enabling parity 
   assert.deepEqual(h.renders,['pageInventario']);
 });
 
-test('mobile renderer is deferred until after paint and idle, while scroll mode is applied later', () => {
+test('mobile renderer is deferred until after paint and idle; scroll layout class is applied before first paint (no late reflow)', () => {
   const h=harness(390);
   h.context.NA_MENU_NAVIGATION.mobileSafeNavigate('pageInventario');
-  assert.equal(h.body.classList.contains('module-mobile-scroll'),false);
+  assert.equal(h.body.classList.contains('module-mobile-scroll'),true);
   h.flushFrames();
-  assert.equal(h.body.classList.contains('module-mobile-scroll'),false);
   h.flushFrames();
   assert.equal(h.body.classList.contains('module-mobile-scroll'),true);
   assert.deepEqual(h.renders,[]);
