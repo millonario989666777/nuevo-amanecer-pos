@@ -645,7 +645,8 @@
       return true;
     } catch (error) {
       var message = closeFailure(error);
-      closeStatus(message);
+      var node = closeStatus(message);
+      try { pendingList(node); } catch (_) {}
       if (isSyncFailure(error)) offerSyncRetry(false);
       if (error && error.code === 'CASH_CLOSE_QUARANTINED_SALES') { try { renderReview(); } catch (_) {} }
       notify(message, 'error');
@@ -655,6 +656,41 @@
       if (button) { button.disabled = false; button.textContent = label; }
     }
   };
+
+  // Lo que impide cerrar, en palabras simples y con montos: «1 abono de S/ 0.20 sin confirmar» + botón Revisar.
+  var KIND = { 'payment.create': ['abono', 'abonos'], 'payment.batch': ['cobro múltiple', 'cobros múltiples'], 'expense.create': ['gasto', 'gastos'], 'adjustment.create': ['movimiento de caja', 'movimientos de caja'], 'compensation.create': ['compensación', 'compensaciones'], 'sale.create': ['venta', 'ventas'] };
+  function money(c) { return 'S/ ' + (Number(c || 0) / 100).toFixed(2); }
+  function pendingSummary() {
+    var rows = [], client = api(), rec = null, sales = [];
+    try { rec = client && client.pendingSnapshot(); } catch (_) {}
+    if (rec && rec.command !== 'cash.close' && rec.command !== 'sale.create') {
+      var p = rec.payload || {}, amt = p.amount_cents;
+      if (amt == null && Array.isArray(p.payments)) amt = p.payments.reduce(function (s, x) { return s + Number(x.amount_cents || 0); }, 0);
+      var k = KIND[rec.command] || ['operación', 'operaciones'];
+      rows.push({ text: '1 ' + k[0] + (amt ? ' de ' + money(amt) : '') + (rec.last_error ? ' rechazado' : ' sin confirmar'), kind: rec.command });
+    }
+    try { sales = (root.NuevoAmanecerCanonicalSaleOutbox.snapshot().intents || []); } catch (_) {}
+    if (sales.length) {
+      var t = sales.reduce(function (s, x) { return s + Number(x && x.total_cents || 0); }, 0);
+      rows.push({ text: sales.length + ' ' + (sales.length === 1 ? 'venta' : 'ventas') + ' por ' + money(t) + ' sin confirmar', kind: 'sale.create' });
+    }
+    return rows;
+  }
+  function pendingList(node) {
+    if (!node) return;
+    var old = node.querySelector && node.querySelector('.na-close-pending'); if (old) old.remove();
+    var rows = pendingSummary(); if (!rows.length) return;
+    var box = root.document.createElement('div'); box.className = 'na-close-pending';
+    box.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
+    var ul = root.document.createElement('ul'); ul.style.cssText = 'margin:0;padding-left:18px;flex:1 1 100%;font-weight:800';
+    rows.forEach(function (r) { var li = root.document.createElement('li'); li.textContent = r.text; ul.appendChild(li); });
+    var btn = root.document.createElement('button'); btn.type = 'button'; btn.className = 'na-close-review'; btn.textContent = 'Revisar';
+    btn.style.cssText = 'min-height:40px;padding:0 14px;border-radius:10px;border:1px solid #b91c1c;background:#fff;color:#991b1b;font-weight:800';
+    var sale = rows.some(function (r) { return r.kind === 'sale.create'; });
+    btn.onclick = function () { closeModal('mCierre'); if (sale) showReview(); else { try { root.goPage && root.goPage('pageClientes'); } catch (_) {} } };
+    box.append(ul, btn); node.appendChild(box);
+  }
+  root.NuevoAmanecerCashClosePending = { summary: pendingSummary };
 
   // Ítem 6: abrir la lista de ventas en revisión desde la franja de estado.
   function showReview() {

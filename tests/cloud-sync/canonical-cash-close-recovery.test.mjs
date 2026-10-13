@@ -206,3 +206,12 @@ test('a real queued sale drains before closure and its cash appears in the final
  assert.equal(f.sql('SELECT expected_cents n FROM canonical_cash_closures').n,107450);
  assert.equal(f.sql('SELECT difference_cents n FROM canonical_cash_closures').n,2550);
 });
+test('Bot 2: el aviso de cierre bloqueado lista lo pendiente con montos («1 abono de S/ 1.00 sin confirmar»)',async t=>{
+ const {f,first}=await fixture(t,{onFetch:async(url)=>{ if(url.endsWith('/commands/payment.create'))throw Error('network down'); }});
+ const credit=first.api.snapshot().credits.find(x=>x.current_balance_cents>=100);
+ await assert.rejects(first.api.createPayment({credit_id:credit.credit_id,amount_cents:100,payment_method:'efectivo'}),/PENDING/);
+ assert.equal(await first.context.cerrarCaja(),false);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+ const rows=first.context.NuevoAmanecerCashClosePending.summary();
+ assert.equal(rows.length,1); assert.equal(rows[0].text,'1 abono de S/ 1.00 sin confirmar');
+});
