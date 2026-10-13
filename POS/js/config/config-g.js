@@ -81,22 +81,36 @@
       }).join('') : '<div class="cfg-business-note">No hay aparatos activos.</div>';
     } catch (e) { box.textContent = R().message(e); }
   }
-  async function needPin(title) { if (!R().pinSet) return ''; var p = await R().askPin(title, 'Escribe tu PIN de dueño.'); return p; }
+  // La llamada al servidor se hace con la ventana del PIN abierta: un PIN incorrecto se escribe DENTRO de
+  // la ventana (.na-pin-msg) y se puede reintentar; nada de avisos flotantes que tapa el teclado.
+  async function withPin(title, call) {
+    var r = R(), out = null, err = null;
+    if (!r.pinSet) { try { return { value: await call('') }; } catch (e) { return { error: e }; } }
+    var ok = await r.askPin(title, 'Escribe tu PIN de dueño.', async function (pin) {
+      try { out = await call(pin); return { ok: true, value: true }; }
+      catch (e) { err = e; return { msg: r.message(e), stop: e.message !== 'owner_pin_invalid' && e.message !== 'pin_format' }; }
+    });
+    return ok ? { value: out } : (err && err.message !== 'owner_pin_invalid' ? { error: err, shown: true } : null);
+  }
   async function createPair() {
-    var pin = await needPin('Crear código para empleado'); if (pin === null) return;
     var label = (doc.getElementById('naPairLabel') || {}).value || '';
-    try {
-      var r = await R().api('/auth/pairing-code', { label: label, pin: pin || undefined });
-      var out = doc.getElementById('naPairOut');
-      out.innerHTML = '<div class="na-g-code" aria-live="polite"><div class="na-g-code-val">' + esc(r.code) + '</div><div>Vence: ' + esc(fmtDate(r.expires_at)) + '</div>'
-        + '<ol><li>En el celular del empleado abre la página del POS (la misma dirección de siempre, sin /app).</li><li>Toca «Soy empleado: tengo un código».</li><li>Escribe este código y toca «Vincular».</li></ol></div>';
-      loadDevices();
-    } catch (e) { toast(R().message(e), 'error'); }
+    var res = await withPin('Crear código para empleado', function (pin) { return R().api('/auth/pairing-code', { label: label, pin: pin || undefined }); });
+    var out = doc.getElementById('naPairOut');
+    if (!res) return;
+    if (res.error) { if (out) { out.textContent = R().message(res.error); out.setAttribute('role', 'status'); } return; }
+    var r = res.value;
+    out.innerHTML = '<div class="na-g-code" aria-live="polite"><div class="na-g-code-val">' + esc(r.code) + '</div><div>Vence: ' + esc(fmtDate(r.expires_at)) + '</div>'
+      + '<ol><li>En el celular del empleado abre la página del POS (la misma dirección de siempre, sin /app).</li><li>Toca «Soy empleado: tengo un código».</li><li>Escribe este código y toca «Vincular».</li></ol></div>';
+    loadDevices();
   }
   async function revoke(id) {
     var ok = true; try { ok = await root._naConfirmAction('¿Desconectar este aparato? Tendrá que vincularse de nuevo.', { title: 'Desconectar aparato', danger: true, okText: 'Desconectar' }); } catch (_) { ok = root.confirm('¿Desconectar este aparato?'); }
-    if (!ok) return; var pin = await needPin('Desconectar aparato'); if (pin === null) return;
-    try { await R().api('/auth/devices/revoke', { device_id: id, pin: pin || undefined }); toast('Aparato desconectado'); loadDevices(); } catch (e) { toast(R().message(e), 'error'); }
+    if (!ok) return;
+    var res = await withPin('Desconectar aparato', function (pin) { return R().api('/auth/devices/revoke', { device_id: id, pin: pin || undefined }); });
+    if (!res) return;
+    var box = doc.getElementById('naDevList');
+    if (res.error) { if (box) { var m = doc.createElement('div'); m.className = 'cfg-business-note'; m.setAttribute('role', 'status'); m.textContent = R().message(res.error); box.prepend(m); } return; }
+    toast('Aparato desconectado'); loadDevices();
   }
 
   function respaldoHtml() {

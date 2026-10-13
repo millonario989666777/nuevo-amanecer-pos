@@ -389,14 +389,18 @@
       box.style.cssText = 'margin:8px;padding:10px;border:1px solid #fcd34d;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px';
       var title = doc.createElement('div');
       title.style.fontWeight = '800';
-      title.textContent = '⚠ Ventas en revisión (' + entries.length + '). No las cobres de nuevo. La caja no se cierra hasta conciliarlas.';
+      var blocking = 0; try { blocking = typeof outbox.blocking === 'function' ? outbox.blocking().length : entries.length; } catch (_) { blocking = entries.length; }
+      title.textContent = 'Ventas en revisión (' + entries.length + '). No las cobres de nuevo.' + (blocking ? ' La caja actual no se cierra hasta conciliar ' + (blocking === 1 ? 'la suya' : 'sus ' + blocking) + '.' : ' Son de una caja anterior: no impiden cerrar la caja actual.');
       box.appendChild(title);
       entries.forEach(function (entry) {
         var intent = entry.intent, row = doc.createElement('div');
         row.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
         var info = doc.createElement('span');
-        info.textContent = clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
-          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : typeof outbox.reasonText === 'function' ? outbox.reasonText(entry.reason) + ' (' + clean(entry.reason) + ')' : clean(entry.reason)) + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
+        var ses = null; try { ses = typeof outbox.sessionOf === 'function' ? outbox.sessionOf(intent) : null; } catch (_) {}
+        var when = ses && ses.opened_at ? new Date(ses.opened_at) : null;
+        var cajaTxt = when && !isNaN(when) ? 'Caja del ' + when.toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) + ', ' + when.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false }) + (ses.status === 'CLOSED' ? ' (cerrada)' : '') + ' · ' : '';
+        info.textContent = cajaTxt + clean(intent.sale_id) + ' · S/ ' + ((Number(intent.total_cents) || 0) / 100).toFixed(2) + ' · ' + clean(intent.payment_method) +
+          ' · motivo: ' + (entry.reason === 'credit_limit_exceeded' ? 'el crédito supera la línea disponible del cliente (cobre un abono o amplíe la línea y reintente)' : typeof outbox.reasonText === 'function' ? outbox.reasonText(entry.reason) : 'el servidor no la aceptó') + ' · estado: ' + (entry.verified_absent_at ? 'no registrada en el servidor' : 'sin confirmar en el servidor');
         row.appendChild(info);
         function action(label, kind, run) {
           var el = doc.createElement('button');
@@ -475,7 +479,8 @@
     var code = clean(error && error.message), record;
     try { record = api().pendingSnapshot(); } catch (_) {}
     if (record && record.command === 'cash.close') return 'El cierre de caja NO se confirmó' + (record.last_status >= 500 ? ' (falla del servidor)' : ' (no llegó respuesta)') +
-      '. La caja sigue abierta y no se cerrará sola: cuando quieras, toca Confirmar cierre otra vez (no se cerrará dos veces).';
+      (lastServerCheck === 'OPEN' ? '. El servidor dice que la caja sigue abierta; no se cerrará sola: toca Confirmar cierre otra vez (no se cerrará dos veces).'
+        : '. No se pudo comprobar con el servidor si la caja quedó cerrada. Toca Confirmar cierre otra vez para comprobarlo (no se cerrará dos veces).');
     if (record && record.last_error && record.last_status && record.last_status < 500 && record.last_status !== 429)
       return 'Antes de cerrar hay ' + plainCommand(record.command) + ' que el servidor rechazó' + plainReason(record.last_error) + '. No se aplicó; revísalo y vuelve a confirmar el cierre.' + blockingSale(error, record);
     if (record) return 'Antes de cerrar hay otra operación sin confirmar (' + plainCommand(record.command) + '). Se guardó; revísala y vuelve a confirmar el cierre.' + blockingSale(error, record);
@@ -528,12 +533,15 @@
   //  - abierta: el cierre anterior no se aplicó; se archiva, se envían las ventas en cola y se cierra con el
   //    monto contado que está escrito AHORA;
   //  - cerrada: se muestra el cierre real y las ventas en cola de esa caja pasan a revisión (nunca a otra caja).
+  var lastServerCheck = null;
   async function resolvePendingCloseWithServer(client) {
     var record = pendingClose(client);
     if (!record) return null;
+    lastServerCheck = null;
     await refreshCanonical();
     var sid = record.payload && record.payload.session_id;
     var session = (client.snapshot().cashSessions || []).find(function (item) { return item.session_id === sid; });
+    lastServerCheck = session ? session.status : null;
     if (session && session.status === 'CLOSED') {
       var receipt = null;
       if (record.payload.operation_id) {
@@ -592,7 +600,14 @@
         return { receipt: await client.closeCash(input) };
       }
     }
-    if (outbox && typeof outbox.withCashCloseBarrier === 'function') return outbox.withCashCloseBarrier(submit, before);
+    if (outbox && typeof outbox.withCashCloseBarrier === 'function') {
+      // Si la cola de ventas está ocupada (sincronizando), se espera y se reintenta: cada Confirmar consulta al
+      // servidor; nunca se responde con un aviso viejo.
+      for (var tries = 0; ; tries++) {
+        try { return await outbox.withCashCloseBarrier(submit, before); }
+        catch (e) { if (String(e && (e.code || e.message)) !== 'BUSY' || tries >= 40) throw e; await new Promise(function (r) { setTimeout(r, 250); }); }
+      }
+    }
     // Compatibility for a runtime that has not loaded the updated outbox yet.
     var pre = await before();
     if (pre && pre.closedSession) return { status: 'CLOSED', session: pre.closedSession, left_out: [] };
@@ -685,9 +700,10 @@
     });
     return result;
   };
-  root.cerrarCaja = async function () {
+  var closingPromise = null;
+  root.cerrarCaja = function () { var p = closingPromise || (closingPromise = cerrarCajaRun.apply(this, arguments)); return p.finally ? p.finally(function () { if (closingPromise === p) closingPromise = null; }) : p; };
+  var cerrarCajaRun = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
-    if (closingBusy) return false;
     closeStatus('');
     if (!authorizeClose()) return false;
 
@@ -769,6 +785,54 @@
     box.append(ul, btn); node.appendChild(box);
   }
   root.NuevoAmanecerCashClosePending = { summary: pendingSummary };
+  // Al cargar y al volver la conexión: si hay un cierre pendiente, se pregunta al servidor. Si la caja ya
+  // está cerrada allá, se muestra el cierre real (nunca «La caja sigue abierta»). Si sigue abierta, no se
+  // hace nada: el cajero vuelve a confirmar el cierre.
+  var reconciling = false;
+  async function reconcilePendingClose() {
+    if (reconciling) return null;
+    var client; try { client = api(); } catch (_) { return null; }
+    if (!client || typeof client.pendingSnapshot !== 'function' || !pendingClose(client)) return null;
+    reconciling = true;
+    try {
+      await refreshCanonical();
+      var rec = pendingClose(client); if (!rec) return null;
+      var sid = rec.payload && rec.payload.session_id;
+      var s = (client.snapshot().cashSessions || []).find(function (x) { return x.session_id === sid; });
+      if (!s || s.status !== 'CLOSED') return null;
+      var outbox = root.NuevoAmanecerCanonicalSaleOutbox, out;
+      if (outbox && typeof outbox.withCashCloseBarrier === 'function') out = await outbox.withCashCloseBarrier(function () { return null; }, function () { return resolvePendingCloseWithServer(client); });
+      else { var pre = await resolvePendingCloseWithServer(client); out = pre && pre.closedSession ? { status: 'CLOSED', session: pre.closedSession, left_out: [] } : null; }
+      if (out && out.status === 'CLOSED') {
+        try { refreshAfterReceipt(); } catch (_) {}
+        renderCash();
+        notify(closedSummary(out), out.left_out && out.left_out.length ? 'warning' : 'success');
+      }
+      return out;
+    } catch (_) { return null; }
+    finally { reconciling = false; }
+  }
+  root.NuevoAmanecerCashClosePending.reconcile = reconcilePendingClose;
+  // Ventana de cierre abierta: si la caja figura cerrada en el servidor, la ventana lo dice (nunca queda
+  // «sigue abierta» mientras Caja muestra Cerrada).
+  function syncCloseWindow() {
+    try {
+      var m = root.document && root.document.getElementById('mCierre');
+      if (!m || !m.classList.contains('open') || closingPromise) return;
+      var client = api(), rec = pendingClose(client);
+      if (rec) { reconcilePendingClose().then(function (out) { if (out && out.status === 'CLOSED') closeStatus(closedSummary(out)); }); return; }
+      var st = root.document.getElementById('cajCloseStatus'), txt = st && st.textContent || '';
+      if (!/sigue abierta|No se pudo comprobar/.test(txt)) return;
+      var open = (client.snapshot().cashSessions || []).some(function (x) { return x.status === 'OPEN'; });
+      if (!open) { var last = (client.snapshot().cashSessions || []).filter(function (x) { return x.status === 'CLOSED'; }).sort(function (a, b) { return String(b.closed_at).localeCompare(String(a.closed_at)); })[0];
+        if (last) closeStatus(closedSummary({ status: 'CLOSED', session: last, left_out: [] })); }
+    } catch (_) {}
+  }
+  if (typeof root.addEventListener === 'function') root.addEventListener('na:canonical-updated', syncCloseWindow);
+  if (typeof root.addEventListener === 'function') {
+    root.addEventListener('online', function () { setTimeout(reconcilePendingClose, 1500); });
+    root.addEventListener('load', function () { setTimeout(reconcilePendingClose, 4000); });
+  }
 
   // Ítem 6: abrir la lista de ventas en revisión desde la franja de estado.
   function showReview() {

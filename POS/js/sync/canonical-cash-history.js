@@ -9,7 +9,7 @@
   var CASHIER_KEY = 'na_canonical_cash_session_cashiers';
   // Ítem 3: desglose por método (ventas + cobros) para el cierre de caja.
   var METHOD_KEYS = ['efectivo', 'yape', 'plin', 'transferencia', 'credito'];
-  var METHOD_LABELS = { efectivo: '💵 Efectivo', yape: '📲 Yape', plin: '📲 Plin', transferencia: '🏦 Transferencia', credito: '📋 Al crédito' };
+  var METHOD_LABELS = { efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', transferencia: 'Transferencia', credito: 'Al crédito' };
   var LIMA_OFFSET_MS = 5 * 60 * 60 * 1000; // America/Lima: UTC-5 sin horario de verano
 
   function api() { return root.NuevoAmanecerCanonical; }
@@ -209,7 +209,7 @@
     var existing = bar.querySelector('[data-na-cash-history-tab]');
     if (existing) { existing.hidden = !enabled(); return existing; }
     if (!enabled()) return null;
-    var button = el('button', 'tab', '🗂️ Historial');
+    var button = el('button', 'tab', '🗂️ Historial'); if (root.NA_ICON_SWAP) root.NA_ICON_SWAP(button);
     button.type = 'button';
     button.setAttribute('data-na-cash-history-tab', 'true');
     button.addEventListener('click', function () { if (typeof root.cajSetTab === 'function') root.cajSetTab(button, 'historial'); });

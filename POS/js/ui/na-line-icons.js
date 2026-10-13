@@ -73,20 +73,14 @@
     if (!n || n.nodeType !== 3) return;
     var k = lead(n.nodeValue); if (!k) return;
     var rest = n.nodeValue.replace(/^\s+/, '').slice(k.length).replace(/^\uFE0F/, '');
-    var tmp = doc.createElement('span'); tmp.innerHTML = ic(MAP[k]);
-    if (MAP[k] === 'dot') tmp.firstChild.style.color = '#16a34a';
+    var tmp = doc.createElement('span'); tmp.innerHTML = '<i class="na-ic na-ic-' + MAP[k] + '" aria-hidden="true"></i>';
     el.insertBefore(tmp.firstChild, n);
     n.nodeValue = rest.trim() ? ' ' + rest.replace(/^\s+/, '') : '';
     el.classList.add('na-li-host');
   }
   function scan(r) { if (r.matches && r.matches(SEL)) fix(r); if (r.querySelectorAll) r.querySelectorAll(SEL).forEach(fix); }
   root.NA_ICON_SWAP = scan;
-  function start() {
-    scan(doc.body);
-    new root.MutationObserver(function (ms) { ms.forEach(function (m) { m.addedNodes.forEach(function (x) { if (x.nodeType === 1) scan(x); else if (x.parentNode && x.parentNode.nodeType === 1) fix(x.parentNode); }); }); })
-      .observe(doc.body, { childList: true, subtree: true });
-  }
-  if (doc.body) start(); else doc.addEventListener('DOMContentLoaded', start);
+  // Sin observador: los emoji se quitaron del código fuente. NA_ICON_SWAP queda para uso puntual.
 })(window);
 
 /* Ventanas en el celular: altura real visible (visualViewport, no 100vh) en --na-vvh, y al abrir el
@@ -95,13 +89,15 @@
   'use strict';
   var doc = root.document, vv = root.visualViewport; if (!doc) return;
   var MODAL = '.modal-overlay .modal,.na-review-box,.na-pin-box';
-  function setH() { var h = vv ? vv.height : root.innerHeight; doc.documentElement.style.setProperty('--na-vvh', Math.round(h) + 'px'); }
+  function setH(h) { doc.documentElement.style.setProperty('--na-vvh', h + 'px'); }
   function reveal() {
     var a = doc.activeElement; if (!a || !a.closest || !a.closest(MODAL) || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
     try { a.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) {}
   }
-  setH();
-  if (vv) vv.addEventListener('resize', function () { setH(); setTimeout(reveal, 60); });
-  root.addEventListener('resize', setH);
+  // No se escribe al arrancar (el CSS usa 100dvh por defecto): solo al cambiar el área visible, en rAF y si cambió.
+  var last = 0, raf = 0;
+  function schedule() { if (raf) return; raf = root.requestAnimationFrame(function () { raf = 0; var h = Math.round(vv ? vv.height : root.innerHeight); if (h !== last) { last = h; setH(h); } }); }
+  if (vv) vv.addEventListener('resize', function () { schedule(); setTimeout(reveal, 60); });
+  else root.addEventListener('resize', schedule);
   doc.addEventListener('focusin', function () { setTimeout(reveal, 300); });
 })(window);

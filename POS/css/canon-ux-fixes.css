@@ -234,3 +234,14 @@ body.dark .na-pay-net.checking{background:#451a03;color:#fde68a;border-color:#92
   body:not(.na-pos-phone-device) #mCobro .modal.pay-modal{max-height:calc(var(--na-vvh,100dvh) - 16px - env(safe-area-inset-bottom))!important;display:flex!important;flex-direction:column!important}
   body:not(.na-pos-phone-device) #mCobro .pay-modal-body{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch}
 }
+/* Compra incompleta en Historial: fila ámbar, proveedor y monto en una línea, dos botones lado a lado (>=44 px). */
+.na-pur-item.na-pur-open{background:#fffbeb;border-color:#fcd34d}
+.na-pur-open-head{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#92400e}
+.na-pur-open-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.na-pur-open-actions button{min-height:44px;border-radius:10px;font-weight:800;font-size:14px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.na-pur-finish-h{border:0;background:#0d9488;color:#fff}
+.na-pur-partial-h{border:1.5px solid #dc2626;background:#fff;color:#b91c1c}
+.na-pur-partial-h .na-li{width:16px;height:16px}
+.na-pur-reason{width:100%;box-sizing:border-box;min-height:44px;border:1px solid #cbd5e1;border-radius:10px;padding:0 10px;margin-bottom:6px;font-size:15px}
+.na-pur-open details summary{font-size:13px;color:#92400e}
+body.dark .na-pur-item.na-pur-open{background:#3b2f12;border-color:#92400e}body.dark .na-pur-open-head{color:#fcd34d}

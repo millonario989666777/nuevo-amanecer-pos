@@ -226,7 +226,10 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => stageShell(cache))
       .then(() => caches.has(MANUAL_UPDATE_MARKER_CACHE))
-      .then((manualModeEnabled) => manualModeEnabled ? undefined : self.skipWaiting())
+      // Nunca reemplaza una versión abierta: si ya hay una página abierta, la nueva espera a que el cajero
+      // recargue (la página muestra «Hay una versión nueva, recarga»). Solo la primera instalación se activa sola.
+      .then((manualModeEnabled) => manualModeEnabled ? undefined : self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((open) => (open.length && self.registration.active) ? undefined : self.skipWaiting()))
   );
 });
 

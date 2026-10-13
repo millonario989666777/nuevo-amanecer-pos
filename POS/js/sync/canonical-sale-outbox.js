@@ -128,7 +128,7 @@
     sale_id_conflict: 'otro equipo ya usó ese número de venta',
     operation_id_conflict: 'la operación choca con otra ya registrada',
     payment_reference_conflict: 'ese número de operación Yape/transferencia ya está en otra venta',
-    cash_session_closed: 'la caja en la que se cobró ya fue cerrada',
+    cash_session_closed: 'la caja ya estaba cerrada',
     cash_session_required: 'no hay ninguna caja abierta en CANON',
     promotion_changed: 'CANON cambió de promoción mientras la venta esperaba',
     credit_limit_exceeded: 'supera la línea de crédito del cliente',
@@ -155,7 +155,23 @@
   // until it is reconciled (confirmed on the server or annulled as unregistered).
   // It never blocks sales, payments or expenses.
   function cashOf(intent) { return Number(intent && intent.payment && intent.payment.cash_cents) || 0; }
-  function blockingQuarantine() { return readQuarantine().entries.filter(function (entry) { return entry.status === 'QUARANTINED'; }); }
+  // Caja a la que pertenece una venta: su session_id o, si no lo lleva, la caja abierta cuando se hizo.
+  function sessionOfIntent(intent) {
+    var c = root.NuevoAmanecerCanonical, list = [];
+    try { list = (c && typeof c.snapshot === 'function' && c.snapshot().cashSessions) || []; } catch (_) {}
+    if (intent && intent.session_id) return list.find(function (x) { return x.session_id === intent.session_id; }) || null;
+    var t = Date.parse(intent && intent.created_at || '') || 0;
+    return list.find(function (x) { var o = Date.parse(x.opened_at || '') || 0, e = x.closed_at ? Date.parse(x.closed_at) : Infinity; return t >= o && t <= e; }) || null;
+  }
+  // Solo bloquean el cierre las ventas en revisión de la caja ABIERTA. Las de una caja anterior ya cerrada se
+  // siguen mostrando en ámbar pero no impiden cerrar la caja nueva.
+  function blockingQuarantine() {
+    return readQuarantine().entries.filter(function (entry) {
+      if (entry.status !== 'QUARANTINED') return false;
+      var s = sessionOfIntent(entry.intent);
+      return !s || s.status !== 'CLOSED';
+    });
+  }
   // Safe retry (same operation_id) only where the cause can clear by itself or
   // after a data fix; never for conflicts or malformed requests.
   // Explicit allowlist (fail-closed): causes that clear when the replica
@@ -855,7 +871,7 @@
       return { status: 'REJECTED_TEST_INTENT', operation_id: operationId };
     });
   }
-  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent,
+  root.NuevoAmanecerCanonicalSaleOutbox = Object.freeze({ VERSION: VERSION, KEY: KEY, enqueue: enqueue, snapshot: snapshot, sync: sync, withCashCloseBarrier: withCashCloseBarrier, quarantine: quarantineSnapshot, sessionOf: sessionOfIntent, blocking: function () { return clone(blockingQuarantine()); }, quarantineRetryable: retryable, quarantineAnnullable: function (entry) { return annullable(entry, root.NuevoAmanecerCanonical); }, resolveQuarantined: resolveQuarantined, start: start, rejectInvalidTestIntent: rejectInvalidTestIntent,
     reasonText: reasonText, quarantineRebindsOnRetry: function (reason) { return REBIND_ON_RETRY.indexOf(reason) !== -1; },
     rebindTarget: function () { return openCashSession(root.NuevoAmanecerCanonical); },
     // The drain resolves every sale.create rejection by itself (review list,

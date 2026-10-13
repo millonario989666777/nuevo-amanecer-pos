@@ -440,3 +440,47 @@ test('Bot 2 item 1: pending close already applied on the server + queued sale of
  assert.equal(q.length,1); assert.equal(q[0].reason,'cash_closed_before_sale'); assert.equal(q[0].status,'QUARANTINED');
  assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='V-085'").n,0);
 });
+
+test('Bot 3 item 5: al cargar/reconectar con un cierre pendiente que el servidor ya aplicó, se muestra el cierre real sin tocar Confirmar', async t => {
+ let lose=true;
+ const {f,d}=await yesterdaySession(t,async(url,o,run)=>{ if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run();throw Error('lost ACK');} });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ assert.equal(d.api.pendingSnapshot().command,'cash.close');
+ const out=await d.context.NuevoAmanecerCashClosePending.reconcile();
+ assert.equal(out.status,'CLOSED');
+ assert.equal(d.api.pendingSnapshot(),null);
+ assert.ok(d.context.__toasts.some(([m])=>/ya estaba cerrada/.test(m)));
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+ assert.equal(ui(d).state.cerrada,true);
+});
+test('Bot 3 item 5: si el servidor sigue con la caja abierta, la reconexión NO cierra ni descarta nada', async t => {
+ const {f,d}=await yesterdaySession(t,async url=>{ if(url.endsWith('/commands/cash.close'))return Response.json({error:'financial_storage_error'},{status:503}); });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ assert.equal(await d.context.NuevoAmanecerCashClosePending.reconcile(),null);
+ assert.equal(d.api.pendingSnapshot().command,'cash.close');
+ assert.equal(posts(d,'cash.close').length,1);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
+});
+
+test('Bot 3 item 13: con la cola ocupada (CPU lenta) y doble toque, Confirmar consulta al servidor y la ventana dice «ya estaba cerrada»', async t => {
+ let lose=true, slow=null;
+ const {f,d,outbox,build}=await yesterdaySession(t,async(url,o,run)=>{
+  if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run();throw Error('lost ACK');}
+  if(slow&&url.endsWith('/commands/sale.create')){await slow;throw Error('offline');}
+ });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ let release; slow=new Promise(r=>{release=r;});
+ await outbox.enqueue(build(cashSale('V-090')));
+ const busy=outbox.sync().catch(()=>null); // tiene el candado de la cola mientras la red está lenta
+ await new Promise(r=>setTimeout(r,20));
+ const reads0=d.fetchLog.filter(x=>x.method!=='POST').length;
+ const a=d.context.cerrarCaja(), b=d.context.cerrarCaja();
+ setTimeout(()=>{slow=null;release();},600);
+ const [ra,rb]=await Promise.all([a,b]); await busy;
+ assert.equal(ra,true); assert.equal(rb,true,'el segundo toque espera el mismo resultado, no se ignora');
+ assert.ok(d.fetchLog.filter(x=>x.method!=='POST').length>reads0,'consultó al servidor');
+ assert.match(d.context.__toasts.map(x=>x[0]).join(' | ')+' '+d.el('cajCloseStatus').textContent,/ya estaba cerrada/);
+ assert.doesNotMatch(d.el('cajCloseStatus').textContent,/sigue abierta/);
+ assert.equal(posts(d,'cash.close').length,2);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+});
