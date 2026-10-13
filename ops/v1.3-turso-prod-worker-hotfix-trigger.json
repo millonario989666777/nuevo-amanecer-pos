@@ -2,15 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 2af3943 (#621): POST /auth/purchases checks partial-close state before payload comparison so a closed purchase always returns 409 purchase_closed_partial. No schema changes, no live sale. Rollback to 62f4ef1.",
-  "target_commit": "2af3943135a5ab3b17344cf7bee890a88ac35acd",
-  "rollback_ref": "62f4ef1551063c26d96952c253574c6beaaad10a",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of 8290aa8 (#628): POST /auth/dni-lookup (saved customers first, then Decolecta from the Worker; 3 s; employee limits). Syncs DECOLECTA_API_TOKEN secret by stdin. No schema changes, no live sale. Rollback to 2feb9bb.",
+  "target_commit": "8290aa8e2df60d4c0a0cfaf7788bc9b5af789785",
+  "rollback_ref": "2feb9bbfd2f7867060ff841b5e54b5894a816afe",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 24,
-  "previous_run_id": 38426022779,
-  "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_BOT6_CLOSED_409"
+  "attempt": 25,
+  "optimization": "DNI_DECOLECTA_LOOKUP"
 }
