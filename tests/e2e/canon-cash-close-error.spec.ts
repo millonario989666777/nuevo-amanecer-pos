@@ -18,10 +18,10 @@ for (const width of [390,1024]) {
     });
     await page.locator('#cajContado').fill('1100');
     await page.locator('#mCierre .mbtn-ok').click();
-    await expect(page.locator('#cajCloseStatus')).toContainText('payment.create · HTTP 409 · stale_credit');
+    await expect(page.locator('#cajCloseStatus')).toContainText('un abono que el servidor rechazó');
     await page.evaluate(()=>window.cajRender());
     await expect(page.locator('#cajCloseStatus')).toBeVisible();
-    await expect(page.locator('#cajCloseStatus')).toContainText('stale_credit');
+    await expect(page.locator('#cajCloseStatus')).toContainText('el saldo del crédito cambió');
     await expect(page.locator('#mCierre')).toHaveClass(/open/);
     await expect(page.locator('#mCierre .mbtn-ok')).toBeEnabled();
     expect(await page.evaluate(()=>cajEstado.cerrada)).toBe(false);

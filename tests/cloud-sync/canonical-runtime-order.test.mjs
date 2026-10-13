@@ -40,7 +40,7 @@ test('new sale enters the durable local outbox without waiting for CANON freshne
   const gate=capture.indexOf('canonicalSaleGate()');
   const enqueue=capture.indexOf('outbox.enqueue(intent)');
   const project=capture.indexOf('projectCurrentOutbox()');
-  const background=capture.indexOf('syncOutboxInBackground(outbox)');
+  const background=capture.indexOf('syncOutboxInBackground(outbox');
   assert.ok(gate>=0 && enqueue>gate,'local storage gate must run before durable enqueue');
   assert.ok(project>enqueue && background>project,'local projection must finish before background sync is scheduled');
 });

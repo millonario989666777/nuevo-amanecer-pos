@@ -280,6 +280,8 @@
   async function settleForeignPending(canonical, pending) {
     // A sale journal for another operation is never touched from here.
     if (!pending || pending.command === 'sale.create') return false;
+    // Un cierre de caja sin confirmar NUNCA se reenvía solo: el cajero debe volver a confirmarlo en Caja.
+    if (pending.command === 'cash.close') return false;
     if (!pending.last_error || pending.last_status === 429 || pending.last_status >= 500) {
       try { await canonical.retryPending(); return true; } catch (_) { return false; }
     }

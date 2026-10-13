@@ -323,9 +323,17 @@
       return sameCredit && amount === Number(p.amount_cents) && method === p.payment_method && (method === 'efectivo' || ref === clean(p.reference));
     } catch (_) { return false; }
   }
+  function pendingBlockText(pending) {
+    var amt = Number(pending && pending.payload && pending.payload.amount_cents) || 0, now = 0;
+    try { now = moneyCents(root.document.getElementById('pagoMonto')?.value) || 0; } catch (_) {}
+    return 'Revisando el abono anterior de S/ ' + (amt / 100).toFixed(2) + '. Este abono' + (now ? ' de S/ ' + (now / 100).toFixed(2) : '') + ' NO se registró todavía.';
+  }
   function previousSettledNotice(pending) {
     var amt = Number(pending && pending.payload && pending.payload.amount_cents) || 0;
-    showNet('done', 'El abono anterior de S/ ' + (amt / 100).toFixed(2) + ' sí se registró. Saldo actualizado: revisa y vuelve a confirmar.');
+    var now = 0; try { now = moneyCents(root.document.getElementById('pagoMonto')?.value) || 0; } catch (_) {}
+    showNet('done', 'El abono anterior de S/ ' + (amt / 100).toFixed(2) + ' sí se registró.' +
+      (now ? ' Este abono de S/ ' + (now / 100).toFixed(2) + ' todavía NO se registró: revisa y toca Confirmar para enviarlo.' : ' Saldo actualizado.'));
+    var b = root.document.getElementById('pagoConfirmBtn'); if (b) b.disabled = false;
   }
 
   async function confirm() {
@@ -399,7 +407,7 @@
     }
 
     if (!(await online(client))) {
-      if (pending) { showNet('checking', 'No confirmado, revisando…'); scheduleReview(5000); }
+      if (pending) { showNet('checking', matchesPending(pending) ? 'No confirmado, revisando…' : pendingBlockText(pending)); scheduleReview(5000); }
       else showNet('offline', 'Sin conexión: el abono no se registró');
       return false;
     }
@@ -428,7 +436,7 @@
           if (after && after.last_error) {
             await releaseDefinitiveRejection(client);
             var why = describePendingFailure(error); notify(why, 'error'); showNet('rejected', why);
-          } else { showNet('checking', 'No confirmado, revisando…'); scheduleReview(5000); }
+          } else { showNet('checking', samePayment ? 'No confirmado, revisando…' : pendingBlockText(pending)); scheduleReview(5000); }
           return false;
         }
         if (!samePayment) {
@@ -525,6 +533,13 @@
   function batchFailure(message, requestedCents, completed, code) {
     var completedCents = completed.reduce(function (sum, item) { return sum + item.amount_cents; }, 0);
     var partial = completed.length > 0;
+    // Respuesta perdida (pendiente sin rechazo): aviso ámbar "revisando", no rojo. Se resuelve con el MISMO id.
+    var unconfirmed = null; try { unconfirmed = pendingRecord(); } catch (_) {}
+    if (unconfirmed && /^payment\.(batch|create)$/.test(unconfirmed.command) && !unconfirmed.last_error && !unconfirmed.invalid) {
+      batchNotice('checking', 'No confirmado, revisando… No repitas el cobro.');
+      notify('Cobro no confirmado todavía: se está revisando. No lo repitas.', 'warning');
+      return { ok:false, partial:partial, unconfirmed:true, code:'BATCH_UNCONFIRMED', requested_cents:requestedCents, completed_cents:completedCents, completed_count:completed.length, completed:completed.slice(), remaining_cents:Math.max(0, requestedCents - completedCents) };
+    }
     if (partial) {
       notify('Lote detenido. S/ ' + (completedCents / 100).toFixed(2) + ' ya quedó CONFIRMADO en ' +
         completed.length + (completed.length === 1 ? ' crédito. ' : ' créditos. ') +

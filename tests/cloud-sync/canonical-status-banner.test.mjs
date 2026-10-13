@@ -120,3 +120,20 @@ test('caja de otro día: la franja roja desaparece sin F5 cuando el servidor ya 
   today = open.fechaApertura; // la caja abierta es la de hoy
   assert.equal(banner.view(banner.compute()), null, 'sin franja roja, sin F5');
 });
+
+test('Bot 2 P2: un cierre de caja con 500 NUNCA se reenvía solo (ni al reconectar ni desde la cola de ventas)', async (t) => {
+  const f = await activeCanon(t, { migrations: MIGS });
+  let fail = true;
+  const d = await device(f, { token: 'b9', deviceId: 'b9', scripts: SCRIPTS, globals: { obtenerHoy: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) },
+    onFetch: async (url) => (fail && url.endsWith('/commands/cash.close') ? Response.json({ error: 'internal' }, { status: 500 }) : null) });
+  await d.api.openCash({ session_id: 'S-p2', opening_cents: 1000 }); await d.api.refresh();
+  await assert.rejects(d.api.closeCash({ counted_cents: 1000, session_id: 'S-p2' }));
+  fail = false;
+  const posts = () => d.fetchLog.filter((x) => x.url.endsWith('/commands/cash.close')).length;
+  const n = posts();
+  await d.context.NuevoAmanecerStatusBanner.retryOnReconnect();
+  try { await d.context.NuevoAmanecerCanonicalSaleOutbox.sync(); } catch (_) {}
+  assert.equal(posts(), n, 'sin reenvío automático del cierre');
+  assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_cash_closures").n, 0, 'la caja sigue abierta');
+  assert.equal(d.api.pendingSnapshot().command, 'cash.close', 'queda esperando que el cajero vuelva a confirmar');
+});
