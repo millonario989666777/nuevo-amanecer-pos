@@ -5,6 +5,10 @@
   var last = null;
   var confirmedReceipts = new Map();
 
+  // Cajero guardado al crear la venta (no el cajero de turno actual).
+  function recordedCashierRow(p) { try { return root.NA_RECORD_CASHIER ? root.NA_RECORD_CASHIER.get([p && p.sale_id, p && p.operation_id]) : null; } catch (_) { return null; } }
+  function recordedCashier(p) { var c = recordedCashierRow(p); return c ? c.nombre : undefined; }
+  function recordedCashierId(p) { var c = recordedCashierRow(p); return c ? c.id : undefined; }
   function copy(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
   function sameId(a, b) { return a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b); }
   function enabled(canonical) {
@@ -123,7 +127,8 @@
       clienteDni:customer ? (customer.dni || customer.document || '') : '',
       cantidadLineas:items.length,
       unidadesFisicas:items.reduce(function (sum,item) { return sum + Number(item.qty||0); },0),
-      items:items, canonical:true, canonicalReadOnly:true, canonicalReceiptProjection:true, source:'CANONICAL_RECEIPT'
+      items:items, canonical:true, canonicalReadOnly:true, canonicalReceiptProjection:true, source:'CANONICAL_RECEIPT',
+      cajero:recordedCashier(payload), cajeroNombre:recordedCashier(payload), cajeroId:recordedCashierId(payload)
     };
   }
   function applyConfirmedProductProjection(projected, pendingOperations) {

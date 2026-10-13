@@ -40,3 +40,17 @@ body.dark #pagePOS .pos-module-copy span{color:#657188}
    --te acento (texto AA), --g1/--g2 adornos, --orbg fondo activo, paleta clara/nocturna del prototipo. */
 /* «Con adornos» (todos menos Simple claro), igual que el prototipo. */
 /* Teléfono (<= 700 px): solo la pantalla de Configuración. Paleta propia dentro de #naCfgV9. */
+/* Temas en todos los anchos (celular incluido): solo colores. */
+html[data-na-theme=naranja] body{--teal:#c2410c;--teal-dark:#9a3412;--teal-light:#fff1e6}
+html[data-na-theme=azul] body{--teal:#1d4ed8;--teal-dark:#1e3a8a;--teal-light:#e8efff}
+html[data-na-theme=celeste] body{--teal:#0369a1;--teal-dark:#075985;--teal-light:#e0f2fe}
+html[data-na-theme=simple] body{--teal:#374151;--teal-dark:#1f2937;--teal-light:#f3f4f6;--bg:#fafafa}
+html[data-na-theme=naranja] body.dark{--teal:#e09a66;--teal-dark:#f0b48a;--teal-light:#3d3029}
+html[data-na-theme=azul] body.dark{--teal:#8aa9e0;--teal-dark:#a9c0ea;--teal-light:#2a3247}
+html[data-na-theme=celeste] body.dark{--teal:#78bcdc;--teal-dark:#9fd0e8;--teal-light:#263843}
+html[data-na-theme=simple] body.dark{--teal:#c3c8cf;--teal-dark:#e4e6e8;--teal-light:#2e333b;--bg:#111827}
+html[data-na-theme=naranja] #pagePOS{--pos-ref-teal:#c2410c;--pos-ref-teal-dark:#9a3412}
+html[data-na-theme=azul] #pagePOS{--pos-ref-teal:#1d4ed8;--pos-ref-teal-dark:#1e3a8a}
+html[data-na-theme=celeste] #pagePOS{--pos-ref-teal:#0369a1;--pos-ref-teal-dark:#075985}
+html[data-na-theme=simple] #pagePOS{--pos-ref-teal:#374151;--pos-ref-teal-dark:#1f2937}
+html[data-na-theme=naranja] #pagePOS,html[data-na-theme=azul] #pagePOS,html[data-na-theme=celeste] #pagePOS,html[data-na-theme=simple] #pagePOS{--pos-ref-orange:#c2410c;--pos-ref-orange-dark:#9a3412}

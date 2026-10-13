@@ -93,6 +93,27 @@
   }
   var SNAPSHOT_KEYS = ['products','customers','credits','credit_payments','credit_accounts','sales','sale_items','inventory_movements','cash_movements','cash_sessions','financial_events','expenses'];
 
+  // Cajero que registró cada venta/abono, guardado al crearlo (también si queda en cola).
+  // Pantalla, ticket e historial usan este dato, no el cajero de turno actual.
+  var recordCashier = root.NA_RECORD_CASHIER || (root.NA_RECORD_CASHIER = (function () {
+    var KEY = 'na_record_cashier_v1', MAX = 3000;
+    function read() { try { var v = JSON.parse(root.localStorage.getItem(KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
+    function now() {
+      try { var c = typeof root._naCashierSnapshot === 'function' ? root._naCashierSnapshot() : null; if (c && (c.id || c.nombre)) return { id: String(c.id || ''), nombre: String(c.nombre || '').slice(0, 100) }; } catch (_) {}
+      return null;
+    }
+    function put(keys, cashier) {
+      var c = cashier && (cashier.id || cashier.nombre) ? { id: String(cashier.id || ''), nombre: String(cashier.nombre || '').slice(0, 100) } : now(); if (!c) return null;
+      var m = read(), changed = false;
+      (keys || []).forEach(function (k) { if (k == null || k === '') return; k = String(k); if (!m[k]) { m[k] = c; changed = true; } });
+      if (!changed) return c;
+      var ks = Object.keys(m); if (ks.length > MAX) ks.slice(0, ks.length - MAX).forEach(function (k) { delete m[k]; });
+      try { root.localStorage.setItem(KEY, JSON.stringify(m)); } catch (_) {}
+      return c;
+    }
+    function get(keys) { var m = read(); for (var i = 0; i < (keys || []).length; i++) { var k = keys[i]; if (k != null && m[String(k)]) return m[String(k)]; } return null; }
+    return { put: put, get: get };
+  })());
   function copy(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
   function fail(code) { throw new Error(code); }
   function validId(value) { return typeof value === 'string' && value.length > 0 && value.length <= 160 && !/[\x00-\x1f\x7f]/.test(value); }
@@ -830,7 +851,9 @@
     return true;
   }
   function commonPayload() {
-    return { operation_id: root.crypto.randomUUID(), promotion_id: binding.promotion_id,
+    var opId = root.crypto.randomUUID();
+    try { recordCashier.put([opId]); } catch (_) {}
+    return { operation_id: opId, promotion_id: binding.promotion_id,
       client_contract: CONTRACT, authority_epoch: binding.authority_epoch, expected_control_revision: binding.revision, created_at: new Date().toISOString() };
   }
   function paymentFor(method, total, sale) {
@@ -1876,7 +1899,7 @@
   function adjustInventory(input) { return createCommand('inventory.adjust', input); }
   function createCreditAccount(input) { return createCommand('credit-account.create', input); }
   function createPayment(input) { return createCommand('payment.create', input); }
-  function openCash(input) { return createCommand('cash.open', input); }
+  function openCash(input) { try { if (input && input.session_id) recordCashier.put(['caja:' + input.session_id]); } catch (_) {} return createCommand('cash.open', input); }
   function closeCash(input) { return createCommand('cash.close', input); }
   function createAdjustment(input) { return createCommand('adjustment.create', input); }
   function createExpense(input) { return createCommand('expense.create', input); }

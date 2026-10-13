@@ -255,3 +255,41 @@ body.dark .na-pur-item.na-pur-open{background:#3b2f12;border-color:#92400e}body.
 @media (min-width:700px){#pwaUpdateAction,#pwaUpdateLater{min-height:44px}}
 body:not(.dark) #mPagoCred .mhead.green{background:#15803d}
 #pagePOS .total-row[hidden]{display:none!important}
+/* Modo nocturno en celular: Inicio, Inventario, hoja Cobrar, Total del carrito y ventana PIN (solo colores, contraste >= 4.5:1). */
+body.dark #pageMenu .main-scroll.home-shell{background:#0f172a!important}
+body.dark #pageMenu .qs-card{background:#1e293b!important;border-color:#334155!important;box-shadow:none!important;color:#e2e8f0}
+body.dark #pageMenu .qs-card .qs-val,body.dark #pageMenu .qs-card strong,body.dark #pageMenu .qs-card b{color:#f1f5f9!important}
+body.dark #pageMenu .qs-card .qs-label,body.dark #pageMenu .qs-card small,body.dark #pageMenu .qs-card span{color:#cbd5e1}
+body.dark #pageInventario.inv-mobile-simple,body.dark #pageInventario.inv-mobile-simple .table-card,body.dark #pageInventario.inv-mobile-simple .top-mod-bar,body.dark #pageInventario.inv-mobile-simple .filter-bar,body.dark #pageInventario.inv-mobile-simple .inv-mobile-controls,body.dark #pageInventario.inv-mobile-simple .tabs-wrap{background:#0f172a!important;color:#e2e8f0}
+body.dark #pageInventario.inv-mobile-simple .search-box,body.dark #pageInventario.inv-mobile-simple .inv-mobile-totals,body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory],body.dark #pageInventario.inv-mobile-simple .inv-menu-content,body.dark #pageInventario.inv-mobile-simple .inv-summary .stats-strip,body.dark #pageInventario.inv-mobile-simple .prod-icon-sm{background:#1e293b!important;border-color:#334155!important;color:#e2e8f0}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory] td,body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory]>td:nth-child(3)>div:first-child,body.dark #pageInventario.inv-mobile-simple .inv-mobile-totals *{color:#e2e8f0!important}
+body.dark #pageInventario.inv-mobile-simple .search-box input{background:transparent;color:#f1f5f9}
+body.dark #mOcrPurchaseReview .mbtns{background:#1e293b}
+body.dark.na-pos-phone-device #mCobro .pay-modal{background:#1e293b!important;color:#e2e8f0}
+body.dark.na-pos-phone-device #mCobro .pay-modal h2,body.dark.na-pos-phone-device #mCobro .pay-modal h3,body.dark.na-pos-phone-device #mCobro .pay-modal label,body.dark.na-pos-phone-device #mCobro .pay-modal .pml{color:#e2e8f0}
+body.dark.na-pos-phone-device #pagePOS.phone-sale .total-main,body.dark.na-pos-phone-device #pagePOS.phone-sale .total-main *{color:#f1f5f9!important}
+body.dark .na-pin-box{background:#1e293b;color:#f1f5f9}
+body.dark .na-pin-title{color:#f1f5f9}
+body.dark .na-pin-detail{color:#cbd5e1}
+/* Nueva venta en celular: el aviso de versión va abajo como en Inicio (la franja de pendientes ya no lo tapa), justo encima de Cobrar sin taparlo. */
+@media (max-width:700px){
+  body:has(#pagePOS.active) .pwa-update-prompt{top:auto!important;bottom:calc(72px + (var(--na-ap-buttons,1) - 1) * 60px + env(safe-area-inset-bottom))!important;left:8px!important;right:8px!important;z-index:420!important}
+  body:has(#pagePOS.active):has(#pwaUpdatePrompt:not([hidden])) #posPhoneTitle{visibility:visible}
+}
+@media (max-width:700px){
+  body.dark #pageMenu h2,body.dark #pageMenu strong,body.dark #pageMenu .qs-val{color:#f1f5f9!important}
+  body.dark #pageMenu [id^="qs"][id$="Sub"],body.dark #pageMenu .qs-sub{color:#cbd5e1!important}
+  body.dark #pageInventario .top-mod-title,body.dark #pageInventario summary,body.dark #pageInventario .prod-name-sm{color:#f1f5f9!important}
+  body.dark #pageInventario .inv-mobile-category,body.dark #pageInventario .inv-mobile-count{color:#cbd5e1!important}
+  body.dark #pageInventario .stock-pill.ok{color:#86efac!important}
+  body.dark #pageInventario .ss.amber,body.dark #pageInventario .ss.amber *{color:#fcd34d!important}
+  body.dark #pageInventario .ss.green,body.dark #pageInventario .ss.green *{color:#86efac!important}
+  body.dark #pageInventario .btn-act.btn-ent{color:#86efac!important}
+  body.dark #pageInventario .btn-act.btn-edt{background:#334155!important;color:#e2e8f0!important}
+  body.dark #pageInventario .top-btn-nuevo{background:color-mix(in srgb,var(--teal,#00a99d) 45%,#000)!important;color:#fff!important}
+  body.dark #pagePOS .cat-btn:not(.active){color:#cbd5e1!important}
+  body.dark #pagePOS .p-img{color:#e2e8f0}
+  body.dark #pagePOS .cart-empty{background:#1e293b!important;color:#cbd5e1!important}
+  body.dark #pagePOS .cart-totals,body.dark #pagePOS .cart-totals span,body.dark #pagePOS #posProductCount{color:#cbd5e1!important}
+  body.dark #pagePOS .scanner-dot{color:#052e16!important}
+}

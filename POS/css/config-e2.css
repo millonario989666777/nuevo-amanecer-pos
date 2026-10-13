@@ -89,7 +89,8 @@ html.na-role-unconfirmed #topSettingsBtn,html.na-role-unconfirmed [data-page="pa
 .na-offline-banner{z-index:10045}
 @media(min-width:701px){.na-offline-banner{top:auto;left:auto;right:12px;transform:none;bottom:calc(210px + env(safe-area-inset-bottom));width:min(330px,32vw)}}
 /* Tamaño elegido también en Total, totales del cobro y textos generales. Botón Pagar en "Chico" no crece. */
-html.na-ap-custom #pagePOS .total-row span{font-size:calc(14px * var(--na-ap-text,1))!important}
-html.na-ap-custom #posTotal,html.na-ap-custom #pagePOS .total-row.total-final span,html.na-ap-custom #mCobroTotal,html.na-ap-custom #mQuickPaymentTotal,html.na-ap-custom #mMixedSummaryTotal{font-size:calc(20px * var(--na-ap-text,1))!important}
+html.na-ap-custom #pagePOS .total-row span{font-size:calc(13px * var(--na-ap-text,1))!important}
+html.na-ap-custom #posTotal,html.na-ap-custom #mQuickPaymentTotal,html.na-ap-custom #mMixedSummaryTotal,html.na-ap-custom #mCobroTotal{font-size:calc(26px * var(--na-ap-text,1))!important}
+@media(min-width:701px){html.na-ap-custom #mCobroTotal{font-size:calc(28px * var(--na-ap-text,1))!important}}
 html.na-ap-custom .ci-price,html.na-ap-custom .p-price,html.na-ap-custom .cli-meta,html.na-ap-custom .mov-amt,html.na-ap-custom label,html.na-ap-custom .toast{font-size:calc(13px * var(--na-ap-text,1))!important}
-html.na-ap-custom #pagePOS #btnPagar,html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:auto!important;min-height:calc(48px * var(--na-ap-buttons,1))!important}
+html.na-ap-custom #pagePOS #btnPagar,html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:auto!important;min-height:max(44px,calc(48px * var(--na-ap-buttons,1)))!important}

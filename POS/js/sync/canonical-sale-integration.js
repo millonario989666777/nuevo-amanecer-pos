@@ -389,6 +389,7 @@
       intent = await outbox.enqueue(intent);
       saleId = intent.sale_id;
       durable = true;
+      try { root.NA_RECORD_CASHIER && root.NA_RECORD_CASHIER.put([intent.sale_id, intent.operation_id], receiptCashier); } catch (_) {}
 
       // The commercial action ends at the durable local commit. Update the
       // projected stock/sales immediately, release the cashier UI, and let the
