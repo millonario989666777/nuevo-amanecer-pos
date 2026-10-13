@@ -317,8 +317,8 @@ test('P1-3 live credit issue date and receipt projection use the local day; Cobr
   assert.match(read('POS/js/legacy-inline/inline-12.js'), /'Cobrado hoy \(todos los medios\)'/);
   assert.match(read('POS/js/legacy-inline/inline-11.js'), /'Cobros en efectivo'/);
   assert.match(read('POS/js/legacy-inline/inline-11.js'), /'Cobros crédito \(efectivo\)'/);
-  // Shared LAB/CANON markup is unchanged (labels are set by JS).
-  assert.match(read('POS/index.html'), /<div class="ss-lbl">Cobrado hoy<\/div>/);
+  // The final label is written in the HTML so opening Clientes does not move the list (CLS).
+  assert.match(read('POS/index.html'), /<div class="ss-lbl">Cobrado hoy \(todos los medios\)<\/div>/);
 });
 
 test('P1-3 localDateOf: zoned instants -> local calendar day; date-only values verbatim', () => {

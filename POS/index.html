@@ -100,7 +100,8 @@
 </div>
 
 <div class="page active" id="pageMenu">
-    <div class="main-scroll home-shell">
+    <!-- PC/tablet: estructura del Inicio escrita de entrada (antes la agregaba canon-desktop-dashboard.js al cargar y movía la pantalla; CLS). En teléfono no se ve, igual que antes. -->
+    <aside class="menu-desktop-sidebar" aria-label="Navegación principal"><div class="menu-sidebar-title">Navegación</div><button class="menu-side-link is-active" type="button" onclick="goMenu()" data-menu-target="pageMenu" aria-current="page"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/></svg></span><span>Inicio</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pagePOS')" data-menu-target="pagePOS"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/><path d="M3 4h2l2.2 10h10.9l2-7H6"/></svg></span><span>Punto de Venta</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pageVentas')" data-menu-target="pageVentas"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M7.5 11h9M8 15h3M14 15h2"/></svg></span><span>Ventas</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pageInventario')" data-menu-target="pageInventario"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 8 8-4 8 4-8 4-8-4Z"/><path d="M4 8v8l8 4 8-4V8M12 12v8"/></svg></span><span>Inventario</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pageClientes')" data-menu-target="pageClientes"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6"/></svg></span><span>Clientes</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pageCaja')" data-menu-target="pageCaja"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 10h5v5h-5a2.5 2.5 0 0 1 0-5Z"/><path d="M7 6V4h10v2"/></svg></span><span>Caja</span><span class="menu-side-chevron">›</span></button><button class="menu-side-link" type="button" onclick="goPage('pageGastos')" data-menu-target="pageGastos"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span><span>Gastos</span><span class="menu-side-chevron">›</span></button><div class="menu-sidebar-spacer"></div><button class="menu-side-link" type="button" onclick="goPage('pageConfig')" data-menu-target="pageConfig"><span class="menu-side-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></span><span>Configuración</span><span class="menu-side-chevron">›</span></button></aside><div class="main-scroll home-shell">
         <section class="hero-dashboard hero-welcome-only">
             <div class="hero-main">
                 <div class="hero-kicker">Panel principal</div>
@@ -110,15 +111,15 @@
             </div>
         </section>
 
-        <div class="section-label">Resumen</div>
+        <div class="menu-desktop-heading"><div><span class="menu-desktop-eyebrow">Panel principal</span><h1>Resumen</h1><p id="menuDesktopDate">Estado actual del negocio</p></div><div class="menu-desktop-live"><span aria-hidden="true"></span> Operación del día</div></div><div class="section-label">Resumen</div>
         <div class="quick-stats">
-            <div class="qs-card"><div class="qs-top"><div class="qs-label">Ventas hoy</div><div class="qs-icon" style="color:var(--teal);background:#e7faf7">📈</div></div><div class="qs-val" style="color:var(--teal)" id="qsVentas">S/ 0.00</div><div class="qs-sub" id="qsVentasSub">0 transacciones</div></div>
+            <div class="qs-card qs-card-sales"><div class="qs-top"><div class="qs-label">Ventas hoy</div><div class="qs-icon" style="color:var(--teal);background:#e7faf7">📈</div></div><div class="qs-val" style="color:var(--teal)" id="qsVentas">S/ 0.00</div><div class="qs-prev" id="qsVentasPrev">Ayer: S/ 0.00</div><div class="qs-sub" id="qsVentasSub">0 transacciones</div><div class="qs-trend" id="qsVentasTrend" data-trend="flat">— vs ayer</div></div>
             <div class="qs-card"><div class="qs-top"><div class="qs-label">En caja</div><div class="qs-icon" style="color:#0f172a;background:#f8fafc">💵</div></div><div class="qs-val" id="qsCaja">S/ 0.00</div><div class="qs-sub" id="qsCajaSub">Caja no abierta</div></div>
             <div class="qs-card"><div class="qs-top"><div class="qs-label">Por cobrar</div><div class="qs-icon" style="color:var(--amber);background:#fffbeb">🧾</div></div><div class="qs-val" style="color:var(--amber)" id="qsPorCobrar">S/ 0.00</div><div class="qs-sub" id="qsPorCobrarSub">0 créditos activos</div></div>
             <div class="qs-card"><div class="qs-top"><div class="qs-label">Stock crítico</div><div class="qs-icon" style="color:var(--red);background:#fef2f2">⚠️</div></div><div class="qs-val" style="color:var(--red)" id="qsStockCritico">0</div><div class="qs-sub" id="qsStockCriticoSub">productos por reponer</div></div>
         </div>
 
-        <div class="section-label">Módulos principales</div>
+        <div class="menu-desktop-sections"><section class="menu-data-panel" aria-labelledby="menuActivityTitle"><div class="menu-panel-head"><div><span>Movimientos</span><h2 id="menuActivityTitle">Actividad reciente</h2></div></div><div class="menu-activity-list"><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity0Label">Sin movimientos recientes</span><strong id="menuActivity0Amount">—</strong></div><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity1Label">—</span><strong id="menuActivity1Amount">—</strong></div><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity2Label">—</span><strong id="menuActivity2Amount">—</strong></div></div></section><section class="menu-data-panel" aria-labelledby="menuPendingTitle"><div class="menu-panel-head"><div><span>Control</span><h2 id="menuPendingTitle">Pendientes</h2></div></div><div class="menu-pending-list"><div class="menu-pending-row"><span class="menu-pending-mark amber"></span><span id="menuPendingCredits">Créditos por revisar</span></div><div class="menu-pending-row"><span class="menu-pending-mark red"></span><span id="menuPendingStock">Stock por revisar</span></div><div class="menu-pending-row"><span class="menu-pending-mark teal"></span><span id="menuPendingCash">Estado de caja</span></div></div></section></div><div class="section-label menu-modules-label">Módulos principales</div>
         <div class="modules-grid">
             <div class="module-card" style="--accent:#00bca4;--icon-bg:#e0f7f4" onclick="goPage('pagePOS')"><div class="module-badge">POS</div><div class="module-icon">🛒</div><div class="module-label">Punto de Venta</div><div class="module-desc">Cobrar, registrar ventas y emitir comprobantes.</div><div class="module-arrow">Entrar →</div></div>
             <div class="module-card" style="--accent:#ff7043;--icon-bg:#fff3ef" onclick="goPage('pageInventario')"><div class="module-icon">📦</div><div class="module-label">Inventario</div><div class="module-desc">Control de stock, ingresos y productos críticos.</div><div class="module-arrow">Entrar →</div></div>
@@ -276,7 +277,7 @@
         <div class="ss teal"><div class="ss-num" id="cliS0">0</div><div class="ss-lbl">Clientes</div></div>
         <div class="ss red"><div class="ss-num" id="cliS1">S/0</div><div class="ss-lbl">Total deuda</div></div>
         <div class="ss amber"><div class="ss-num" id="cliS2">0</div><div class="ss-lbl">Vencidos</div></div>
-        <div class="ss green"><div class="ss-num" id="cliS3">S/0</div><div class="ss-lbl">Cobrado hoy</div></div>
+        <div class="ss green"><div class="ss-num" id="cliS3">S/0</div><div class="ss-lbl">Cobrado hoy (todos los medios)</div></div>
     </div>
     </div>
     <div class="cli-list" id="cliList"></div>
@@ -1045,7 +1046,7 @@
 <script src="js/modules/discount-sheet.js"></script>
 <script src="js/config/pos-sale-note-client.js"></script>
 <script src="js/config/pos-purchases-client.js"></script>
-<script src="js/config/config-v9.js"></script>
+<script src="js/config/config-v9-boot.js"></script>
 <script src="js/core/lazy-assets.js"></script>
 <!-- OCR de compras y catálogo de referencia (~900 KB): mismo código, cargado al usar "OCR compras" (js/core/lazy-assets.js). -->
 <script type="text/x-na-lazy" data-na-lazy="ocr" src="js/ocr/vendor/tesseract-6.0.1/tesseract.min.js"></script>
