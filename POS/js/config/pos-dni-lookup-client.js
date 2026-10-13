@@ -47,7 +47,8 @@
     var reason = String(out.reason || '');
     // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
     if (reason === 'not_found') asked[dni] = { name: null };
-    if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
+    if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
+    else if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
     else if (reason === 'not_found') hint(MANUAL);
     else hint('No se pudo buscar ahora. Escriba el nombre a mano.');
   }
@@ -70,7 +71,7 @@
     root.setTimeout(function () { if (!done && my === seq) hint(SLOW); }, TIMEOUT_MS);
     var out;
     try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
-    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: e && e.message === 'SIN_SESION' ? 'no_session' : 'network' }; }
+    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) ? 'no_session' : 'network' }; }
     done = true; if (inflight === dni) inflight = null;
     if (my !== seq && clean(doc.getElementById('cDni') && doc.getElementById('cDni').value) !== dni) return;
     apply(out, dni);
