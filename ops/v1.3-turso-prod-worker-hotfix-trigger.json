@@ -2,15 +2,15 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2, 2026-10-12). Turso-only Worker redeploy of 3c72767 (#595, includes #594): adds GET/POST /auth/purchases (purchase register with supplier and cost; stock via inventory.adjust ENTRADA per line, idempotent), tables from migration 0028 run 38321350983. No schema changes in this deploy, no live sale. Rollback to e70891e (current live Worker source).",
-  "target_commit": "3c72767f5a28cd11666f8d502357ee28031139bd",
-  "rollback_ref": "e70891e67ed0a61743216461ccfb4614cd169a2c",
+  "authorization_context": "Owner blanket authorization to merge and deploy (Etapa 2). Turso-only Worker redeploy of 9a7f512 (#612): GET /auth/purchases?id= status lookup; same purchase id with different contents returns 409 purchase_payload_mismatch and applies nothing. No schema changes, no live sale. Rollback to 3c72767 (current live Worker source).",
+  "target_commit": "9a7f512b4b4a84e152958d0eb45f3a8f6db86329",
+  "rollback_ref": "3c72767f5a28cd11666f8d502357ee28031139bd",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 20,
-  "previous_run_id": 38320387264,
+  "attempt": 21,
+  "previous_run_id": 38321417286,
   "previous_run_outcome": "SUCCESS",
-  "optimization": "E2_ITEM11_PURCHASES"
+  "optimization": "E2_BOT6_PURCHASE_ID"
 }
