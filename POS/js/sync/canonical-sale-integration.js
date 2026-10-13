@@ -124,6 +124,8 @@
     UNITS_PER_QTY_UNSUPPORTED: 'La venta por mayor (caja) todavía no está disponible con CANON. Vende por unidades.',
     VENTA_SIN_STOCK: 'CANON no permite vender sin stock. Quita del carrito los productos sin stock.',
     STOCK_NEGATIVO: 'CANON no permite vender sin stock. Quita del carrito los productos sin stock.',
+    PRODUCT_ID_DUPLICATE_PRICE: 'El mismo producto está en dos líneas con distinto precio. Deja una sola línea con el precio correcto y vuelve a cobrar.',
+    PRODUCT_ID_DUPLICATE: 'El mismo producto está en dos líneas distintas. Deja una sola línea y vuelve a cobrar.',
     MIXED_PAYMENT_INVALID: 'El pago mixto no cuadra con el total. Revisa el efectivo (máximo 2 decimales).',
     PRICE_INVALID: 'Un precio del carrito no es válido (máximo 2 decimales).',
     BUSY: 'Se está cerrando la caja o guardando otra venta. Espera unos segundos y vuelve a cobrar; el carrito se conserva.',

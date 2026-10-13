@@ -210,3 +210,17 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 }
 /* Nota dentro del cuerpo del cobro: alineada con el resto del formulario. */
 #mCobro .pay-modal-body>.na-sale-note{margin:10px 0 0}
+
+/* Abono: avisos de red dentro del modal, junto al botón (no flotantes). */
+.na-pay-net{display:flex;align-items:center;gap:8px;margin:10px 0 0;padding:10px 12px;border-radius:10px;font:700 13px/1.35 'Nunito',sans-serif}
+.na-pay-net[hidden]{display:none}
+.na-pay-net.offline,.na-pay-net.rejected{background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c}
+.na-pay-net.checking{background:#fffbeb;border:1px solid #f59e0b;color:#92400e}
+.na-pay-spin{width:14px;height:14px;flex:none;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:naPaySpin .8s linear infinite}
+@keyframes naPaySpin{to{transform:rotate(360deg)}}
+body.dark .na-pay-net.offline,body.dark .na-pay-net.rejected{background:#450a0a;color:#fecaca;border-color:#7f1d1d}
+body.dark .na-pay-net.checking{background:#451a03;color:#fde68a;border-color:#92400e}
+.na-pur-err{margin:6px 0 8px;padding:9px 12px;border-radius:10px;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;font:700 13px/1.35 Nunito,sans-serif}.na-pur-err[hidden]{display:none}
+#mPagoCred .mbtns{flex-wrap:wrap}
+#mPagoCred .mbtns>.na-pay-net{flex:1 1 100%;grid-column:1/-1;margin:0 0 2px;box-sizing:border-box}
+#mPagoCred #pagoConfirmBtn:disabled{opacity:.5;cursor:not-allowed}

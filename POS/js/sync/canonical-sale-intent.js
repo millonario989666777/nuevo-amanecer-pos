@@ -85,7 +85,6 @@
             (item.canonicalGenericId !== undefined ? item.canonicalGenericId : item.product_id), 'GENERIC:', 'GENERIC_ID_INVALID')
         : nonEmptyString(item.product_id !== undefined ? item.product_id : item.productId, 'PRODUCT_ID_INVALID');
       if (generic && (productId.length > 160 || productId.slice(0, 8) !== 'GENERIC:' || /[\u0000-\u001f\u007f-\u009f]/.test(productId))) fail('GENERIC_ID_INVALID');
-      if (seen.has(productId)) fail('PRODUCT_ID_DUPLICATE');
       seen.add(productId);
       var quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
       if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) fail('QUANTITY_INVALID');
@@ -112,6 +111,27 @@
       }
       return out;
     });
+    // Mismo producto en dos líneas: el servidor solo acepta una línea por producto. Si ambas tienen el
+    // mismo precio unitario se unen en una sola (cantidad sumada; el stock baja una vez por el total).
+    // Si el precio (o descuento ya aplicado al precio) difiere, no se adivina un precio: se rechaza
+    // con PRODUCT_ID_DUPLICATE_PRICE para que el cajero lo corrija; ninguna línea se pierde.
+    if (seen.size !== items.length) {
+      var byId = new Map(), merged = [];
+      items.forEach(function (item) {
+        var prev = byId.get(item.product_id);
+        if (!prev) { byId.set(item.product_id, item); merged.push(item); return; }
+        if (prev.unit_price_cents !== item.unit_price_cents) fail('PRODUCT_ID_DUPLICATE_PRICE');
+        if (prev.generic_line || item.generic_line) {
+          if (JSON.stringify(prev.generic_line || null) !== JSON.stringify(item.generic_line || null)) fail('PRODUCT_ID_DUPLICATE');
+          if (!Number.isSafeInteger(prev.quantity + item.quantity) || prev.quantity + item.quantity > 9999) fail('GENERIC_QUANTITY_INVALID');
+        }
+        var qty = Math.round((prev.quantity + item.quantity) * 1000) / 1000;
+        var line = prev.line_total_cents + item.line_total_cents;
+        if (!Number.isSafeInteger(line)) fail('TOTAL_UNSAFE');
+        prev.quantity = qty; prev.line_total_cents = line;
+      });
+      items = merged;
+    }
 
     var total = items.reduce(function (sum, item) {
       var next = sum + item.line_total_cents;

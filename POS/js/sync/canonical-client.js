@@ -791,6 +791,25 @@
   }
   function snapshot() { return copy(data || { products: [], customers: [], credits: [], payments: [], creditAccounts: [], sales: [], saleItems: [], inventoryMovements: [], cashMovements: [], cashSessions: [], financialEvents: [], expenses: [] }); }
   function sourceState() { return copy(replicaState); }
+  // Comprobación rápida de red hacia el servidor (solo lectura, sin datos): true si /health responde a tiempo.
+  // Un resultado positivo vale 15 s (no agrega una ida y vuelta a cada abono seguido); 'offline' lo anula.
+  var pingOkAt = 0;
+  if (root.addEventListener) root.addEventListener('offline', function () { pingOkAt = 0; });
+  async function ping(timeoutMs) {
+    if (root.navigator && root.navigator.onLine === false) { pingOkAt = 0; return false; }
+    if (pingOkAt && Date.now() - pingOkAt < 15000) return true;
+    var ok = await pingNow(timeoutMs); pingOkAt = ok ? Date.now() : 0; return ok;
+  }
+  async function pingNow(timeoutMs) {
+    var expected = binding ? binding : null;
+    if (!expected || !expected.endpoint) return root.navigator ? root.navigator.onLine !== false : true;
+    var ctrl = typeof root.AbortController === 'function' ? new root.AbortController() : null;
+    var timer = root.setTimeout(function () { try { ctrl && ctrl.abort(); } catch (_) {} }, timeoutMs || 2500);
+    try {
+      var r = await root.fetch(expected.endpoint + '/health', { method: 'GET', cache: 'no-store', credentials: 'omit', signal: ctrl ? ctrl.signal : undefined });
+      return !!(r && r.status > 0); // cualquier respuesta = hay red; los errores del servidor los maneja el envío normal
+    } catch (_) { return false; } finally { root.clearTimeout(timer); }
+  }
   function pendingSnapshot() {
     var value = journal();
     return value && value.state === 'PENDING' ? copy(value) : null;
@@ -2198,5 +2217,5 @@
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
     pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
     createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
-    renderCredits: renderCredits, startPOS: startPOS, commandContext: function () { return commonPayload(); }, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState, readProgress: function () { return copy(readProgress); } });
+    renderCredits: renderCredits, startPOS: startPOS, commandContext: function () { return commonPayload(); }, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState, ping: ping, readProgress: function () { return copy(readProgress); } });
 })(globalThis);
