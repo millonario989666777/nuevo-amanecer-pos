@@ -80,7 +80,7 @@ test('plural correcto en la franja', async () => {
 test('abono en efectivo con respuesta perdida + reconexión: la caja queda correcta y el servidor tiene exactamente 1 pago', async (t) => {
   const f = await activeCanon(t, { migrations: MIGS });
   let lose = false;
-  const d = await device(f, { token: 'b4', deviceId: 'b4', scripts: SCRIPTS,
+  const d = await device(f, { token: 'b4', deviceId: 'b4', scripts: SCRIPTS, globals: { obtenerHoy: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) },
     onFetch: async (url, _o, real) => { if (lose && url.endsWith('/commands/payment.create')) { await real(); throw new TypeError('Failed to fetch'); } return null; } });
   await d.api.openCash({ session_id: 'S-abono', opening_cents: 1000 }); await d.api.refresh();
   const credit = d.api.snapshot().credits.find((c) => Number(c.current_balance_cents) >= 100);
