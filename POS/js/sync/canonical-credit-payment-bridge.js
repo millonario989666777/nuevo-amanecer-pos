@@ -219,7 +219,7 @@
       box.textContent = '';
       if (kind) {
         var mark = root.document.createElement('span'); mark.setAttribute('aria-hidden', 'true');
-        if (kind === 'checking') mark.className = 'na-pay-spin'; else mark.textContent = '⚠';
+        if (kind === 'checking') mark.className = 'na-pay-spin'; else mark.textContent = kind === 'done' ? '✓' : '⚠';
         var label = root.document.createElement('span'); label.textContent = text;
         box.append(mark, label);
       }
@@ -264,8 +264,13 @@
       scheduleReview(5000); return;
     }
     busy = false;
+    var same = matchesPending(pending);
     showNet(null);
     try { await refreshCanonical(); } catch (_) {}
+    if (!same) {
+      try { root.NAReceiptShare?.onPayment(findCredit(api().legacySnapshot(), pending.payload.credit_id), replay, amount, pending.payload.payment_method, pending.payload.reference, pending.payload.created_at); } catch (_) {}
+      previousSettledNotice(pending); return;
+    }
     try { root.NAReceiptShare?.onPayment(findCredit(api().legacySnapshot(), pending.payload.credit_id), replay, amount, pending.payload.payment_method, pending.payload.reference, pending.payload.created_at); } catch (_) {}
     await afterCommit(replay, amount, true);
   }
@@ -303,6 +308,26 @@
     box.hidden = !kind; box.className = 'na-pay-net na-pay-net-batch' + (kind ? ' ' + kind : ''); box.textContent = '';
     if (kind) { var m = root.document.createElement('span'); m.setAttribute('aria-hidden', 'true'); if (kind === 'checking') m.className = 'na-pay-spin'; else m.textContent = '⚠'; var t = root.document.createElement('span'); t.textContent = text; box.append(m, t); }
   }
+
+  // Un abono "no confirmado" queda atado a su crédito, monto, método y n.º de operación. Si el formulario ya es
+  // otro (otro monto, otro cliente, o se reabrió para un abono nuevo), primero se resuelve el anterior con su
+  // MISMO id y se avisa en el modal; el abono nuevo usa un id nuevo en el siguiente toque.
+  function matchesPending(pending) {
+    try {
+      var p = pending && pending.payload; if (!p) return false;
+      var doc = root.document, amount = moneyCents(doc.getElementById('pagoMonto')?.value);
+      var method = clean(doc.getElementById('pagoMetodo')?.value) || 'efectivo', ref = clean(doc.getElementById('pagoOperacion')?.value);
+      var cid = selectedCreditId(), pc = String(p.credit_id);
+      var sameCredit = cid === pc;
+      if (!sameCredit) { try { var c = findCredit(api().legacySnapshot(), cid); sameCredit = !!c && String(c.credit_id !== undefined ? c.credit_id : c.id) === pc; } catch (_) {} }
+      return sameCredit && amount === Number(p.amount_cents) && method === p.payment_method && (method === 'efectivo' || ref === clean(p.reference));
+    } catch (_) { return false; }
+  }
+  function previousSettledNotice(pending) {
+    var amt = Number(pending && pending.payload && pending.payload.amount_cents) || 0;
+    showNet('done', 'El abono anterior de S/ ' + (amt / 100).toFixed(2) + ' sí se registró. Saldo actualizado: revisa y vuelve a confirmar.');
+  }
+
   async function confirm() {
     if (!enabled()) return false;
     if (busy) return false;
@@ -395,10 +420,21 @@
         if (!client || typeof client.retryPending !== 'function') throw new Error('CANONICAL_PAYMENT_UNAVAILABLE');
         var pendingAmount = pending.payload && pending.payload.amount_cents;
         var replay;
+        var samePayment = matchesPending(pending);
         try {
           replay = await client.retryPending();
         } catch (error) {
-          notify(describePendingFailure(error), 'error');
+          var after = pendingRecord();
+          if (after && after.last_error) {
+            await releaseDefinitiveRejection(client);
+            var why = describePendingFailure(error); notify(why, 'error'); showNet('rejected', why);
+          } else { showNet('checking', 'No confirmado, revisando…'); scheduleReview(5000); }
+          return false;
+        }
+        if (!samePayment) {
+          try { await refreshCanonical(); } catch (_) {}
+          try { root.NAReceiptShare?.onPayment(findCredit(client.legacySnapshot(), pending.payload.credit_id), replay, pendingAmount, pending.payload.payment_method, pending.payload.reference, pending.payload.created_at); } catch (_) {}
+          previousSettledNotice(pending);
           return false;
         }
         try {

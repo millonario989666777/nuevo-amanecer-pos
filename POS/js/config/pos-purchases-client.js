@@ -13,6 +13,7 @@
   function money(c) { var n = Number(c || 0) / 100; try { return root.fmt(n); } catch (_) { return 'S/ ' + n.toFixed(2); } }
   function products() { try { return Array.isArray(productos) ? productos : []; } catch (_) { return []; } } // eslint-disable-line no-undef
   var ERR = {
+    purchase_payload_mismatch: 'Esta compra cambió respecto del intento anterior. Pulsa «Registrar compra» de nuevo: se registrará como compra nueva.',
     purchase_line_failed: 'Una línea no se pudo aplicar. Las líneas anteriores ya sumaron stock; pulsa «Registrar compra» de nuevo para completar (no se duplicará).',
     purchase_schema_not_ready: 'El registro de compras aún no está activo en el servidor.',
     owner_approval_required: 'Hace falta el PIN del dueño.',
@@ -77,10 +78,39 @@
     var r = readLines(w), t = r.lines.reduce(function (s, l) { return s + (l.unit_cost_cents == null ? 0 : l.unit_cost_cents * l.quantity); }, 0);
     var el = w.querySelector('.na-pur-total'); if (el) el.textContent = 'Total costo: ' + money(Math.round(t)) + ' · ' + r.lines.length + ' producto(s)';
   }
-  function opFor() {
-    var op = null; try { op = root.localStorage.getItem(OPS); } catch (_) {}
-    if (!op) { op = 'PUR-' + root.crypto.randomUUID(); try { root.localStorage.setItem(OPS, op); } catch (_) {} }
-    return op;
+  // El id de una compra sin confirmar queda atado a su contenido (líneas, cantidades, costos, proveedor y
+  // comprobante). Si el contenido cambió o es una compra nueva, primero se pregunta al servidor por el id viejo.
+  function fingerprint(lines, meta) {
+    return JSON.stringify({ l: (lines || []).map(function (x) { return [x.line, String(x.product_id), Number(x.quantity), x.unit_cost_cents == null ? null : Number(x.unit_cost_cents)]; }),
+      s: String(meta && meta.supplier || '').trim(), d: String(meta && meta.documentRef || '').trim() });
+  }
+  function savedOp() {
+    var raw = null; try { raw = root.localStorage.getItem(OPS); } catch (_) {}
+    if (!raw) return null;
+    try { var o = JSON.parse(raw); if (o && o.id) return o; } catch (_) {}
+    return { id: raw, fp: null }; // formato anterior (solo id): se trata como contenido desconocido
+  }
+  function saveOp(o) { try { if (o) root.localStorage.setItem(OPS, JSON.stringify(o)); else root.localStorage.removeItem(OPS); } catch (_) {} }
+  // Devuelve { id } para enviar, o { stop: mensaje } si antes hay que avisar algo al dueño.
+  async function opFor(lines, meta) {
+    var fp = fingerprint(lines, meta), old = savedOp();
+    if (old && old.fp === fp) return { id: old.id };
+    if (old) {
+      var st;
+      try { st = await root.NA_ROLES.api('/auth/purchases?id=' + encodeURIComponent(old.id)); }
+      catch (_) { return { stop: 'No se pudo comprobar la compra anterior (sin conexión). Vuelve a intentar con internet; no se guardó nada nuevo.' }; }
+      saveOp(null);
+      if (st && st.status === 'applied') {
+        try { await root.NuevoAmanecerCanonical.refresh(); } catch (_) {}
+        try { if (typeof root.invRender === 'function') root.invRender(); } catch (_) {}
+        return { stop: 'La compra anterior sí se registró y ya sumó stock. Revisa el stock; si esta es otra compra, pulsa «Registrar compra» de nuevo.', info: true };
+      }
+      if (st && st.status === 'in_progress') {
+        return { stop: 'La compra anterior quedó a medias (algunas líneas pueden haber sumado stock; mira el Historial). Esta se registrará como compra nueva: pulsa «Registrar compra» de nuevo.' };
+      }
+    }
+    var o = { id: 'PUR-' + root.crypto.randomUUID(), fp: fp }; saveOp(o);
+    return { id: o.id };
   }
   function openNew() {
     var opts = products().slice(0, 3000).map(function (p) { return '<option value="' + esc(p.nombre || p.name || p.id) + '"></option>'; }).join('');
@@ -96,12 +126,15 @@
     w.querySelector('.na-pur-add').onclick = function () { lines.insertAdjacentHTML('beforeend', lineHtml(lines.children.length)); };
     lines.addEventListener('click', function (ev) { var b = ev.target.closest('.na-pur-del'); if (b && lines.children.length > 1) { b.parentElement.remove(); total(w); } });
     w.addEventListener('input', function () { total(w); });
-    w.querySelector('.na-pur-cancel').onclick = function () { w.remove(); };
-    w.querySelector('.na-pur-hist').onclick = function () { w.remove(); openHistory(); };
+    w.querySelector('.na-pur-cancel').onclick = function () { closeW(); };
+    w.querySelector('.na-pur-hist').onclick = function () { closeW(); openHistory(); };
     // Errores dentro de la ventana: la compra queda en pantalla y el reintento usa la MISMA operación
     // (opFor guarda el id hasta que el servidor confirma), así el stock sube una sola vez.
     var errBox = w.querySelector('.na-pur-err');
-    function fail(msg) { errBox.textContent = '⚠ ' + msg; errBox.hidden = false; }
+    function fail(msg) { errBox.classList.remove('info'); errBox.textContent = '⚠ ' + msg; errBox.hidden = false; }
+    // Al cerrar la ventana tras un resultado confirmado (registrada o rechazada de forma definitiva) se borra el id.
+    var settled = false;
+    function closeW() { if (settled) saveOp(null); w.remove(); }
     w.querySelector('.na-pur-ok').onclick = async function () {
       if (busy) return;
       errBox.hidden = true;
@@ -112,13 +145,18 @@
       if (!r.lines.length) { fail(ERR.invalid_lines); return; }
       busy = true; var btn = this; btn.disabled = true; btn.textContent = 'Registrando…';
       try {
-        var out = await submit(opFor(), r.lines, { supplier: w.querySelector('#naPurSupplier').value.trim(), documentRef: w.querySelector('#naPurDoc').value.trim() });
-        try { root.localStorage.removeItem(OPS); } catch (_) {}
+        var meta = { supplier: w.querySelector('#naPurSupplier').value.trim(), documentRef: w.querySelector('#naPurDoc').value.trim() };
+        var pick = await opFor(r.lines, meta);
+        if (pick.stop) { fail(pick.stop); if (pick.info) errBox.classList.add('info'); return; }
+        var out = await submit(pick.id, r.lines, meta);
+        saveOp(null); settled = true;
         toast('Compra registrada: ' + (out.applied || []).length + ' producto(s) sumaron stock' + (out.total_cost_cents ? ' · costo ' + money(out.total_cost_cents) : '') + '.', 'success');
         w.remove();
       } catch (e) {
         if (!e.cancelled) {
           var code = e && (e.data && e.data.error || e.message);
+          if (code === 'purchase_payload_mismatch') saveOp(null);
+          if (e && e.status >= 400 && e.status < 500 && code !== 'purchase_line_failed' && code !== 'purchase_payload_mismatch') settled = true;
           fail(ERR[code] || (e && e.status ? 'No se pudo registrar la compra (' + code + '). Puedes reintentar: no se duplicará.' : 'No se pudo conectar con el servidor. Revisa internet y vuelve a pulsar «Registrar compra»; no se duplicará.'));
         }
       } finally { busy = false; btn.disabled = false; btn.textContent = 'Registrar compra'; }
@@ -154,6 +192,6 @@
       src.appendChild(c);
     }
   }
-  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit };
+  root.NA_PURCHASES = { open: openNew, history: openHistory, submit: submit, _opFor: opFor };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', installButtons); else installButtons();
 })(window);

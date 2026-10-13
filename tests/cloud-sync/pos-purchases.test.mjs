@@ -84,3 +84,31 @@ test('employee needs owner approval; bad input 400; unknown product 409 without 
   const g = await setup(t, { annul: false });
   assert.equal((await call(g, '/auth/purchases', 'owner-token', purchase(g, 'buy-6', two()))).status, 503);
 });
+
+test('Bot 6 caso A: id ya aplicado + otra compra con el mismo id -> 409 purchase_payload_mismatch, no suma nada; GET ?id= dice applied', async t => {
+  const f = await setup(t);
+  const q0 = stockOf(f, '00003');
+  assert.equal((await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-a', two()))).status, 201);
+  const st = await call(f, '/auth/purchases?id=buy-a', 'owner-token');
+  assert.deepEqual([st.status, st.body.status], [200, 'applied']);
+  assert.equal((await call(f, '/auth/purchases?id=buy-zz', 'owner-token')).body.status, 'not_found');
+  const other = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-a', [{ line: 1, product_id: '00003', quantity: 5, unit_cost_cents: 300 }], { document_ref: 'F001-999' }));
+  assert.deepEqual([other.status, other.body.error, other.body.status], [409, 'purchase_payload_mismatch', 'applied']);
+  assert.ok(Math.abs(stockOf(f, '00003') - (q0 + 3)) < 1e-9, 'stock unchanged by the mismatched retry');
+});
+
+test('Bot 6 caso B: compra a medias + línea editada con el mismo id -> 409, nada aplicado; las líneas guardadas no cambian', async t => {
+  const f = await setup(t);
+  const bad = [{ line: 1, product_id: '00003', quantity: 2, unit_cost_cents: 350 }, { line: 2, product_id: 'NO-EXISTE', quantity: 1, unit_cost_cents: 100 }];
+  const first = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-b', bad));
+  assert.equal(first.status, 409);
+  const q1 = stockOf(f, '00003');
+  const edited = [{ line: 1, product_id: '00003', quantity: 7, unit_cost_cents: 350 }, { line: 2, product_id: 'NO-EXISTE', quantity: 1, unit_cost_cents: 100 }];
+  const r = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-b', edited));
+  assert.deepEqual([r.status, r.body.error, r.body.status], [409, 'purchase_payload_mismatch', 'in_progress']);
+  assert.ok(Math.abs(stockOf(f, '00003') - q1) < 1e-9, 'nothing applied');
+  const lines = f.all('SELECT quantity FROM pos_purchase_lines WHERE purchase_id=? ORDER BY line_number', 'buy-b').map(x => x.quantity);
+  assert.deepEqual(lines, [2, 1]);
+  const same = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'buy-b', bad));
+  assert.equal(same.status, 409); assert.equal(same.body.error, 'purchase_line_failed', 'identical retry still allowed');
+});

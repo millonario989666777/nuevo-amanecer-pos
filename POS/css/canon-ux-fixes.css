@@ -224,3 +224,5 @@ body.dark .na-pay-net.checking{background:#451a03;color:#fde68a;border-color:#92
 #mPagoCred .mbtns{flex-wrap:wrap}
 #mPagoCred .mbtns>.na-pay-net{flex:1 1 100%;grid-column:1/-1;margin:0 0 2px;box-sizing:border-box}
 #mPagoCred #pagoConfirmBtn:disabled{opacity:.5;cursor:not-allowed}
+.na-pay-net.done{background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46}body.dark .na-pay-net.done{background:#052e16;color:#bbf7d0;border-color:#166534}
+.na-pur-err.info{background:#ecfdf5;border-color:#6ee7b7;color:#065f46}
