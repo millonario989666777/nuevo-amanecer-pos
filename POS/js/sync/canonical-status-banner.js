@@ -126,7 +126,7 @@
     var c = canonical();
     if (!c || retrying || typeof c.retryPending !== 'function' || typeof c.pendingSnapshot !== 'function') return render();
     var pending = null; try { pending = c.pendingSnapshot(); } catch (_) {}
-    if (!pending || pending.command === 'sale.create' || pending.invalid
+    if (!pending || pending.command === 'sale.create' || pending.command === 'cash.close' || pending.invalid
       || (pending.last_error && DEFINITIVE.indexOf(Number(pending.last_status)) !== -1)) return render();
     retrying = true;
     try { await c.retryPending(); if (typeof c.refresh === 'function') await c.refresh(); } catch (_) {}

@@ -492,3 +492,36 @@ test('Bot 3 servidor: el mismo id de abono con otro monto o crédito -> 409 oper
   }
   assert.equal(f.all("SELECT * FROM canonical_financial_events WHERE event_type='PAYMENT'").length, before);
 });
+
+test('Bot 2 P1: con un abono pendiente, el formulario de OTRO abono nunca se consume ni se cierra; el nuevo sale con su propio id', async (t) => {
+  const f = await activeCanon(t);
+  let drops = 2;
+  const tab = await device(f, {
+    token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url, options, forward) {
+      if (url.endsWith('/commands/payment.create') && drops > 0) { drops -= 1; if (drops === 1) await forward(); throw new TypeError('network lost'); }
+      return null;
+    },
+  });
+  const B = () => tab.context.NuevoAmanecerCanonicalCreditPaymentBridge;
+  fill(tab, { amount: '0.20', method: 'yape', reference: 'OP-E-1' });
+  assert.equal(await B().confirm(), false);
+  const firstOp = tab.api.pendingSnapshot().payload.operation_id;
+  fill(tab, { amount: '0.30', method: 'yape', reference: 'OP-F-1' });
+  // El reintento del anterior también falla: el nuevo NO se envía y la ventana sigue abierta.
+  assert.equal(await B().confirm(), false);
+  assert.equal(B().netState(), 'checking');
+  assert.deepEqual(tab.context.__closed, [], 'la ventana del abono nuevo no se cierra');
+  for (const x of tab.fetchLog.filter(x => x.url.endsWith('/commands/payment.create'))) assert.equal(JSON.parse(x.body).operation_id, firstOp, 'solo se reintenta el anterior');
+  // Se resuelve el anterior: aviso aparte, ventana abierta, nada cobrado a F todavía.
+  assert.equal(await B().confirm(), false);
+  assert.equal(B().netState(), 'done');
+  assert.deepEqual(tab.context.__closed, []);
+  let rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT'");
+  assert.deepEqual(rows.map(r => r.operation_id), [firstOp]);
+  // El cajero confirma: el abono de F sale con un id nuevo.
+  await tab.api.refresh();
+  assert.equal(await B().confirm(), true);
+  rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT'");
+  assert.equal(rows.length, 2); assert.notEqual(rows[1].operation_id, firstOp);
+});

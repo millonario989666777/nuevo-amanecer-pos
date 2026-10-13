@@ -50,7 +50,7 @@ test('sin red no se puede comprobar el id viejo: no se crea uno nuevo', async ()
   const a = await P._opFor(L1, M);
   const b = await P._opFor(L2, M);
   assert.match(b.stop, /sin conexión/);
-  assert.equal(JSON.parse(store.get('na_purchase_pending_op_v1')).id, a.id);
+  assert.ok(JSON.parse(store.get('na_purchase_pending_ops_v2'))[a.id], 'old id kept');
 });
 
 test('formato viejo (solo id) se comprueba antes de reutilizarse', async () => {
@@ -58,4 +58,18 @@ test('formato viejo (solo id) se comprueba antes de reutilizarse', async () => {
   store.set('na_purchase_pending_op_v1', 'PUR-old');
   const a = await P._opFor(L1, M);
   assert.ok(a.id && a.id !== 'PUR-old');
+});
+
+test('dos compras sin confirmar: la segunda no borra la primera; cada una se verifica por su id', async () => {
+  const st = { 'PUR-u1': 'offline' };
+  const { P, store } = load(st);
+  const a = await P._opFor(L1, M);                  // compra 1, respuesta perdida
+  st['PUR-u1'] = 'in_progress';
+  const b1 = await P._opFor(L2, M);                 // verifica la 1 (a medias), avisa
+  assert.match(b1.stop, /NO se registró/);
+  const b = await P._opFor(L2, M);                  // compra 2 con id propio
+  assert.ok(b.id && b.id !== a.id);
+  const map = JSON.parse(store.get('na_purchase_pending_ops_v2'));
+  assert.ok(map[a.id] && map[b.id], 'ambas siguen guardadas');
+  assert.equal(JSON.stringify(P.pendingOps().map(x => x.id).sort()), JSON.stringify([a.id, b.id].sort()));
 });

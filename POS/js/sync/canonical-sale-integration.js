@@ -220,10 +220,22 @@
     if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') root.dispatchEvent(new root.CustomEvent('na:canonical-sale-projection', { detail: { source: 'capture' } }));
     return true;
   }
-  function syncOutboxInBackground(outbox) {
+  // Si el servidor no confirmó la venta recién guardada (error 5xx, sin red…), se avisa en ámbar que falta
+  // confirmarla; queda en la cola y se confirma sola con el MISMO id.
+  function warnIfUnconfirmed(outbox, saleId, why) {
+    try {
+      if (!saleId || typeof outbox.snapshot !== 'function') return;
+      var still = (outbox.snapshot().intents || []).some(function (x) { return x && x.sale_id === saleId; });
+      if (still) notify('Venta ' + saleId + ' guardada, falta confirmar con el servidor' + (why ? ' (' + why + ')' : '') + '. Se confirmará sola; no la cobres de nuevo.', 'warning');
+    } catch (_) {}
+  }
+  function syncOutboxInBackground(outbox, saleId) {
     if (!outbox || typeof outbox.sync !== 'function') return;
     var run = function () {
-      Promise.resolve().then(function () { return outbox.sync(); }).catch(function (error) {
+      Promise.resolve().then(function () { return outbox.sync(); }).then(function (r) {
+        if (r && /^(WAITING|BLOCKED_)/.test(String(r.status || ''))) warnIfUnconfirmed(outbox, saleId, /5\d\d|internal|storage/i.test(String(r && r.reason || '')) ? 'falla del servidor' : (root.navigator && root.navigator.onLine === false ? 'sin conexión' : ''));
+      }).catch(function (error) {
+        warnIfUnconfirmed(outbox, saleId, 'falla del servidor');
         if (root.console && typeof root.console.warn === 'function')
           root.console.warn('[Venta CANON] Venta local conservada; sincronización pendiente', error && (error.code || error.message) || 'SYNC_FAILED');
       });
@@ -382,7 +394,7 @@
       catch (projectionError) { failClosed('Venta ' + saleId + ' guardada localmente. No se pudo actualizar la proyección.', projectionError); }
       setBusy(false);
       ownsBusy = false;
-      syncOutboxInBackground(outbox);
+      syncOutboxInBackground(outbox, saleId);
       try {
         var share=root.NAReceiptShare;
         if(share){

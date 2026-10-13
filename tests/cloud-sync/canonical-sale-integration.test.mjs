@@ -341,7 +341,7 @@ test('real browser global let state is used even when window properties do not e
   assert.equal(context.posProc,undefined);
 });
 
-test('canonical capture never gates on cloud freshness or awaits outbox sync',()=>{assert.doesNotMatch(source,/CANON está sincronizando/);assert.doesNotMatch(source,/await\s+outbox\.sync\s*\(/);assert.match(source,/syncOutboxInBackground\(outbox\)/);});
+test('canonical capture never gates on cloud freshness or awaits outbox sync',()=>{assert.doesNotMatch(source,/CANON está sincronizando/);assert.doesNotMatch(source,/await\s+outbox\.sync\s*\(/);assert.match(source,/syncOutboxInBackground\(outbox(?:, saleId)?\)/);});
 
 test('canonical sale integration does not regress to window-only POS state access',()=>{
   assert.match(source,/function liveCart\(\)/);
@@ -363,4 +363,15 @@ test('receipt uses committed product and cash snapshot; failed persistence never
     assert.equal(receipts[0].extra.pendingSync,true);
   }
   const h=harness({storageFailure:true});let calls=0;h.context.NAReceiptShare={onSale:()=>calls++};await h.context.confirmarVenta();assert.equal(calls,0);
+});
+
+test('Bot 2 P4: venta guardada y el servidor responde 500: aviso ámbar «guardada, falta confirmar»',async()=>{
+  const h=harness({syncConfirmed:true});
+  await h.context.confirmarVenta();
+  const ob=h.context.NuevoAmanecerCanonicalSaleOutbox;
+  ob.sync=async()=>({status:'WAITING',processed:0,remaining:1,reason:'CANONICAL_FINANCIAL_REJECTED_500'});
+  ob.snapshot=()=>({intents:[{sale_id:'V-001'}]});
+  h.calls.timers.shift()();
+  await new Promise(r=>setTimeout(r,10));
+  assert.ok(h.calls.toast.some(([m,tone])=>/Venta V-001 guardada, falta confirmar con el servidor \(falla del servidor\)/.test(m)&&tone==='warning'));
 });

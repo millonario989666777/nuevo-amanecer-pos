@@ -60,8 +60,8 @@ test('foreign financial pending stays intact and prevents cash closure',async t=
  assert.equal(await first.context.cerrarCaja(),false);
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
- assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create/);
- assert.match(first.el('cajCloseStatus').textContent,/pendiente/i);
+ assert.match(first.el('cajCloseStatus').textContent,/un movimiento de caja/);
+ assert.match(first.el('cajCloseStatus').textContent,/sin confirmar/i);
 });
 test('cash closure confirms an uncertain adjustment with its exact original operation before closing',async t=>{
  let unavailable=true;
@@ -96,7 +96,7 @@ test('a definitive foreign rejection remains durable and displays its real reaso
  const before=JSON.stringify(first.api.pendingSnapshot());
  assert.equal(await first.context.cerrarCaja(),false);
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
- assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create.*409.*stale_session/);
+ assert.match(first.el('cajCloseStatus').textContent,/sin confirmar \(un movimiento de caja\)/);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });
 test('a previously committed cash payment with lost ACK is counted only once before closure',async t=>{
@@ -125,7 +125,7 @@ test('an unresponsive pending movement times out without clearing it or closing 
  assert.equal(await first.context.cerrarCaja(),false);
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
- assert.match(first.el('cajCloseStatus').textContent,/adjustment\.create/);
+ assert.match(first.el('cajCloseStatus').textContent,/un movimiento de caja/);
 });
 test('cash remains open while unsynchronized sales cannot drain',async t=>{
  const {f,first}=await fixture(t,{globals:{NuevoAmanecerCanonicalSaleOutbox:{snapshot(){return {intents:[{operation_id:'unsent-sale'}]};},async sync(){return {status:'WAITING',remaining:1};}}}});

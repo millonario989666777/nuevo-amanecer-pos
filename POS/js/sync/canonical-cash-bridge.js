@@ -463,15 +463,19 @@
   function closeFailure(error) {
     var code = clean(error && error.message), record;
     try { record = api().pendingSnapshot(); } catch (_) {}
-    if (record) return 'Operación pendiente: ' + clean(record.command) +
-      (record.last_status ? ' · HTTP ' + record.last_status : '') +
-      (record.last_error ? ' · ' + clean(record.last_error) : ' · sin confirmación del servidor') +
-      '. Se conservó el registro. Revisa esta operación antes de cerrar.' + blockingSale(error, record) + ' ' + code;
+    if (record && record.command === 'cash.close') return 'El cierre de caja NO se confirmó' + (record.last_status >= 500 ? ' (falla del servidor)' : ' (no llegó respuesta)') +
+      '. La caja sigue abierta y no se cerrará sola: cuando quieras, toca Confirmar cierre otra vez (no se cerrará dos veces).';
+    if (record) return 'Antes de cerrar hay otra operación sin confirmar (' + plainCommand(record.command) + '). Se guardó; revísala y vuelve a confirmar el cierre.' + blockingSale(error, record);
     if (code === 'CASH_CLOSE_QUARANTINED_SALES') return 'Hay ventas en revisión que impiden cerrar esta caja hasta conciliarlas. Las demás ventas, abonos y egresos siguen funcionando.' +
       blockingSale(error, null);
     if (code === 'CASH_CLOSE_PENDING_SALES') return 'Hay ventas pendientes de sincronizar. La caja sigue abierta; revisa la conexión y vuelve a confirmar.' +
       blockingSale(error, null);
-    return 'No se pudo cerrar la caja CANON: ' + code;
+    if (/AUTHORITY_UNAVAILABLE|Failed to fetch|NetworkError|Load failed|TIMEOUT/i.test(code)) return 'Sin conexión con el servidor: la caja NO se cerró. Revisa internet y vuelve a confirmar.';
+    if (/_5\d\d$|internal/i.test(code)) return 'El servidor tuvo un problema: la caja NO se cerró. Vuelve a confirmar en un momento.';
+    return 'No se pudo cerrar la caja. Vuelve a intentar en un momento.';
+  }
+  function plainCommand(c) {
+    return ({ 'sale.create': 'una venta', 'payment.create': 'un abono', 'payment.batch': 'un cobro múltiple', 'expense.create': 'un gasto', 'adjustment.create': 'un movimiento de caja', 'compensation.create': 'una compensación', 'cash.open': 'una apertura de caja' })[c] || 'otra operación';
   }
 
   async function settleOtherFinancialPending(client) {

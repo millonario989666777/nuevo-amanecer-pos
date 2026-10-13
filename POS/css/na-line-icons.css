@@ -38,3 +38,4 @@ body.dark .p-img>.na-li-product{color:#64748b}
   .na-review-box,.na-pur-box,.na-pin-box{max-height:calc(var(--na-vvh,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overflow-y:auto;overscroll-behavior:contain}
 }
 .mov-ic>.na-li{width:1.3em;height:1.3em;vertical-align:middle}
+.toast.warning{background:#b45309!important;color:#fff!important}
