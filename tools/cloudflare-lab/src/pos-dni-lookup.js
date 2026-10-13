@@ -77,12 +77,13 @@ export async function queryDecolecta(dni, token, fetchImpl = fetch, timeoutMs = 
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetchImpl(`${DECOLECTA_URL}?numero=${dni}`, {
-      method: 'GET', signal: ctrl.signal, redirect: 'error',
+      method: 'GET', signal: ctrl.signal, redirect: 'manual', // Workers no admite 'error': lanzaba TypeError y todo caía en «nombre a mano»
       headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
     });
     if (r.status === 404 || r.status === 422 || r.status === 400) return { status: 'not_found' };
     if (r.status === 401 || r.status === 403) return { status: 'provider_auth' };
     if (r.status === 429) return { status: 'provider_limit' };
+    if (r.status >= 300 && r.status < 400) return { status: 'provider_error' };
     if (!r.ok) return { status: 'provider_error' };
     let data = {}; try { data = await r.json(); } catch { return { status: 'provider_error' }; }
     const first = cleanName(data.first_name ?? data.nombres);

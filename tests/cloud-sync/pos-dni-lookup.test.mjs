@@ -108,3 +108,11 @@ test('el celular nunca llama a Decolecta ni ve la clave', () => {
   assert.match(readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8'), /js\/config\/pos-dni-lookup-client\.js/);
   assert.match(readFileSync(new URL('../../POS/sw.js', import.meta.url), 'utf8'), /'\.\/js\/config\/pos-dni-lookup-client\.js'/);
 });
+
+test('fetch compatible con Cloudflare Workers: nunca redirect "error"', async () => {
+  let seen;
+  const r = await queryDecolecta('12345678', 't', async (_u, init) => { seen = init; return new Response(JSON.stringify({ first_name: 'A', first_last_name: 'B', second_last_name: 'C' }), { status: 200 }); });
+  assert.equal(r.status, 'found');
+  assert.ok(['follow', 'manual', undefined].includes(seen.redirect));
+  assert.deepEqual(await queryDecolecta('12345678', 't', async () => new Response('', { status: 302 })), { status: 'provider_error' });
+});
