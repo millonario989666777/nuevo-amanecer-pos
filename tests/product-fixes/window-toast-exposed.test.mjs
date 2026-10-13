@@ -28,3 +28,13 @@ test('empty or hidden toast never shows as an empty pill', () => {
   assert.match(read('POS/sw.js'), /'\.\/css\/na-line-icons\.css'/);
   assert.match(read('POS/sw.js'), /'\.\/js\/ui\/na-line-icons\.js'/);
 });
+
+test("toast('') returns early: no empty pill, previous text kept", () => {
+  const line = read('POS/js/legacy-inline/inline-01.js').split('\n').find((l) => l.startsWith('const toast=(msg'));
+  let adds = 0;
+  const el = { textContent: 'prev', className: 'toast', classList: { add() { adds++; }, remove() {} } };
+  const window = {};
+  vm.runInNewContext(line, { window, document: { getElementById: () => el }, setTimeout: () => 0 });
+  window.toast(''); window.toast('   '); window.toast(null);
+  assert.equal(adds, 0); assert.equal(el.textContent, 'prev');
+});
