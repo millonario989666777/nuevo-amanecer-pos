@@ -46,7 +46,11 @@
     act: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     reset: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-    plus: '<path d="M5 12h14M12 5v14"/>', dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>'
+    plus: '<path d="M5 12h14M12 5v14"/>', bank: '<path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2l8 5H4Z"/>',
+    tag: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+    save: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7"/>',
+    cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+    card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>', dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>'
   };
   function I(n) { return '<svg class="na9-i" viewBox="0 0 24 24" aria-hidden="true">' + (P[n] || '') + '</svg>'; }
 
@@ -165,22 +169,46 @@
     while ((n = w.nextNode())) { var v = n.nodeValue; if (/due[ñn]o/i.test(v)) n.nodeValue = v.replace(/Dueño/g, 'Admin').replace(/dueño/g, 'admin').replace(/DUEÑO/g, 'ADMIN'); }
     node.querySelectorAll('input[placeholder]').forEach(function (i) { if (/dueño/i.test(i.placeholder)) i.placeholder = i.placeholder.replace(/Dueño/g, 'Admin').replace(/dueño/g, 'admin'); });
   }
+  // Paneles antiguos incrustados: los emojis se cambian por los íconos de línea del prototipo v9.
+  var EMO = { '📦': 'box', '🔎': 'file', '🔍': 'file', '📄': 'file', '⬇': 'dl', '📥': 'dl', '🌅': 'store', '🏪': 'store', '🧭': 'store', '👤': 'user', '👥': 'user', '🧾': 'receipt', '➕': 'plus',
+    '⚡': 'act', '⏱': 'act', '🔔': 'act', '📊': 'act', '📉': 'act', '📈': 'act', '🕘': 'act', '🔒': 'lock', '🔑': 'lock', '🔐': 'lock', '🔢': 'lock', '🧷': 'clip', '📋': 'clip',
+    '⚙': 'shield', '👁': 'shield', '🧱': 'shield', '🚫': 'shield', '⚠': 'shield', '🛡': 'shield', '💰': 'cash', '💸': 'cash', '💳': 'card', '🏷': 'tag', '🗑': 'reset', '🔄': 'reset', '🏛': 'bank', '💾': 'save', '📱': 'phone', '🎨': 'palette' };
+  var EMO_RE = /(\p{Extended_Pictographic})(\uFE0F|\u20E3)*/gu;
+  function iconize(node) {
+    if (!node || !doc.createTreeWalker) return;
+    var w = doc.createTreeWalker(node, 4, null), list = [], n;
+    while ((n = w.nextNode())) { EMO_RE.lastIndex = 0; if (EMO_RE.test(n.nodeValue) && !(n.parentNode && /^(SCRIPT|STYLE|TEXTAREA|OPTION)$/.test(n.parentNode.nodeName))) list.push(n); }
+    list.forEach(function (t) {
+      var frag = doc.createDocumentFragment(), txt = t.nodeValue, last = 0, m; EMO_RE.lastIndex = 0;
+      while ((m = EMO_RE.exec(txt))) {
+        if (m.index > last) frag.appendChild(doc.createTextNode(txt.slice(last, m.index)));
+        var ic = EMO[m[1]]; if (ic) { var sp = doc.createElement('span'); sp.className = 'na9-li'; sp.innerHTML = I(ic); frag.appendChild(sp); }
+        last = m.index + m[0].length;
+      }
+      var rest = txt.slice(last); if (!ic && /^\s/.test(rest) && last > 0 && frag.childNodes.length === 0) rest = rest.replace(/^\s+/, '');
+      frag.appendChild(doc.createTextNode(rest));
+      t.parentNode.replaceChild(frag, t);
+    });
+  }
+  function title(p) { var t = p.querySelector('.cfg-panel-title, h3, h4, strong'); return t ? t.textContent : ''; }
   function filterLegacy(cont, only) {
     if (!only) return;
     cont.querySelectorAll(':scope > *').forEach(function (el) {
-      var keep = el.matches('.cfg-panel, .cfg-grid-2') && only.test(el.textContent || '');
-      if (el.matches('.cfg-grid-2') && keep) { el.querySelectorAll(':scope > .cfg-panel').forEach(function (p) { p.hidden = !only.test(p.querySelector('.cfg-panel-title') ? p.querySelector('.cfg-panel-title').textContent : ''); }); }
+      // Solo por título del panel: el texto de otros paneles puede mencionar la palabra.
+      var keep = false;
+      if (el.matches('.cfg-grid-2')) { el.querySelectorAll(':scope > .cfg-panel').forEach(function (p) { var k = only.test(title(p)); p.hidden = !k; if (k) keep = true; }); }
+      else if (el.matches('.cfg-panel')) keep = only.test(title(el));
       el.hidden = !keep;
     });
   }
   function mountLegacy(host, cat, only) {
     var cont = legacyHome(); if (!cont || !host) return;
     if (!legacy.next && cont.parentNode === legacy.home) legacy.next = cont.nextSibling;
-    host.appendChild(cont); legacy.cat = cat;
+    host.appendChild(cont); legacy.cat = cat; legacy.capt = cat === 'negocio' && !!only && /Cajeros/.test(only.source);
     try { root.currentCfgCategory = cat; } catch (_) {}
     try { currentCfgCategory = cat; } catch (_) {} // eslint-disable-line no-undef
     cont.classList.add('na9-legacy');
-    var paint = function () { if (legacy.obs) legacy.obs.disconnect(); filterLegacy(cont, only); relabel(cont); cont.querySelectorAll('.na-cfg-save').forEach(function (b) { b.hidden = true; }); if (legacy.obs) legacy.obs.observe(cont, { childList: true, subtree: true, characterData: true }); };
+    var paint = function () { if (legacy.obs) legacy.obs.disconnect(); filterLegacy(cont, only); relabel(cont); iconize(cont); cont.querySelectorAll('.na-cfg-save').forEach(function (b) { b.hidden = true; }); if (legacy.obs) legacy.obs.observe(cont, { childList: true, subtree: true, characterData: true }); };
     if (legacy.obs) legacy.obs.disconnect();
     legacy.obs = root.MutationObserver ? new root.MutationObserver(function () { paint(); }) : null;
     try { root.renderCfgContent(cat); } catch (_) {}
@@ -190,7 +218,7 @@
     var cont = doc.getElementById('cfgContent'); if (!cont || !legacy.home) return;
     if (legacy.obs) { legacy.obs.disconnect(); legacy.obs = null; }
     if (cont.parentNode !== legacy.home) { legacy.home.insertBefore(cont, legacy.next && legacy.next.parentNode === legacy.home ? legacy.next : null); }
-    cont.classList.remove('na9-legacy'); cont.innerHTML = ''; legacy.cat = null;
+    cont.classList.remove('na9-legacy'); cont.innerHTML = ''; legacy.cat = null; legacy.capt = false;
   }
 
   // ---------- Apariencia (este aparato; solo PC y tablet) ----------
@@ -269,9 +297,10 @@
           + '</div>' + note('Se aplica en todos los aparatos. «Días para pagar» propone la fecha de vencimiento al vender a crédito.');
       case 'datos':
         var b = biz();
-        return '<div class="na9-cols2">' + txt('Nombre del negocio', 'biz.nombre', b.nombre) + txt('RUC', 'biz.ruc', b.ruc, ' inputmode="numeric" maxlength="11"')
+        return '<div class="na9-sub"><h4>' + I('file') + 'Datos principales</h4><div class="na9-cols2">' + txt('Nombre del negocio', 'biz.nombre', b.nombre) + txt('RUC', 'biz.ruc', b.ruc, ' inputmode="numeric" maxlength="11"')
           + txt('Dirección', 'biz.direccion', b.direccion) + txt('Teléfono', 'biz.telefono', b.telefono, ' inputmode="tel"') + '</div>'
-          + note('La dirección sale en el ticket tal como la escribes (por ejemplo «Puerto Súngaro, Huánuco»).');
+          + note('La dirección sale en el ticket tal como la escribes (por ejemplo «Puerto Súngaro, Huánuco»).') + '</div>'
+          + '<div class="na9-legacy-host" data-legacy="negocio" data-only="Identidad comercial"></div>';
       case 'ticket': return ticketBody();
       case 'pin':
         var r = R() || {}, set = !!r.pinSet;
@@ -283,7 +312,7 @@
           + '<label class="na9-f">Repite el PIN nuevo<input id="naPinNew2" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label></div>'
           + '<button type="button" class="na9-btn" data-act="pin">' + I('lock') + 'Guardar PIN</button>'
           + '<p class="na9-muted">De 4 a 8 dígitos. Se guarda cifrado en el servidor. No lo compartas por chat.</p></div>'
-          + '<div class="na9-sub"><h4>Cajeros <em class="na9-tag">este aparato</em></h4><div class="na9-legacy-host" data-legacy="negocio" data-only="Cajeros"></div></div>';
+          + '<div class="na9-sub"><h4>Cajeros <em class="na9-tag">este aparato</em></h4><div class="na9-legacy-host" data-legacy="negocio" data-only="^\\W*Cajeros"></div></div>';
       case 'devs':
         return '<div class="na9-sub"><h4>Vincular un aparato de empleado</h4><p class="na9-muted">El código dura 15 minutos y sirve una sola vez. El empleado podrá vender, cobrar y registrar, pero no abrir Configuración ni anular o ajustar sin tu PIN.</p>'
           + '<div class="na9-cols2"><label class="na9-f">Nombre del aparato (opcional)<input id="naPairLabel" maxlength="60" placeholder="Ej. Caja 2, celular de Rosa"></label><div class="na9-end"><button type="button" class="na9-btn" id="naPairCreate">' + I('plus') + 'Crear código</button></div></div><div id="naPairOut"></div></div>'
@@ -479,7 +508,7 @@
     // En PC/tablet la Configuración nueva es la única que lee y escribe; el panel viejo no captura campos ocultos.
     if (typeof root._naCaptureVisibleConfig === 'function' && !root._naCaptureVisibleConfig.__na9) {
       var cap = root._naCaptureVisibleConfig;
-      var w = function () { if (doc.getElementById('naCfgV9') && legacy.cat !== 'negocio') return; return cap.apply(this, arguments); };
+      var w = function () { if (doc.getElementById('naCfgV9') && !legacy.capt) return; return cap.apply(this, arguments); };
       w.__na9 = true; root._naCaptureVisibleConfig = w;
     }
     applyAppearance();

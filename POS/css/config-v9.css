@@ -207,6 +207,9 @@
 #naCfgV9.na9.na9-dk .na9-saved{background:#2b3038;border-color:#4a515c}
 #naCfgV9.na9 .na9-saved.wait{color:var(--gr)}#naCfgV9.na9 .na9-saved.err{color:var(--rd)}
 #naCfgV9.na9 .na9-wide{width:100%}
+html body #naCfgV9 #cfgContent.na9-legacy [hidden]{display:none!important}
+#naCfgV9 .na9-li{display:inline-flex;vertical-align:-3px;margin-right:2px}#naCfgV9 .na9-li .na9-i{width:18px;height:18px}
+#naCfgV9.na9 .na9-sub h4{display:flex;align-items:center;gap:8px}
 /* «Con adornos» (todos menos Simple claro), igual que el prototipo. */
 #naCfgV9.na9:not([data-na9-theme=simple]) .na9-card{box-shadow:0 6px 24px -8px color-mix(in srgb,var(--g1) 30%,transparent);border-color:color-mix(in srgb,var(--g2) 25%,var(--ln))}
 #naCfgV9.na9:not([data-na9-theme=simple]) .na9-hd{background:linear-gradient(120deg,color-mix(in srgb,var(--g1) 12%,var(--card)),color-mix(in srgb,var(--g2) 6%,var(--card)));border-radius:12px 12px 0 0;border-left:5px solid var(--g1)}
