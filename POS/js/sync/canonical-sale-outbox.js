@@ -120,6 +120,7 @@
   }
   function definitive(record) { return !!record && !!record.last_error && [400, 404, 409].indexOf(record.last_status) !== -1; }
   var REASON_TEXT = {
+    cash_closed_before_sale: 'la caja ya estaba cerrada en el servidor cuando la venta iba a confirmarse',
     insufficient_stock: 'no había stock suficiente en CANON: el stock de este aparato estaba desactualizado (otro equipo o una salida usó esas unidades). Revisa el producto y pulsa Reintentar, o Anular si no se cobró',
     stale_stock: 'stock desactualizado: el stock cambió en otro equipo mientras se vendía. Pulsa Reintentar: usa el stock actual y nunca cobra dos veces',
     product_not_found: 'el producto no existe en CANON',
@@ -551,9 +552,30 @@
     })();
     try { return await syncing; } finally { syncing = null; }
   }
-  async function withCashCloseBarrier(close) {
+  // `before` corre dentro del mismo candado, antes de enviar ventas: resuelve un cierre anterior pendiente
+  // consultando al servidor. Si la caja YA está cerrada, las ventas de esa caja que siguen en la cola NO se
+  // mueven a otra caja ni se borran: pasan a la lista de revisión y se devuelven con su monto.
+  async function withCashCloseBarrier(close, before) {
     if (typeof close !== 'function') fail('INVALID_CASH_CLOSE_CALLBACK');
     return withLock(async function () {
+      var pre = typeof before === 'function' ? await before() : null;
+      if (pre && pre.closedSession) {
+        var sid = pre.closedSession.session_id, canonical = root.NuevoAmanecerCanonical, leftOut = [];
+        var closedAt = Date.parse(pre.closedSession.closed_at || '') || Date.now();
+        // De esa caja: la venta lleva su session_id, o no lleva caja y se hizo antes del cierre real.
+        var ofClosed = function (x) { return x && (x.session_id ? String(x.session_id) === String(sid) : (Date.parse(x.created_at || '') || 0) <= closedAt); };
+        while (true) {
+          var cur = parseStored().intents, head = cur[0];
+          if (!head || !ofClosed(head)) break;
+          leftOut.push({ sale_id: head.sale_id, total_cents: Number(head.total_cents || 0), operation_id: head.operation_id });
+          if (!(await quarantineHead(canonical, head, 'cash_closed_before_sale', 409))) break;
+        }
+        parseStored().intents.forEach(function (x) {
+          if (ofClosed(x) && !leftOut.some(function (l) { return l.operation_id === x.operation_id; }))
+            leftOut.push({ sale_id: x.sale_id, total_cents: Number(x.total_cents || 0), operation_id: x.operation_id, queued: true });
+        });
+        return { status: 'CLOSED', session: pre.closedSession, left_out: leftOut, receipt: pre.receipt || null };
+      }
       var outcome = await syncLocked();
       if (snapshot().intents.length) return holdStore(function () { return closeChecks(outcome, close); });
       var held = blockingQuarantine();

@@ -205,7 +205,10 @@
     var backdrop = root.document && root.document.getElementById('cartBackdrop');
     drawer && drawer.classList && drawer.classList.remove('open');
     backdrop && backdrop.classList && backdrop.classList.remove('open');
-    notify(confirmed ? ('Venta ' + saleId + ' confirmada') : ('Venta ' + saleId + ' registrada'), 'success');
+    // Nunca se muestra éxito antes de que el servidor confirme: primero «guardada», luego confirmada o ámbar.
+    if (confirmed) notify('Venta ' + saleId + ' confirmada', 'success');
+    else if (root.navigator && root.navigator.onLine === false) notify('Venta ' + saleId + ' guardada en este equipo, falta confirmar (sin conexión). Se enviará sola; no la cobres de nuevo.', 'warning');
+    else notify('Venta ' + saleId + ' guardada. Confirmando con el servidor…', 'info');
   }
   function projectCurrentOutbox() {
     var canonical = root.NuevoAmanecerCanonical;
@@ -233,9 +236,11 @@
     if (!outbox || typeof outbox.sync !== 'function') return;
     var run = function () {
       Promise.resolve().then(function () { return outbox.sync(); }).then(function (r) {
-        if (r && /^(WAITING|BLOCKED_)/.test(String(r.status || ''))) warnIfUnconfirmed(outbox, saleId, /5\d\d|internal|storage/i.test(String(r && r.reason || '')) ? 'falla del servidor' : (root.navigator && root.navigator.onLine === false ? 'sin conexión' : ''));
+        var offline = root.navigator && root.navigator.onLine === false;
+        if (r && /^(WAITING|BLOCKED_)/.test(String(r.status || ''))) warnIfUnconfirmed(outbox, saleId, offline || /OFFLINE|Failed to fetch|NetworkError|AUTHORITY_UNAVAILABLE|TIMEOUT/i.test(String(r.reason || '')) ? 'sin conexión' : /5\d\d|internal|storage/i.test(String(r.reason || '')) ? 'falla del servidor' : '');
+        else if (saleId && !offline) { try { if (!(outbox.snapshot().intents || []).some(function (x) { return x && x.sale_id === saleId; })) notify('Venta ' + saleId + ' confirmada', 'success'); } catch (_) {} }
       }).catch(function (error) {
-        warnIfUnconfirmed(outbox, saleId, 'falla del servidor');
+        warnIfUnconfirmed(outbox, saleId, root.navigator && root.navigator.onLine === false ? 'sin conexión' : 'falla del servidor');
         if (root.console && typeof root.console.warn === 'function')
           root.console.warn('[Venta CANON] Venta local conservada; sincronización pendiente', error && (error.code || error.message) || 'SYNC_FAILED');
       });

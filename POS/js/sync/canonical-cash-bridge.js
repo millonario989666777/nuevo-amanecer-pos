@@ -350,12 +350,23 @@
     return node;
   }
 
+  // Motivo en palabras simples (sin códigos técnicos).
+  function saleReasonText(reason) {
+    var r = clean(reason);
+    if (!r) return '';
+    if ((root.navigator && root.navigator.onLine === false) || /OFFLINE|Failed to fetch|NetworkError|Load failed|AUTHORITY_UNAVAILABLE|TIMEOUT|network/i.test(r)) return ' (sin conexión)';
+    if (/_5\d\d\b|_5\d\d$|internal|storage|service_unavailable/i.test(r)) return ' (falla del servidor)';
+    if (/429/.test(r)) return ' (servidor ocupado)';
+    var out = root.NuevoAmanecerCanonicalSaleOutbox;
+    try { if (out && typeof out.reasonText === 'function' && !/^[A-Z_0-9]+$/.test(r)) return ' (' + out.reasonText(r) + ')'; } catch (_) {}
+    return ' (el servidor no la confirmó)';
+  }
   function blockingSale(error, record) {
     var saleId = error && error.sale_id || record && record.command === 'sale.create' && record.payload && record.payload.sale_id;
     if (!saleId) return '';
     var reason = error && error.reason || record && record.last_error;
-    return ' Venta bloqueante: ' + clean(saleId) + (reason ? ' · ' + clean(reason) : '') +
-      (error && error.remaining > 1 ? ' (+' + (error.remaining - 1) + ' detrás)' : '') + '. No la cobres de nuevo.';
+    return ' Venta pendiente: ' + clean(saleId) + saleReasonText(reason) +
+      (error && error.remaining > 1 ? ' y ' + (error.remaining - 1) + ' más' : '') + '. No la cobres de nuevo.';
   }
 
   // Compact review list inside Caja (and the close dialog). Nothing is deleted.
@@ -512,17 +523,56 @@
     return recovered;
   }
 
+  // Cierre con un cierre anterior pendiente: TODO ocurre dentro de la barrera de ventas. Antes de reenviar o
+  // descartar se pregunta al servidor cómo está la caja:
+  //  - abierta: el cierre anterior no se aplicó; se archiva, se envían las ventas en cola y se cierra con el
+  //    monto contado que está escrito AHORA;
+  //  - cerrada: se muestra el cierre real y las ventas en cola de esa caja pasan a revisión (nunca a otra caja).
+  async function resolvePendingCloseWithServer(client) {
+    var record = pendingClose(client);
+    if (!record) return null;
+    await refreshCanonical();
+    var sid = record.payload && record.payload.session_id;
+    var session = (client.snapshot().cashSessions || []).find(function (item) { return item.session_id === sid; });
+    if (session && session.status === 'CLOSED') {
+      var receipt = null;
+      if (record.payload.operation_id) {
+        try { receipt = await client.retryPending(); } catch (_) {
+          try { if (pendingClose(client)) await client.releaseRejectedCashClose(); } catch (_) {}
+        }
+      }
+      try { await refreshCanonical(); session = (client.snapshot().cashSessions || []).find(function (item) { return item.session_id === sid; }) || session; } catch (_) {}
+      return { closedSession: session, receipt: receipt };
+    }
+    if (session && session.status === 'OPEN') {
+      if (typeof client.releaseUncommittedCashClose !== 'function' || !(await client.releaseUncommittedCashClose())) throw new Error('CANONICAL_FINANCIAL_PENDING');
+      return { reopened: session };
+    }
+    if (record.last_status === 409 && record.last_error === 'stale_session') {
+      var recovered = await client.releaseRejectedCashClose();
+      if (!recovered) throw new Error('CANONICAL_FINANCIAL_PENDING');
+      return recovered.status === 'CLOSED' ? { closedSession: recovered } : { reopened: recovered };
+    }
+    throw new Error('CANONICAL_FINANCIAL_PENDING');
+  }
+
   async function closeCanonicalCash(countedCents) {
-    var client = api(), recovered = await settlePendingClose(client);
-    if (recovered && (recovered.receipt || recovered.status === 'CLOSED')) return recovered;
-    var sessionId = recovered && recovered.session_id;
-    if (!sessionId && typeof client.snapshot === 'function') {
+    var client = api();
+    var outbox = root.NuevoAmanecerCanonicalSaleOutbox;
+    var sessionId = null;
+    function openSession() {
+      if (sessionId || typeof client.snapshot !== 'function') return;
       var open = (client.snapshot().cashSessions || []).filter(function (item) { return item.status === 'OPEN'; });
       if (open.length === 1) sessionId = open[0].session_id;
     }
-    await settleOtherFinancialPending(client);
-    // Do not strand durable local sales by closing their cash session first.
-    var outbox = root.NuevoAmanecerCanonicalSaleOutbox;
+    async function before() {
+      var r = await resolvePendingCloseWithServer(client);
+      if (r && r.reopened) sessionId = r.reopened.session_id;
+      if (r && r.closedSession) return r;
+      openSession();
+      await settleOtherFinancialPending(client);
+      return null;
+    }
     async function submit(processed) {
       if (processed > 0) await refreshCanonical();
       await prepare('cash.close');
@@ -533,16 +583,36 @@
         var record = pendingClose(client);
         if (!record || record.last_status !== 409 || record.last_error !== 'stale_session') throw error;
         // One bounded recovery, never an unlimited retry loop.
-        recovered = await settlePendingClose(client);
-        if (recovered.status === 'CLOSED') return recovered;
+        await refreshCanonical();
+        var recovered = await client.releaseRejectedCashClose();
+        if (!recovered) throw error;
+        if (recovered.status === 'CLOSED') return { status: 'CLOSED', session: (client.snapshot().cashSessions || []).find(function (s) { return s.session_id === recovered.session_id; }) || recovered, left_out: [] };
         input.session_id = recovered.session_id;
+        await prepare('cash.close');
         return { receipt: await client.closeCash(input) };
       }
     }
-    if (outbox && typeof outbox.withCashCloseBarrier === 'function') return outbox.withCashCloseBarrier(submit);
+    if (outbox && typeof outbox.withCashCloseBarrier === 'function') return outbox.withCashCloseBarrier(submit, before);
     // Compatibility for a runtime that has not loaded the updated outbox yet.
+    var pre = await before();
+    if (pre && pre.closedSession) return { status: 'CLOSED', session: pre.closedSession, left_out: [] };
     if (outbox && outbox.snapshot().intents.length) throw new Error('CASH_CLOSE_PENDING_SALES');
     return submit(0);
+  }
+
+  function closedSummary(outcome) {
+    var s = outcome.session || {}, when = s.closed_at ? new Date(s.closed_at) : null, txt = 'Esta caja ya estaba cerrada en el servidor';
+    if (when && !isNaN(when)) txt += ' el ' + when.toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) + ' a las ' + when.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' });
+    if (s.counted_cents != null) txt += ', con S/ ' + (Number(s.counted_cents) / 100).toFixed(2) + ' contados';
+    txt += '.';
+    var left = outcome.left_out || [];
+    if (left.length) {
+      var tot = left.reduce(function (a, x) { return a + Number(x.total_cents || 0); }, 0);
+      txt += ' ' + left.length + (left.length === 1 ? ' venta quedó' : ' ventas quedaron') + ' fuera de ese cierre (S/ ' + (tot / 100).toFixed(2) + '): ' +
+        left.map(function (x) { return x.sale_id + ' S/ ' + (Number(x.total_cents || 0) / 100).toFixed(2); }).join(', ') +
+        '. Siguen guardadas en la lista de revisión de Caja; no se pasaron a otra caja.';
+    }
+    return txt;
   }
 
   function differenceText(difference) {
@@ -635,11 +705,19 @@
     try {
       var outcome = await closeCanonicalCash(countedCents);
       refreshAfterReceipt();
+      if (outcome.status === 'CLOSED' && outcome.left_out && outcome.left_out.length) {
+        var nodeC = closeStatus(closedSummary(outcome));
+        if (nodeC) { nodeC.style.background = '#fffbeb'; nodeC.style.borderColor = '#fcd34d'; nodeC.style.color = '#92400e'; }
+        try { renderReview(); } catch (_) {}
+        renderCash();
+        notify(closedSummary(outcome), 'warning');
+        return true;
+      }
       closeModal('mCierre');
       renderCash();
       var actualCount = outcome.receipt && outcome.receipt.counted_cents;
       var difference = outcome.receipt && outcome.receipt.difference_cents;
-      notify(outcome.status === 'CLOSED' ? 'Esta caja ya estaba cerrada. Estado actualizado.' :
+      notify(outcome.status === 'CLOSED' ? closedSummary(outcome) :
         'Caja CANON cerrada correctamente' + (Number.isSafeInteger(actualCount) && actualCount !== countedCents
           ? ' · Efectivo registrado: S/ ' + (actualCount / 100).toFixed(2) : '') + differenceText(difference), 'success');
       return true;

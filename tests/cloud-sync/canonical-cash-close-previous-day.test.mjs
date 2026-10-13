@@ -135,7 +135,7 @@ test('2. yesterday OPEN + 2 pending sales: close drains same operation_ids, clos
 });
 
 for(const mode of ['lost-ack','503']){
- test(`3. yesterday OPEN + pending cash.close (${mode}): retry reuses the SAME close operation_id, 1 closure`,async t=>{
+ test(`3. yesterday OPEN + pending cash.close (${mode}): the server is asked first; closed -> same id replay, open -> close with the amount typed now; 1 closure`,async t=>{
   let fail=true;
   const {f,d}=await yesterdaySession(t,async(url,o,run)=>{
    if(fail&&url.endsWith('/commands/cash.close')){fail=false;
@@ -152,12 +152,19 @@ for(const mode of ['lost-ack','503']){
   assert.equal(await d.context.cerrarCaja(),true,d.el('cajCloseStatus').textContent);
   const ops=posts(d,'cash.close').map(p=>JSON.parse(p.body).operation_id);
   assert.equal(ops.length,2);
-  assert.deepEqual(ops,[op,op]);
   const c=all(f,'SELECT * FROM canonical_cash_closures');
   assert.equal(c.length,1);
   assert.equal(c[0].session_id,'prev-session');
-  assert.equal(c[0].close_operation_id,op);
-  assert.equal(c[0].counted_cents,110000,'replay keeps the original counted amount');
+  if(mode==='lost-ack'){
+   assert.deepEqual(ops,[op,op],'already closed on the server: same id replay, no new close');
+   assert.equal(c[0].close_operation_id,op);
+   assert.equal(c[0].counted_cents,110000,'the real close keeps its counted amount');
+  }else{
+   assert.notEqual(ops[1],op,'server still open: stale close archived, new close with a new id');
+   assert.equal(c[0].counted_cents,999900,'uses the amount typed now');
+   const archive=JSON.parse(d.localStorage.getItem('na_canonical_cash_close_rejections'));
+   assert.equal(archive[0].payload.operation_id,op);
+  }
   assert.equal(c[0].expected_cents,107250);
   assert.equal(d.api.pendingSnapshot(),null);
   await d.api.refresh();
@@ -189,8 +196,8 @@ test('4a. yesterday OPEN + 409 product_not_found: sale moves to the quarantine s
  assert.equal(d.api.pendingSnapshot(),null,'journal freed after durable copy');
  assert.equal(await d.context.cerrarCaja(),false);
  const text=d.el('cajCloseStatus').textContent;
- assert.ok(text.includes('Venta bloqueante: V-085'),'cajCloseStatus='+JSON.stringify(text));
- assert.match(text,/product_not_found/);
+ assert.ok(text.includes('Venta pendiente: V-085'),'cajCloseStatus='+JSON.stringify(text));
+ assert.match(text,/el producto no existe/);
  assert.match(text,/No la cobres de nuevo/);
  assert.equal(posts(d,'cash.close').length,0);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
@@ -408,4 +415,28 @@ test('7. no-journal pre-POST credit failure (customer absent) -> customer create
  assert.equal(c.length,1);assert.equal(c[0].session_id,'prev-session');
  assert.equal(c[0].expected_cents,107250,'credit sale adds no cash');
  assert.equal(f.sql('SELECT COUNT(*) n FROM sales').n,1);
+});
+
+test('Bot 2 item 1: pending close already applied on the server + queued sale of that caja: shows the real close and the sale goes to review (not to another caja, not dropped)',async t=>{
+ let offline=true,lose=true;
+ const {f,d,outbox,build}=await yesterdaySession(t,async(url,o,run)=>{
+  if(offline&&url.endsWith('/commands/sale.create'))throw Error('offline');
+  if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run();throw Error('lost ACK');}
+ });
+ await outbox.enqueue(build(cashSale('V-085')));
+ const total=outbox.snapshot().intents[0].total_cents;
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1,'the close did commit');
+ offline=false;
+ const salePosts=()=>posts(d,'sale.create').filter(p=>JSON.parse(p.body).sale_id==='V-085').length, before=salePosts();
+ assert.equal(await d.context.cerrarCaja(),true);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1,'no second close');
+ assert.equal(salePosts(),before,'sale not sent into another caja');
+ const msg=d.el('cajCloseStatus').textContent;
+ assert.match(msg,/ya estaba cerrada/); assert.match(msg,/S\/ 1100\.00 contados/);
+ assert.match(msg,new RegExp('V-085 S/ '+(total/100).toFixed(2)));
+ assert.equal(outbox.snapshot().intents.length,0);
+ const q=outbox.quarantine().entries.filter(e=>e.intent.sale_id==='V-085');
+ assert.equal(q.length,1); assert.equal(q[0].reason,'cash_closed_before_sale'); assert.equal(q[0].status,'QUARANTINED');
+ assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='V-085'").n,0);
 });

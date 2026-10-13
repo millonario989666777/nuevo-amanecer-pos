@@ -101,3 +101,21 @@ test('Bot 6 (b): compra anterior a medias + compra casi igual: no hay id nuevo; 
   assert.ok(again.stop && again.finish, 'sigue bloqueado hasta terminar la anterior');
   assert.deepEqual(Object.keys(JSON.parse(store.get('na_purchase_pending_ops_v2'))), [a.id]);
 });
+
+test('Bot 6 item 4: compra a medias sin productos en común queda en Historial con «Terminar compra»: mismo id, mismas líneas, y se libera el id', async () => {
+  const st = {};
+  const { P, store } = load(st);
+  const a = await P._opFor(L1, M);
+  st[a.id] = { status: 'in_progress', lines: [{ line_number: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100, applied: false }] };
+  const other = [{ line: 1, product_id: 'Z', quantity: 1, unit_cost_cents: 10 }];
+  const b1 = await P._opFor(other, M); assert.match(b1.stop, /Historial/);
+  const b = await P._opFor(other, M); assert.ok(b.id && b.id !== a.id);
+  assert.ok(JSON.parse(store.get('na_purchase_pending_ops_v2'))[a.id], 'la compra a medias no se pierde');
+  const sent = [];
+  P._submitHook = async (id, lines, meta) => { sent.push({ id, lines, meta }); return { applied: [{ line: 1 }], skipped: [] }; };
+  await P._finish({ purchase_id: a.id, supplier: 'Sol', document_ref: 'F1', status: 'en_curso', lines: [{ line_number: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }] });
+  assert.equal(sent.length, 1); assert.equal(sent[0].id, a.id);
+  assert.equal(JSON.stringify(sent[0].lines), JSON.stringify([{ line: 1, product_id: 'A', quantity: 2, unit_cost_cents: 100 }]));
+  assert.equal(sent[0].meta.supplier, 'Sol');
+  assert.equal(JSON.parse(store.get('na_purchase_pending_ops_v2') || '{}')[a.id], undefined, 'id liberado tras terminar');
+});

@@ -94,7 +94,7 @@ test('online sale releases the UI before cloud confirmation and syncs in backgro
   assert.equal(h.calls.project,1);
   assert.equal(h.context.cart.length,0);
   assert.ok(h.calls.close>0);
-  assert.ok(h.calls.toast.some(([message,tone])=>/Venta V-001 registrada/.test(message)&&tone==='success'));
+  assert.ok(h.calls.toast.some(([message,tone])=>/Venta V-001 guardada\. Confirmando/.test(message)&&tone!=='success'));
   assert.equal(h.calls.toast.some(([message])=>/espera el indicador verde/i.test(message)),false);
   assert.equal(h.calls.timers.length,1);
   h.calls.timers.shift()();

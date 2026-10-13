@@ -72,7 +72,9 @@
   function message(e) { var k = e && (e.message || ''); if (PIN_ERRORS[k]) return PIN_ERRORS[k] + (e.data && e.data.attempts_left ? ' Quedan ' + e.data.attempts_left + ' intentos.' : ''); return 'No se pudo conectar con el servidor. Revisa internet.'; }
 
   // Ventana para pedir el PIN del dueño. Resuelve con el PIN escrito o null si se cancela.
-  function askPin(title, detail) {
+  // verify(pin) opcional: el PIN se comprueba con la ventana abierta y el error queda escrito DENTRO de ella
+  // (no en un aviso flotante que el teclado tapa).
+  function askPin(title, detail, verify) {
     return new Promise(function (resolve) {
       var wrap = doc.createElement('div'); wrap.className = 'na-pin-overlay'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true');
       wrap.innerHTML = '<div class="na-pin-box"><div class="na-pin-title"></div><div class="na-pin-detail"></div>' +
@@ -84,7 +86,21 @@
       var input = wrap.querySelector('.na-pin-input');
       function done(v) { input.value = ''; wrap.remove(); resolve(v); }
       wrap.querySelector('.na-pin-cancel').onclick = function () { done(null); };
-      wrap.querySelector('.na-pin-ok').onclick = function () { var v = input.value.trim(); if (/^\d{4,8}$/.test(v)) done(v); else wrap.querySelector('.na-pin-msg').textContent = PIN_ERRORS.pin_format; };
+      var msgEl = wrap.querySelector('.na-pin-msg'), okBtn = wrap.querySelector('.na-pin-ok'), checking = false;
+      okBtn.onclick = async function () {
+        if (checking) return;
+        var v = input.value.trim();
+        if (!/^\d{4,8}$/.test(v)) { msgEl.textContent = PIN_ERRORS.pin_format; return; }
+        if (typeof verify !== 'function') { done(v); return; }
+        checking = true; okBtn.disabled = true; msgEl.textContent = 'Comprobando…';
+        try {
+          var r = await verify(v);
+          if (r && r.ok) { done(r.value); return; }
+          msgEl.textContent = (r && r.msg) || 'No se pudo comprobar el PIN.';
+          if (r && r.stop) { setTimeout(function () { done(null); }, 2500); return; }
+          input.value = ''; try { input.focus(); } catch (_) {}
+        } finally { checking = false; okBtn.disabled = false; }
+      };
       input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') wrap.querySelector('.na-pin-ok').click(); if (ev.key === 'Escape') done(null); });
       setTimeout(function () { input.focus(); }, 30);
     });
@@ -93,13 +109,15 @@
 
   // Pide PIN y obtiene una aprobación del servidor. Devuelve approval_id o null.
   async function approve(action, operationId, title, detail) {
-    for (var i = 0; i < 3; i++) {
-      var pin = await askPin(title, detail);
-      if (pin === null) return null;
-      try { var r = await api('/auth/owner-approval', { pin: pin, action: action, operation_id: operationId || null }); return r.approval_id; }
-      catch (e) { toast(message(e)); if (e.message !== 'owner_pin_invalid') return null; }
-    }
-    return null;
+    var tries = 0;
+    return askPin(title, detail, async function (pin) {
+      try { var r = await api('/auth/owner-approval', { pin: pin, action: action, operation_id: operationId || null }); return { ok: true, value: r.approval_id }; }
+      catch (e) {
+        tries++;
+        if (e.message === 'owner_pin_invalid' && tries < 3) return { msg: message(e) };
+        return { msg: message(e), stop: true };
+      }
+    });
   }
   var LABELS = { 'inventory.adjust': 'Ajuste de stock', 'adjustment.create': 'Ajuste de dinero', 'compensation.create': 'Anulación',
     'product.update': 'Cambio de producto o precio', 'customer.credit-policy.set': 'Límite de crédito del cliente' };
@@ -137,7 +155,9 @@
       + '<div class="na-pin-detail">' + (online ? 'Configuración se abre cuando el servidor confirma que eres el dueño. Inténtalo de nuevo en unos segundos.' : 'Sin conexión: Configuración necesita internet para confirmar que eres el dueño.') + '</div>'
       + '<div class="na-pin-actions"><button type="button" class="na-pin-ok na-offline-back">Volver a la venta</button></div></div>';
     o.querySelector('.na-offline-back').addEventListener('click', function () { o.remove(); });
-    doc.body.appendChild(o);
+    // Una hoja abierta con showModal (p. ej. «Agregar productos») está en la capa superior: el aviso va dentro de ella.
+    var top = null; try { var ds = doc.querySelectorAll('dialog[open]'); top = ds.length ? ds[ds.length - 1] : null; } catch (_) {}
+    (top || doc.body).appendChild(o);
     if (online) refresh();
   }
   function install() {
