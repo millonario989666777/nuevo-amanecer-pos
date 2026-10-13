@@ -61,6 +61,7 @@
     <link rel="stylesheet" href="css/mobile-inventory.css" media="print" onload="this.media='all'">
     <link id="naMobileHomeBaseStyles" rel="stylesheet" href="css/canon-mobile-home.css">
     <link rel="stylesheet" href="css/canon-ux-fixes.css">
+    <link rel="stylesheet" href="css/na-line-icons.css">
     <link rel="stylesheet" href="css/config-e2.css">
     <link rel="stylesheet" href="css/config-v9.css">
     <script>
@@ -92,9 +93,9 @@
     <div class="g-spacer"></div>
     <div style="display:flex;align-items:center;gap:9px">
         <div class="g-status" id="localStatus" data-state="disconnected" role="status" aria-live="polite" aria-label="Desconectado" title="Desconectado"><div class="g-dot"></div><span class="g-status-label">Desconectado</span></div>
-        <div class="g-sync" id="saveStatus">💾 Guardado local</div>
-        <button id="btnDarkMode" onclick="toggleDark()" title="Modo día/noche" style="background:#f1f5f9;border:none;width:34px;height:34px;border-radius:50%;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">🌙</button>
-        <button class="g-settings-btn" id="topSettingsBtn" type="button" onclick="window.NA_MENU_NAVIGATION ? window.NA_MENU_NAVIGATION.navigate('pageConfig') : goPage('pageConfig')" title="Configuración" aria-label="Abrir configuración">⚙️</button>
+        <div class="g-sync" id="saveStatus"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7"/></svg><span class="na-li-text">Guardado local</span></div>
+        <button id="btnDarkMode" onclick="toggleDark()" title="Modo día/noche" style="background:#f1f5f9;border:none;width:34px;height:34px;border-radius:50%;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+        <button class="g-settings-btn" id="topSettingsBtn" type="button" onclick="window.NA_MENU_NAVIGATION ? window.NA_MENU_NAVIGATION.navigate('pageConfig') : goPage('pageConfig')" title="Configuración" aria-label="Abrir configuración"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.8l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="back-btn" id="backBtn" onclick="goMenu()">← Menú</button>
     </div>
 </div>
@@ -113,10 +114,10 @@
 
         <div class="menu-desktop-heading"><div><span class="menu-desktop-eyebrow">Panel principal</span><h1>Resumen</h1><p id="menuDesktopDate">Estado actual del negocio</p></div><div class="menu-desktop-live"><span aria-hidden="true"></span> Operación del día</div></div><div class="section-label">Resumen</div>
         <div class="quick-stats">
-            <div class="qs-card qs-card-sales"><div class="qs-top"><div class="qs-label">Ventas hoy</div><div class="qs-icon" style="color:var(--teal);background:#e7faf7">📈</div></div><div class="qs-val" style="color:var(--teal)" id="qsVentas">S/ 0.00</div><div class="qs-prev" id="qsVentasPrev">Ayer: S/ 0.00</div><div class="qs-sub" id="qsVentasSub">0 transacciones</div><div class="qs-trend" id="qsVentasTrend" data-trend="flat">— vs ayer</div></div>
-            <div class="qs-card"><div class="qs-top"><div class="qs-label">En caja</div><div class="qs-icon" style="color:#0f172a;background:#f8fafc">💵</div></div><div class="qs-val" id="qsCaja">S/ 0.00</div><div class="qs-sub" id="qsCajaSub">Caja no abierta</div></div>
-            <div class="qs-card"><div class="qs-top"><div class="qs-label">Por cobrar</div><div class="qs-icon" style="color:var(--amber);background:#fffbeb">🧾</div></div><div class="qs-val" style="color:var(--amber)" id="qsPorCobrar">S/ 0.00</div><div class="qs-sub" id="qsPorCobrarSub">0 créditos activos</div></div>
-            <div class="qs-card"><div class="qs-top"><div class="qs-label">Stock crítico</div><div class="qs-icon" style="color:var(--red);background:#fef2f2">⚠️</div></div><div class="qs-val" style="color:var(--red)" id="qsStockCritico">0</div><div class="qs-sub" id="qsStockCriticoSub">productos por reponer</div></div>
+            <div class="qs-card qs-card-sales"><div class="qs-top"><div class="qs-label">Ventas hoy</div><div class="qs-icon" style="color:var(--teal);background:#e7faf7"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg></div></div><div class="qs-val" style="color:var(--teal)" id="qsVentas">S/ 0.00</div><div class="qs-prev" id="qsVentasPrev">Ayer: S/ 0.00</div><div class="qs-sub" id="qsVentasSub">0 transacciones</div><div class="qs-trend" id="qsVentasTrend" data-trend="flat">— vs ayer</div></div>
+            <div class="qs-card"><div class="qs-top"><div class="qs-label">En caja</div><div class="qs-icon" style="color:#0f172a;background:#f8fafc"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></div></div><div class="qs-val" id="qsCaja">S/ 0.00</div><div class="qs-sub" id="qsCajaSub">Caja no abierta</div></div>
+            <div class="qs-card"><div class="qs-top"><div class="qs-label">Por cobrar</div><div class="qs-icon" style="color:var(--amber);background:#fffbeb"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div></div><div class="qs-val" style="color:var(--amber)" id="qsPorCobrar">S/ 0.00</div><div class="qs-sub" id="qsPorCobrarSub">0 créditos activos</div></div>
+            <div class="qs-card"><div class="qs-top"><div class="qs-label">Stock crítico</div><div class="qs-icon" style="color:var(--red);background:#fef2f2"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg></div></div><div class="qs-val" style="color:var(--red)" id="qsStockCritico">0</div><div class="qs-sub" id="qsStockCriticoSub">productos por reponer</div></div>
         </div>
 
         <div class="menu-desktop-sections"><section class="menu-data-panel" aria-labelledby="menuActivityTitle"><div class="menu-panel-head"><div><span>Movimientos</span><h2 id="menuActivityTitle">Actividad reciente</h2></div></div><div class="menu-activity-list"><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity0Label">Sin movimientos recientes</span><strong id="menuActivity0Amount">—</strong></div><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity1Label">—</span><strong id="menuActivity1Amount">—</strong></div><div class="menu-activity-row"><span class="menu-activity-dot"></span><span id="menuActivity2Label">—</span><strong id="menuActivity2Amount">—</strong></div></div></section><section class="menu-data-panel" aria-labelledby="menuPendingTitle"><div class="menu-panel-head"><div><span>Control</span><h2 id="menuPendingTitle">Pendientes</h2></div></div><div class="menu-pending-list"><div class="menu-pending-row"><span class="menu-pending-mark amber"></span><span id="menuPendingCredits">Créditos por revisar</span></div><div class="menu-pending-row"><span class="menu-pending-mark red"></span><span id="menuPendingStock">Stock por revisar</span></div><div class="menu-pending-row"><span class="menu-pending-mark teal"></span><span id="menuPendingCash">Estado de caja</span></div></div></section></div><div class="section-label menu-modules-label">Módulos principales</div>
@@ -137,13 +138,13 @@
   <!-- Barra superior: búsqueda + botones -->
   <div style="background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border-bottom:1px solid #dde7ef;padding:8px 12px;min-height:62px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 8px 18px rgba(15,23,42,.03)">
     <div class="pos-search-box">
-      <span style="font-size:14px">🔍</span>
+      <svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       <input type="text" id="posSearch" placeholder="Buscar o escanear código..." autocomplete="off" autocapitalize="off" spellcheck="false">
       <span id="scannerIndicator" class="scanner-indicator ready" role="status" aria-live="polite" title="Lectura automática de escáner HID activada"><span class="scanner-dot"></span><span class="scanner-label">Escáner listo</span></span>
     </div>
     <button class="free-sale-btn" id="btnVentaLibre" type="button" onclick="abrirVentaLibre()" title="Venta libre / VARIOS (F2)">➕ <span class="free-sale-label">VARIOS</span></button>
     <button class="cart-fab" onclick="toggleCart()">
-      🛒<span class="cart-fab-badge" id="cartBadge">0</span>
+      <svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 2h3l2.7 12.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg><span class="cart-fab-badge" id="cartBadge">0</span>
     </button>
     <button id="btnMayorista" onclick="toggleMayorista()"
       style="background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border:1.5px solid #dce5ed;border-radius:12px;padding:9px 12px;font-size:11px;font-weight:900;cursor:pointer;font-family:'Nunito',sans-serif;transition:all 0.2s;box-shadow:0 6px 16px rgba(15,23,42,.04)">🛍️ Mayor</button>
@@ -244,7 +245,7 @@
         <button class="tab" onclick="invSetTab(this,'vencidos')">🚫 Vencidos <span class="tbadge red" id="invB3">0</span></button>
     </div>
     <div class="filter-bar">
-        <div class="search-box"><span style="font-size:14px">🔍</span><input type="text" id="invSearch" placeholder="Buscar producto, SKU..." oninput="invRender()"></div>
+        <div class="search-box"><svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="invSearch" placeholder="Buscar producto, SKU..." oninput="invRender()"></div>
         <select class="f-select" id="invCat" onchange="invRender()"></select>
     </div>
     <div class="stats-strip">
@@ -262,15 +263,15 @@
 <!-- CLIENTES -->
 <div class="page" id="pageClientes">
     <div class="page-chrome">
-    <div class="top-mod-bar"><span class="top-mod-title">👥 Clientes y Créditos</span><span id="cliAuthorityBadge" hidden></span><button class="top-btn-nuevo" onclick="abrirModalCli()">+ Cliente</button></div>
+    <div class="top-mod-bar"><span class="top-mod-title"><svg class="na-li na-li-title" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Clientes y Créditos</span><span id="cliAuthorityBadge" hidden></span><button class="top-btn-nuevo" onclick="abrirModalCli()">+ Cliente</button></div>
     <div class="tabs-wrap">
         <button class="tab active" onclick="cliSetTab(this,'todos')">Todos <span class="tbadge teal" id="cliB0">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'vencidos')">🔴 Vencidos <span class="tbadge red" id="cliB1">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'proximos')">🟡 Próximos <span class="tbadge amber" id="cliB2">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'vigentes')">🟢 Vigentes <span class="tbadge teal" id="cliB3">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'vencidos')"><svg class="na-li na-li-dot red" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Vencidos <span class="tbadge red" id="cliB1">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'proximos')"><svg class="na-li na-li-dot amber" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Próximos <span class="tbadge amber" id="cliB2">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'vigentes')"><svg class="na-li na-li-dot green" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Vigentes <span class="tbadge teal" id="cliB3">0</span></button>
     </div>
     <div class="filter-bar">
-        <div class="search-box"><span style="font-size:14px">🔍</span><input type="text" id="cliSearch" placeholder="Buscar cliente o DNI..." oninput="cliRender()"></div>
+        <div class="search-box"><svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="cliSearch" placeholder="Buscar cliente o DNI..." oninput="cliRender()"></div>
         <select class="f-select" id="cliSort" onchange="cliRender()"><option value="deuda">Mayor deuda</option><option value="nombre">Nombre A-Z</option></select>
     </div>
     <div class="stats-strip">
@@ -308,7 +309,7 @@
         <button class="tab" onclick="ventasSetTab(this,'reportes')">📑 Reportes</button>
     </div>
     <div class="filter-bar" id="ventasFilterBar">
-        <div class="search-box"><span style="font-size:14px">🔍</span><input type="text" id="ventasSearch" placeholder="Buscar venta..." oninput="ventasRender()"></div>
+        <div class="search-box"><svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="ventasSearch" placeholder="Buscar venta..." oninput="ventasRender()"></div>
         <select class="f-select" id="ventasMetodo" onchange="ventasRender()"><option value="">Todos</option><option value="efectivo">Efectivo</option><option value="yape">Yape</option><option value="plin">Plin</option><option value="transferencia">Transferencia</option><option value="credito">Crédito</option><option value="mixto">Pago mixto</option></select>
     </div>
     <div class="sales-report-controls" id="ventasReportControls" hidden>
@@ -365,7 +366,7 @@
         <div class="ss green"><div class="ss-num" id="gasS3">—</div><div class="ss-lbl">Categoría top</div></div>
     </div>
     <div class="filter-bar">
-        <div class="search-box"><span style="font-size:14px">🔍</span><input type="text" id="gasSearch" placeholder="Buscar gasto..." oninput="gasRender()"></div>
+        <div class="search-box"><svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="gasSearch" placeholder="Buscar gasto..." oninput="gasRender()"></div>
         <select class="f-select" id="gasCatFilter" onchange="gasRender()"><option value="">Todas</option><option value="Servicios">Servicios</option><option value="Proveedor">Proveedor</option><option value="Operativo">Operativo</option><option value="Personal">Personal</option><option value="Transporte">Transporte</option><option value="Otro">Otro</option></select>
     </div>
     </div>
@@ -918,6 +919,7 @@
 
 <div class="toast" id="gToast"></div>
 
+<script src="js/ui/na-line-icons.js"></script>
 <script src="/runtime-config.js"></script>
 <script src="js/core/utils.js"></script>
 <script src="js/core/lima-time.js"></script>

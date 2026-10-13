@@ -1775,10 +1775,12 @@ function labCreditDisplayMoment(cr, fallbackDate) {
     var meta = document.createElement('span');
     meta.className = 'c-meta';
     var metaParts = [];
-    if (client && client.dni) metaParts.push('📋 ' + client.dni);
+    var lineIcons = typeof window.NA_ICON === 'function';
+    if (client && client.dni) metaParts.push(lineIcons ? String(client.dni) : '📋 ' + client.dni);
     metaParts.push(credits.length + (credits.length === 1 ? ' crédito' : ' créditos'));
     if (status) metaParts.push(status.toUpperCase());
     meta.textContent = metaParts.join(' · ');
+    if (lineIcons && client && client.dni) meta.insertAdjacentHTML('afterbegin', window.NA_ICON('clip'));
     info.append(name, meta);
 
     var right = document.createElement('span');
@@ -1809,7 +1811,7 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       empty.className = 'empty-state';
       var icon = document.createElement('div');
       icon.className = 'ei';
-      icon.textContent = '👥';
+      if (typeof window.NA_ICON === 'function') icon.innerHTML = window.NA_ICON('users', 'na-li-empty'); else icon.textContent = '👥';
       var copy = document.createElement('p');
       copy.textContent = 'Sin clientes en esta vista';
       empty.append(icon, copy);

@@ -3,13 +3,13 @@
   <!-- Barra superior: búsqueda + botones -->
   <div style="background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border-bottom:1px solid #dde7ef;padding:8px 12px;min-height:62px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 8px 18px rgba(15,23,42,.03)">
     <div class="pos-search-box">
-      <span style="font-size:14px">🔍</span>
+      <svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       <input type="text" id="posSearch" placeholder="Buscar o escanear código..." autocomplete="off" autocapitalize="off" spellcheck="false">
       <span id="scannerIndicator" class="scanner-indicator ready" role="status" aria-live="polite" title="Lectura automática de escáner HID activada"><span class="scanner-dot"></span><span class="scanner-label">Escáner listo</span></span>
     </div>
     <button class="free-sale-btn" id="btnVentaLibre" type="button" onclick="abrirVentaLibre()" title="Venta libre / VARIOS (F2)">➕ <span class="free-sale-label">VARIOS</span></button>
     <button class="cart-fab" onclick="toggleCart()">
-      🛒<span class="cart-fab-badge" id="cartBadge">0</span>
+      <svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 2h3l2.7 12.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg><span class="cart-fab-badge" id="cartBadge">0</span>
     </button>
     <button id="btnMayorista" onclick="toggleMayorista()"
       style="background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border:1.5px solid #dce5ed;border-radius:12px;padding:9px 12px;font-size:11px;font-weight:900;cursor:pointer;font-family:'Nunito',sans-serif;transition:all 0.2s;box-shadow:0 6px 16px rgba(15,23,42,.04)">🛍️ Mayor</button>

@@ -200,3 +200,13 @@ body #pagePOS .p-stock-badge.low{background:#d97706!important;color:#fff!importa
 @media (min-width:701px){
   body:not(.na-pos-phone-device) #mCobro #mCashAdvanced .pay-quick-row{display:none!important}
 }
+
+/* Cobro en PC y tablet: los cuatro métodos en una fila (Dividir pago ya no ocupa una fila propia),
+   así total, recibido, Vuelto y Nota caben sin desplazamiento interno. Teléfono sin cambios. */
+@media (min-width:701px){
+  body:not(.na-pos-phone-device) #mCobro .pay-methods{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  body:not(.na-pos-phone-device) #mCobro .pay-methods .pm-btn{grid-column:auto!important;min-width:0}
+  body:not(.na-pos-phone-device) #mCobro .modal.pay-modal{max-height:calc(100vh - 24px)!important}
+}
+/* Nota dentro del cuerpo del cobro: alineada con el resto del formulario. */
+#mCobro .pay-modal-body>.na-sale-note{margin:10px 0 0}

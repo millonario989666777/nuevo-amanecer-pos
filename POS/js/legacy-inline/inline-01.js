@@ -26,7 +26,7 @@ const storage=(()=>{
 // Se carga desde el producto editado o desde la imagen procesada antes de guardar.
 let imagenProducto=null;
 const cerrarModal=id=>document.getElementById(id).classList.remove('open');
-const toast=(msg,type='')=>{const t=document.getElementById('gToast');t.textContent=msg;t.className='toast'+(type?' '+type:'');t.classList.add('show');try{if(window.NA_MOTION&&window.NA_MOTION.feedback&&typeof window.NA_MOTION.feedback.enter==='function')window.NA_MOTION.feedback.enter(t);}catch(_){}setTimeout(()=>t.classList.remove('show'),2800);};
+const toast=(msg,type='')=>{const t=document.getElementById('gToast');t.textContent=msg;t.className='toast'+(type?' '+type:'');t.classList.add('show');try{if(window.NA_MOTION&&window.NA_MOTION.feedback&&typeof window.NA_MOTION.feedback.enter==='function')window.NA_MOTION.feedback.enter(t);}catch(_){}setTimeout(()=>t.classList.remove('show'),2800);};try{window.toast=toast;}catch(_){} // window.toast: lo usan Configuración, roles, anulaciones y compras.
 
 function _naShouldWarn(force=false){return force||appConfig.alertsEnabled!==false;}
 function _naConfirmAction(message,options={}){

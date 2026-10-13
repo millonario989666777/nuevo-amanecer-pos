@@ -1,14 +1,14 @@
 <div class="page" id="pageClientes">
     <div class="page-chrome">
-    <div class="top-mod-bar"><span class="top-mod-title">👥 Clientes y Créditos</span><button class="top-btn-nuevo" onclick="abrirModalCli()">+ Cliente</button></div>
+    <div class="top-mod-bar"><span class="top-mod-title"><svg class="na-li na-li-title" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Clientes y Créditos</span><button class="top-btn-nuevo" onclick="abrirModalCli()">+ Cliente</button></div>
     <div class="tabs-wrap">
         <button class="tab active" onclick="cliSetTab(this,'todos')">Todos <span class="tbadge teal" id="cliB0">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'vencidos')">🔴 Vencidos <span class="tbadge red" id="cliB1">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'proximos')">🟡 Próximos <span class="tbadge amber" id="cliB2">0</span></button>
-        <button class="tab" onclick="cliSetTab(this,'vigentes')">🟢 Vigentes <span class="tbadge teal" id="cliB3">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'vencidos')"><svg class="na-li na-li-dot red" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Vencidos <span class="tbadge red" id="cliB1">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'proximos')"><svg class="na-li na-li-dot amber" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Próximos <span class="tbadge amber" id="cliB2">0</span></button>
+        <button class="tab" onclick="cliSetTab(this,'vigentes')"><svg class="na-li na-li-dot green" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>Vigentes <span class="tbadge teal" id="cliB3">0</span></button>
     </div>
     <div class="filter-bar">
-        <div class="search-box"><span style="font-size:14px">🔍</span><input type="text" id="cliSearch" placeholder="Buscar cliente o DNI..." oninput="cliRender()"></div>
+        <div class="search-box"><svg class="na-li na-li-search" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="cliSearch" placeholder="Buscar cliente o DNI..." oninput="cliRender()"></div>
         <select class="f-select" id="cliSort" onchange="cliRender()"><option value="deuda">Mayor deuda</option><option value="nombre">Nombre A-Z</option></select>
     </div>
     <div class="stats-strip">

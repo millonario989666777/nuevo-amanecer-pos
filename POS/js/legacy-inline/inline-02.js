@@ -208,7 +208,7 @@ function _naClassifyProductCategory(name,current='abarrotes'){
   return valid.includes(current)?current:'abarrotes';
 }
 async function reclasificarCatalogo(showMessage=true){let changed=0;productos.forEach(p=>{const next=_naClassifyProductCategory(p.name,p.cat);if(next!==p.cat){p.cat=next;changed++;}});renderCategorySelects();posRender();invRender();const message=`Catálogo reclasificado: ${changed} producto${changed===1?'':'s'} actualizado${changed===1?'':'s'}`;if(showMessage)await _naFinalizeOperationPersistence(message,'No se pudo guardar la reclasificación');else await saveAllData();return changed;}
-const _naSetSaveStatus=(ok=true,msg='Guardado local')=>{const el=document.getElementById('saveStatus');if(!el)return;el.classList.remove('saved','error');el.classList.add(ok?'saved':'error');el.textContent=ok?`💾 ${msg}`:`⚠️ ${msg}`;};
+const _naSetSaveStatus=(ok=true,msg='Guardado local')=>{const el=document.getElementById('saveStatus');if(!el)return;el.classList.remove('saved','error');el.classList.add(ok?'saved':'error');if(window.NA_ICON_TEXT)NA_ICON_TEXT(el,ok?'save':'alert',msg);else el.textContent=ok?`💾 ${msg}`:`⚠️ ${msg}`;};
 const _naSyncCreditStatus=cr=>{if(!cr)return'vigente';cr.monto=Math.max(0,_naNumber(cr.monto));cr.pagado=Math.min(cr.monto,Math.max(0,_naNumber(cr.pagado)));if(cr.anulado){cr.status='anulado';return cr.status;}if(cr.pagado>=cr.monto&&cr.monto>0)cr.status='cancelado';else{const d=diasHasta(cr.vence);cr.status=d!==null&&d<0?'vencido':'vigente';}return cr.status;};
 // NUEVO FASE 6: modelo completo de créditos, pagos y desglose por producto.
 const _NA_CREDIT_METHOD_LABELS={efectivo:'💵 Efectivo',yape:'📲 Yape',plin:'📲 Plin',transferencia:'🏦 Transferencia'};
@@ -434,7 +434,7 @@ loadAllData=async function(){
   if(!chosen||seeded)await saveAllData();
 };
 loadAppState=function(){
-  const snap=_naReadLocalSnapshot()||_naReadSessionSnapshot(),legacy=_naGetJSON('na_app_state',{}),state=Object.keys(_naLoadedUIState||{}).length?_naLoadedUIState:(_naValidSnapshot(snap)?snap.ui||{}:legacy);isDark=!!state.isDark;document.body.classList.toggle('dark',isDark);const darkBtn=document.getElementById('btnDarkMode');if(darkBtn)darkBtn.textContent=isDark?'☀️':'🌙';_naApplyConfigUI();const pageId=state.currentPage;if(pageId&&pageId!=='pageMenu'&&document.getElementById(pageId))goPage(pageId);else _naSchedulePageRender('pageMenu');
+  const snap=_naReadLocalSnapshot()||_naReadSessionSnapshot(),legacy=_naGetJSON('na_app_state',{}),state=Object.keys(_naLoadedUIState||{}).length?_naLoadedUIState:(_naValidSnapshot(snap)?snap.ui||{}:legacy);isDark=!!state.isDark;document.body.classList.toggle('dark',isDark);const darkBtn=document.getElementById('btnDarkMode');if(darkBtn)darkBtn.innerHTML=(window.NA_ICON?NA_ICON(isDark?'sun':'moon'):(isDark?'☀️':'🌙'));_naApplyConfigUI();const pageId=state.currentPage;if(pageId&&pageId!=='pageMenu'&&document.getElementById(pageId))goPage(pageId);else _naSchedulePageRender('pageMenu');
 };
 
 

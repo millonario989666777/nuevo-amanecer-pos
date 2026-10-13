@@ -1,0 +1,21 @@
+/* Íconos de línea (estilo Configuración v9). Tamaño fijo: el espacio está reservado desde el primer pintado. */
+.na-li{display:inline-block;flex:none;width:18px;height:18px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.qs-icon .na-li{width:18px;height:18px;vertical-align:middle}
+.cart-fab .na-li{width:24px;height:24px;vertical-align:middle}
+#saveStatus{display:inline-flex;align-items:center;gap:5px}
+#saveStatus .na-li{width:15px;height:15px}
+#btnDarkMode .na-li,#topSettingsBtn .na-li{width:18px;height:18px;color:#334155}
+/* Los botones redondos siguen claros en modo noche: el ícono queda oscuro; el sol en ámbar. */
+body.dark #btnDarkMode .na-li{color:#d97706}
+#topSettingsBtn{display:inline-flex;align-items:center;justify-content:center}
+.top-mod-title .na-li-title{width:20px;height:20px;margin-right:6px;vertical-align:-4px}
+.na-li-dot{width:10px;height:10px;margin-right:5px;vertical-align:0}
+.na-li-dot.red{color:#dc2626}.na-li-dot.amber{color:#d97706}.na-li-dot.green{color:#16a34a}
+.p-img>.na-li-product{width:40%;height:40%;max-width:44px;max-height:44px;color:#94a3b8;stroke-width:1.6;vertical-align:middle}
+body.dark .p-img>.na-li-product{color:#64748b}
+.c-meta .na-li{width:13px;height:13px;vertical-align:-2px;margin-right:3px;color:#64748b}
+.ei>.na-li-empty{width:40px;height:40px;color:#94a3b8;stroke-width:1.6}
+/* Aviso flotante: oculto de verdad cuando no se muestra y nunca vacío (salía una píldora oscura sin texto). */
+.toast:not(.show){visibility:hidden}
+.toast:empty{display:none!important}
+.search-box .na-li-search{width:15px;height:15px;color:#64748b;flex:none}
