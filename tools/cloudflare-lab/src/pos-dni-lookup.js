@@ -19,14 +19,14 @@ function missingTable(e) { return /no such table/i.test(String(e?.message || e))
 
 async function existingCustomer(db, dni, promotionId) {
   const where = promotionId ? 'promotion_id=?2 AND ' : '';
-  for (const table of ['canonical_live_customers', 'customers']) {
+  // Las dos tablas a la vez: en el celular cada viaje a la base cuenta para los 3 s.
+  const rows = await Promise.all(['canonical_live_customers', 'customers'].map(async (table) => {
     try {
       const stmt = db.prepare(`SELECT customer_id,name FROM ${table} WHERE ${where}trim(COALESCE(document,''))=?1 LIMIT 1`);
-      const row = await (promotionId ? stmt.bind(dni, promotionId) : stmt.bind(dni)).first();
-      if (row) return row;
-    } catch (e) { if (!missingTable(e)) throw e; }
-  }
-  return null;
+      return await (promotionId ? stmt.bind(dni, promotionId) : stmt.bind(dni)).first();
+    } catch (e) { if (!missingTable(e)) throw e; return null; }
+  }));
+  return rows[0] || rows[1] || null;
 }
 
 async function readUsage(db, key) {
@@ -48,14 +48,16 @@ export async function reserveLookup(db, auth, env, nowMs) {
   const day = limaDate(nowMs), month = day.slice(0, 7), minute = Math.floor(nowMs / 60000);
   const monthlyCap = Number.parseInt(env.DNI_LOOKUP_MONTHLY_CAP || '', 10) || LIMITS.monthlyDefault;
   const nowIso = new Date(nowMs).toISOString();
+  let deviceKeyCache = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const g = await readUsage(db, USAGE_PREFIX + 'month');
+    if (auth.posRole === 'empleado' && !deviceKeyCache) deviceKeyCache = USAGE_PREFIX + (await sha256Hex(String(auth.principalId))).slice(0, 40);
+    const [g, dEarly] = await Promise.all([readUsage(db, USAGE_PREFIX + 'month'), deviceKeyCache ? readUsage(db, deviceKeyCache) : null]);
     const gv = g.value.m === month ? g.value : { m: month, n: 0 };
     if (gv.n >= monthlyCap) return 'monthly_limit';
     let d = null, dv = null, deviceKey = null;
     if (auth.posRole === 'empleado') {
-      deviceKey = USAGE_PREFIX + (await sha256Hex(String(auth.principalId))).slice(0, 40);
-      d = await readUsage(db, deviceKey);
+      deviceKey = deviceKeyCache;
+      d = dEarly;
       dv = d.value.d === day ? { ...d.value } : { d: day, n: 0, min: minute, mn: 0 };
       if (dv.min !== minute) { dv.min = minute; dv.mn = 0; }
       if (dv.n >= LIMITS.employeePerDay) return 'daily_limit';

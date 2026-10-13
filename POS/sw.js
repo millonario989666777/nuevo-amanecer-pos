@@ -222,14 +222,15 @@ async function stageShell(cache) {
 }
 
 self.addEventListener('install', (event) => {
+  // La versión nueva se activa siempre (skipWaiting + clients.claim en activate). Antes, en modo manual,
+  // quedaba esperando para siempre y el celular seguía con un index.html viejo aunque se recargara.
+  // No se pierde ni duplica ningún cobro: la página abierta recibe «controllerchange» y solo recarga
+  // cuando no hay carrito, cobro, envío de ventas, abono, compra ni cierre en curso (afterSaleFinishes);
+  // lo guardado en el aparato (cola de ventas, borradores) sobrevive a la recarga con sus mismos ids.
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => stageShell(cache))
-      .then(() => caches.has(MANUAL_UPDATE_MARKER_CACHE))
-      // Nunca reemplaza una versión abierta: si ya hay una página abierta, la nueva espera a que el cajero
-      // recargue (la página muestra «Hay una versión nueva, recarga»). Solo la primera instalación se activa sola.
-      .then((manualModeEnabled) => manualModeEnabled ? undefined : self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-        .then((open) => (open.length && self.registration.active) ? undefined : self.skipWaiting()))
+      .then(() => self.skipWaiting())
   );
 });
 

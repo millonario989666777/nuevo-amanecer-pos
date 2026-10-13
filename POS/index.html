@@ -1236,6 +1236,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
         setUpdateUi('Actualización lista. Se aplicará al terminar la venta en curso.', 'working', 'Esperando la venta…', false);
       }
       afterSaleFinishes(function () {
+        // Tampoco recarga con una ventana abierta (cliente a medio escribir, Cobrar, abono): espera a que se cierre.
+        if (quietNeeded()) { var qt = window.setInterval(function () { if (quietNeeded()) return; window.clearInterval(qt); setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false); window.setTimeout(function () { window.location.reload(); }, 80); }, 1000); return; }
         setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false);
         window.setTimeout(function () {
           window.location.reload();
@@ -1243,7 +1245,21 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       });
     }
 
-    navigator.serviceWorker.addEventListener('controllerchange', scheduleReload);
+    navigator.serviceWorker.addEventListener('controllerchange', function () { scheduleReload(); try { showBuild(); } catch (_) {} });
+    // Versión instalada visible en Configuración (para saber si el celular ya tiene la última).
+    function showBuild() {
+      var c = navigator.serviceWorker.controller, host = document.getElementById('pageConfig');
+      if (!c || !host || typeof MessageChannel !== 'function') return;
+      var ch = new MessageChannel();
+      ch.port1.onmessage = function (e) {
+        var h = e.data && e.data.buildHash; if (!h) return;
+        var el = document.getElementById('naBuildVersion');
+        if (!el) { el = document.createElement('div'); el.id = 'naBuildVersion'; el.style.cssText = 'font-size:12px;opacity:.6;text-align:center;padding:12px 0'; host.appendChild(el); }
+        el.textContent = 'Versión de la app: ' + String(h).slice(0, 12);
+      };
+      try { c.postMessage({ type: 'NA_BUILD_DIAGNOSTIC' }, [ch.port2]); } catch (_) {}
+    }
+    showBuild();
 
     if (action) {
       action.addEventListener('click', runPwaUpdate);

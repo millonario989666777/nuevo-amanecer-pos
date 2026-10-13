@@ -36,11 +36,12 @@ test('page updater checks, waits, activates and reloads once', () => {
   assert.doesNotThrow(() => new Function(block));
 });
 
-test('legacy clients migrate once, then future updates wait for the real button', () => {
+test('new versions always activate (never stuck waiting); the page reloads only when no sale is in progress', () => {
   const install = between(sw, "self.addEventListener('install'", "self.addEventListener('activate'");
   const message = between(sw, "self.addEventListener('message'", "self.addEventListener('fetch'");
-  assert.match(install, /caches\.has\(MANUAL_UPDATE_MARKER_CACHE\)/);
-  assert.match(install, /manualModeEnabled\s*\?\s*undefined\s*:[\s\S]*?open\.length && self\.registration\.active\) \? undefined : self\.skipWaiting\(\)/);
+  assert.match(install, /stageShell\(cache\)\)\s*\.then\(\(\) => self\.skipWaiting\(\)\)/);
+  assert.match(sw, /self\.clients\.claim\(\)/);
+  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)\)/);
   assert.match(message, /NA_ENABLE_MANUAL_UPDATES/);
   assert.match(message, /caches\.open\(MANUAL_UPDATE_MARKER_CACHE\)/);
   assert.match(message, /NA_ACTIVATE_UPDATE/);

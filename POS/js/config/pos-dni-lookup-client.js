@@ -5,9 +5,8 @@
 (function (root) {
   'use strict';
   var doc = root.document; if (!doc) return;
-  var TIMEOUT_MS = 3000, seq = 0, asked = {};
+  var TIMEOUT_MS = 3000, seq = 0, asked = {}, inflight = null;
   function clean(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' '); }
-  function cloud() { try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()); } catch (_) { return false; } }
   function legacyList() { try { return Array.isArray(clientes) ? clientes : []; } catch (_) { return []; } } // eslint-disable-line no-undef
   function canonList() {
     try { var s = root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.snapshot && root.NuevoAmanecerCanonical.snapshot(); return Array.isArray(s && s.customers) ? s.customers : []; } catch (_) { return []; }
@@ -33,38 +32,55 @@
     var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) card.classList.add('open');
     call('toast', 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.', 'info');
   }
-  function withTimeout(p) {
-    return Promise.race([p, new Promise(function (_, rej) { root.setTimeout(function () { rej(new Error('TIMEOUT')); }, TIMEOUT_MS); })]);
-  }
   var MANUAL = 'No se encontró el nombre. Escríbalo a mano.';
-  async function check() {
+  var SLOW = 'La búsqueda tarda. Escriba el nombre a mano; si llega, se completa solo.';
+  function apply(out, dni) {
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
-    if (!input || !nameEl) return;
-    var dni = clean(input.value), my = ++seq;
-    if (!/^\d{8}$/.test(dni)) { hint(''); return; }
-    var local = findLocal(dni);
-    if (local) { hint(''); openExisting(local, dni); return; }
-    if (clean(nameEl.value)) { hint(''); return; }
-    if (!cloud() || !root.NA_ROLES || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
-    if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
-    hint('Buscando DNI…');
-    var out;
-    try { out = await withTimeout(root.NA_ROLES.api('/auth/dni-lookup', { dni: dni })); }
-    catch (e) { out = (e && e.data) || { status: 'manual' }; }
-    if (my !== seq || clean(input.value) !== dni) return;
+    if (!input || !nameEl || clean(input.value) !== dni) return;
     if (out.status === 'existing') { hint(''); openExisting({ id: out.customer_id, name: out.name }, dni); return; }
     if (out.status === 'found' && out.name) {
       asked[dni] = { name: out.name };
-      if (!clean(nameEl.value)) nameEl.value = out.name;
-      hint('Nombre encontrado. Puede corregirlo si hace falta.'); return;
+      if (!clean(nameEl.value)) { nameEl.value = out.name; hint('Nombre encontrado. Puede corregirlo si hace falta.'); }
+      else hint('');
+      return;
     }
-    if (out.reason !== 'timeout' && out.reason !== 'provider_error') asked[dni] = { name: null };
-    hint(/limit/.test(String(out.reason || '')) ? 'Límite de búsquedas alcanzado. Escriba el nombre a mano.' : MANUAL);
+    var reason = String(out.reason || '');
+    // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
+    if (reason === 'not_found') asked[dni] = { name: null };
+    if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
+    else if (reason === 'not_found') hint(MANUAL);
+    else hint('No se pudo buscar ahora. Escriba el nombre a mano.');
+  }
+  async function check() {
+    var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
+    if (!input || !nameEl) return;
+    var modal = doc.getElementById('mCli'); if (modal && !modal.classList.contains('open')) return;
+    var dni = clean(input.value).replace(/\D/g, ''), my = ++seq;
+    if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
+    var local = findLocal(dni);
+    if (local) { hint(''); openExisting(local, dni); return; }
+    if (clean(nameEl.value)) { hint(''); return; }
+    // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
+    if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
+    if (inflight === dni) return; // input + change + paste del mismo DNI: una sola consulta
+    if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
+    hint('Buscando DNI…');
+    var done = false; inflight = dni;
+    // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
+    root.setTimeout(function () { if (!done && my === seq) hint(SLOW); }, TIMEOUT_MS);
+    var out;
+    try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
+    catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: e && e.message === 'SIN_SESION' ? 'no_session' : 'network' }; }
+    done = true; if (inflight === dni) inflight = null;
+    if (my !== seq && clean(doc.getElementById('cDni') && doc.getElementById('cDni').value) !== dni) return;
+    apply(out, dni);
   }
   function bind() {
     var input = doc.getElementById('cDni'); if (!input || input.dataset.naDni) return;
     input.dataset.naDni = '1'; input.setAttribute('inputmode', 'numeric');
-    input.addEventListener('input', function () { check(); });
+    // Algunos teclados de celular (autocompletar, pegar, dictado) no disparan «input» al final.
+    ['input', 'change', 'blur', 'keyup'].forEach(function (ev) { input.addEventListener(ev, function () { check(); }); });
+    input.addEventListener('paste', function () { root.setTimeout(check, 0); });
   }
   root.NA_DNI_LOOKUP = { check: check, findLocal: findLocal };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', bind); else bind();
