@@ -96,7 +96,7 @@ test('a definitive foreign rejection remains durable and displays its real reaso
  const before=JSON.stringify(first.api.pendingSnapshot());
  assert.equal(await first.context.cerrarCaja(),false);
  assert.equal(JSON.stringify(first.api.pendingSnapshot()),before);
- assert.match(first.el('cajCloseStatus').textContent,/sin confirmar \(un movimiento de caja\)/);
+ assert.match(first.el('cajCloseStatus').textContent,/un movimiento de caja que el servidor rechazó \(la caja cambió en otro equipo\)/);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,0);
 });
 test('a previously committed cash payment with lost ACK is counted only once before closure',async t=>{
