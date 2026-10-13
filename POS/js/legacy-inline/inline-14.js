@@ -4,7 +4,7 @@ function _naSecProductVisibleInPos(product){
   return !_naTracksStock(product)||_naNumber(product.stock)>0;
 }
 function _naSecRenderProductImage(visual,product,safeImage,size){
-  const placeholder=()=>{if(window.NA_ICON&&NA_ICON_IS_DEFAULT_PRODUCT(product?.icon))visual.innerHTML=NA_ICON('box','na-li-product');else visual.textContent=product?.icon||'📦';};
+  const placeholder=()=>{if(window.NA_ICON&&NA_ICON_IS_DEFAULT_PRODUCT(product?.icon)){visual.textContent='';visual.classList.add('na-noimg');}else visual.textContent=product?.icon||'📦';};
   if(!safeImage){placeholder();return;}
   const image=document.createElement('img');
   image.src=safeImage;

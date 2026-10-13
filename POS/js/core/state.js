@@ -133,7 +133,7 @@
     if(el&&typeof el.scrollTop==='number')return el.scrollTop||0;
     return window.scrollY||document.documentElement.scrollTop||0;
   }
-  function resetState(owner){upGestureCount=0;touchDelta=0;touchActive=false;touchOwner=null;scrollAnchor=currentScroll(owner);wheelGroupDir=null;wheelGroupDist=0;wheelGroupActive=false;wheelOwner=null;if(wheelTimer){clearTimeout(wheelTimer);wheelTimer=null;}}
+  function resetState(owner,noRead){upGestureCount=0;touchDelta=0;touchActive=false;touchOwner=null;scrollAnchor=noRead?0:currentScroll(owner);wheelGroupDir=null;wheelGroupDist=0;wheelGroupActive=false;wheelOwner=null;if(wheelTimer){clearTimeout(wheelTimer);wheelTimer=null;}}
   function significantDown(owner){var st=currentScroll(owner);if(st<=NEAR_TOP){show();resetState(owner);return;}hide();cancelGesture();scrollAnchor=st;}
   function isExcluded(el){
     while(el&&el!==document.body){
@@ -211,7 +211,7 @@
     var id=page?page.id:'';
     if(id!==lastActivePage){lastActivePage=id;show();resetState();}
   }
-  modeActive=gesturesActive();lastActivePage=(activePageEl()||{}).id||'';resetState();
+  modeActive=gesturesActive();lastActivePage=(activePageEl()||{}).id||'';resetState(null,true); // arranque: la página está arriba; no leer scrollTop (evita forzar layout)
   if(typeof MutationObserver==='function'){
     new MutationObserver(syncMode).observe(document.body,{attributes:true,attributeFilter:['class']});
     new MutationObserver(syncMode).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
