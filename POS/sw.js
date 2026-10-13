@@ -46,6 +46,7 @@ const PRECACHE_URLS = [
   './css/canon-ventas-tabs.css',
   './css/canon-ux-fixes.css',
   './css/config-e2.css',
+  './css/config-v9.css',
   './css/experience-v2/pages/gastos.css',
   './css/experience-v2/pages/configuracion.css',
   './css/experience-v2/animations/motion.css',
@@ -120,7 +121,7 @@ const PRECACHE_URLS = [
   './js/config/config-g.js',
   './js/config/pos-reviews-client.js',
   './js/config/pos-annul-client.js',
-  './js/modules/discount-sheet.js','./js/config/pos-sale-note-client.js','./js/config/pos-purchases-client.js',
+  './js/modules/discount-sheet.js','./js/config/pos-sale-note-client.js','./js/config/pos-purchases-client.js','./js/config/config-v9.js',
   './js/config/pos-roles-client.js',
   './js/core/lazy-assets.js'
 ];
