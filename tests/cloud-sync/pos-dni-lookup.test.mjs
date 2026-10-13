@@ -116,3 +116,10 @@ test('fetch compatible con Cloudflare Workers: nunca redirect "error"', async ()
   assert.ok(['follow', 'manual', undefined].includes(seen.redirect));
   assert.deepEqual(await queryDecolecta('12345678', 't', async () => new Response('', { status: 302 })), { status: 'provider_error' });
 });
+
+test('celular: respuesta lenta completa el nombre después; fallo de red no se recuerda como «sin nombre»', () => {
+  const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  assert.ok(!/Promise\.race/.test(client), 'no se descarta la respuesta que llega después de 3 s');
+  assert.match(client, /if \(reason === 'not_found'\) asked\[dni\] = \{ name: null \};/);
+  assert.match(client, /reason: 'network'/);
+});
