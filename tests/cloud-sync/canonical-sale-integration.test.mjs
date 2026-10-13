@@ -373,5 +373,5 @@ test('Bot 2 P4: venta guardada y el servidor responde 500: aviso ámbar «guarda
   ob.snapshot=()=>({intents:[{sale_id:'V-001'}]});
   h.calls.timers.shift()();
   await new Promise(r=>setTimeout(r,10));
-  assert.ok(h.calls.toast.some(([m,tone])=>/Venta V-001 guardada, falta confirmar con el servidor \(falla del servidor\)/.test(m)&&tone==='warning'));
+  assert.ok(h.calls.toast.some(([m,tone])=>/Venta V-001 guardada, falta confirmar con el servidor \(el servidor respondió con un error\)/.test(m)&&tone==='warning'));
 });

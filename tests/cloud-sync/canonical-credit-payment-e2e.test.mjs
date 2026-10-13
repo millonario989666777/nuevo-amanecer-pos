@@ -525,3 +525,46 @@ test('Bot 2 P1: con un abono pendiente, el formulario de OTRO abono nunca se con
   rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT'");
   assert.equal(rows.length, 2); assert.notEqual(rows[1].operation_id, firstOp);
 });
+
+test('Hotfix 5: abono no confirmado sobrevive a la recarga con el mismo id, aviso ámbar y sin duplicado', async (t) => {
+  const f = await activeCanon(t);
+  let dropAck = true;
+  const tab = await device(f, { token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url, options, forward) { if (url.endsWith('/commands/payment.create') && dropAck) { dropAck = false; await forward(); throw new TypeError('lost'); } return null; } });
+  fill(tab, { amount: '3', method: 'yape', reference: 'OP-RELOAD-1' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
+  const op = tab.api.pendingSnapshot().payload.operation_id;
+  // Recarga: mismo almacenamiento, programa nuevo.
+  const re = await device(f, { token: 'device-a-token', localStorage: tab.localStorage, scripts });
+  const p2 = re.api.pendingSnapshot();
+  assert.equal(p2.command, 'payment.create'); assert.equal(p2.payload.operation_id, op, 'mismo id tras recargar');
+  // Otro monto en el formulario: no se consume; aviso ámbar «revisando».
+  fill(re, { amount: '1', method: 'yape', reference: 'OP-RELOAD-2' });
+  assert.equal(await re.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false, 'el otro abono no se registra mientras se revisa el anterior');
+  assert.match(re.context.NuevoAmanecerCanonicalCreditPaymentBridge.netState(), /done|checking/, 'el anterior se resuelve con el servidor (mismo id) antes de cualquier otro');
+  assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT' AND operation_id=?", op).n, 1, 'sin duplicado');
+  // Mismo abono: se confirma con el mismo id, sin segundo pago.
+  fill(re, { amount: '3', method: 'yape', reference: 'OP-RELOAD-1' });
+  await re.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm();
+  const rows = f.all("SELECT operation_id FROM canonical_financial_events WHERE event_type='PAYMENT' AND credit_delta_cents=-300");
+  assert.equal(rows.length, 1); assert.equal(rows[0].operation_id, op);
+  assert.equal(re.api.pendingSnapshot(), null);
+});
+
+test('Bot 2 ítem 6: tras recargar, al abrir la ficha del cliente el abono no confirmado se ve en ámbar (sin reenviar)', async (t) => {
+  const f = await activeCanon(t);
+  let dropAck = true;
+  const tab = await device(f, { token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url, options, forward) { if (url.endsWith('/commands/payment.create') && dropAck) { dropAck = false; await forward(); throw new TypeError('lost'); } return null; } });
+  fill(tab, { amount: '3', method: 'yape', reference: 'OP-CARD-1' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
+  const re = await device(f, { token: 'device-a-token', localStorage: tab.localStorage, scripts });
+  // Ficha del cliente: botón de cobro con su contenedor (DOM mínimo).
+  let box = null; const parent = { querySelector: () => box, insertBefore: (b) => { box = b; } };
+  const btn = re.context.document.getElementById('naV2BatchSubmit'); btn.parentElement = parent;
+  re.context.document.createElement = (tag) => ({ tag, className: '', hidden: false, textContent: '', children: [], setAttribute() {}, appendChild(c) { this.children.push(c); }, append(...c) { this.children.push(...c); } });
+  const posts0 = re.fetchLog.filter(x => x.url.endsWith('/commands/payment.create')).length;
+  assert.equal(re.context.NuevoAmanecerCanonicalCreditPaymentBridge.showPendingOnCard(), true, 'se dibuja al abrir la ficha');
+  assert.match(box.className, /checking/);
+  assert.equal(re.fetchLog.filter(x => x.url.endsWith('/commands/payment.create')).length, posts0, 'dibujarlo no reenvía nada');
+});

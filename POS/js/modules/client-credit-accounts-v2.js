@@ -1646,7 +1646,10 @@ function labCreditDisplayMoment(cr, fallbackDate) {
     if (labClientScreenState.route === 'category') {
       var cat = labCategoriesForClient(client).find(function (x) { return String(x.id) === String(labClientScreenState.categoryId); });
       if (!cat) { labClientScreenState.route = 'home'; return labRenderRoute('replace'); }
-      return labRenderScreen(labCategoryHtml(client, cat), direction);
+      var out = labRenderScreen(labCategoryHtml(client, cat), direction);
+      // Abono «no confirmado» (también tras recargar): aviso ámbar al abrir la ficha.
+      try { var pb = root.NuevoAmanecerCanonicalCreditPaymentBridge; if (pb && pb.showPendingOnCard) { pb.showPendingOnCard(); setTimeout(function () { pb.showPendingOnCard(); }, 350); } } catch (_) {}
+      return out;
     }
     var cr = labClientCredits(client.id).find(function (x) { return String(x.id) === String(labClientScreenState.creditId || labClientScreenState.purchaseId); });
     if (labClientScreenState.route === 'purchase' && cr) return labRenderScreen(labPurchaseHtml(client, cr), direction);

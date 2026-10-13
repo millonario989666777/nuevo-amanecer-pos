@@ -237,10 +237,10 @@
     var run = function () {
       Promise.resolve().then(function () { return outbox.sync(); }).then(function (r) {
         var offline = root.navigator && root.navigator.onLine === false;
-        if (r && /^(WAITING|BLOCKED_)/.test(String(r.status || ''))) warnIfUnconfirmed(outbox, saleId, offline || /OFFLINE|Failed to fetch|NetworkError|AUTHORITY_UNAVAILABLE|TIMEOUT/i.test(String(r.reason || '')) ? 'sin conexión' : /5\d\d|internal|storage/i.test(String(r.reason || '')) ? 'falla del servidor' : '');
+        if (r && /^(WAITING|BLOCKED_)/.test(String(r.status || ''))) warnIfUnconfirmed(outbox, saleId, offline || /OFFLINE|Failed to fetch|NetworkError|AUTHORITY_UNAVAILABLE|TIMEOUT/i.test(String(r.reason || '')) ? 'sin conexión' : /5\d\d|internal|storage/i.test(String(r.reason || '')) ? 'el servidor respondió con un error' : '');
         else if (saleId && !offline) { try { if (!(outbox.snapshot().intents || []).some(function (x) { return x && x.sale_id === saleId; })) notify('Venta ' + saleId + ' confirmada', 'success'); } catch (_) {} }
       }).catch(function (error) {
-        warnIfUnconfirmed(outbox, saleId, root.navigator && root.navigator.onLine === false ? 'sin conexión' : 'falla del servidor');
+        warnIfUnconfirmed(outbox, saleId, root.navigator && root.navigator.onLine === false ? 'sin conexión' : 'el servidor respondió con un error');
         if (root.console && typeof root.console.warn === 'function')
           root.console.warn('[Venta CANON] Venta local conservada; sincronización pendiente', error && (error.code || error.message) || 'SYNC_FAILED');
       });

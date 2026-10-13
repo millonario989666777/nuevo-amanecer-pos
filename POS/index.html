@@ -166,7 +166,7 @@
       <button class="cat-btn" data-cat="hogar" onclick="posSetCat(this,'hogar')"><span class="ci">🏠</span>Hogar</button>
       <button class="cat-btn" data-cat="tecnologia" onclick="posSetCat(this,'tecnologia')"><span class="ci">📱</span>Tecnología</button>
       <button class="cat-btn" data-cat="libreria" onclick="posSetCat(this,'libreria')"><span class="ci">✏️</span>Librería</button>
-      <button class="cat-btn" data-cat="servicios" onclick="posSetCat(this,'servicios')"><span class="ci">💳</span>Servicios</button>
+      <button class="cat-btn" data-cat="servicios" onclick="posSetCat(this,'servicios')"><span class="ci"><i class="na-ic na-ic-card" aria-hidden="true"></i></span>Servicios</button>
     </aside>
 
     <!-- Área de productos -->
@@ -965,7 +965,7 @@
 </div>
 <div class="modal-overlay" id="mLineaCreditoManual" style="z-index:340">
   <div class="modal" style="max-width:520px">
-    <div class="mhead purple"><div class="mhead-title">💳 Ajustar línea de crédito</div><button class="btn-close-m" onclick="cerrarModal('mLineaCreditoManual')">✕</button></div>
+    <div class="mhead purple"><div class="mhead-title"><i class="na-ic na-ic-card" aria-hidden="true"></i> Ajustar línea de crédito</div><button class="btn-close-m" onclick="cerrarModal('mLineaCreditoManual')">✕</button></div>
     <div class="mbody">
       <div class="credit-modal-summary" id="lineaManualResumen"></div>
       <div class="fg"><div class="fl">Línea manual asignada (S/) <span class="req">*</span></div><input class="fi-big" id="lineaManualMonto" type="number" inputmode="decimal" min="0" max="1000000" step="0.50" onfocus="if(Number(this.value)===0)this.value=''" oninput="actualizarAdvertenciaLineaManual()"></div>
@@ -1108,17 +1108,25 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
     // Una venta en curso (carrito con productos o cobro guardándose) nunca se pierde por actualizar:
     // la recarga espera a que el carrito quede vacío y el cobro termine.
-    // Cuenta toda operación de dinero: venta (carrito, cobro, envío o cola), abono, compra y cierre de caja
-    // pendientes o en envío. La recarga por versión nueva espera a que no quede ninguna.
+    // Solo cuenta lo que se está ENVIANDO ahora (o el carrito en pantalla): lo guardado en el aparato
+    // (ventas en cola o en revisión, compra trabada, cierre rechazado) sobrevive a la recarga igual.
+    // El abono «no confirmado» tampoco bloquea: tras recargar conserva su id y la ficha lo muestra en ámbar.
     function moneyOpInProgress() {
       try { if (typeof posProc !== 'undefined' && posProc) return true; } catch (_) {}
       try { if (typeof cart !== 'undefined' && cart && cart.length > 0) return true; } catch (_) {}
-      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob && ((ob.busy && ob.busy()) || (ob.snapshot().intents || []).length)) return true; } catch (_) {}
-      try { var cl = window.NuevoAmanecerCanonical; if (cl && cl.pendingSnapshot && cl.pendingSnapshot()) return true; } catch (_) {}
+      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob && ob.busy && ob.busy()) return true; } catch (_) {}
+      try { var cb = window.NuevoAmanecerCanonicalCashBridge; if (cb && cb.closing && cb.closing()) return true; } catch (_) {}
       try { var cp = window.NuevoAmanecerCanonicalCreditPaymentBridge; if (cp && cp.busy && cp.busy()) return true; } catch (_) {}
       try { if (window.NAPurchaseBusy && window.NAPurchaseBusy()) return true; } catch (_) {}
-      try { var po = localStorage.getItem('na_purchase_pending_ops_v2'), p1 = localStorage.getItem('na_purchase_pending_op_v1'); if (p1 || (po && po !== '{}')) return true; } catch (_) {}
       return false;
+    }
+    // Cuántas cosas guardadas quedan por revisar (no impiden recargar).
+    function pendingToReview() {
+      var n = 0;
+      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob) { n += (ob.snapshot().intents || []).length; n += ((ob.quarantine && ob.quarantine().entries) || []).filter(function (e) { return e.status === 'QUARANTINED'; }).length; } } catch (_) {}
+      try { var cl = window.NuevoAmanecerCanonical, pr = cl && cl.pendingSnapshot && cl.pendingSnapshot(); if (pr) n++; } catch (_) {}
+      try { var po = JSON.parse(localStorage.getItem('na_purchase_pending_ops_v2') || '{}'); n += Object.keys(po || {}).length; } catch (_) {}
+      return n;
     }
     var saleInProgress = moneyOpInProgress;
 
@@ -1140,7 +1148,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       // Mientras se descarga, el botón no acepta clics: antes el primer clic esperaba la
       // instalación (hasta 15 s) y parecía no responder.
       if (downloading) setUpdateUi(message || 'Descargando la versión nueva…', 'working', 'Descargando…', false, true);
-      else setUpdateUi(message || 'Hay una versión nueva, recarga.', 'ready', 'Recargar', true, true);
+      else { var nr = pendingToReview(); setUpdateUi(message || ('Hay una versión nueva, recarga.' + (nr ? ' Quedan ' + nr + (nr === 1 ? ' operación' : ' operaciones') + ' por revisar; se conservan al recargar.' : '')), 'ready', 'Recargar', true, true); }
       try { window.dispatchEvent(new CustomEvent('na:version-update-pending')); } catch (_) {}
     }
 
