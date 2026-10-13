@@ -52,12 +52,12 @@
       + '<button type="button" class="na-cfg-save-btn" id="naPinSave">Guardar PIN</button></div></div>'
       + '<div class="cfg-business-note">Los cajeros y sus permisos locales siguen en Negocio › Cajeros locales. Para que un empleado use otro celular, ve a Aparatos conectados.</div>';
   }
-  async function savePin() {
+  async function savePin(who) {
     var cur = doc.getElementById('naPinCurrent'), a = doc.getElementById('naPinNew'), b = doc.getElementById('naPinNew2');
     var clear = function () { [cur, a, b].forEach(function (i) { if (i) i.value = ''; }); };
     if (!/^\d{4,8}$/.test(a.value)) { toast('El PIN debe tener de 4 a 8 dígitos.', 'error'); return; }
     if (a.value !== b.value) { toast('Los dos PIN nuevos no coinciden.', 'error'); return; }
-    try { await R().api('/auth/owner-pin', { new_pin: a.value, current_pin: cur ? cur.value : undefined }); clear(); await R().refresh(); toast('PIN del dueño guardado'); render('usuarios'); }
+    try { await R().api('/auth/owner-pin', { new_pin: a.value, current_pin: cur ? cur.value : undefined }); clear(); await R().refresh(); toast('PIN del ' + (who === 'admin' ? 'admin' : 'dueño') + ' guardado'); render('usuarios'); }
     catch (e) { clear(); toast(R().message(e), 'error'); }
   }
 
@@ -317,5 +317,12 @@
   if (cloud()) setTimeout(function () { try { if (!R() || !R().isOwner()) applyServer(); } catch (_) {} }, 0);
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', install); else install();
   root.addEventListener('load', install);
-  root.NA_CONFIG_G = { render: render, unconfirmedSales: unconfirmedSales, pullSettings: pullSettings, pushSettings: pushSettings, discountLog: function () { return JSON.parse(JSON.stringify(discountLog())); } };
+  // Configuración v9 (PC/tablet): guardar ya y esperar al servidor para mostrar «Guardado ✓».
+  async function flush() {
+    clearTimeout(pushTimer);
+    try { if (baseSave) await baseSave(); else if (typeof root.saveAppState === 'function') await root.saveAppState(); } catch (_) {}
+    if (!cloud() || !R()) return { ok: true, local: true };
+    return pushSettings();
+  }
+  root.NA_CONFIG_G = { flush: flush, savePin: savePin, loadDevices: loadDevices, render: render, unconfirmedSales: unconfirmedSales, pullSettings: pullSettings, pushSettings: pushSettings, discountLog: function () { return JSON.parse(JSON.stringify(discountLog())); } };
 })(window);

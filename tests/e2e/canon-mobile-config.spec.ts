@@ -10,20 +10,40 @@ async function openConfig(page,width){
 }
 
 // Etapa 2: en celular Configuración abre una lista de secciones; cada sección es su pantalla,
-// sin acordeones ni íconos "i". En tablet/PC: lista a la izquierda y formulario a la derecha.
-for(const width of [320,360,390,430,768,1024,1366,1920])test('settings '+width,async({page})=>{
+// sin acordeones ni íconos "i". En celular no cambia nada.
+for(const width of [320,360,390,430])test('settings '+width,async({page})=>{
   await openConfig(page,width);
-  if(width<768){
-    await expect(page.locator('#cfgSidebar [data-cfgcat="negocio"]')).toBeVisible();
-    await expect(page.locator('#cfgNombre')).toBeHidden();
-    await page.locator('#cfgSidebar [data-cfgcat="negocio"]').click();
-  }
+  await expect(page.locator('#cfgSidebar [data-cfgcat="negocio"]')).toBeVisible();
+  await expect(page.locator('#cfgNombre')).toBeHidden();
+  await expect(page.locator('#naCfgV9')).toBeHidden();
+  await page.locator('#cfgSidebar [data-cfgcat="negocio"]').click();
   await expect(page.locator('#cfgNombre')).toBeVisible();
   await expect(page.locator('#cfgContent .cfg-accordion-toggle')).toHaveCount(0);
   await expect(page.locator('#cfgContent .cfg-help-toggle')).toHaveCount(0);
   await expect(page.locator('#cfgContent .na-cfg-save-btn')).toBeVisible();
-  if(width<768)await expect(page.locator('#naMobileMenuToggle')).toBeHidden();
+  await expect(page.locator('#naMobileMenuToggle')).toBeHidden();
   for(const cat of ['pos','apariencia','ticket','control','reseteo','importar','info','negocio']){await page.evaluate(cat=>window.switchCfgCategory(cat),cat);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
+});
+
+// PC y tablet (>= 701 px): Configuración v9 aprobada por el admin. 5 temas con pestañas y Reseteo al final.
+for(const width of [768,1024,1366,1920])test('settings v9 '+width,async({page})=>{
+  await openConfig(page,width);
+  await expect(page.locator('#naCfgV9')).toBeVisible();
+  await expect(page.locator('#cfgSidebar')).toBeHidden();
+  await expect(page.locator('#na9Nav [data-top]')).toHaveCount(6);
+  await expect(page.locator('#na9Nav .na9-reset [data-top="reset"]')).toBeVisible();
+  await page.locator('#na9Nav [data-top="neg"]').click();
+  await page.locator('#naCfgV9 [data-tab="datos"]').click();
+  await expect(page.locator('[data-na9="biz.nombre"]')).toBeVisible();
+  const tabs={prod:['stock','igv'],ventas:['pv','cred'],neg:['datos','ticket'],pers:['pin','devs','perm'],sis:['apar','backup','estado']};
+  for(const [top,list] of Object.entries(tabs))for(const tab of list){
+    await page.locator(`#na9Nav [data-top="${top}"]`).click();await page.locator(`#naCfgV9 [data-tab="${tab}"]`).click();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(await page.evaluate(()=>/Dueño|dueño/.test(document.getElementById('na9Main').innerText))).toBe(false);
+  }
+  await page.locator('#na9Nav [data-top="neg"]').click();await page.locator('#naCfgV9 [data-tab="ticket"]').click();
+  await expect(page.locator('#naCfgV9')).toContainText('no son comprobantes electrónicos SUNAT');
+  await expect(page.locator('#na9Tk')).toContainText(/Sungaro/i);
 });
 
 test('mobile: back to sections list and edits are retained',async({page})=>{
@@ -48,14 +68,14 @@ test('appearance is clamped 85-125, saved per device and resettable',async({page
   expect(await page.evaluate(()=>localStorage.getItem('na_appearance_v1'))).toBeNull();
 });
 
-// Tablet vertical (768-960): la lista de secciones queda fija a la izquierda, sin ☰ deslizable.
+// Tablet vertical (768-960): la lista de temas queda fija a la izquierda, sin ☰ deslizable.
 for(const width of [768,820,960])test('tablet portrait fixed section list '+width,async({page})=>{
   await openConfig(page,width);
-  const sb=await page.locator('#cfgSidebar').boundingBox(),ct=await page.locator('#cfgContent').boundingBox();
+  const sb=await page.locator('#na9Nav').boundingBox(),ct=await page.locator('#na9Main').boundingBox();
   expect(sb.x).toBeGreaterThanOrEqual(0);expect(ct.x).toBeGreaterThanOrEqual(sb.x+sb.width-1);
   await expect(page.locator('#pageConfig .cfg-menu-toggle')).toBeHidden();
-  await page.locator('#cfgSidebar [data-cfgcat="apariencia"]').click();
-  await expect(page.locator('#naAppearancePanel')).toBeVisible();
+  await page.locator('#na9Nav [data-top="sis"]').click();await page.locator('#naCfgV9 [data-tab="apar"]').click();
+  await expect(page.locator('#naCfgV9 .na9-themes .na9-th')).toHaveCount(5);
   await expect(page.locator('#cfgFontSize')).toHaveCount(0);
 });
 
