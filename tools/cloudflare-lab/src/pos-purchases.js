@@ -40,8 +40,14 @@ export async function purchasesRoute(request, env, auth, json) {
     const one = new URL(request.url).searchParams.get('id');
     if (one != null) {
       if (!ID.test(one)) return json({ error: 'invalid_identity' }, 400);
-      const r = await db.prepare('SELECT purchase_id,status,line_count,total_cost_cents,created_at,completed_at FROM pos_purchases WHERE purchase_id=?1').bind(one).first();
-      return json({ purchase_id: one, status: !r ? 'not_found' : r.status === 'aplicada' ? 'applied' : 'in_progress', purchase: r || null });
+      const r = await db.prepare('SELECT purchase_id,status,line_count,total_cost_cents,supplier,document_ref,created_at,completed_at FROM pos_purchases WHERE purchase_id=?1').bind(one).first();
+      // Para una compra a medias, qué líneas ya sumaron stock (la app las muestra y completa solo las que faltan).
+      let lines = [];
+      if (r) {
+        lines = (await db.prepare('SELECT line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(one).all()).results || [];
+        for (const l of lines) l.applied = !!(await db.prepare('SELECT 1 ok FROM canonical_inventory_operations WHERE operation_id=?1').bind(one + ':' + l.line_number).first());
+      }
+      return json({ purchase_id: one, status: !r ? 'not_found' : r.status === 'aplicada' ? 'applied' : 'in_progress', purchase: r || null, lines });
     }
     const rows = (await db.prepare('SELECT purchase_id,supplier,document_ref,total_cost_cents,line_count,status,created_at,completed_at FROM pos_purchases ORDER BY created_at DESC LIMIT 300').all()).results || [];
     const ids = rows.map(r => r.purchase_id);
