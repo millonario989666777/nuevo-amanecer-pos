@@ -188,6 +188,121 @@
     return true;
   }
 
+
+  // ── Avisos dentro del modal de abono (no toasts) ─────────────────────────────
+  // Caso A (sin red antes de enviar): rojo, persistente; Confirmar desactivado mientras no haya red.
+  // Caso B (se envió y no llegó la respuesta): ámbar "No confirmado, revisando…"; al volver la red se
+  // reintenta la MISMA operación (mismo operation_id: el servidor no crea un segundo abono) y se
+  // releen saldos y abonos antes de permitir otro cobro.
+  var netState = null, reviewTimer = null;
+  function netBox() {
+    try { return netBoxUnsafe(); } catch (_) { return null; }
+  }
+  function netBoxUnsafe() {
+    var modal = root.document.getElementById('mPagoCred'); if (!modal || typeof modal.querySelector !== 'function' || typeof root.document.createElement !== 'function') return null;
+    var box = modal.querySelector('#naPayNet');
+    if (!box) {
+      box = root.document.createElement('div'); box.id = 'naPayNet'; box.className = 'na-pay-net'; box.hidden = true;
+      box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite');
+      var btn = root.document.getElementById('pagoConfirmBtn'), host = btn && btn.parentElement;
+      // Dentro de la barra fija del botón: siempre visible junto a Confirmar.
+      if (host && typeof host.insertBefore === 'function') host.insertBefore(box, host.firstChild);
+      else (modal.querySelector('.mbody') || modal).appendChild(box);
+    }
+    return box;
+  }
+  function showNet(kind, text) {
+    netState = kind || null;
+    var box = netBox(), btn = root.document.getElementById('pagoConfirmBtn');
+    if (box) try {
+      box.hidden = !kind; box.className = 'na-pay-net' + (kind ? ' ' + kind : '');
+      box.textContent = '';
+      if (kind) {
+        var mark = root.document.createElement('span'); mark.setAttribute('aria-hidden', 'true');
+        if (kind === 'checking') mark.className = 'na-pay-spin'; else mark.textContent = '⚠';
+        var label = root.document.createElement('span'); label.textContent = text;
+        box.append(mark, label);
+      }
+    } catch (_) {}
+    if (btn) {
+      if (!btn.dataset) btn.dataset = {};
+      if (!btn.dataset.naLabel) btn.dataset.naLabel = btn.textContent;
+      if (kind === 'checking') { btn.disabled = true; btn.textContent = 'Revisando…'; }
+      else if (kind === 'offline') { btn.disabled = true; btn.textContent = btn.dataset.naLabel; }
+      else { btn.disabled = false; btn.textContent = btn.dataset.naLabel; }
+    }
+  }
+  async function online(client) {
+    if (root.navigator && root.navigator.onLine === false) return false;
+    if (client && typeof client.ping === 'function') { try { return await client.ping(2500); } catch (_) { return false; } }
+    return true;
+  }
+  function scheduleReview(ms) {
+    if (reviewTimer) root.clearTimeout(reviewTimer);
+    reviewTimer = root.setTimeout(reviewPending, ms || 5000);
+    try { if (reviewTimer && typeof reviewTimer.unref === 'function') reviewTimer.unref(); } catch (_) {}
+  }
+  async function reviewPending() {
+    reviewTimer = null;
+    if (netState !== 'checking' || busy) return;
+    var client = api(), pending = pendingRecord();
+    if (!pending || pending.command !== 'payment.create' || pending.invalid) { showNet(null); try { await refreshCanonical(); } catch (_) {} return; }
+    if (!(await online(client))) { scheduleReview(5000); return; }
+    var amount = pending.payload && pending.payload.amount_cents, replay;
+    busy = true;
+    try { replay = await client.retryPending(); }
+    catch (error) {
+      busy = false;
+      var after = pendingRecord();
+      if (after && after.last_error) {
+        await releaseDefinitiveRejection(client);
+        try { await refreshCanonical(); } catch (_) {}
+        showNet('rejected', describePendingFailure(error));
+        var btn = root.document.getElementById('pagoConfirmBtn'); if (btn) btn.disabled = false;
+        return;
+      }
+      scheduleReview(5000); return;
+    }
+    busy = false;
+    showNet(null);
+    try { await refreshCanonical(); } catch (_) {}
+    try { root.NAReceiptShare?.onPayment(findCredit(api().legacySnapshot(), pending.payload.credit_id), replay, amount, pending.payload.payment_method, pending.payload.reference, pending.payload.created_at); } catch (_) {}
+    await afterCommit(replay, amount, true);
+  }
+  root.addEventListener && root.addEventListener('online', function () {
+    if (netState === 'checking') scheduleReview(300);
+    else if (netState === 'offline') online(api()).then(function (ok) { if (ok && netState === 'offline') showNet(null); });
+  });
+  // Al abrir el modal: si hay un abono enviado sin confirmar, se muestra "revisando"; si no hay red, el aviso rojo.
+  function onModalOpen() {
+    if (!enabled()) return;
+    var pending = pendingRecord();
+    if (pending && pending.command === 'payment.create' && !pending.invalid && !pending.last_error) { showNet('checking', 'No confirmado, revisando…'); scheduleReview(500); return; }
+    if (root.navigator && root.navigator.onLine === false) showNet('offline', 'Sin conexión: el abono no se registró');
+    else if (netState !== 'checking') showNet(null);
+  }
+  function watchModal() {
+    var modal = root.document && root.document.getElementById('mPagoCred');
+    if (!modal || typeof root.MutationObserver !== 'function') return;
+    var was = modal.classList.contains('open');
+    new root.MutationObserver(function () { var now = modal.classList.contains('open'); if (now && !was) onModalOpen(); was = now; }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+  }
+  if (root.document && root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', watchModal); else watchModal();
+  root.addEventListener && root.addEventListener('offline', function () {
+    var modal = root.document.getElementById('mPagoCred');
+    if (modal && modal.classList.contains('open') && netState !== 'checking') showNet('offline', 'Sin conexión: el abono no se registró');
+  });
+
+  function batchNotice(kind, text) {
+    try { batchNoticeUnsafe(kind, text); } catch (_) {}
+  }
+  function batchNoticeUnsafe(kind, text) {
+    var btn = root.document.getElementById('naV2BatchSubmit'); if (!btn || !btn.parentElement || typeof btn.parentElement.querySelector !== 'function') return;
+    var box = btn.parentElement.querySelector('.na-pay-net-batch');
+    if (!box) { box = root.document.createElement('div'); box.className = 'na-pay-net na-pay-net-batch'; box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite'); btn.parentElement.insertBefore(box, btn); }
+    box.hidden = !kind; box.className = 'na-pay-net na-pay-net-batch' + (kind ? ' ' + kind : ''); box.textContent = '';
+    if (kind) { var m = root.document.createElement('span'); m.setAttribute('aria-hidden', 'true'); if (kind === 'checking') m.className = 'na-pay-spin'; else m.textContent = '⚠'; var t = root.document.createElement('span'); t.textContent = text; box.append(m, t); }
+  }
   async function confirm() {
     if (!enabled()) return false;
     if (busy) return false;
@@ -258,8 +373,15 @@
       }
     }
 
+    if (!(await online(client))) {
+      if (pending) { showNet('checking', 'No confirmado, revisando…'); scheduleReview(5000); }
+      else showNet('offline', 'Sin conexión: el abono no se registró');
+      return false;
+    }
+    if (netState) showNet(null);
+
     var button = root.document.getElementById('pagoConfirmBtn');
-    var label = button?.textContent || '✅ Confirmar';
+    var label = button?.dataset?.naLabel || button?.textContent || '✅ Confirmar';
     busy = true;
     if (button) {
       button.disabled = true;
@@ -341,15 +463,23 @@
       try {
         receipt = await client.createPayment(input);
       } catch (error) {
-        notify(describePendingFailure(error), 'error');
-        await releaseDefinitiveRejection(client);
+        var lost = pendingRecord();
+        if (lost && lost.command === 'payment.create' && !lost.invalid && !lost.last_error) {
+          // Enviado sin respuesta: no se sabe si quedó. Se revisa con la MISMA operación.
+          busy = false; showNet('checking', 'No confirmado, revisando…'); scheduleReview(3000);
+          return false;
+        }
+        var why = describePendingFailure(error);
+        if (await releaseDefinitiveRejection(client)) { notify(why, 'error'); showNet('rejected', why); return false; }
+        if (!(await online(client))) { showNet('offline', 'Sin conexión: el abono no se registró'); return false; }
+        notify(why, 'error'); showNet('rejected', why);
         return false;
       }
       try { root.NAReceiptShare?.onPayment(credit,receipt,amountCents,method,reference,client.pendingSnapshot?.()?.payload?.created_at||new Date().toISOString()); } catch(_){}
       return await afterCommit(receipt, amountCents, false);
     } finally {
       busy = false;
-      if (button) {
+      if (button && netState !== 'checking' && netState !== 'offline') {
         button.disabled = false;
         button.textContent = label;
       }
@@ -434,6 +564,12 @@
     var client = api();
     var pending = pendingRecord();
     var forceBatchRefresh = false;
+    // Caso A también en el cobro desde la ficha del cliente: sin red no se envía nada y se avisa junto al botón.
+    if (!(await online(client))) {
+      batchNotice(pending ? 'checking' : 'offline', pending ? 'No confirmado, revisando… vuelve a pulsar cuando haya internet; se reintenta la misma operación.' : 'Sin conexión: el abono no se registró');
+      return { ok:false, partial:false, code:'CANONICAL_OFFLINE', completed:[] };
+    }
+    batchNotice(null);
     if (pending) {
       if (pending.invalid || !['payment.create','payment.batch'].includes(pending.command)) {
         return batchFailure('Hay otra operación en curso. Termínala antes de cobrar.',
@@ -676,6 +812,8 @@
     enabled: enabled,
     confirm: confirm,
     confirmBatch: confirmBatch,
-    busy: function () { return busy; }
+    busy: function () { return busy; },
+    netState: function () { return netState; },
+    clearNotice: function () { if (netState !== 'checking') showNet(null); }
   });
 })(globalThis);

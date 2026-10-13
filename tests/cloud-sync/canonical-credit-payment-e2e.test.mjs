@@ -91,7 +91,8 @@ test('payment latency: one POST before receipt; full HTTP reconciliation and ren
   assert.deepEqual([...tab.context.__closed], ['mPagoCred']);
   // The targeted reconciliation (P1-1) may already have its first reads in flight (at most
   // 4 at once), but it never holds the receipt and never touches unrelated collections.
-  const receiptPath = tab.fetchLog.slice(before).map(x => x.method + ' ' + new URL(x.url).pathname);
+  // GET /health: comprobación de red previa (Caso A, cacheada 15 s); no forma parte del recibo.
+  const receiptPath = tab.fetchLog.slice(before).map(x => x.method + ' ' + new URL(x.url).pathname).filter(x => x !== 'GET /health');
   assert.deepEqual(receiptPath.slice(0, 3), ['POST /commands/payment.create', 'GET /read/canonical/status', 'GET /read/canonical/credit-accounts']);
   assert.ok(receiptPath.length <= 5, receiptPath.join(', '));
   assert.ok(receiptPath.slice(3).every(x => /^GET \/read\/canonical\/(?:credits|credit-payments|cash-sessions|cash-movements|financial-events)$/.test(x)), receiptPath.join(', '));
@@ -106,7 +107,7 @@ test('payment latency: one POST before receipt; full HTTP reconciliation and ren
   // P1-1: only this device's payment happened since the validated base, so the
   // reconciliation re-reads exactly what payment.create can change (no products,
   // customers, sales, sale items, inventory or expenses).
-  assert.deepEqual(after.filter(x => x.method === 'GET').map(x => new URL(x.url).pathname.replace('/read/canonical/', '')).sort(),
+  assert.deepEqual(after.filter(x => x.method === 'GET' && !x.url.endsWith('/health')).map(x => new URL(x.url).pathname.replace('/read/canonical/', '')).sort(),
     ['cash-movements', 'cash-sessions', 'credit-accounts', 'credit-payments', 'credits', 'financial-events', 'status']);
   assert.equal(tab.api.sourceState().validation, 'current');
   assert.equal(creditOf(tab).saldo, 6);
@@ -234,7 +235,8 @@ test('lost ACK after commit: retry reuses the same operation_id and never duplic
   const afterFirstStatusReads = tab.fetchLog.filter(x => x.url.endsWith('/read/canonical/status')).length;
   assert.equal(afterFirstStatusReads - initialStatusReads, 0, 'no additional status GET before first payment POST');
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n, 1, 'server committed');
-  assert.ok(tab.toasts.some(([m]) => /NO lo registres de nuevo/.test(m)));
+  // Caso B: aviso ámbar dentro del modal (no toast) y el modal sigue abierto.
+  assert.equal(tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.netState(), 'checking');
   assert.deepEqual(tab.context.__closed, [], 'modal stays open while unconfirmed');
   const pending = tab.api.pendingSnapshot();
   assert.equal(pending.command, 'payment.create');
@@ -430,4 +432,18 @@ test('committed batch with a stalled receipt body replays once after bounded sta
   await tab.api.refresh();
   assert.equal(f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='PAYMENT'").n,1);
   assert.equal(creditOf(tab).saldo,6);
+});
+
+test('Caso A: sin red antes de enviar no se manda nada y el aviso rojo queda en el modal', async (t) => {
+  const f = await activeCanon(t);
+  const tab = await device(f, {
+    token: 'device-a-token', deviceId: 'device-a', scripts,
+    async onFetch(url) { if (url.endsWith('/health')) throw new TypeError('offline'); return null; },
+  });
+  fill(tab, { amount: '2', method: 'yape', reference: 'OFF-1' });
+  assert.equal(await tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.confirm(), false);
+  assert.equal(tab.context.NuevoAmanecerCanonicalCreditPaymentBridge.netState(), 'offline');
+  assert.equal(tab.fetchLog.filter(x => x.url.endsWith('/commands/payment.create')).length, 0, 'nothing sent');
+  assert.equal(tab.api.pendingSnapshot(), null, 'no pending operation created');
+  assert.deepEqual(tab.context.__closed, [], 'modal stays open');
 });

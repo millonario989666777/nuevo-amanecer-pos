@@ -77,7 +77,13 @@ test('admite línea VARIOS trazable y sigue bloqueando modos no soportados', () 
   assert.throws(() => api.build({ ...base(), ventaModo: 'caja' }), { code: 'VENTA_MODO_CAJA_UNSUPPORTED' });
   assert.throws(() => api.build({ payment_method: 'efectivo', items: [{ product_id: 'p', quantity: 1, unit_price_cents: 10, unitsPerQty: 12 }] }), { code: 'UNITS_PER_QTY_UNSUPPORTED' });
   assert.throws(() => api.build({ ...base(), unidadesSinStock: 1 }), { code: 'STOCK_NEGATIVO' });
-  assert.throws(() => api.build({ payment_method: 'efectivo', items: [{ product_id: 'p', quantity: 1, unit_price_cents: 10 }, { product_id: 'p', quantity: 2, unit_price_cents: 10 }] }), { code: 'PRODUCT_ID_DUPLICATE' });
+  assert.throws(() => api.build({ payment_method: 'efectivo', items: [{ product_id: 'p', quantity: 1, unit_price_cents: 10 }, { product_id: 'p', quantity: 2, unit_price_cents: 12 }] }), { code: 'PRODUCT_ID_DUPLICATE_PRICE' });
+});
+
+test('mismo producto en dos líneas con el mismo precio: se une en una línea (cantidad sumada, total igual)', () => {
+  const intent = api.build({ payment_method: 'efectivo', items: [{ product_id: 'p', quantity: 1, unit_price_cents: 10 }, { product_id: 'q', quantity: 1, unit_price_cents: 5 }, { product_id: 'p', quantity: 2, unit_price_cents: 10 }] });
+  const items = intent.items || intent.payload?.items;
+  assert.equal(JSON.stringify(items.map(i => [i.product_id, i.quantity, i.line_total_cents])), JSON.stringify([['p', 3, 30], ['q', 1, 5]]));
 });
 
 test('rechaza cantidad/precio ambiguos, centavos inseguros y método inválido', () => {

@@ -89,6 +89,7 @@
       '<datalist id="naPurProducts">' + opts + '</datalist><div class="na-pur-lines">' + lineHtml(0) + '</div>' +
       '<button type="button" class="na-pur-add">+ Agregar producto</button><div class="na-pur-total">Total costo: S/ 0.00</div>' +
       '<p class="na-pur-hint">Suma el stock al registrar. Necesita internet.</p>' +
+      '<div class="na-pur-err" role="alert" hidden></div>' +
       '<div class="na-review-actions" style="justify-content:space-between"><button type="button" class="na-pur-hist" style="background:#64748b">Historial</button>' +
       '<span><button type="button" class="na-pur-cancel" style="background:#64748b">Cancelar</button> <button type="button" class="na-pur-ok">Registrar compra</button></span></div>');
     var lines = w.querySelector('.na-pur-lines');
@@ -97,13 +98,18 @@
     w.addEventListener('input', function () { total(w); });
     w.querySelector('.na-pur-cancel').onclick = function () { w.remove(); };
     w.querySelector('.na-pur-hist').onclick = function () { w.remove(); openHistory(); };
+    // Errores dentro de la ventana: la compra queda en pantalla y el reintento usa la MISMA operación
+    // (opFor guarda el id hasta que el servidor confirma), así el stock sube una sola vez.
+    var errBox = w.querySelector('.na-pur-err');
+    function fail(msg) { errBox.textContent = '⚠ ' + msg; errBox.hidden = false; }
     w.querySelector('.na-pur-ok').onclick = async function () {
       if (busy) return;
-      if (!cloud()) { toast('El registro de compras funciona con la nube activa.'); return; }
-      if (root.navigator.onLine === false) { toast('Sin conexión: registrar una compra necesita internet. No se guardó nada.'); return; }
+      errBox.hidden = true;
+      if (!cloud()) { fail('El registro de compras funciona con la nube activa.'); return; }
+      if (root.navigator.onLine === false) { fail('Sin conexión: registrar una compra necesita internet. No se guardó nada.'); return; }
       var r = readLines(w);
-      if (r.bad.length) { toast('Revisa la línea ' + r.bad.join(', ') + ': elige un producto de la lista y una cantidad mayor que 0.'); return; }
-      if (!r.lines.length) { toast(ERR.invalid_lines); return; }
+      if (r.bad.length) { fail('Revisa la línea ' + r.bad.join(', ') + ': elige un producto de la lista y una cantidad mayor que 0.'); return; }
+      if (!r.lines.length) { fail(ERR.invalid_lines); return; }
       busy = true; var btn = this; btn.disabled = true; btn.textContent = 'Registrando…';
       try {
         var out = await submit(opFor(), r.lines, { supplier: w.querySelector('#naPurSupplier').value.trim(), documentRef: w.querySelector('#naPurDoc').value.trim() });
@@ -113,7 +119,7 @@
       } catch (e) {
         if (!e.cancelled) {
           var code = e && (e.data && e.data.error || e.message);
-          toast(ERR[code] || (e && e.status ? 'No se pudo registrar la compra (' + code + '). Puedes reintentar: no se duplicará.' : 'No se pudo conectar con el servidor. Revisa internet y vuelve a pulsar «Registrar compra»; no se duplicará.'));
+          fail(ERR[code] || (e && e.status ? 'No se pudo registrar la compra (' + code + '). Puedes reintentar: no se duplicará.' : 'No se pudo conectar con el servidor. Revisa internet y vuelve a pulsar «Registrar compra»; no se duplicará.'));
         }
       } finally { busy = false; btn.disabled = false; btn.textContent = 'Registrar compra'; }
     };

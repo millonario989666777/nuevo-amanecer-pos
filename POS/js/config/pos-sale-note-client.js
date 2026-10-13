@@ -120,7 +120,8 @@
   var memo = null;
   function lsMemo(k, d) {
     if (!memo) { memo = {}; setTimeout(function () { memo = null; }, 0); }
-    if (!Object.prototype.hasOwnProperty.call(memo, k)) memo[k] = lsGet(k, d);
+    // Copia congelada: nadie puede modificar la caché compartida; __naPaymentMeta devuelve siempre un objeto nuevo.
+    if (!Object.prototype.hasOwnProperty.call(memo, k)) { var v = lsGet(k, d); memo[k] = v && typeof v === 'object' ? Object.freeze(v) : v; }
     return memo[k];
   }
   root.__naPaymentMeta = function (op) {
