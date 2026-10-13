@@ -216,7 +216,8 @@
       if (box) { var pd = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : !!(doc.body && doc.body.classList.contains('dark')); box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', pd); box.classList.toggle('na9-lt', !pd); }
       return;
     }
-    if (box) { box.removeAttribute('data-na9-theme'); box.classList.remove('na9-dk', 'na9-lt'); }
+    // PC/tablet: Configuración usa el mismo tema y el día/noche de la app (estilo del prototipo).
+    if (box) { var wd = !!(doc.body && doc.body.classList.contains('dark')); var wdm = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : wd; box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', wdm); box.classList.toggle('na9-lt', !wdm); }
     html.setAttribute('data-na-theme', d.theme);
     if (!d.mode) return; // sin elección guardada: se respeta el día/noche de siempre
     var dark = d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches));
@@ -233,10 +234,11 @@
     var c = C() || {}, t = c.ticket || {};
     switch (id) {
       case 'stock':
-        return row('Stock mínimo por defecto', 'Se usa al crear productos nuevos', num('stockMin', c.stockMin != null ? c.stockMin : 5, 0, 100000))
+        return '<label class="na9-f">Stock mínimo por defecto<input class="na9-wide" type="number" data-na9="stockMin" value="' + esc(c.stockMin != null ? c.stockMin : 5) + '" min="0" max="100000" step="1"></label>'
           + row('Avisar cuando el stock esté bajo', 'Se marca en inventario y en el resumen', sw('stockAlertActive', !!c.stockAlertActive))
           + row('Aplicar el mínimo a todo el catálogo', 'Pone el stock mínimo actual en todos los productos', '<button type="button" class="na9-btn sec sm" data-act="stockAll">Aplicar ahora</button>')
-          + '<div class="na9-sub"><h4>Importar productos</h4><div class="na9-legacy-host" data-legacy="importar"></div></div>';
+          + row('Importar productos', 'Cargar el catálogo desde Excel o CSV', '<button type="button" class="na9-btn sec sm" data-act="imp">' + (st.imp ? 'Cerrar' : 'Abrir') + '</button>')
+          + (st.imp ? '<div class="na9-sub"><div class="na9-legacy-host" data-legacy="importar"></div></div>' : '');
       case 'igv':
         return row('Aplicar IGV (18%)', 'Desglosa el impuesto en el punto de venta', sw('igvActive', !!c.igvActive))
           + row('Mostrar la línea "IGV (18%)"', 'En Nueva venta y en el ticket. No cambia el precio.', sw('igvLine', igvLine()));
@@ -333,7 +335,15 @@
       + '<div class="na9-lbl">Tamaño de letra y botones: <b id="na9Zv">' + zn + ' (' + z + '%)</b></div>'
       + '<div class="na9-zbtns"><button type="button" class="na9-btn sec na9-zb" data-act="zdn" aria-label="Más chico">A−</button>' + ZP.map(function (x) { return '<button type="button" class="na9-btn sec na9-zp' + (z === x[1] ? ' on' : '') + '" data-act="zset" data-z="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '<button type="button" class="na9-btn sec na9-zb" data-act="zup" aria-label="Más grande">A+</button></div>'
       + '<label class="na9-zslider"><input type="range" min="85" max="125" step="5" data-na9="zoom" value="' + z + '" aria-label="Tamaño de letra y botones"></label>'
+      + samplePreview()
       + '<p class="na9-muted">' + (wide() ? 'Se guarda solo en este aparato.' : 'Se guarda solo en este aparato. En el teléfono el color y el modo nocturno se ven solo en Configuración; el tamaño cambia en toda la app.') + '</p>';
+  }
+  // Muestra de cómo se ve un producto real con el tamaño elegido (solo lectura).
+  function samplePreview() {
+    var p = null; try { p = (typeof productos !== 'undefined' && productos && productos[0]) || null; } catch (_) {}
+    if (!p) return '';
+    var price = Number(p.precio != null ? p.precio : p.price); var st = p.stock != null ? p.stock : '';
+    return '<div class="na9-pv"><b>' + esc(p.nombre || p.name || '') + '</b><small>' + (st !== '' ? 'Stock: ' + esc(st) : '') + (p.categoria ? ' · ' + esc(p.categoria) : '') + '</small>' + (isFinite(price) ? '<span>S/ ' + price.toFixed(2) + '</span>' : '') + '</div>';
   }
   function estadoBody() {
     var online = root.navigator.onLine !== false, pend = 0, blocked = 0;
@@ -371,7 +381,7 @@
     }
     nav.hidden = false;
     nav.innerHTML = '<h2>Configuración</h2>' + TOP.map(function (t) { return '<button type="button" class="na9-it' + (t[0] === st.top ? ' on' : '') + '" data-top="' + t[0] + '">' + I(t[2]) + '<span class="na9-tt">' + esc(t[1]) + '<small>' + esc(t[3]) + '</small></span>' + CHEV + '</button>'; }).join('')
-      + '<div class="na9-reset"><button type="button" class="na9-it' + (st.top === 'reset' ? ' on' : '') + '" data-top="reset">' + I('reset') + '<span class="na9-tt">Reseteo<small>Volver a descargar de la nube</small></span>' + CHEV + '</button></div>';
+      + '<div class="na9-reset"><button type="button" class="na9-it' + (st.top === 'reset' ? ' on' : '') + '" data-top="reset">' + I('reset') + '<span class="na9-tt">Reseteo</span>' + CHEV + '</button></div>';
     var h;
     if (st.top === 'reset') h = '<div class="na9-card"><div class="na9-hd"><h3>Reseteo</h3><p>Volver a descargar los datos de la nube</p></div><div class="na9-bd">' + resetBody() + '</div></div>';
     else {
@@ -443,6 +453,7 @@
     if (act === 'back') { st.open = false; render(); try { root.scrollTo(0, 0); } catch (_) {} return; }
     if (act === 'tkty') { st.tkType = a.dataset.t; render(); return; }
     if (act === 'tksub') { st.tkSub = a.dataset.t; render(); return; }
+    if (act === 'imp') { st.imp = !st.imp; render(); return; }
     if (act === 'theme' || act === 'mode') { setAp(act, a.dataset.t); render(); badge('Guardado ✓ (este aparato)'); return; }
     if (act === 'zup' || act === 'zdn' || act === 'zset') { var z = act === 'zset' ? Number(a.dataset.z) : zoom() + (act === 'zup' ? 5 : -5); setZoom(z); render(); badge('Guardado ✓ (este aparato)'); return; }
     if (!guard()) return;
@@ -498,7 +509,7 @@
   function wrapDark() {
     if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
     var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } else applyAppearance(); return r; };
+    root.toggleDark = function () { var r = base.apply(this, arguments); if (wide()) { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } applyAppearance(); return r; };
     root.toggleDark.__na9 = true;
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { install(); wrapDark(); }); else { install(); wrapDark(); }

@@ -16,6 +16,8 @@
   function getVentas() { try { return ventas; } catch (_) { return []; } } // eslint-disable-line no-undef
   function keys(v) { return [v && v.sale_id, v && v.id, v && v.ventaUid, v && v.operation].filter(function (x) { return x != null && x !== ''; }).map(String); }
 
+  // El servidor llama «Dueño» al aparato del admin sin etiqueta; en pantalla se muestra «Admin».
+  function who(x) { return x === 'Dueño' ? 'Admin' : x; }
   function draft() { return clean(lsGet(DRAFT, '')); }
   function ensureField() {
     var conf = doc.getElementById('mBtnConf'); if (!conf || doc.getElementById('naSaleNote')) return;
@@ -34,7 +36,7 @@
     var meta = lsGet(META, { sales: {}, payments: {} });
     list.forEach(function (v) {
       var ks = keys(v), i;
-      for (i = 0; i < ks.length; i++) { var who = meta.sales[ks[i]]; if (who) { v.cajero = v.cajeroNombre = who; break; } }
+      for (i = 0; i < ks.length; i++) { var w = who(meta.sales[ks[i]]); if (w) { v.cajero = v.cajeroNombre = w; break; } }
       for (i = 0; i < ks.length; i++) { var n = server[ks[i]] || local[ks[i]]; if (n) { v.nota = n; break; } }
     });
     var credits; try { credits = creditos; } catch (_) { credits = []; } // eslint-disable-line no-undef
@@ -85,7 +87,7 @@
     } catch (_) {}
   }
 
-  function cashierLabel() { var r = root.NA_ROLES; if (!r) return ''; return r.label || (r.role === 'empleado' ? 'Empleado' : 'Dueño'); }
+  function cashierLabel() { var r = root.NA_ROLES; if (!r) return ''; return r.label || (r.role === 'empleado' ? 'Empleado' : 'Admin'); }
   function ensurePayFields() {
     var hosts = [];
     var single = doc.querySelector('#mPagoCred .mbtns'); if (single) hosts.push(single);
@@ -115,8 +117,8 @@
     if (!op) return null;
     var meta = lsGet(META, { sales: {}, payments: {} }), server = lsGet(CACHE, {}), c = server['pay:' + op];
     if (!c) lsGet(QUEUE, []).some(function (q) { if ((q.keys || []).indexOf('pay:' + op) >= 0) { c = q.note; return true; } return false; });
-    var who = meta.payments && meta.payments[op];
-    return who || c ? { cashier: who || '', comment: c || '' } : null;
+    var pw = who(meta.payments && meta.payments[op]);
+    return pw || c ? { cashier: pw || '', comment: c || '' } : null;
   };
   function wrapConfirm() {
     var base = root.confirmarVenta;
