@@ -479,7 +479,8 @@
     var code = clean(error && error.message), record;
     try { record = api().pendingSnapshot(); } catch (_) {}
     if (record && record.command === 'cash.close') return 'El cierre de caja NO se confirmó' + (record.last_status >= 500 ? ' (falla del servidor)' : ' (no llegó respuesta)') +
-      '. La caja sigue abierta y no se cerrará sola: cuando quieras, toca Confirmar cierre otra vez (no se cerrará dos veces).';
+      (lastServerCheck === 'OPEN' ? '. El servidor dice que la caja sigue abierta; no se cerrará sola: toca Confirmar cierre otra vez (no se cerrará dos veces).'
+        : '. No se pudo comprobar con el servidor si la caja quedó cerrada. Toca Confirmar cierre otra vez para comprobarlo (no se cerrará dos veces).');
     if (record && record.last_error && record.last_status && record.last_status < 500 && record.last_status !== 429)
       return 'Antes de cerrar hay ' + plainCommand(record.command) + ' que el servidor rechazó' + plainReason(record.last_error) + '. No se aplicó; revísalo y vuelve a confirmar el cierre.' + blockingSale(error, record);
     if (record) return 'Antes de cerrar hay otra operación sin confirmar (' + plainCommand(record.command) + '). Se guardó; revísala y vuelve a confirmar el cierre.' + blockingSale(error, record);
@@ -532,12 +533,15 @@
   //  - abierta: el cierre anterior no se aplicó; se archiva, se envían las ventas en cola y se cierra con el
   //    monto contado que está escrito AHORA;
   //  - cerrada: se muestra el cierre real y las ventas en cola de esa caja pasan a revisión (nunca a otra caja).
+  var lastServerCheck = null;
   async function resolvePendingCloseWithServer(client) {
     var record = pendingClose(client);
     if (!record) return null;
+    lastServerCheck = null;
     await refreshCanonical();
     var sid = record.payload && record.payload.session_id;
     var session = (client.snapshot().cashSessions || []).find(function (item) { return item.session_id === sid; });
+    lastServerCheck = session ? session.status : null;
     if (session && session.status === 'CLOSED') {
       var receipt = null;
       if (record.payload.operation_id) {
@@ -596,7 +600,14 @@
         return { receipt: await client.closeCash(input) };
       }
     }
-    if (outbox && typeof outbox.withCashCloseBarrier === 'function') return outbox.withCashCloseBarrier(submit, before);
+    if (outbox && typeof outbox.withCashCloseBarrier === 'function') {
+      // Si la cola de ventas está ocupada (sincronizando), se espera y se reintenta: cada Confirmar consulta al
+      // servidor; nunca se responde con un aviso viejo.
+      for (var tries = 0; ; tries++) {
+        try { return await outbox.withCashCloseBarrier(submit, before); }
+        catch (e) { if (String(e && (e.code || e.message)) !== 'BUSY' || tries >= 40) throw e; await new Promise(function (r) { setTimeout(r, 250); }); }
+      }
+    }
     // Compatibility for a runtime that has not loaded the updated outbox yet.
     var pre = await before();
     if (pre && pre.closedSession) return { status: 'CLOSED', session: pre.closedSession, left_out: [] };
@@ -689,9 +700,10 @@
     });
     return result;
   };
-  root.cerrarCaja = async function () {
+  var closingPromise = null;
+  root.cerrarCaja = function () { var p = closingPromise || (closingPromise = cerrarCajaRun.apply(this, arguments)); return p.finally ? p.finally(function () { if (closingPromise === p) closingPromise = null; }) : p; };
+  var cerrarCajaRun = async function () {
     if (!enabled()) return typeof original.cerrarCaja === 'function' ? original.cerrarCaja.apply(this, arguments) : undefined;
-    if (closingBusy) return false;
     closeStatus('');
     if (!authorizeClose()) return false;
 
@@ -801,6 +813,22 @@
     finally { reconciling = false; }
   }
   root.NuevoAmanecerCashClosePending.reconcile = reconcilePendingClose;
+  // Ventana de cierre abierta: si la caja figura cerrada en el servidor, la ventana lo dice (nunca queda
+  // «sigue abierta» mientras Caja muestra Cerrada).
+  function syncCloseWindow() {
+    try {
+      var m = root.document && root.document.getElementById('mCierre');
+      if (!m || !m.classList.contains('open') || closingPromise) return;
+      var client = api(), rec = pendingClose(client);
+      if (rec) { reconcilePendingClose().then(function (out) { if (out && out.status === 'CLOSED') closeStatus(closedSummary(out)); }); return; }
+      var st = root.document.getElementById('cajCloseStatus'), txt = st && st.textContent || '';
+      if (!/sigue abierta|No se pudo comprobar/.test(txt)) return;
+      var open = (client.snapshot().cashSessions || []).some(function (x) { return x.status === 'OPEN'; });
+      if (!open) { var last = (client.snapshot().cashSessions || []).filter(function (x) { return x.status === 'CLOSED'; }).sort(function (a, b) { return String(b.closed_at).localeCompare(String(a.closed_at)); })[0];
+        if (last) closeStatus(closedSummary({ status: 'CLOSED', session: last, left_out: [] })); }
+    } catch (_) {}
+  }
+  if (typeof root.addEventListener === 'function') root.addEventListener('na:canonical-updated', syncCloseWindow);
   if (typeof root.addEventListener === 'function') {
     root.addEventListener('online', function () { setTimeout(reconcilePendingClose, 1500); });
     root.addEventListener('load', function () { setTimeout(reconcilePendingClose, 4000); });
