@@ -4,6 +4,9 @@
   if (typeof document === 'undefined') return;
 
   var MOBILE_HOME_MAX_WIDTH = 767;
+  // Ancho guardado: se actualiza al cambiar el tamaño, sin leer el layout en cada navegación.
+  var naVw = Number(root.innerWidth || 0);
+  if (typeof root.addEventListener === 'function') root.addEventListener('resize', function () { naVw = Number(root.innerWidth || 0); }, { passive: true });
   var ALLOWED_PAGES = Object.freeze([
     'pagePOS',
     'pageInventario',
@@ -39,7 +42,7 @@
   }
 
   function isMobile() {
-    return Number(root.innerWidth || 0) <= MOBILE_HOME_MAX_WIDTH;
+    return naVw <= MOBILE_HOME_MAX_WIDTH;
   }
 
   function pageForCard(card) {
@@ -582,7 +585,7 @@
     if (!document.getElementById('naMobileMenuToggle')) {
       var topbar = document.querySelector && document.querySelector('.g-topbar');
       if (topbar && typeof topbar.insertBefore === 'function') {
-        var toggle = node('button', 'na-mobile-menu-toggle', '☰');
+        var toggle = node('button', 'na-mobile-menu-toggle', ''); var tic = root.document.createElement('i'); tic.className = 'na-ic na-ic-menu'; tic.setAttribute('aria-hidden', 'true'); toggle.appendChild(tic);
         toggle.id = 'naMobileMenuToggle';
         toggle.type = 'button';
         toggle.setAttribute('aria-label', 'Abrir menú principal');

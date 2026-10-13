@@ -1087,16 +1087,40 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       action.textContent = buttonLabel || 'Actualizar ahora';
       action.disabled = buttonEnabled === false;
       if (passive && updateSnoozed) return;
+      // El aviso no aparece encima de una ventana abierta, con carrito o con un cobro/abono/compra/cierre en
+      // curso: espera a que termine y entonces se muestra.
+      if (passive && quietNeeded()) { waitQuiet(); return; }
       prompt.hidden = false;
+    }
+    var quietTimer = 0;
+    function quietNeeded() {
+      try { if (document.querySelector('.modal-overlay.open, .pin-overlay.open, .na-pin-overlay')) return true; } catch (_) {}
+      return moneyOpInProgress();
+    }
+    function waitQuiet() {
+      if (quietTimer || typeof window.setInterval !== 'function') return;
+      quietTimer = window.setInterval(function () {
+        if (quietNeeded() || !versionPending || updateSnoozed) return;
+        window.clearInterval(quietTimer); quietTimer = 0;
+        if (prompt) prompt.hidden = false;
+      }, 1500);
     }
 
     // Una venta en curso (carrito con productos o cobro guardándose) nunca se pierde por actualizar:
     // la recarga espera a que el carrito quede vacío y el cobro termine.
-    function saleInProgress() {
+    // Cuenta toda operación de dinero: venta (carrito, cobro, envío o cola), abono, compra y cierre de caja
+    // pendientes o en envío. La recarga por versión nueva espera a que no quede ninguna.
+    function moneyOpInProgress() {
       try { if (typeof posProc !== 'undefined' && posProc) return true; } catch (_) {}
       try { if (typeof cart !== 'undefined' && cart && cart.length > 0) return true; } catch (_) {}
+      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox; if (ob && ((ob.busy && ob.busy()) || (ob.snapshot().intents || []).length)) return true; } catch (_) {}
+      try { var cl = window.NuevoAmanecerCanonical; if (cl && cl.pendingSnapshot && cl.pendingSnapshot()) return true; } catch (_) {}
+      try { var cp = window.NuevoAmanecerCanonicalCreditPaymentBridge; if (cp && cp.busy && cp.busy()) return true; } catch (_) {}
+      try { if (window.NAPurchaseBusy && window.NAPurchaseBusy()) return true; } catch (_) {}
+      try { var po = localStorage.getItem('na_purchase_pending_ops_v2'), p1 = localStorage.getItem('na_purchase_pending_op_v1'); if (p1 || (po && po !== '{}')) return true; } catch (_) {}
       return false;
     }
+    var saleInProgress = moneyOpInProgress;
 
     function afterSaleFinishes(callback) {
       if (!saleInProgress()) { callback(); return; }

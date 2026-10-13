@@ -244,4 +244,10 @@ body.dark .na-pay-net.checking{background:#451a03;color:#fde68a;border-color:#92
 .na-pur-partial-h .na-li{width:16px;height:16px}
 .na-pur-reason{width:100%;box-sizing:border-box;min-height:44px;border:1px solid #cbd5e1;border-radius:10px;padding:0 10px;margin-bottom:6px;font-size:15px}
 .na-pur-open details summary{font-size:13px;color:#92400e}
+/* 360 px: proveedor en la 1.ª línea; monto e «Incompleta» en la 2.ª (sin cortar) */
+.na-pur-open-sub{font-size:14px;font-weight:700;color:#92400e;margin-top:2px;white-space:normal}
+body.dark .na-pur-open-sub{color:#fcd34d}
 body.dark .na-pur-item.na-pur-open{background:#3b2f12;border-color:#92400e}body.dark .na-pur-open-head{color:#fcd34d}
+
+/* Recargar (aviso de versión nueva): toque cómodo en tablet/PC */
+@media (min-width:700px){#pwaUpdateAction,#pwaUpdateLater{min-height:44px}}

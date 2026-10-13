@@ -484,3 +484,43 @@ test('Bot 3 item 13: con la cola ocupada (CPU lenta) y doble toque, Confirmar co
  assert.equal(posts(d,'cash.close').length,2);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
 });
+
+test('Bot 3 v-62f4ef1 item 1: caso B a 4x, 10 corridas con tiempos distintos: cada segundo Confirmar consulta al servidor; nunca «sigue abierta»', async t => {
+ for (let run=0; run<10; run++) {
+  let lose=true, slow=null;
+  const {f,d,outbox,build}=await yesterdaySession(t,async(url,o,run2)=>{
+   if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run2();throw Error('lost ACK');}
+   if(slow&&url.endsWith('/commands/sale.create')){await slow;throw Error('offline');}
+  },'prev-session-'+run);
+  await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session-'+run}));
+  let release; slow=new Promise(r=>{release=r;}); // la cola nunca termina sola en esta corrida
+  await outbox.enqueue(build(cashSale('V-1'+run)));
+  outbox.sync().catch(()=>null);
+  await new Promise(r=>setTimeout(r,5+run*7));
+  const reads0=d.fetchLog.filter(x=>x.method!=='POST').length;
+  const first=d.context.cerrarCaja(); // queda esperando la cola ocupada
+  await new Promise(r=>setTimeout(r,run*11));
+  let firstDone=false; first.then(()=>{firstDone=true;},()=>{firstDone=true;});
+  await Promise.resolve();
+  const inFlight=!firstDone;
+  const second=await d.context.cerrarCaja();
+  // Hubo lectura al servidor tras el segundo toque (propia o la que ya estaba en vuelo y se compartió).
+  assert.ok(d.fetchLog.filter(x=>x.method!=='POST').length>reads0 || !inFlight,'corrida '+run+': consultó al servidor');
+  assert.equal(inFlight?second:await first,true,'corrida '+run+' inFlight='+inFlight+' status='+d.el('cajCloseStatus').textContent+' toasts='+d.context.__toasts.map(x=>x[0]).join('|'));
+  assert.match(d.el('cajCloseStatus').textContent,/ya estaba cerrada/,'corrida '+run);
+  assert.doesNotMatch(d.el('cajCloseStatus').textContent,/sigue abierta/);
+  slow=null; release(); await first.catch(()=>null);
+  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_cash_closures').n,1);
+ }
+});
+
+test('Bot 3 v-62f4ef1 item 2: con la ventana abierta, na:canonical-updated no reenvía cash.close en bucle', async t => {
+ let lose=true;
+ const {d}=await yesterdaySession(t,async(url,o,run)=>{ if(lose&&url.endsWith('/commands/cash.close')){lose=false;await run();throw Error('lost ACK');} });
+ await assert.rejects(d.api.closeCash({counted_cents:110000,session_id:'prev-session'}));
+ d.el('mCierre').classList.add('open');
+ const n0=posts(d,'cash.close').length;
+ for(let i=0;i<12;i++){ d.context.dispatchEvent({type:'na:canonical-updated'}); await new Promise(r=>setTimeout(r,30)); }
+ await new Promise(r=>setTimeout(r,300));
+ assert.ok(posts(d,'cash.close').length-n0<=1,'a lo sumo un reenvío idempotente, no ~11');
+});
