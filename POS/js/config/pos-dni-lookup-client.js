@@ -75,15 +75,18 @@
     if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
     var local = findLocal(dni);
     if (local) { hint(''); openExisting(local, dni); return; }
+    // keyup/blur/change del mismo DNI: ni consulta repetida ni aviso que pise «Buscando…» / «La búsqueda tarda».
+    if (inflight === dni) return;
+    // El nombre es el que se acaba de encontrar para este DNI: no repetir ni avisar «Ya hay un nombre escrito».
+    if (asked[dni] && asked[dni].name && clean(nameEl.value) === clean(asked[dni].name)) return;
     if (clean(nameEl.value)) { hint('Ya hay un nombre escrito. Bórrelo si quiere buscarlo por DNI.'); return; }
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
-    if (inflight === dni) return; // input + change + paste del mismo DNI: una sola consulta
     if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
     hint('Buscando DNI…');
     var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
-    root.setTimeout(function () { if (!done && my === seq) hint(SLOW); }, TIMEOUT_MS);
+    root.setTimeout(function () { if (!done && inflight === dni) hint(SLOW); }, TIMEOUT_MS);
     var out;
     try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
     catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) ? 'no_session' : 'network' }; }

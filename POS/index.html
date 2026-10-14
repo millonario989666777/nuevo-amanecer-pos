@@ -1095,7 +1095,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     }
     var quietTimer = 0;
     function quietNeeded() {
-      try { if (document.querySelector('.modal-overlay.open, .pin-overlay.open, .na-pin-overlay, .na-review-overlay, .na-ds-overlay')) return true; } catch (_) {}
+      try { if (document.querySelector('.modal-overlay.open, .pin-overlay.open, .na-pin-overlay, .na-review-overlay, .na-ds-overlay, .na-confirm-overlay.open')) return true; } catch (_) {}
+      // Abono a medio escribir en la ficha (monto o referencia con texto).
+      try { var am = document.getElementById('naV2BatchAmount'), rf = document.getElementById('naV2BatchReference'); if ((am && String(am.value || '').trim()) || (rf && String(rf.value || '').trim())) return true; } catch (_) {}
       return moneyOpInProgress();
     }
     function waitQuiet() {
@@ -1228,6 +1230,14 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       try { controller.postMessage({ type: 'NA_ENABLE_MANUAL_UPDATES' }); } catch (_) {}
     }
 
+    // Recarga automática (no pedida): además espera a que la cola de ventas/abonos quede vacía.
+    // Si el cajero tocó «Actualizar ahora» (updateBusy), lo guardado sobrevive a la recarga y no se espera.
+    function queuedWork() {
+      if (updateBusy) return false;
+      try { var ob = window.NuevoAmanecerCanonicalSaleOutbox, sn = ob && ob.snapshot && ob.snapshot(); if (sn && sn.intents && sn.intents.length) return true; } catch (_) {}
+      try { var cl = window.NuevoAmanecerCanonical; if (cl && cl.pendingSnapshot && cl.pendingSnapshot()) return true; } catch (_) {}
+      return false;
+    }
     function scheduleReload() {
       enableManualUpdateMode();
       if (!hadController || reloadingForWorkerUpdate) return;
@@ -1238,7 +1248,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       }
       afterSaleFinishes(function () {
         // Tampoco recarga con una ventana abierta (cliente a medio escribir, Cobrar, abono): espera a que se cierre.
-        if (quietNeeded()) { var qt = window.setInterval(function () { if (quietNeeded()) return; window.clearInterval(qt); setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false); window.setTimeout(function () { window.location.reload(); }, 80); }, 1000); return; }
+        if (quietNeeded() || queuedWork()) { var qt = window.setInterval(function () { if (quietNeeded() || queuedWork()) return; window.clearInterval(qt); setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false); window.setTimeout(function () { window.location.reload(); }, 80); }, 1000); return; }
         setUpdateUi('Actualización lista. Recargando…', 'success', 'Recargando…', false);
         window.setTimeout(function () {
           window.location.reload();

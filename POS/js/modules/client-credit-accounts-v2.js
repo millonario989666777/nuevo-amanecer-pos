@@ -786,13 +786,43 @@ function labCategorySummary(client, category) {
     NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && el.value !== '' && el.value != null) { out.values[id] = el.value; if (id !== 'naV2BatchMethod') any = true; } });
     return any ? out : null;
   }
+  // Borrador del abono guardado en el aparato (monto, método, referencia y deudas elegidas): sobrevive a una
+  // recarga (p. ej. la actualización automática). Se borra cuando el servidor confirma el abono. Si la recarga
+  // ocurrió con el abono ya enviado, NO se restaura: ese abono conserva su id de operación en la cola y la ficha
+  // lo muestra en ámbar; restaurarlo invitaría a cobrarlo dos veces.
+  var NA_V2_DRAFT_KEY = 'na_v2_abono_draft_v1', NA_V2_DRAFT_TTL = 24 * 3600 * 1000;
+  function naV2StoredRead() { try { var d = JSON.parse(root.localStorage.getItem(NA_V2_DRAFT_KEY) || 'null'); return d && d.clientId && d.values ? d : null; } catch (_) { return null; } }
+  function naV2StoredWrite(d) { try { if (d) root.localStorage.setItem(NA_V2_DRAFT_KEY, JSON.stringify(d)); else root.localStorage.removeItem(NA_V2_DRAFT_KEY); } catch (_) {} }
+  function naV2DraftPersist() {
+    if (naV2DraftSkip || labBatchSubmitInFlight || !labClientScreenState.clientId) return;
+    var screen = labScreen(); if (!screen || !screen.querySelector) return;
+    var d = naV2DraftCapture(screen);
+    if (!d) { var old = naV2StoredRead(); if (old && old.clientId === labClientScreenState.clientId && !old.submitted) naV2StoredWrite(null); return; }
+    d.checks = Array.from(screen.querySelectorAll('.na-v2-batch-check:checked')).map(function (i) { return String(i.value || ''); });
+    d.at = Date.now(); d.submitted = false;
+    naV2StoredWrite(d);
+  }
+  function naV2DraftMarkSubmitted() { var d = naV2StoredRead(); if (d) { d.submitted = true; d.at = Date.now(); naV2StoredWrite(d); } }
+  function naV2DraftClear() { naV2StoredWrite(null); }
+  function naV2DraftFromStore() {
+    var d = naV2StoredRead(); if (!d) return null;
+    if (d.submitted || !(Date.now() - Number(d.at || 0) < NA_V2_DRAFT_TTL)) { naV2StoredWrite(null); return null; }
+    return d.clientId === labClientScreenState.clientId ? d : null;
+  }
   function naV2DraftRestore(content, draft) {
+    if (!draft) draft = naV2DraftFromStore();
     if (!content || !draft || draft.clientId !== labClientScreenState.clientId) return;
     var touched = null;
     NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && draft.values[id] != null && el.value !== draft.values[id]) { el.value = draft.values[id]; touched = touched || el; } });
     if (touched) { try { touched.dispatchEvent(new Event('input', { bubbles:true })); touched.dispatchEvent(new Event('change', { bubbles:true })); } catch (_) {} }
+    // Deudas elegidas: después del monto (que autoselecciona) para respetar la elección del cajero.
+    if (Array.isArray(draft.checks) && draft.checks.length) {
+      var want = new Set(draft.checks.map(String)), boxes = Array.from(content.querySelectorAll('.na-v2-batch-check'));
+      if (boxes.length) { boxes.forEach(function (i) { i.checked = want.has(String(i.value || '')); }); try { labBatchUpdatePreview(); } catch (_) {} }
+    }
   }
   if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('input', function (e) { var t = e && e.target; if (t && t.isTrusted !== false && t.id && NA_V2_DRAFT_IDS.indexOf(t.id) >= 0 && e.isTrusted) naV2DraftSkip = false; }, true);
+  if (typeof document !== 'undefined' && document.addEventListener) ['input', 'change'].forEach(function (ev) { document.addEventListener(ev, function (e) { var t = e && e.target; if (t && ((t.id && NA_V2_DRAFT_IDS.indexOf(t.id) >= 0) || (t.classList && t.classList.contains('na-v2-batch-check')))) root.setTimeout(naV2DraftPersist, 0); }, true); });
 
   function naClientRenderSubview(screen, content, html, direction) {
     direction = direction || 'replace';
@@ -1338,6 +1368,7 @@ function labCategorySummary(client, category) {
       return false;
     }
     labBatchSubmitInFlight = true;
+    naV2DraftMarkSubmitted();
     labBatchUpdatePreview();
     var confirmedVisual = false;
     try {
@@ -1348,6 +1379,7 @@ function labCategorySummary(client, category) {
       });
       if (result && result.completed_count > 0) {
         naV2DraftSkip = true;
+        naV2DraftClear();
         // Never render stale replica data after a durable receipt. Show a
         // post-commit "Pagado" projection immediately, then let the background
         // canonical reconciliation replace it with the authoritative snapshot.
@@ -1360,6 +1392,8 @@ function labCategorySummary(client, category) {
       return false;
     } finally {
       labBatchSubmitInFlight = false;
+      // Error o respuesta perdida: el borrador queda marcado como enviado (no se restaura tras recargar) porque el
+      // abono puede estar en cola con su mismo id. Si el cajero vuelve a escribir, se guarda de nuevo.
       if (!confirmedVisual) labBatchUpdatePreview();
     }
   };

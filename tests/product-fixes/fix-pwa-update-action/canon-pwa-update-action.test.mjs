@@ -41,7 +41,7 @@ test('new versions always activate (never stuck waiting); the page reloads only 
   const message = between(sw, "self.addEventListener('message'", "self.addEventListener('fetch'");
   assert.match(install, /stageShell\(cache\)\)\s*\.then\(\(\) => self\.skipWaiting\(\)\)/);
   assert.match(sw, /self\.clients\.claim\(\)/);
-  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)\)/);
+  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)/);
   assert.match(message, /NA_ENABLE_MANUAL_UPDATES/);
   assert.match(message, /caches\.open\(MANUAL_UPDATE_MARKER_CACHE\)/);
   assert.match(message, /NA_ACTIVATE_UPDATE/);
