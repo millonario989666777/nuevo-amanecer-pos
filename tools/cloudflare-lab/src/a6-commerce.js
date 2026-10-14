@@ -46,14 +46,19 @@ async function commerceCapabilities(db) {
 // A sale is already charged locally. Expiry consent is a till warning, not a
 // reason to strand its durable receipt; retain the original consent for audit.
 function saleLotPlan(product, lots, item, body) {
-  const plan=lotsCore.plan(Number(product.current_stock_quantity),lots,item.quantity,lotsCore.businessDate(body.created_at),true);
-  return {...plan,expired_lots_unconfirmed:plan.expired_quantity>0&&item.allow_expired_lots!==true};
+  // Expiry is judged by the SERVER's date: a backdated created_at hides nothing.
+  const plan=lotsCore.plan(Number(product.current_stock_quantity),lots,item.quantity,lotsCore.businessDate(new Date().toISOString()),true);
+  return {...plan,expired_lots_unconfirmed:plan.expired_quantity>0};
 }
 
-// Online sale (created within the approval window): expired lots need the shared
-// toggle (pos_settings 'pos.lots') plus a valid expired_lot_sale approval per item.
-// A late outbox sale was already charged: accept it and flag it for review.
+// Expired lots (by server date) are only "confirmed" with a valid server approval
+// (expired_lot_sale) and the shared toggle (pos_settings 'pos.lots').
+// - recent sale (|age| <= 5 min) without them: 409, nothing written.
+// - otherwise (late outbox sale, already charged): accepted, ALWAYS flagged for
+//   review, whatever age it claims; > 1 day late is flagged even with approval.
+// created_at more than 5 min in the future is rejected before this point.
 export const EXPIRED_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+export const LATE_REVIEW_MS = 24 * 60 * 60 * 1000;
 async function expiredLotsAllowed(db) {
   try { const row=await db.prepare("SELECT value_json FROM pos_settings WHERE key='pos.lots'").first(); return JSON.parse(row?.value_json||'null')?.allowExpiredLots===true; }
   catch (e) { if (/no such table/i.test(String(e?.message||e))) return false; throw e; }
@@ -61,13 +66,16 @@ async function expiredLotsAllowed(db) {
 async function expiredSaleGate(db, auth, body, plans) {
   const expired=plans.filter(entry=>entry.expired_quantity>0);
   if(!expired.length)return null;
-  const age=Date.now()-Date.parse(body.created_at);
-  if(!(age<=EXPIRED_ONLINE_WINDOW_MS))return null; // keeps expired_lots_unconfirmed (no consent) for review
-  if(!await expiredLotsAllowed(db))return{error:'expired_lots_not_allowed',product_id:expired[0].item.product_id};
+  const age=Date.now()-Date.parse(body.created_at),recent=Math.abs(age)<=EXPIRED_ONLINE_WINDOW_MS;
+  let approved=await expiredLotsAllowed(db);
   for(const entry of expired)
-    if(!await consumeApproval(db,auth.principalId,entry.item.expired_lot_approval,'expired_lot_sale',body.operation_id))
-      return{error:'expired_lot_approval_required',product_id:entry.item.product_id};
-  expired.forEach(entry=>{entry.expired_lots_unconfirmed=false;});
+    if(approved&&!await consumeApproval(db,auth.principalId,entry.item.expired_lot_approval,'expired_lot_sale',body.operation_id))approved=false;
+  if(!approved&&recent){
+    const entry=expired.find(e=>typeof e.item.expired_lot_approval!=='string')||expired[0];
+    return (await expiredLotsAllowed(db))?{error:'expired_lot_approval_required',product_id:entry.item.product_id}:{error:'expired_lots_not_allowed',product_id:entry.item.product_id};
+  }
+  const flag=!approved||age>LATE_REVIEW_MS;
+  expired.forEach(entry=>{entry.expired_lots_unconfirmed=flag;});
   return null;
 }
 
@@ -489,7 +497,7 @@ async function createCanonicalSaleFast(body, env, auth, json) {
       body.total_cents,body.payment.cash_cents,body.payment.digital_cents,body.payment.credit_cents,
       body.payment.digital_method,body.payment.reference,body.created_at),'cash');
 
-  for(const entry of lotEffects)atomic.push(...effectStatements(db,{...body,...entry.item},entry.allocations,-1,entry.lots,token+':'+entry.item.product_id,body.sale_id));
+  for(const entry of lotEffects)atomic.push(...effectStatements(db,{...body,...entry.item,allow_expired_lots:!entry.expired_lots_unconfirmed},entry.allocations,-1,entry.lots,token+':'+entry.item.product_id,body.sale_id));
 
   checked(db.prepare(`UPDATE canonical_control
     SET first_live_operation_id=COALESCE(first_live_operation_id,?1)
@@ -568,6 +576,7 @@ export async function createCanonicalSale(request, env, auth, json) {
   const checked = validateCanonicalSale(body);
   if (checked.error) return json({ error: checked.error }, 400);
   body = checked.value;
+  if (Date.parse(body.created_at) > Date.now() + EXPIRED_ONLINE_WINDOW_MS) return json({ error: 'invalid_created_at' }, 400);
   if (auth?.deferredSaleAuth && canUseCanonicalSaleFastPath(body,env)) {
     return createCanonicalSaleFast(body,env,auth,json);
   }
@@ -750,12 +759,12 @@ export async function createCanonicalSale(request, env, auth, json) {
   if(capabilities.stockLots)for(const [index,item] of body.items.entries()){
     const p=products[index];if(Number(p.tracks_inventory)!==1)continue;
     try{const lots=lotsCore.lots(p),plan=saleLotPlan(p,lots,item,body);
-      lotPlans.push({item,lots,...plan});
-      lotEffects.push(...effectStatements(db,{...body,...item},plan.allocations,-1,lots,token+':'+index,body.sale_id));
+      lotPlans.push({item,lots,index,...plan});
       if(lots.length)lotAllocations.push(...plan.allocations.map(a=>({...a,product_id:item.product_id})));
     }catch(error){return json({error:lotError(error),product_id:item.product_id},409);}
   }
   const gate=await expiredSaleGate(db,auth,body,lotPlans);if(gate)return json(gate,409);
+  for(const entry of lotPlans)lotEffects.push(...effectStatements(db,{...body,...entry.item,allow_expired_lots:!entry.expired_lots_unconfirmed},entry.allocations,-1,entry.lots,token+':'+entry.index,body.sale_id));
   const statements = [
     db.prepare(`INSERT INTO canonical_write_guards(operation_id,commit_token,promotion_id,authority_epoch,control_revision,client_contract,principal_id,credential_hash)
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?7

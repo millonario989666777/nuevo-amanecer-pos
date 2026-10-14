@@ -121,8 +121,8 @@
   function definitive(record) { return !!record && !!record.last_error && [400, 404, 409].indexOf(record.last_status) !== -1; }
   var REASON_TEXT = {
     expired_lots_confirmation_required: 'el servidor anterior rechazó una venta ya cobrada por vencimiento. Pulsa Reintentar para registrarla con auditoría, sin volver a cobrar',
-    expired_lots_not_allowed: 'la venta usa lotes vencidos y «Permitir vender lotes vencidos» está apagado en el servidor. Pulsa Reintentar en unos minutos para registrarla con auditoría, sin volver a cobrar',
-    expired_lot_approval_required: 'la venta usa lotes vencidos sin autorización válida del dueño. Pulsa Reintentar en unos minutos para registrarla con auditoría, sin volver a cobrar',
+    expired_lots_not_allowed: 'la venta usa lotes vencidos y «Permitir vender lotes vencidos» está apagado. El dueño debe activarlo en Configuración › Productos y stock y autorizar con su PIN',
+    expired_lot_approval_required: 'la venta usa lotes vencidos sin autorización válida: necesita la aprobación del dueño o supervisor con su PIN',
     invalid_lot_state: 'los lotes y el stock de este producto necesitan revisión; no se aplicó la venta',
     cash_closed_before_sale: 'la caja ya estaba cerrada en el servidor cuando la venta iba a confirmarse',
     insufficient_stock: 'no había stock suficiente en CANON: el stock de este aparato estaba desactualizado (otro equipo o una salida usó esas unidades). Revisa el producto y pulsa Reintentar, o Anular si no se cobró',

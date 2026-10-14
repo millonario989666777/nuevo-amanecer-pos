@@ -71,15 +71,15 @@
   var saveTimer = null, hideTimer = null;
   function badge(text, cls) { var el = doc.getElementById('na9Saved'); if (!el) return; el.textContent = text; el.className = 'na9-saved show ' + (cls || ''); clearTimeout(hideTimer); if (cls !== 'wait') hideTimer = setTimeout(function () { el.className = 'na9-saved'; }, 2200); }
   // shared=true: ajuste del negocio (servidor). shared=false: solo este aparato.
-  function autosave(shared) {
+  function autosave(shared, onFail) {
     badge('Guardando…', 'wait'); clearTimeout(saveTimer);
     saveTimer = setTimeout(async function () {
       try {
         var g = root.NA_CONFIG_G;
-        if (shared && g && typeof g.flush === 'function') { var r = await g.flush(); if (r && r.ok === false) { badge('No se guardó en el servidor: revisa internet', 'err'); return; } }
+        if (shared && g && typeof g.flush === 'function') { var r = await g.flush(); if (r && r.ok === false) { if (onFail) try { onFail(r); } catch (_) {} badge(r.reason === 'owner_only' ? 'No se guardó: solo el dueño puede cambiar este ajuste' : 'No se guardó en el servidor: revisa internet', 'err'); return; } }
         else if (typeof root.saveAppState === 'function') await root.saveAppState();
         badge(shared ? 'Guardado ✓' : 'Guardado ✓ (este aparato)');
-      } catch (_) { badge('No se pudo guardar', 'err'); }
+      } catch (_) { if (onFail) try { onFail(null); } catch (__) {} badge('No se pudo guardar', 'err'); }
     }, 500);
   }
 
@@ -265,7 +265,7 @@
     switch (id) {
       case 'stock':
         return '<label class="na9-f">Stock mínimo por defecto<input class="na9-wide" type="number" data-na9="stockMin" value="' + esc(c.stockMin != null ? c.stockMin : 5) + '" min="0" max="100000" step="1"></label>'
-          + row('Permitir vender lotes vencidos', 'Requiere confirmación y PIN del admin en cada venta', sw('expiredLots', call('_naGetSecurityPath', 'rules.allowExpiredLots') === true), 'este aparato')
+          + row('Permitir vender lotes vencidos', 'Se guarda en el servidor para todos los aparatos; cada venta con lotes vencidos pide el PIN del dueño', sw('expiredLots', call('_naGetSecurityPath', 'rules.allowExpiredLots') === true), 'todos los aparatos')
           + row('Avisar cuando el stock esté bajo', 'Se marca en inventario y en el resumen', sw('stockAlertActive', !!c.stockAlertActive))
           + row('Aplicar el mínimo a todo el catálogo', 'Pone el stock mínimo actual en todos los productos', '<button type="button" class="na9-btn sec sm" data-act="stockAll">Aplicar ahora</button>')
           + row('Importar productos', 'Cargar el catálogo desde Excel o CSV', '<button type="button" class="na9-btn sec sm" data-act="imp">' + (st.imp ? 'Cerrar' : 'Abrir') + '</button>')
@@ -479,7 +479,8 @@
     if (/^zone\./.test(k)) { try { var s = root._naF11State(); s.settings[k.slice(5)].enabled = !!v; root._naF11PersistState(s); } catch (_) {} refreshPreview(); autosave(true); return; }
     if (/^cred\./.test(k)) { call('creditPolicySetNumber', k.slice(5), v); autosave(true); return; }
     switch (k) {
-      case 'expiredLots': call('_naSetSecurityPath', 'rules.allowExpiredLots', !!v); call('_naSaveSecurity'); autosave(false); return;
+      case 'expiredLots': var prevExpired = call('_naGetSecurityPath', 'rules.allowExpiredLots') === true; call('_naSetSecurityPath', 'rules.allowExpiredLots', !!v); call('_naSaveSecurity');
+        autosave(true, function () { call('_naSetSecurityPath', 'rules.allowExpiredLots', prevExpired); call('_naSaveSecurity'); el.checked = prevExpired; }); return;
       case 'stockMin': call('actualizarStockMinPredeterminado', v); autosave(true); return;
       case 'stockAlertActive': case 'igvActive': case 'margenActive': case 'mayoristaActive': case 'printAuto':
         var ids = { stockAlertActive: 'stockToggle', igvActive: 'igvToggle', margenActive: 'margenToggle', mayoristaActive: 'mayoristaToggle', printAuto: 'printToggle' };

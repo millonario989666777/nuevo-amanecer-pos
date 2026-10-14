@@ -119,8 +119,9 @@ test('venta tardía del outbox con lotes vencidos: se acepta (nunca cuarentena) 
   const f=await setup(t),late=new Date(Date.now()-60*60*1000).toISOString();
   const r=await call(f,'/commands/sale.create',sale(f,'late-1',late));
   assert.equal(r.status,201,JSON.stringify(r));assert.equal(r.body.expired_lots_unconfirmed,true);
-  const r2=await call(f,'/commands/sale.create',sale(f,'late-2',late,{allow_expired_lots:true}));
-  assert.equal(r2.status,201,JSON.stringify(r2));assert.equal(f.sql("SELECT expired_confirmed FROM canonical_stock_lot_effects WHERE operation_id='late-2'").expired_confirmed,1,'consentimiento local auditado');
+  const body2=sale(f,'late-2',late,{allow_expired_lots:true}),r2=await call(f,'/commands/sale.create',body2);
+  assert.equal(r2.status,201,JSON.stringify(r2));assert.equal(r2.body.expired_lots_unconfirmed,true,'el consentimiento del cliente no basta');assert.equal(f.sql("SELECT expired_confirmed FROM canonical_stock_lot_effects WHERE operation_id='late-2'").expired_confirmed,0);
+  const replay=await call(f,'/commands/sale.create',body2);assert.equal(replay.status,200);assert.equal(replay.body.expired_lots_unconfirmed,true,'replay conserva la marca');
   const outbox=read('POS/js/sync/canonical-sale-outbox.js');
   assert.match(outbox,/RETRYABLE\.push\([^)]*'expired_lots_not_allowed', 'expired_lot_approval_required'/);
 });
@@ -130,4 +131,42 @@ test('servidor: salida manual de producto sin lotes no usa plan() y registra efe
   const r=await move(f,'nolot-out','SALIDA',1);assert.equal(r.status,201,JSON.stringify(r));
   assert.deepEqual(f.all("SELECT lot_id,quantity FROM canonical_stock_lot_effects WHERE operation_id='nolot-out'").map(x=>[x.lot_id,x.quantity]),[['',-1]]);
   assert.match(read('tools/cloudflare-lab/src/a6-inventory.js'),/movement_type==='SALIDA'&&!rows\.length\)allocations=\[\{lot_id:'',quantity:body\.quantity\}\]/);
+});
+
+const day=n=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
+test('created_at retrasado no oculta un lote que ya venció según la fecha del servidor',async t=>{
+  const f=await activeCanon(t,{migrations});f.database.exec(read('infra/database/migrations/0030_canonical_stock_lots.sql'));f.addDevice('owner','writer','active','owner-token');
+  assert.equal((await move(f,'clear','SALIDA',product(f).current_stock_quantity)).status,201);
+  assert.equal((await move(f,'in-y','ENTRADA',2,{lots:[{lot_code:'ayer',expiry_date:day(-2),quantity:2}]})).status,201);
+  const backdated=new Date(Date.now()-5*86400000).toISOString();
+  const r=await call(f,'/commands/sale.create',sale(f,'back-1',backdated));
+  assert.equal(r.status,201,JSON.stringify(r));assert.equal(r.body.expired_lots_unconfirmed,true);
+  assert.match(read('tools/cloudflare-lab/src/a6-commerce.js'),/lotsCore\.businessDate\(new Date\(\)\.toISOString\(\)\),true\)/);
+});
+test('created_at futuro: >5 min se rechaza; dentro de 5 min se trata como en línea (409 sin aprobación)',async t=>{
+  const f=await setup(t);
+  let r=await call(f,'/commands/sale.create',sale(f,'fut-1',new Date(Date.now()+10*60000).toISOString()));
+  assert.equal(r.status,400);assert.equal(r.body.error,'invalid_created_at');
+  r=await call(f,'/commands/sale.create',sale(f,'fut-2',new Date(Date.now()+2*60000).toISOString(),{allow_expired_lots:true}));
+  assert.equal(r.status,409);assert.equal(r.body.error,'expired_lots_not_allowed');
+  assert.equal(product(f).current_stock_quantity,2,'nada escrito');
+});
+test('más de 1 día de atraso se marca para revisión aunque traiga aprobación válida',async t=>{
+  const f=await setup(t);assert.equal((await call(f,'/settings',{key:'pos.lots',value:{allowExpiredLots:true}})).status,200);
+  const ok=(await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'})).body.approval_id;
+  const r=await call(f,'/commands/sale.create',sale(f,'old-1',new Date(Date.now()-2*86400000).toISOString(),{allow_expired_lots:true,expired_lot_approval:ok}));
+  assert.equal(r.status,201,JSON.stringify(r));assert.equal(r.body.expired_lots_unconfirmed,true);
+});
+test('textos de rechazo no invitan a reintentar; interruptor se guarda en servidor con error visible',()=>{
+  const outbox=read('POS/js/sync/canonical-sale-outbox.js');
+  assert.doesNotMatch(outbox,/Reintentar en unos minutos/);
+  assert.match(outbox,/expired_lots_not_allowed: '[^']*activarlo[^']*'/);assert.match(outbox,/expired_lot_approval_required: '[^']*aprobación del dueño o supervisor[^']*'/);
+  const v9=read('POS/js/config/config-v9.js');
+  assert.match(v9,/case 'expiredLots':[^\n]*\n\s*autosave\(true, function \(\) \{[^}]*el\.checked = prevExpired/);
+  assert.match(v9,/'todos los aparatos'\)/);assert.match(v9,/solo el dueño puede cambiar este ajuste/);
+});
+test('sin conexión la venta con lotes vencidos sigue bloqueada (el PIN necesita el servidor)',()=>{
+  const ui=read('POS/js/inventory/stock-lots-ui.js');
+  assert.match(ui,/var local=!canonical\(\)\?\.enabled\(\)&&/);
+  assert.match(ui,/remote\.approve\('expired_lot_sale'/);
 });

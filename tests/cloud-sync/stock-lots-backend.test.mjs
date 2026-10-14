@@ -66,8 +66,9 @@ test('venta sólo con vencidos sin consentimiento se registra y audita; replay c
   assert.equal(f.sql("SELECT COUNT(*) n FROM sales WHERE sale_id='sell-3'").n,1);
   await entry(f,'in-3-confirmed',[receipt('expired-confirmed','2026-10-13',2)],2);
   const confirmed=await call(f,'/commands/sale.create',sale(f,'sell-3-confirmed',2,{allow_expired_lots:true}));
-  assert.equal(confirmed.status,201);assert.equal(confirmed.body.expired_lots_unconfirmed,undefined);
-  assert.equal(f.sql("SELECT expired_confirmed FROM canonical_stock_lot_effects WHERE operation_id='sell-3-confirmed'").expired_confirmed,1);
+  // Late sale: client-side consent alone is not a server approval; it stays flagged for review.
+  assert.equal(confirmed.status,201);assert.equal(confirmed.body.expired_lots_unconfirmed,true);
+  assert.equal(f.sql("SELECT expired_confirmed FROM canonical_stock_lot_effects WHERE operation_id='sell-3-confirmed'").expired_confirmed,0);
 });
 test('compra guarda sus lotes, termina con mismo contenido y rechaza cambios de lote',async t=>{
   const f=await setup(t);const b={...ctl(f),operation_id:'purchase-lots',created_at:'2026-10-14T13:00:00.000Z',lines:[{line:1,product_id:'00003',quantity:2,unit_cost_cents:100,lots:[receipt('P','2026-11-01',2)]}]};
