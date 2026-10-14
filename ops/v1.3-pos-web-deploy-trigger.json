@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Fix lupa/Escáner badge overlap (#654); desplegar solo POS web.",
-  "retry_attempt": 116,
-  "retry_reason": "Deploy de base bcb7f64905d30f75e3978c2e00c2dfcdc961dd68[:8] tras merge #654. Sin migraciones.",
-  "requested_at_utc": "2026-10-14T21:36:18Z",
-  "approved_base": "bcb7f64905d30f75e3978c2e00c2dfcdc961dd68"
+  "note": "Caja del Día responsive (#653); desplegar solo POS web.",
+  "retry_attempt": 117,
+  "retry_reason": "Deploy de base 7bdfba6021dd6a5dc702165165b5e023031001e2[:8] (Caja responsive #653). Solo POS web. Sin migraciones.",
+  "requested_at_utc": "2026-10-14T21:43:03Z",
+  "approved_base": "7bdfba6021dd6a5dc702165165b5e023031001e2"
 }
