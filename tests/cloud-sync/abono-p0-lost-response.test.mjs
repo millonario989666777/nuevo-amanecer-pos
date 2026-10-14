@@ -30,7 +30,7 @@ test('borrador enviado nunca se pisa ni se restaura con un lote pendiente; resta
 
 test('rechazo local no deja el borrador marcado como enviado', () => {
   for (const c of ['CANONICAL_PAYMENT_DISABLED', 'CANONICAL_PAYMENT_BUSY', 'EMPTY_BATCH', 'CANONICAL_OFFLINE', 'BATCH_REFERENCE_ALREADY_USED']) assert.ok(v2.includes(c), c);
-  assert.match(v2, /NA_V2_LOCAL_CODES\.test\(String\(result\.code \|\| ''\)\)\) \{ sd\.submitted = false;/);
+  assert.match(v2, /NA_V2_LOCAL_CODES\.test\(String\(result\.code \|\| ''\)\)\) \{\s*sd\.submitted = false;/);
 });
 
 test('Actualizar ahora sin versión esperando solo recarga', () => {

@@ -121,8 +121,14 @@
 
   // Reconexión: reintenta la operación pendiente (no venta) con su MISMO
   // operation_id. Las ventas las reintenta la cola de ventas.
-  var retrying = false;
-  async function retryOnReconnect() {
+  var retrying = false, inflightRetry = null;
+  // Una sola reintento a la vez: «online», el temporizador y el arranque comparten la misma promesa.
+  function retryOnReconnect() {
+    if (inflightRetry) return inflightRetry;
+    inflightRetry = retryOnce().finally(function () { inflightRetry = null; });
+    return inflightRetry;
+  }
+  async function retryOnce() {
     var c = canonical();
     if (!c || retrying || typeof c.retryPending !== 'function' || typeof c.pendingSnapshot !== 'function') return render();
     var pending = null; try { pending = c.pendingSnapshot(); } catch (_) {}
@@ -134,17 +140,39 @@
     return render();
   }
 
+  // Abono (payment.batch) con respuesta perdida: no esperar a «online». Se reintenta al arrancar y luego
+  // con espera creciente (2, 5, 15, 30 s y luego cada 30 s) siempre con el MISMO lote y los mismos operation_id.
+  var BACKOFF = [2000, 5000, 15000, 30000], backoffStep = 0, nextRetryAt = 0;
+  async function retryPendingPayment(nowMs) {
+    var c = canonical(), now = nowMs == null ? Date.now() : nowMs;
+    if (!c || retrying || inflightRetry || typeof c.pendingSnapshot !== 'function' || typeof c.retryPending !== 'function') return false;
+    var pending = null; try { pending = c.pendingSnapshot(); } catch (_) {}
+    if (!pending || pending.command !== 'payment.batch' || pending.invalid
+      || (pending.last_error && DEFINITIVE.indexOf(Number(pending.last_status)) !== -1)) { backoffStep = 0; nextRetryAt = 0; return false; }
+    if (root.navigator && root.navigator.onLine === false) return false;
+    if (now < nextRetryAt) return false;
+    nextRetryAt = now + BACKOFF[Math.min(backoffStep, BACKOFF.length - 1)];
+    backoffStep += 1;
+    await retryOnReconnect();
+    var after = null; try { after = c.pendingSnapshot(); } catch (_) {}
+    if (!after || after.command !== 'payment.batch') { backoffStep = 0; nextRetryAt = 0; }
+    return true;
+  }
+  var ticks = 0;
+  function tick() { if (++ticks % 5 === 0) render(); retryPendingPayment().catch(function () {}); }
+
   var timer = null;
   function start() {
     if (timer || typeof root.addEventListener !== 'function') return;
     root.addEventListener('na:canonical-updated', render);
     root.addEventListener('offline', render);
     root.addEventListener('online', function () { setTimeout(retryOnReconnect, 1500); });
-    timer = setInterval(render, 5000);
+    timer = setInterval(tick, 1000);
     render();
+    retryPendingPayment().catch(function () {}); // al arrancar
   }
 
-  root.NuevoAmanecerStatusBanner = Object.freeze({ compute: compute, view: view, render: render, retryOnReconnect: retryOnReconnect, start: start });
+  root.NuevoAmanecerStatusBanner = Object.freeze({ compute: compute, view: view, render: render, retryOnReconnect: retryOnReconnect, retryPendingPayment: retryPendingPayment, start: start });
   if (root.document && typeof root.document.addEventListener === 'function' && root.document.body !== undefined) {
     if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();

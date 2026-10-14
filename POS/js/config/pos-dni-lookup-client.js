@@ -63,16 +63,22 @@
     // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
     if (reason === 'not_found') asked[dni] = { name: null };
     if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
-    else if (/limit/.test(reason)) { failedAt[dni] = Date.now(); hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.'); }
+    else if (/limit/.test(reason)) { failedAt[dni] = { at: Date.now(), limit: true }; hint(LIMIT_MSG); }
     else if (reason === 'not_found') hint(MANUAL);
-    else { failedAt[dni] = Date.now(); retryHint(dni); }
+    else { failedAt[dni] = { at: Date.now(), limit: false }; retryHint(dni); }
   }
+  var LIMIT_MSG = 'Límite de búsquedas alcanzado. Escriba el nombre a mano.';
   function retryHint(dni) {
+    var el = doc.getElementById('cDniHint');
+    // Mismo DNI y el botón ya está: no se repinta (si no, el blur lo recrea y el clic se pierde).
+    if (el && el.dataset.naRetry === dni && el.querySelector('button')) return;
     hint('No se pudo buscar ahora. Escriba el nombre a mano o ');
-    var el = doc.getElementById('cDniHint'); if (!el) return;
+    el = doc.getElementById('cDniHint'); if (!el) return;
+    el.dataset.naRetry = dni;
     var btn = doc.createElement('button'); btn.type = 'button'; btn.textContent = 'Reintentar';
     btn.style.cssText = 'border:0;background:none;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer';
-    btn.addEventListener('click', function () { delete failedAt[dni]; check(); });
+    var go = function (e) { if (e && e.preventDefault) e.preventDefault(); if (!failedAt[dni]) return; delete failedAt[dni]; check(); };
+    btn.addEventListener('pointerdown', go); btn.addEventListener('click', go);
     el.appendChild(btn);
   }
   async function check() {
@@ -92,7 +98,7 @@
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
     if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
     // Tras un error del servicio o de red no se vuelve a consultar en cada tecla: espera 45 s o «Reintentar».
-    if (failedAt[dni] && Date.now() - failedAt[dni] < COOLDOWN_MS) { retryHint(dni); return; }
+    if (failedAt[dni] && Date.now() - failedAt[dni].at < COOLDOWN_MS) { if (failedAt[dni].limit) hint(LIMIT_MSG); else retryHint(dni); return; }
     hint('Buscando DNI…');
     var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
