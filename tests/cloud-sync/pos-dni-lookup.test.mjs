@@ -154,5 +154,26 @@ test('actualización automática: no recarga con Nueva compra, anulación, revis
   assert.match(index, /window\.NAOcrBusy && window\.NAOcrBusy\(\)/);
   assert.match(ocr, /root\.NAOcrBusy = function \(\) \{ return !!\(reading \|\| applying\); \};/);
   // la recarga tras «controllerchange» espera ventanas abiertas, no solo el carrito
-  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)\)/);
+  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)/);
+});
+
+test('lote abono: guardia frena con abono escrito, confirmación abierta y cola; borrador persistente sin duplicar', () => {
+  const index = readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8');
+  const v2 = readFileSync(new URL('../../POS/js/modules/client-credit-accounts-v2.js', import.meta.url), 'utf8');
+  assert.ok(index.includes('.na-confirm-overlay.open'));
+  assert.match(index, /getElementById\('naV2BatchAmount'\)/);
+  assert.match(index, /if \(quietNeeded\(\) \|\| queuedWork\(\)\)/);
+  assert.match(index, /function queuedWork\(\) \{\s*if \(updateBusy\) return false;/);
+  assert.match(v2, /na_v2_abono_draft_v1/);
+  assert.match(v2, /labBatchSubmitInFlight = true;\s*naV2DraftMarkSubmitted\(\);/);
+  assert.match(v2, /naV2DraftSkip = true;\s*naV2DraftClear\(\);/);
+  assert.match(v2, /if \(d\.submitted \|\|/);
+  assert.match(v2, /draft\.checks/);
+});
+
+test('DNI: tras rellenar no repite ni avisa; «La búsqueda tarda» no lo pisa keyup/blur', () => {
+  const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  assert.match(client, /if \(!done && inflight === dni\) hint\(SLOW\)/);
+  assert.ok(client.indexOf('if (inflight === dni) return;') < client.indexOf("hint('Ya hay un nombre escrito"));
+  assert.match(client, /clean\(nameEl\.value\) === clean\(asked\[dni\]\.name\)\) return;/);
 });
