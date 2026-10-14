@@ -95,11 +95,34 @@ test('CSS CANON de la ronda 2 está enlazado y precacheado', () => {
   // P2-C (móvil): los cerrar llegan a 44 px.
   assert.match(css, /\.btn-close-m\{min-width:44px;min-height:44px/);
   assert.match(css, /\.mov-amt\.credito/);
-  assert.match(read('js/legacy-inline/inline-11.js'), /'Cobros en efectivo'/);
+  assert.match(read('js/legacy-inline/inline-11.js'), /['teal','🤝','Cobros',totals.cob]/);
 });
 
 test('10: el menú lateral cerrado es inert', () => {
   const nav = read('js/navigation/menu-navigation.js');
   assert.match(nav, /drawer\.inert = true;/);
   assert.match(nav, /drawer\.inert = false;/);
+});
+
+test('Caja: muestra quién abrió la sesión CANON (registro local) y conserva el fallback', () => {
+  const sb = createPosSandbox();
+  sb.run(`cajEstado=Object.assign({},cajEstado,{cajero:'',cajeroNombre:'',sessionId:'s-1'})`);
+  sb.run(`globalThis.NuevoAmanecerCashHistory={cashierMap:()=>({'s-1':{id:'c1',nombre:'Mery'}})}`);
+  assert.equal(sb.run('_naSecCashCashierText()'), 'Mery');
+  sb.run(`cajEstado.sessionId='s-viejo'`);
+  assert.equal(sb.run('_naSecCashCashierText()'), 'sin registrar');
+});
+
+test('Caja: un "@" suelto al final de la etiqueta del movimiento no se muestra', () => {
+  const src = read('js/legacy-inline/inline-11.js');
+  assert.match(src, /String\(movement\.desc\|\|'Movimiento'\)\.replace\(\/\\s\*@\+\\s\*\$\/,''\)/);
+});
+
+test('Caja responsive vive en hoja CANON propia (pages/caja.css es espejo LAB)', () => {
+  const css = read('css/canon-caja-responsive.css');
+  assert.match(css, /#pageCaja #cajContent:has\(> \.cj-stats-grid\)/);
+  assert.match(css, /#pageCaja \.tabs-wrap \{[^}]*overflow-x: auto/);
+  const html = read('index.html');
+  assert.ok(html.indexOf('css/canon-caja-responsive.css') > html.indexOf('css/experience-v2/pages/caja.css'));
+  assert.match(read('sw.js'), /'\.\/css\/canon-caja-responsive\.css'/);
 });

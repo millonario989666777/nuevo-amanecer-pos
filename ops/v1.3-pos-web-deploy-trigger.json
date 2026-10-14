@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Lotes dedupe + vencimiento (#649) y consulta RUC (#650); desplegar solo POS web.",
-  "retry_attempt": 115,
-  "retry_reason": "Deploy de base 71ade6d242468e47dd618857d396bef77e14632d[:8] junto con backend attempt 31. Sin migraciones.",
-  "requested_at_utc": "2026-10-14T20:50:00Z",
-  "approved_base": "71ade6d242468e47dd618857d396bef77e14632d"
+  "note": "Imágenes de producto (#652); desplegar solo POS web.",
+  "retry_attempt": 120,
+  "retry_reason": "Deploy de base ee371cff (#652 product images, backend ya desplegado #663). Solo POS web. Sin migraciones. Rollback: 7e5df996d75ca2c955c97d60034b54d311ba8db8.",
+  "requested_at_utc": "2026-10-14T22:48:23Z",
+  "approved_base": "ee371cff3a85e588b2ad47de3f5616787212909b"
 }

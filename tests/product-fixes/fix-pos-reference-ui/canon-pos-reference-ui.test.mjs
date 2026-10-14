@@ -181,3 +181,11 @@ test('short desktop viewport compacts only the current-sale footer', () => {
   assert.match(css, /@media\(min-width:1100px\) and \(max-height:700px\)\{[\s\S]*#pagePOS \.cart-secondary-actions button\{[^}]*min-height:32px[^}]*font-size:11px/);
   assert.match(css, /@media\(min-width:1100px\) and \(max-height:700px\)\{[\s\S]*#pagePOS \.btn-cobro\{[^}]*min-height:44px[^}]*font-size:16px/);
 });
+
+
+test('toolbar search icon selector does not steal the scanner badge dot', () => {
+  assert.match(decorator, /querySelector\(':scope > span:first-child'\)/);
+  assert.doesNotMatch(decorator, /querySelector\('span:first-child'\)/);
+  assert.match(html, /id="scannerIndicator"[\s\S]*?class="scanner-dot"/);
+  assert.match(html, /class="na-li na-li-search"/);
+});

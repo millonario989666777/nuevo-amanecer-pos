@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized deploy of #649 (lotes dedupe/vencimiento) + #650 (RUC lookup). Code only: no schema changes, no migrations, no live sale. Rollback to 79e04d45.",
-  "target_commit": "71ade6d242468e47dd618857d396bef77e14632d",
-  "rollback_ref": "79e04d457e7c1b545797439bc3e77411ab0fd3ac",
+  "authorization_context": "Owner authorized deploy of #652 (product images sync). Code only: no schema changes, no migrations, no live sale. Rollback to 7e5df996.",
+  "target_commit": "0d1a65413f1b56bca1202200cfb8eb6dc2b5c078",
+  "rollback_ref": "7e5df996d75ca2c955c97d60034b54d311ba8db8",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 31,
-  "optimization": "LOTES_DEDUPE_RUC_LOOKUP"
+  "attempt": 32,
+  "optimization": "PRODUCT_IMAGES_SYNC"
 }

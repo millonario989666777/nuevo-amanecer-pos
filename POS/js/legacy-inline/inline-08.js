@@ -44,7 +44,7 @@ function _naF12OptimizedCanvasData(canvas){let data='';try{data=canvas.toDataURL
 function _naF12SaveCustomIcon(){const canvas=_naF12Canvas();if(!canvas)return;const data=_naF12OptimizedCanvasData(canvas);if(!data||data.length>240000){toast('El icono es demasiado pesado; simplifica el dibujo','error');return;}imagenProducto=data;const icon=document.getElementById('pIcon');if(icon&&!icon.value)icon.value='🖼️';_naF12SetMode('custom');_naF12RenderVisual();cerrarModal('mIconDesigner');toast('Icono personalizado aplicado','success');}
 function _naF12InferMode(product){if(product?.imagen)return'image';const predicted=asignarEmojiAutomatico(product?.name||'');return(product?.icon||'📦')===predicted?'auto':'manual';}
 const _naF12BaseAbrirModalProd=abrirModalProd;
-abrirModalProd=function(...args){const result=_naF12BaseAbrirModalProd.apply(this,args);const expiryField=document.getElementById('pVenc');if(expiryField){expiryField.readOnly=true;expiryField.title='Calculado desde lotes';_naProductFormState(null);}_naF12SetMode('auto');_naF12ProductNameChanged();_naF12RenderVisual();return result;};
+abrirModalProd=function(...args){const result=_naF12BaseAbrirModalProd.apply(this,args);const expiryField=document.getElementById('pVenc');if(expiryField){expiryField.readOnly=false;expiryField.title='';}_naProductFormState(null);_naF12SetMode('auto');_naF12ProductNameChanged();_naF12RenderVisual();return result;};
 const _naF12BaseEditProd=editProd;
 editProd=function(id,...args){const product=productos.find(p=>String(p.id)===String(id)),storedImage=product?.imagen||null,hadImage=!!product&&Object.hasOwn(product,'imagen');if(product)product.imagen=null;let result;try{result=_naF12BaseEditProd.call(this,id,...args);}finally{if(product){if(hadImage)product.imagen=storedImage;else delete product.imagen;}}const expiryField=document.getElementById('pVenc');if(expiryField){let lotStock=false;try{lotStock=!!product&&typeof NA_STOCK_LOTS!=='undefined'&&NA_STOCK_LOTS.lots(product).some(lot=>Number(lot.quantity)>0);}catch(_){}expiryField.readOnly=true;expiryField.title=expiryField.readOnly?'Calculado desde lotes':'';if(expiryField.readOnly)expiryField.value=_naEffectiveExpiry(product)||'';}_naProductFormState(product);imagenProducto=storedImage;_naF12SetMode(_naF12InferMode(product));_naF12RenderVisual();return result;};
 const _naF12BasePreviewImagen=previewImagen;
@@ -54,13 +54,14 @@ guardarProd=async function(...args){const icon=document.getElementById('pIcon');
 document.addEventListener('DOMContentLoaded',()=>{const canvas=_naF12Canvas();canvas?.addEventListener('pointerdown',_naF12DesignerDown);canvas?.addEventListener('pointermove',_naF12DesignerMove);canvas?.addEventListener('pointerup',_naF12DesignerUp);canvas?.addEventListener('pointercancel',_naF12DesignerUp);canvas?.addEventListener('pointerleave',_naF12DesignerUp);_naF12RenderVisual();});
 
 function _naProductFormState(product){
- const stock=document.getElementById('pStock');stock.readOnly=false;
+ const stock=document.getElementById('pStock');stock.readOnly=!!product;
  document.getElementById('pStockLabel').textContent=product?'Stock actual':'Stock inicial';
  document.getElementById('pAdjustStock').hidden=!product;
  document.getElementById('pManageLots').hidden=!product;
- document.getElementById('pVenc').readOnly=true;
+ document.getElementById('pVenc').readOnly=!!product;
+ document.getElementById('pVenc').hidden=!!product;
  document.getElementById('pVenc').value=product?(_naEffectiveExpiry(product)||''):'';
- document.getElementById('pExpiryHelp').textContent=document.getElementById('pVenc').value?'Calculado desde los lotes disponibles. Gestiona el vencimiento al registrar un ingreso.':'Sin lotes. Guarda el producto y registra un ingreso con lote y vencimiento.';
+ document.getElementById('pExpiryHelp').textContent=!product?'Fecha del lote inicial (opcional).':document.getElementById('pVenc').value?'Calculado desde los lotes disponibles. Gestiona el vencimiento al registrar un ingreso.':'Sin lotes. Guarda el producto y registra un ingreso con lote y vencimiento.';
  document.getElementById('mProdTitle').textContent=product?`Editar · ${product.name}`:'Nuevo producto';
  document.getElementById('pExpiryDisplay').innerHTML=_naInventoryExpiryMarkup(product?(_naEffectiveExpiry(product)||''):'');
  const lotList=document.getElementById('pLotList');lotList.replaceChildren();

@@ -1,0 +1,251 @@
+/* Caja del Día responsive (#653). Hoja propia de CANON: pages/caja.css es espejo LAB y debe quedar idéntico. */
+/* Caja: el resumen usa áreas propias; las demás pestañas conservan todo el ancho. */
+#pageCaja #cajContent {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+#pageCaja #cajContent > div {
+  width: 100%;
+  min-width: 0;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+}
+
+/* Pestañas (incluida Historial, que solo aparece con la nube): caben o se desplazan sin recortarse. */
+#pageCaja .tabs-wrap {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#pageCaja .tabs-wrap::-webkit-scrollbar { display: none; }
+
+#pageCaja .tabs-wrap > .tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 699px) {
+  #pageCaja .tabs-wrap > .tab {
+    flex: 1 0 auto;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+#pageCaja .na-cash-history {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px !important;
+}
+
+#pageCaja #cajContent > .caj-banner-wrap,
+#pageCaja #cajContent > .cj-stats-grid,
+#pageCaja #cajContent > .cj-acciones,
+#pageCaja #cajContent > .cj-mov-wrap {
+  padding: 0;
+}
+
+#pageCaja button,
+#pageCaja .tab {
+  min-height: 44px;
+}
+
+#pageCaja button:focus-visible,
+#pageCaja .tab:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 3px;
+}
+
+#pageCaja .banner-abierta {
+  background: #0f766e;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#pageCaja .bn-sub {
+  font-size: 12px;
+  opacity: 1;
+  overflow-wrap: anywhere;
+}
+
+#pageCaja .btn-abrir-cj {
+  background: #0f766e;
+}
+
+#pageCaja .btn-cerrar-cj:hover,
+#pageCaja .btn-abrir-cj:hover {
+  background: #115e59;
+}
+
+#pageCaja .cj-stats-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+#pageCaja .cjsg {
+  min-width: 0;
+  min-height: 92px;
+  padding: 14px;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+#pageCaja .cjsg > div {
+  min-width: 0;
+}
+
+#pageCaja .cjsg-lbl {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+#pageCaja .cjsg-val {
+  font-size: clamp(18px, 2vw, 24px);
+  overflow-wrap: anywhere;
+}
+
+#pageCaja .cj-acciones {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Los tokens de marca originales son demasiado claros para texto blanco AA. */
+#pageCaja .btn-cjac {
+  min-height: 84px;
+  padding: 12px 8px;
+  font-size: 13px;
+  color: #fff;
+  transition: background-color .15s ease;
+}
+
+#pageCaja .btn-cjac.ing,
+#pageCaja .btn-cjac.cob {
+  background: #0f766e;
+  color: #fff;
+}
+
+#pageCaja .btn-cjac.egr,
+#pageCaja .btn-cjac.gas {
+  background: #c2410c;
+  color: #fff;
+}
+
+#pageCaja .btn-cjac.ing:hover,
+#pageCaja .btn-cjac.cob:hover {
+  background: #115e59;
+}
+
+#pageCaja .btn-cjac.egr:hover,
+#pageCaja .btn-cjac.gas:hover {
+  background: #9a3412;
+}
+
+#pageCaja .cj-mov-wrap {
+  overflow: visible;
+  align-self: start;
+}
+
+#pageCaja .mov-section-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+
+#pageCaja .mov-list {
+  gap: 10px;
+}
+
+#pageCaja .mov-item {
+  min-width: 0;
+  padding: 14px 12px;
+}
+
+#pageCaja .mov-desc {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#pageCaja .mov-meta {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+#pageCaja .mov-amt {
+  max-width: 40%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+@media (min-width: 700px) {
+  #pageCaja #cajContent {
+    padding: 20px 24px;
+    gap: 20px;
+  }
+
+  #pageCaja #cajContent:has(> .cj-stats-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "banner banner" "stats actions" "movements movements";
+  }
+
+  #pageCaja #cajContent > .caj-banner-wrap { grid-area: banner; }
+  #pageCaja #cajContent > .cj-stats-grid { grid-area: stats; }
+  #pageCaja #cajContent > .cj-acciones { grid-area: actions; }
+  #pageCaja #cajContent > .cj-mov-wrap { grid-area: movements; }
+
+  #pageCaja #cajContent:not(:has(> .cj-stats-grid)) > .cj-mov-wrap {
+    grid-area: auto;
+  }
+}
+
+@media (min-width: 1100px) {
+  #pageCaja #cajContent {
+    max-width: 1280px;
+  }
+
+  #pageCaja .na-cash-history {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  #pageCaja .na-cash-history > .mov-section-title,
+  #pageCaja .na-cash-history > div:not(.na-cash-hist-card) {
+    grid-column: 1 / -1;
+  }
+
+  #pageCaja #cajContent:has(> .cj-stats-grid) {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "banner movements" "stats movements" "actions movements";
+  }
+
+  #pageCaja .cj-acciones {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  #pageCaja #cajContent:not(:has(> .cj-stats-grid)) .mov-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 399px) {
+  #pageCaja .cjsg {
+    padding: 12px 10px;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+}

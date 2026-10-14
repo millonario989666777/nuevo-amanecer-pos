@@ -171,3 +171,8 @@
  #mProd .mhead,#mProd .mbody,#mProd .mbtns{background:#fff!important;opacity:1!important}
  html:has(#mProd.open),html:has(#mProd.open) body{height:100%!important;max-height:100dvh;overflow:hidden!important}
 }
+
+#mProd #pStock[readonly]{background:#f1f5f9;color:#64748b;cursor:default}
+#mProd .fg:has(> #pStock){display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+#mProd .fg:has(> #pStock) > .fl{grid-column:1/-1}
+#mProd .inv-form-lot .inv-expiry-status{display:block}

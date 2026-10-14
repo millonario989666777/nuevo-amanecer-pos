@@ -29,7 +29,7 @@ _baseInvRender=function(){
     const matches=sinTildes((product.name||'').toLowerCase()).includes(search)||sinTildes(product.descripcion||'').includes(search)||sinTildes((product.marca||'').toLowerCase()).includes(search)||(product.sku||'').toLowerCase().includes(search)||(product.barcode||'').includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search));
     const categoryMatches=!category||product.cat===category;
     const days=diasHasta(_naEffectiveExpiry(product));
-    const tabMatches=invTab==='critico'?_naTracksStock(product)&&product.stock<=product.stockMin:invTab==='vencimiento'?_naExpiryBucket(product)==='soon':invTab==='vencidos'?_naExpiryBucket(product)==='expired':true;
+    const tabMatches=invTab==='critico'?_naTracksStock(product)&&product.stock<=product.stockMin:invTab==='vencimiento'?_naTracksStock(product)&&days!==null&&days>=0&&days<=NA_EXPIRY_SOON_DAYS:invTab==='vencidos'?_naExpiryBucket(product)==='expired':true;
     return matches&&categoryMatches&&tabMatches;
   });
   const body=document.getElementById('invBody');if(!body)return;

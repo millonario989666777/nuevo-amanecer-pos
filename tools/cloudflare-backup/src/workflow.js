@@ -1,5 +1,5 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
-import { EXPORT_PATH, apiResult, backupKey, manifest, requireEnv, sha256Hex } from './backup-core.js';
+import { EXPORT_PATH, apiResult, backupKey, manifest, requireEnv, sha256Hex, stripInternalImageRows } from './backup-core.js';
 
 const RETRY = { retries: { limit: 30, delay: '2 seconds', backoff: 'constant' }, timeout: '5 minutes' };
 
@@ -34,8 +34,9 @@ export class D1BackupWorkflow extends WorkflowEntrypoint {
           chunks.push(chunk);
         }
         if (!size) throw new Error('Empty SQL export');
-        const exported = new Uint8Array(size); let offset = 0;
-        for (const chunk of chunks) { exported.set(chunk, offset); offset += chunk.byteLength; }
+        const raw = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { raw.set(chunk, offset); offset += chunk.byteLength; }
+        const exported = new TextEncoder().encode(stripInternalImageRows(new TextDecoder().decode(raw)));
         const sha256 = await sha256Hex(exported);
         const metadata = { database_id: this.env.DATABASE_ID, bookmark, sha256 };
         await this.env.BACKUP_BUCKET.put(sqlKey, exported, { customMetadata: metadata, httpMetadata: { contentType: 'application/sql' } });

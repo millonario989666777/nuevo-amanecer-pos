@@ -12,6 +12,7 @@ import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
 import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js';
+import { PRODUCT_IMAGE_PATHS, productImagesRoute } from './pos-product-images.js';
 import { saleNoteRoute, recordMetaRoute } from './pos-sale-notes.js';
 import { purchasesRoute, closePartialRoute } from './pos-purchases.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
@@ -111,6 +112,11 @@ export default {
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
         return cors(await saleNoteRoute(request, env, auth, json));
+      }
+      if (PRODUCT_IMAGE_PATHS.has(url.pathname)) {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        return cors(await productImagesRoute(request, url, env, auth, json, getDatabase(env)));
       }
       if (ROLE_PATHS.has(url.pathname)) {
         return cors(await handleRoles(request, url, env, { json, authorizeSession, getDatabase }));
