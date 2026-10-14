@@ -239,7 +239,8 @@
     identity.append(menu, mark, copy);
     toolbar.insertBefore(identity, search);
 
-    var searchIcon = search.querySelector('span:first-child');
+    // Only restyle a direct-child icon span; never match nested .scanner-dot inside #scannerIndicator.
+    var searchIcon = search.querySelector(':scope > span:first-child');
     if (searchIcon && searchIcon.id !== 'scannerIndicator') {
       searchIcon.classList.add('pos-search-icon');
       searchIcon.textContent = '⌕';
