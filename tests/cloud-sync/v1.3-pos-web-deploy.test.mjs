@@ -19,7 +19,7 @@ test('hosted POS uses explicit Worker routing with a stable workers.dev name', (
   assert.equal(parsedConfig.assets.binding, 'ASSETS');
   assert.deepEqual(parsedConfig.assets.run_worker_first, [
     '/', '/app', '/app/', '/health', '/auth/*', '/read/*',
-    '/commands/*', '/imports/*', '/sync/operations*'
+    '/commands/*', '/imports/*', '/sync/operations*', '/settings'
   ]);
   assert.equal(parsedConfig.assets.html_handling, 'none');
   assert.deepEqual(parsedConfig.services, [
@@ -166,7 +166,7 @@ test('deploy versions the launcher activation script with the exact hosted build
 
 
 test('canonical API proxy routes invoke the Worker before static assets', () => {
-  for (const route of ['/health','/auth/*','/read/*','/commands/*','/imports/*','/sync/operations*']) {
+  for (const route of ['/health','/auth/*','/read/*','/commands/*','/imports/*','/sync/operations*','/settings']) {
     assert.ok(parsedConfig.assets.run_worker_first.includes(route), route + ' must run Worker first');
   }
 });
@@ -183,6 +183,7 @@ test('hosted browser talks to CANON through the same-origin Worker proxy', () =>
   assert.match(router, /pathname\.startsWith\('\/auth\/'\)/);
   assert.match(router, /pathname\.startsWith\('\/read\/'\)/);
   assert.match(router, /pathname\.startsWith\('\/commands\/'\)/);
+  assert.match(router, /pathname === '\/settings'/);
   assert.match(router, /return proxyCanonical\(request, env\)/);
   assert.match(router, /apiOrigin: hostedOrigin/);
   assert.match(router, /CANON_API_ORIGIN/);
