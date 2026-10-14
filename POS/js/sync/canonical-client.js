@@ -1076,6 +1076,7 @@
     var type=String(input.movement_type||'').trim().toUpperCase();
     if(!['ENTRADA','SALIDA'].includes(type)||typeof input.quantity!=='number'||!Number.isFinite(input.quantity)||input.quantity<=0||!validReason(input.reason))fail('INVALID_CANONICAL_INVENTORY');
     if(input.allow_expired_lots!==undefined&&(type!=='SALIDA'||typeof input.allow_expired_lots!=='boolean'))fail('EXPIRED_CONFIRMATION_INVALID');
+    if(input.expired_lot_approval!==undefined&&(type!=='SALIDA'||input.allow_expired_lots!==true||typeof input.expired_lot_approval!=='string'||!input.expired_lot_approval.length||input.expired_lot_approval.length>80))fail('EXPIRED_CONFIRMATION_INVALID');
     if(input.lots!==undefined&&type!=='ENTRADA')fail('INVALID_CANONICAL_INVENTORY');
     var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
     if(!product||Number(product.tracks_inventory)!==1||!uint(product.stock_revision)||typeof product.current_stock_quantity!=='number'||!Number.isFinite(product.current_stock_quantity)||product.current_stock_quantity<0)fail('INVALID_CANONICAL_PRODUCT');
@@ -1101,7 +1102,8 @@
       expected_stock_revision:product.stock_revision,
       reason:String(input.reason).trim().replace(/\s+/g,' '),
       ...(input.lots!==undefined?{lots:root.NA_STOCK_LOTS?root.NA_STOCK_LOTS.validateReceiptEntry(product,input.lots,input.quantity):fail('LOT_ENGINE_UNAVAILABLE')}:{}),
-      ...(input.allow_expired_lots!==undefined?{allow_expired_lots:input.allow_expired_lots}:{})
+      ...(input.allow_expired_lots!==undefined?{allow_expired_lots:input.allow_expired_lots}:{}),
+      ...(input.expired_lot_approval!==undefined?{expired_lot_approval:input.expired_lot_approval}:{})
     });
   }
 
@@ -1339,7 +1341,9 @@
     if (command === 'inventory.adjust') {
       return validId(payload.product_id) && ['ENTRADA','SALIDA'].includes(payload.movement_type) &&
         typeof payload.quantity==='number' && Number.isFinite(payload.quantity) && payload.quantity>0 &&
-        uint(payload.expected_stock_revision) && validReason(payload.reason);
+        uint(payload.expected_stock_revision) && validReason(payload.reason) &&
+        (payload.allow_expired_lots===undefined || payload.movement_type==='SALIDA' && typeof payload.allow_expired_lots==='boolean') &&
+        (payload.expired_lot_approval===undefined || payload.movement_type==='SALIDA' && payload.allow_expired_lots===true && typeof payload.expired_lot_approval==='string' && payload.expired_lot_approval.length>0 && payload.expired_lot_approval.length<=80);
     }
     if (command === 'product.create') {
       if (!validId(payload.product_id) || typeof payload.name!=='string' || !payload.name.trim() || payload.name.length>240 ||
@@ -2100,8 +2104,8 @@
     return withWriterLock(function () {
       var record=journal();
       if(!record||record.state!=='PENDING'||record.command!=='inventory.adjust')return false;
-      var safeErrors=['invalid_inventory_request','invalid_inventory_lots','expired_lots_confirmation_required','invalid_lot_state','product_not_found','product_inventory_disabled','stale_stock','insufficient_stock','invalid_stock_state','operation_id_conflict','stale_authority','canonical_not_active','canonical_inventory_conflict'];
-      if(![400,404,409].includes(record.last_status)||!safeErrors.includes(record.last_error))return false;
+      var safeErrors=['expired_lot_approval_required','invalid_inventory_request','invalid_inventory_lots','expired_lots_confirmation_required','invalid_lot_state','product_not_found','product_inventory_disabled','stale_stock','insufficient_stock','invalid_stock_state','operation_id_conflict','stale_authority','canonical_not_active','canonical_inventory_conflict'];
+      if(!(record.last_status===403&&record.last_error==='expired_lot_approval_required')&&(![400,404,409].includes(record.last_status)||!safeErrors.includes(record.last_error)))return false;
       root.localStorage.removeItem(JOURNAL);
       if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');
       return true;

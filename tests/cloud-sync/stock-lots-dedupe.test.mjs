@@ -1,0 +1,90 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import vm from 'node:vm';
+import { activeCanon } from './canon-browser-harness.mjs';
+import lotCore from '../../POS/js/inventory/stock-lots.js';
+
+const read=p=>readFileSync(p,'utf8');
+function helper(){
+  const src=read('POS/js/legacy-inline/inline-01.js');
+  const start=src.indexOf('const NA_EXPIRY_SOON_DAYS');assert.ok(start>=0);
+  const ctx={NA_STOCK_LOTS:lotCore,JSON};vm.createContext(ctx);
+  vm.runInContext(src.slice(start)+';this.f=_naEffectiveExpiry;this.d=NA_EXPIRY_SOON_DAYS;',ctx);return ctx;
+}
+const lot=(id,date,q)=>({lot_id:id,lot_code:id,expiry_date:date,quantity:q,received_at:'2026-01-01T00:00:00.000Z'});
+
+test('_naEffectiveExpiry: lote más próximo con saldo, ignora saldo 0, cae a venc, null sin vencimiento',()=>{
+  const {f,d}=helper();assert.equal(d,30);
+  assert.equal(f({venc:'2030-01-01',lots_json:JSON.stringify([lot('a','2026-12-01',2),lot('b','2026-11-01',0),lot('c','2027-01-01',1)])}),'2026-12-01');
+  assert.equal(f({venc:'2030-01-01',lots_json:JSON.stringify([lot('b','2026-11-01',0)])}),'2030-01-01');
+  assert.equal(f({venc:'2030-01-01'}),'2030-01-01');
+  assert.equal(f({}),null);assert.equal(f({lots_json:'{roto'}),null);
+});
+
+test('pestañas, contador y sugerencia usan el helper y la constante (definiciones que corren)',()=>{
+  const i9=read('POS/js/legacy-inline/inline-09.js'),i3=read('POS/js/legacy-inline/inline-03.js'),i6=read('POS/js/legacy-inline/inline-06.js'),i1=read('POS/js/legacy-inline/inline-01.js');
+  for(const src of [i9.slice(i9.indexOf('_baseInvRender=function')),i3.slice(i3.indexOf('invBadges=function'),i3.indexOf('invRender=function')),i1.slice(i1.indexOf('function _baseInvRender'),i1.indexOf('const NA_MAX_ALT_BARCODES'))]){
+    assert.match(src,/_naEffectiveExpiry\(/);assert.match(src,/NA_EXPIRY_SOON_DAYS/);assert.doesNotMatch(src.split('\n')[0]+src,/diasHasta\(p(roduct)?\.venc\)/);
+  }
+  assert.match(i6,/expiry=diasHasta\(_naEffectiveExpiry\(product\)\)/);
+  // productos sin vencimiento quedan fuera: diasHasta(null) debe ser null y los filtros exigen d!==null.
+  assert.match(i3,/d!==null&&d>=0&&d<=NA_EXPIRY_SOON_DAYS/);
+});
+
+test('formulario: pVenc solo lectura con lotes, editable en producto nuevo',()=>{
+  const i8=read('POS/js/legacy-inline/inline-08.js');
+  assert.match(i8,/abrirModalProd=function[^\n]*expiryField\.readOnly=false/);
+  assert.match(i8,/editProd=function[^\n]*Calculado desde lotes[^\n]*_naEffectiveExpiry\(product\)/);
+});
+
+test('no queda ningún acceso a «Productos a vencer» ni al toggle duplicado',()=>{
+  const files=[];const walk=d=>{for(const n of readdirSync(d)){const p=d+'/'+n;if(statSync(p).isDirectory())walk(p);else if(/\.(js|html|css|json|webmanifest)$/.test(n))files.push(p);}};walk('POS');
+  for(const p of files){const s=read(p);assert.doesNotMatch(s,/Productos a vencer|na-lot-report|openReport|secExpiredLots/,p);}
+  assert.match(read('POS/js/config/config-v9.js'),/allowExpiredLots/);
+});
+
+test('PIN de lotes vencidos usa NA_ROLES y expired_lot_sale',()=>{
+  const ui=read('POS/js/inventory/stock-lots-ui.js');
+  assert.match(ui,/approve\('expired_lot_sale'/);assert.match(ui,/NA_ROLES\.askPin/);assert.doesNotMatch(ui,/'discount'/);
+  assert.match(read('tools/cloudflare-lab/src/pos-roles.js'),/APPROVAL_ACTIONS = new Set\(\[[^\]]*'expired_lot_sale'/);
+});
+
+test('plan(): rechaza 1e-10 y sin lotes con stock negativo da INSUFFICIENT_PROJECTED_STOCK',()=>{
+  assert.throws(()=>lotCore.plan(5,[],1e-10,'2026-10-14',false),/INVALID_LOT_STOCK/);
+  assert.throws(()=>lotCore.plan(-2,[],1,'2026-10-14',false),/INSUFFICIENT_PROJECTED_STOCK/);
+  assert.throws(()=>lotCore.plan(1,[],2,'2026-10-14',false),/INSUFFICIENT_PROJECTED_STOCK/);
+});
+
+const migrations=['0014_canonical_live_products.sql','0015_canonical_inventory_adjust.sql','0016_canonical_generic_sale_lines.sql','0024_pos_roles_owner_pin.sql','0025_pos_reviews_pin_failures.sql','0026_pos_sale_annulments.sql','0028_pos_purchases.sql'];
+const ctl=f=>{const c=f.control();return{promotion_id:c.active_promotion_id,authority_epoch:c.authority_epoch,expected_control_revision:c.revision,client_contract:'a6-gate-c-v1'};};
+const call=async(f,path,b)=>{const r=await f.fetch('http://localhost'+path,{method:'POST',headers:{authorization:'Bearer owner-token','content-type':'application/json'},body:JSON.stringify(b)});return{status:r.status,body:await r.json()};};
+const product=f=>f.sql("SELECT * FROM products WHERE product_id='00003'");
+const move=(f,op,type,quantity,extra={})=>call(f,'/commands/inventory.adjust',{...ctl(f),operation_id:op,created_at:'2026-10-14T13:00:00.000Z',product_id:'00003',movement_type:type,quantity,expected_stock_revision:product(f).stock_revision,reason:'Prueba lotes',...extra});
+async function setup(t){
+  const f=await activeCanon(t,{migrations});f.database.exec(read('infra/database/migrations/0030_canonical_stock_lots.sql'));f.addDevice('owner','writer','active','owner-token');
+  assert.equal((await call(f,'/auth/owner-pin',{new_pin:'4821'})).status,200);
+  assert.equal((await move(f,'clear','SALIDA',product(f).current_stock_quantity)).status,201);
+  assert.equal((await move(f,'in-exp','ENTRADA',2,{lots:[{lot_code:'old',expiry_date:'2026-10-01',quantity:2}]})).status,201);
+  return f;
+}
+
+test('servidor: salida con vencidos exige aprobación expired_lot_sale válida',async t=>{
+  const f=await setup(t);
+  let r=await move(f,'out-1','SALIDA',1,{allow_expired_lots:true});assert.equal(r.status,403);assert.equal(r.body.error,'expired_lot_approval_required');
+  r=await move(f,'out-1','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:'nope'});assert.equal(r.status,403);
+  const wrong=await call(f,'/auth/owner-approval',{pin:'4821',action:'discount'});assert.equal(wrong.status,201);
+  r=await move(f,'out-1','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:wrong.body.approval_id});assert.equal(r.status,403);
+  const ok=await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'});assert.equal(ok.status,201);
+  r=await move(f,'out-1','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:ok.body.approval_id});assert.equal(r.status,201,JSON.stringify(r));
+  r=await move(f,'out-2','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:ok.body.approval_id});assert.equal(r.status,403,'no reutilizable en otra operación');
+  r=await move(f,'out-3','SALIDA',1,{expired_lot_approval:ok.body.approval_id});assert.equal(r.status,400);
+});
+
+test('LOT_STOCK_INCOHERENT: entrada permitida, salida bloqueada',async t=>{
+  const f=await setup(t);
+  f.database.exec("UPDATE canonical_stock_lots SET quantity=quantity+5 WHERE product_id='00003'");
+  const out=await move(f,'out-x','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:(await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'})).body.approval_id});
+  assert.equal(out.status,409);
+  const entry=await move(f,'in-fix','ENTRADA',5);assert.equal(entry.status,201,JSON.stringify(entry));
+});

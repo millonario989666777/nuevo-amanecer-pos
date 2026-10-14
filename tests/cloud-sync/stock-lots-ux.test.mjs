@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 
-// Small DOM harness: exercise actual focus, handlers and rendered text without a browser dependency.
+// Small DOM harness: exercise the shared PIN handlers and rendered text without a browser dependency.
 function harness({allow=false, pinSet=false, localPin=false, verify=async()=>({approval_id:'ok'}), products=[]}={}) {
   const doc={readyState:'loading',events:{},addEventListener(k,f){this.events[k]=f;},activeElement:null};
   class Node {
     constructor(tag){this.tagName=tag;this.children=[];this.attrs={};this.events={};this.value='';this.hidden=false;this.disabled=false;this.ownText='';}
+    set innerHTML(v){
+      this.children=[];
+      for(const match of v.matchAll(/<(div|input|button)[^>]*class="([^"]+)"[^>]*>/g)){
+        const n=new Node(match[1]);n.className=match[2];this.appendChild(n);
+      }
+    }
     set textContent(v){this.ownText=String(v??'');this.children=[];}
     get textContent(){return this.ownText+this.children.map(n=>n.textContent).join(' ');}
     setAttribute(k,v){this.attrs[k]=String(v);}
@@ -26,12 +32,18 @@ function harness({allow=false, pinSet=false, localPin=false, verify=async()=>({a
   doc.querySelector=s=>doc.body.querySelector(s);doc.querySelectorAll=s=>doc.body.querySelectorAll(s);
   doc.getElementById=id=>doc.querySelector('#'+id);
   const notices=[],requests=[];
-  const c=vm.createContext({Date,console,crypto,document:doc,addEventListener(){},
+  const c=vm.createContext({Date,console,crypto,document:doc,addEventListener(){},setTimeout:fn=>fn(),
     toast:m=>notices.push(m),_naGetSecurityPath:k=>k==='rules.allowExpiredLots'?allow:k==='pinEnabled'||k==='pinHash'?localPin:undefined,
     _naPinValid:pin=>localPin&&pin==='4821',
     NA_ROLES:{pinSet,api:async(path,body)=>{requests.push({path,body});return verify(body.pin);},message:e=>e.message},
-    NuevoAmanecerCanonical:{enabled:()=>true,snapshot:()=>({products})},
+    NuevoAmanecerCanonical:{enabled:()=>!localPin,snapshot:()=>({products})},
   });c.window=c;
+  // Run the existing shared PIN functions, with a synthetic remote API.
+  const roles=readFileSync('POS/js/config/pos-roles-client.js','utf8');
+  vm.runInContext('var root=window;var doc=document;var PIN_ERRORS={pin_format:"El PIN debe tener de 4 a 8 dígitos."};var api=NA_ROLES.api;var message=NA_ROLES.message;'+
+    roles.slice(roles.indexOf('  function askPin('),roles.indexOf('  function toast('))+
+    roles.slice(roles.indexOf('  async function approve('),roles.indexOf('  var LABELS'))+
+    'NA_ROLES.askPin=askPin;NA_ROLES.approve=approve;',c);
   for(const name of ['stock-lots','stock-lots-ui'])vm.runInContext(readFileSync('POS/js/inventory/'+name+'.js','utf8'),c);
   return {c,doc,notices,requests};
 }
@@ -45,39 +57,36 @@ test('vencidos bloqueados por defecto; habilitar sin PIN exige configurarlo',()=
     assert.match(h.notices.at(-1),allow?/configur.*PIN/i:/bloqueada/i);
   }
 });
-test('modal de vencidos: Cancelar enfocado, Tab contenido, Escape restaura foco y nunca autoriza',async()=>{
-  const h=harness({allow:true,pinSet:true});const source=h.doc.createElement('button');source.focus();
-  const result=h.c.NA_STOCK_LOTS_UI.confirmConsumption(expired,1);
-  const box=h.doc.querySelector('.na-lots-dialog'),wrap=h.doc.querySelector('.na-lots-overlay');
-  assert.equal(box.getAttribute('role'),'dialog');assert.equal(box.getAttribute('aria-modal'),'true');
-  assert.equal(h.doc.activeElement.textContent,'Cancelar');
-  const buttons=box.querySelectorAll('button');buttons.at(-1).focus();let prevented=false;
-  wrap.events.keydown({key:'Tab',shiftKey:false,preventDefault(){prevented=true;}});
-  assert.ok(prevented);assert.ok(box.querySelectorAll('input,button').includes(h.doc.activeElement));
-  wrap.events.keydown({key:'Escape',preventDefault(){}});
-  assert.equal(await result,null);assert.equal(h.doc.activeElement,source);assert.equal(h.requests.length,0);
+test('PIN compartido: Cancelar y Escape nunca autorizan y limpian el campo',async()=>{
+  for(const cancel of [true,false]){
+    const h=harness({allow:true,pinSet:true});
+    const result=h.c.NA_STOCK_LOTS_UI.confirmConsumption(expired,1);
+    const wrap=h.doc.querySelector('.na-pin-overlay'),input=wrap.querySelector('.na-pin-input');
+    assert.equal(wrap.getAttribute('role'),'dialog');assert.equal(wrap.getAttribute('aria-modal'),'true');
+    assert.equal(h.doc.activeElement,input);input.value='4821';
+    if(cancel)wrap.querySelector('.na-pin-cancel').onclick();else input.events.keydown({key:'Escape'});
+    assert.equal(await result,null);assert.equal(input.value,'');assert.equal(h.requests.length,0);
+  }
 });
 test('PIN remoto incorrecto mantiene modal y venta bloqueada; válido autoriza una sola vez',async()=>{
-  const h=harness({allow:true,pinSet:true,verify:async pin=>{if(pin!=='4821')throw Error('PIN incorrecto');return {approval_id:'verified'};}});
+  const h=harness({allow:true,pinSet:true,verify:async pin=>{if(pin!=='4821')throw Error('owner_pin_invalid');return {approval_id:'verified'};}});
   const result=h.c.NA_STOCK_LOTS_UI.confirmConsumption(expired,1);
-  const box=h.doc.querySelector('.na-lots-dialog'),input=box.querySelector('input'),ok=box.querySelectorAll('button').at(-1);
-  input.value='1234';await ok.onclick();assert.match(box.textContent,/PIN incorrecto/);assert.equal(input.value,'');
-  input.value='4821';await ok.onclick();assert.equal(await result,true);assert.equal(input.value,'');
-  assert.equal(h.doc.querySelector('.na-lots-dialog'),null);assert.equal(h.requests.length,2);
+  const box=h.doc.querySelector('.na-pin-overlay'),input=box.querySelector('input'),ok=box.querySelectorAll('button').at(-1);
+  input.value='1234';await ok.onclick();assert.match(box.textContent,/owner_pin_invalid/);assert.equal(input.value,'');
+  input.value='4821';await ok.onclick();assert.equal((await result).approval_id,'verified');assert.equal(input.value,'');
+  assert.equal(h.doc.querySelector('.na-pin-overlay'),null);assert.equal(h.requests.length,2);assert.ok(h.requests.every(r=>r.body.action==='expired_lot_sale'&&r.body.operation_id===null));
 });
 test('PIN maestro existente también se valida sin crear otro sistema de PIN',async()=>{
   const h=harness({allow:true,localPin:true});const result=h.c.NA_STOCK_LOTS_UI.confirmConsumption(expired,1);
-  const box=h.doc.querySelector('.na-lots-dialog');box.querySelector('input').value='4821';await box.querySelectorAll('button').at(-1).onclick();
+  const box=h.doc.querySelector('.na-pin-overlay');box.querySelector('input').value='4821';await box.querySelectorAll('button').at(-1).onclick();
   assert.equal(await result,true);assert.equal(h.requests.length,0);
 });
-test('reporte muestra remanente sin vencimiento, fechas DD/MM/AAAA y día singular/plural',()=>{
-  const day=new Date(Date.now()-5*3600000).toISOString().slice(0,10);
-  const date=n=>new Date(Date.parse(day)+n*86400000).toISOString().slice(0,10);
-  const h=harness({products:[{...expired,current_stock_quantity:5,lots:[{...expired.lots[0],expiry_date:date(1),quantity:1},{...expired.lots[0],lot_id:'L2',expiry_date:date(2),quantity:1}]}]});
-  h.c.NA_STOCK_LOTS_UI.openReport();const text=h.doc.querySelector('.na-lots-dialog').textContent;
-  assert.match(text,/sin vencimiento registrado/);assert.match(text,/Saldo: 3 kg/);
-  assert.match(text,/En 1 día\b/);assert.doesNotMatch(text,/En 1 días/);assert.match(text,/En 2 días/);
-  assert.ok(text.includes(date(1).split('-').reverse().join('/')));assert.ok(!text.includes(date(1)));
+test('reporte retirado conserva el API de lotes y productos proyectados',()=>{
+  const h=harness({products:[expired]});
+  assert.equal(h.c.NA_STOCK_LOTS_UI.openReport,undefined);
+  assert.equal(h.c.NA_STOCK_LOTS_UI.currentProducts()[0],expired);
+  assert.equal(typeof h.c.NA_STOCK_LOTS_UI.readMovementLots,'function');
+  assert.equal(h.doc.querySelector('.na-pin-overlay'),null);
 });
 
 function prepareSale(h){
@@ -93,7 +102,7 @@ test('venta espera el modal antes de enqueue; Cancelar conserva carrito, PIN vá
     const h=harness({allow:true,pinSet:true,products:[expired]}),enqueued=prepareSale(h);
     const result=h.c.confirmarVenta();assert.equal(enqueued.length,0);assert.equal(h.c.posProc,true);
     await h.c.confirmarVenta();assert.equal(enqueued.length,0);
-    const box=h.doc.querySelector('.na-lots-dialog'),buttons=box.querySelectorAll('button');
+    const box=h.doc.querySelector('.na-pin-overlay'),buttons=box.querySelectorAll('button');
     if(authorize){box.querySelector('input').value='4821';await buttons.at(-1).onclick();}else buttons[0].onclick();
     await result;assert.equal(h.c.posProc,false);
     assert.equal(enqueued.length,authorize?1:0);assert.equal(h.c.cart.length,authorize?0:1);
@@ -109,14 +118,11 @@ test('fallo al construir modal de vencidos bloquea venta antes del enqueue',asyn
   h.doc.createElement=()=>{throw Error('DOM_UNAVAILABLE');};
   await h.c.confirmarVenta();assert.equal(enqueued.length,0);assert.equal(h.c.cart.length,1);assert.equal(h.c.posProc,false);
 });
-test('reporte se instala en navegación visible tablet y drawer móvil; evita duplicados',()=>{
+test('ningún acceso al reporte se instala en Inventario, Ventas, sidebar o drawer',()=>{
   const h=harness(),hosts={};
-  for(const key of ['#pageMenu .menu-desktop-sidebar','.na-mobile-drawer-nav']){hosts[key]=h.doc.createElement('nav');h.doc.body.appendChild(hosts[key]);}
+  for(const key of ['#pageInventario .ocr-purchase-actions','#ventasReportControls','#pageMenu .menu-desktop-sidebar','.na-mobile-drawer-nav']){hosts[key]=h.doc.createElement('nav');h.doc.body.appendChild(hosts[key]);}
   const query=h.doc.querySelector;h.doc.querySelector=s=>hosts[s]||query(s);
   h.doc.events.DOMContentLoaded();h.doc.events.DOMContentLoaded();
-  for(const host of Object.values(hosts)){
-    const buttons=host.querySelectorAll('.na-lot-report-button');assert.equal(buttons.length,1);assert.equal(buttons[0].hidden,false);
-    buttons[0].onclick();assert.ok(h.doc.querySelector('.na-lots-dialog'));
-    h.doc.querySelector('.na-lots-dialog').querySelector('button').onclick();
-  }
+  for(const host of Object.values(hosts))assert.equal(host.children.length,0);
+  assert.equal(h.c.NA_STOCK_LOTS_UI.openReport,undefined);
 });

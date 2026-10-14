@@ -122,8 +122,9 @@ test('SALIDA manual respeta lotes y vencidos; retorno público de lotes está pr
   const f=await setup(t);await entry(f,'manual-in',[receipt('A','2026-10-13',2)],2);
   const b={...ctl(f),operation_id:'manual-out',created_at:'2026-10-14T13:00:00.000Z',product_id:'00003',movement_type:'SALIDA',quantity:2,expected_stock_revision:product(f).stock_revision,reason:'Salida prueba'};
   assert.equal((await call(f,'/commands/inventory.adjust',b)).body.error,'expired_lots_confirmation_required');
-  b.allow_expired_lots=true;assert.equal((await call(f,'/commands/inventory.adjust',b)).status,201);assert.equal(lots(f)[0].quantity,1.125);
-  const forged={...b,operation_id:'forged-return',movement_type:'ENTRADA',return_sale_operation:'fake',quantity:1};delete forged.allow_expired_lots;
+  b.allow_expired_lots=true;assert.equal((await call(f,'/commands/inventory.adjust',b)).body.error,'expired_lot_approval_required');
+  const approval=await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'});assert.equal(approval.status,201);b.expired_lot_approval=approval.body.approval_id;assert.equal((await call(f,'/commands/inventory.adjust',b)).status,201);assert.equal(lots(f)[0].quantity,1.125);
+  const forged={...b,operation_id:'forged-return',movement_type:'ENTRADA',return_sale_operation:'fake',quantity:1};delete forged.allow_expired_lots;delete forged.expired_lot_approval;
   assert.equal((await call(f,'/commands/inventory.adjust',forged)).status,400);
 });
 test('venta offline cobrada se sincroniza aunque el lote venza antes del envío, sin cuarentena',async t=>{

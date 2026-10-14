@@ -26,9 +26,9 @@ test('proyección offline reserva lotes en orden para dos ventas, sin doble rese
   base.sales=[{operation_id:'a'}];projected=ctx.NuevoAmanecerCanonicalSaleProjection.project(base,{version:1,intents:[intent('a'),intent('b')]});
   assert.equal(projected.products[0].lots[0].quantity,1);
 });
-test('assets de lotes precacheados; UI usa DOM/textContent, filtros accesibles y controles de 44px',()=>{
+test('assets de lotes precacheados; UI usa DOM/textContent, PIN compartido y controles de 44px',()=>{
   const index=readFileSync('POS/index.html','utf8'),sw=readFileSync('POS/sw.js','utf8');
   for(const asset of ['js/inventory/stock-lots.js','js/inventory/stock-lots-ui.js','css/stock-lots.css']){assert.ok(index.includes(asset),asset);assert.ok(sw.includes(asset),asset);}
   const ui=readFileSync('POS/js/inventory/stock-lots-ui.js','utf8'),css=readFileSync('POS/css/stock-lots.css','utf8');
-  assert.doesNotMatch(ui,/innerHTML|insertAdjacentHTML/);assert.match(css,/min-height:\s*44px/);assert.match(ui,/Productos a vencer/);
+  assert.doesNotMatch(ui,/innerHTML|insertAdjacentHTML/);assert.match(css,/min-height:\s*44px/);assert.doesNotMatch(ui,/Productos a vencer|openReport|expiredModal/);assert.match(ui,/remote\.approve\('expired_lot_sale'/);assert.match(ui,/NA_ROLES\.askPin/);
 });

@@ -48,7 +48,9 @@
   function compare(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
   function order(a, b) { return compare(a.expiry_date,b.expiry_date) || compare(Date.parse(a.received_at),Date.parse(b.received_at)) || compare(a.lot_id,b.lot_id); }
   function plan(stock, rows, requested, day, allowExpired) {
-    if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(requested) || requested <= 0 || !validDate(day)) fail('INVALID_LOT_STOCK');
+    if (!Number.isFinite(requested) || requested <= 1e-9 || !validDate(day)) fail('INVALID_LOT_STOCK');
+    if (Array.isArray(rows) && !rows.length && Number.isFinite(stock) && (stock < 0 || requested > stock + 1e-9)) fail('INSUFFICIENT_PROJECTED_STOCK');
+    if (!Number.isFinite(stock) || stock < 0) fail('INVALID_LOT_STOCK');
     if (requested > stock + 1e-9) fail('INSUFFICIENT_PROJECTED_STOCK');
     if (!Array.isArray(rows)) fail('INVALID_LOTS');
     var seen = new Set(), sum = 0;

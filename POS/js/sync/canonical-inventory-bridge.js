@@ -78,6 +78,7 @@
   }
   function pendingMessage(error){
     var pending=pendingRecord(),code=clean(error&&error.message);
+    if(code==='expired_lot_approval_required')return 'No se autorizó la salida de lotes vencidos. Ingresa de nuevo el PIN del administrador.';
     if(code==='LOT_STOCK_RESERVED_BY_PENDING_SALE')return 'No se registró la salida: hay lotes reservados por ventas pendientes de este producto. Espera a que se confirmen antes de retirar stock.';
     if(code==='INSUFFICIENT_PROJECTED_STOCK')return 'No se registró la salida: parte de ese stock ya está vendido en ventas que aún se están enviando a CANON. Espera a que se sincronicen o registra una cantidad menor.';
     if(code==='INSUFFICIENT_CANONICAL_STOCK')return 'No se registró la salida: no hay suficiente stock en CANON.';
@@ -168,7 +169,7 @@
         if(lotUi&&movementType==='SALIDA'){
           var current=snapshotProduct(ctx.productId),consent=await lotUi.confirmConsumption(current,quantity,new Date().toISOString());
           if(consent===null){notify(lotUi.denialMessage||'Salida cancelada: no se autorizó usar lotes vencidos.','error');return false;}
-          if(consent===true)extra.allow_expired_lots=true;
+          if(consent){extra.allow_expired_lots=true;if(consent.approval_id)extra.expired_lot_approval=consent.approval_id;}
         }
       }catch(lotError){
         if(movementType==='ENTRADA'){notify('Revisa los lotes: '+lotError.message,'error');return false;}
@@ -189,7 +190,7 @@
         if(pendingAfter&&pendingAfter.command==='inventory.adjust'&&pendingAfter.last_error&&typeof client.discardRejectedInventory==='function'){
           try{
             if(await client.discardRejectedInventory()){
-              notify('CANON rechazó el movimiento ('+clean(pendingAfter.last_error)+'). No se modificó el stock; puedes corregirlo y volver a intentar.','error');
+              notify(pendingAfter.last_error==='expired_lot_approval_required'?'No se autorizó la salida de lotes vencidos. Ingresa de nuevo el PIN del administrador.':'CANON rechazó el movimiento ('+clean(pendingAfter.last_error)+'). No se modificó el stock; puedes corregirlo y volver a intentar.','error');
               return false;
             }
           }catch(_){}

@@ -12,7 +12,7 @@ const APPROVAL_MS = 5 * 60 * 1000;
 const PAIRING_MS = 15 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const OWNER_COMMANDS = new Set(['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set']);
-const APPROVAL_ACTIONS = new Set([...OWNER_COMMANDS, 'settings.set', 'reset', 'discount', 'sale.annul']);
+const APPROVAL_ACTIONS = new Set([...OWNER_COMMANDS, 'settings.set', 'reset', 'discount', 'sale.annul', 'expired_lot_sale']);
 const SETTING_KEY = /^[a-z][a-z0-9_.-]{0,59}$/;
 export const ROLE_PATHS = new Set(['/auth/reviews', '/auth/reviews/resolve', '/auth/me', '/auth/owner-pin', '/auth/owner-approval', '/auth/pairing-code', '/auth/pair', '/auth/devices', '/auth/devices/revoke', '/settings']);
 
@@ -147,6 +147,19 @@ async function requirePinIfSet(db, pin, deviceId) {
   const row = await pinRow(db);
   if (!row) return null;
   return verifyOwnerPin(db, pin, deviceId);
+}
+
+export async function consumeApproval(db, deviceId, approvalId, action, operationId) {
+  if (typeof approvalId !== 'string' || !approvalId.length || approvalId.length > 80) return false;
+  const t = now();
+  try {
+    const row = await db.prepare(`SELECT used_at FROM pos_owner_approvals WHERE approval_id=?1 AND device_id=?2 AND action=?3
+      AND expires_at>?4 AND (used_at IS NULL OR operation_id=?5)`).bind(approvalId, deviceId, action, t, operationId).first();
+    if (!row) return false;
+    if (row.used_at) return true;
+    await db.prepare('UPDATE pos_owner_approvals SET used_at=?2,operation_id=?3 WHERE approval_id=?1 AND used_at IS NULL').bind(approvalId, t, operationId).run();
+    return !!(await db.prepare('SELECT approval_id FROM pos_owner_approvals WHERE approval_id=?1 AND operation_id=?2').bind(approvalId, operationId).first());
+  } catch (e) { if (missingTable(e)) return false; throw e; }
 }
 
 // Puerta para comandos del dueño. null = permitido.
