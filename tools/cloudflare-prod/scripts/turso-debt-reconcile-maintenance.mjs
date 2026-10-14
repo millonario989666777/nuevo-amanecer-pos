@@ -1,3 +1,4 @@
+import { backupSelectSql } from './backup-select.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { TursoD1Adapter } from '../../cloudflare-lab/src/turso-d1-adapter.js';
@@ -48,7 +49,7 @@ async function backup(){
     'canonical_reconciliation_credits','canonical_credit_baseline_adjustments'
   ].filter(name=>names.includes(name));
   const tables={};
-  for(const name of wanted)tables[name]=await all('SELECT * FROM "'+name.replaceAll('"','""')+'"');
+  for(const name of wanted)tables[name]=await all(backupSelectSql(name));
   const payload={
     format:'nuevo-amanecer-turso-debt-reconcile-backup-v1',
     created_at:new Date().toISOString(),
