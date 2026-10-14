@@ -132,8 +132,17 @@ jobs:
             echo "DECOLECTA_SECRET_SYNC=SKIPPED (GitHub secret not set; DNI lookup stays manual)"
             exit 0
           fi
-          printf '%s' "$DECOLECTA_API_TOKEN" | npx wrangler secret put DECOLECTA_API_TOKEN --config ../cloudflare-prod/wrangler.turso-prod.jsonc > /dev/null
-          npx wrangler secret list --config ../cloudflare-prod/wrangler.turso-prod.jsonc | grep -Fq '"DECOLECTA_API_TOKEN"'
+          echo "::add-mask::$DECOLECTA_API_TOKEN"
+          # Value goes only through stdin; wrangler stdout/stderr stay visible (masked) for diagnosis.
+          printf '%s' "$DECOLECTA_API_TOKEN" | npx wrangler secret put DECOLECTA_API_TOKEN --config ../cloudflare-prod/wrangler.turso-prod.jsonc 2>&1
+          # List to a file first: `| grep -q` under pipefail can SIGPIPE wrangler and fail spuriously.
+          npx wrangler secret list --config ../cloudflare-prod/wrangler.turso-prod.jsonc > /tmp/secret-list.json 2>/tmp/secret-list.err || { cat /tmp/secret-list.err; exit 1; }
+          if ! grep -Fq '"DECOLECTA_API_TOKEN"' /tmp/secret-list.json; then
+            echo "DECOLECTA_API_TOKEN not found in secret list (names only):"
+            node -e 'try{const l=JSON.parse(require("fs").readFileSync("/tmp/secret-list.json","utf8"));console.log(l.map(x=>x.name).join(","))}catch(e){console.log("unparseable secret list output")}'
+            cat /tmp/secret-list.err
+            exit 1
+          fi
           echo "DECOLECTA_SECRET_SYNC=PASS"
 
       - name: Verify production health after secret sync
