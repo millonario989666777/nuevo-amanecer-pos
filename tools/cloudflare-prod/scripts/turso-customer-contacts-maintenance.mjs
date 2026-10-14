@@ -1,3 +1,4 @@
+import { backupSelectSql } from './backup-select.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash, createCipheriv, randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -40,7 +41,7 @@ export async function backup(db){
   const schema=(await db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).results;
   const names=schema.filter(s=>s.type==='table').map(s=>s.name);
   // One transaction produces a consistent logical snapshot without changing data.
-  const rows=await db.batch(names.map(n=>db.prepare('SELECT * FROM "'+n.replaceAll('"','""')+'"')));
+  const rows=await db.batch(names.map(n=>db.prepare(backupSelectSql(n))));
   const tables=Object.fromEntries(names.map((n,i)=>[n,rows[i].results]));
   const bytes=Buffer.from(JSON.stringify({format:'nuevo-amanecer-turso-contacts-backup-v1',created_at:new Date().toISOString(),schema,tables}));
   const encrypted=encryptBackup(bytes,process.env.TURSO_PROD_AUTH_TOKEN);

@@ -1,3 +1,4 @@
+import { backupSelectSql } from './backup-select.mjs';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { TursoD1Adapter } from '../../cloudflare-lab/src/turso-d1-adapter.js';
@@ -200,7 +201,7 @@ async function backup(db, control) {
     'canonical_financial_events','canonical_reconciliation_credits','canonical_credit_baseline_adjustments',
     'canonical_credit_metadata','canonical_credit_installments'
   ]) {
-    tables[name] = await all(db, 'SELECT * FROM "' + name.replaceAll('"','""') + '"');
+    tables[name] = await all(db, backupSelectSql(name));
   }
   const payload = {
     format:'nuevo-amanecer-credit-installment-repair-backup-v1',
