@@ -146,3 +146,13 @@ test('DNI existente: cierra con cerrarModal real, abre la cuenta y avisa según 
   assert.match(client, /opened \? /);
   assert.match(client, /Ya hay un nombre escrito/);
 });
+
+test('actualización automática: no recarga con Nueva compra, anulación, revisiones, descuento ni foto OCR en curso', () => {
+  const index = readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8');
+  const ocr = readFileSync(new URL('../../POS/js/ocr/ocr-purchase-integration.js', import.meta.url), 'utf8');
+  for (const sel of ['.modal-overlay.open', '.na-pin-overlay', '.na-review-overlay', '.na-ds-overlay']) assert.ok(index.includes(sel), sel);
+  assert.match(index, /window\.NAOcrBusy && window\.NAOcrBusy\(\)/);
+  assert.match(ocr, /root\.NAOcrBusy = function \(\) \{ return !!\(reading \|\| applying\); \};/);
+  // la recarga tras «controllerchange» espera ventanas abiertas, no solo el carrito
+  assert.match(index, /afterSaleFinishes\(function \(\) \{\s*\/\/[^\n]*\n\s*if \(quietNeeded\(\)\)/);
+});

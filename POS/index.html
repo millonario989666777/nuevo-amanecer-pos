@@ -1095,7 +1095,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
     }
     var quietTimer = 0;
     function quietNeeded() {
-      try { if (document.querySelector('.modal-overlay.open, .pin-overlay.open, .na-pin-overlay')) return true; } catch (_) {}
+      try { if (document.querySelector('.modal-overlay.open, .pin-overlay.open, .na-pin-overlay, .na-review-overlay, .na-ds-overlay')) return true; } catch (_) {}
       return moneyOpInProgress();
     }
     function waitQuiet() {
@@ -1119,6 +1119,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       try { var cb = window.NuevoAmanecerCanonicalCashBridge; if (cb && cb.closing && cb.closing()) return true; } catch (_) {}
       try { var cp = window.NuevoAmanecerCanonicalCreditPaymentBridge; if (cp && cp.busy && cp.busy()) return true; } catch (_) {}
       try { if (window.NAPurchaseBusy && window.NAPurchaseBusy()) return true; } catch (_) {}
+      try { if (window.NAOcrBusy && window.NAOcrBusy()) return true; } catch (_) {}
       return false;
     }
     // Cuántas cosas guardadas quedan por revisar (no impiden recargar).

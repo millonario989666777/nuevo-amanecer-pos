@@ -130,6 +130,8 @@
     var reviewController = null;
     var reading = false;
     var applying = false;
+    // Guardia de actualización (index.html): no recargar mientras se lee o aplica una foto de compra.
+    root.NAOcrBusy = function () { return !!(reading || applying); };
 
     function setStatus(kind, message) {
       if (!elements.status) return;
