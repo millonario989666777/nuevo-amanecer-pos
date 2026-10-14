@@ -10,6 +10,7 @@
 import { getDatabase } from './database-binding.js';
 import { createCanonicalFinancial } from './a6-financial.js';
 import { adjustCanonicalInventory } from './a6-inventory.js';
+import { lotsReady } from './stock-lots.js';
 
 export const SALE_ANNUL_COMMAND = 'sale.annul';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
@@ -93,6 +94,7 @@ export async function annulCanonicalSale(request, env, auth, json) {
 
   // 2) Stock de vuelta (una vez por movimiento de la venta).
   const moves = (await db.prepare('SELECT line_number,product_id,quantity FROM inventory_movements WHERE sale_id=?1 ORDER BY line_number').bind(body.sale_id).all()).results || [];
+  const restoreLots=await lotsReady(db);
   for (const m of moves) {
     const op = body.operation_id + ':inv:' + m.line_number, qty = -Number(m.quantity);
     if (!(qty > 0)) continue;
@@ -101,7 +103,8 @@ export async function annulCanonicalSale(request, env, auth, json) {
       if (!product) product = await db.prepare('SELECT stock_revision,tracks_inventory FROM canonical_live_products WHERE promotion_id=?1 AND product_id=?2').bind(body.promotion_id, m.product_id).first();
       if (!product || Number(product.tracks_inventory) !== 1) continue;
       const res = await adjustCanonicalInventory(subRequest({ ...common, operation_id: op, product_id: m.product_id, movement_type: 'ENTRADA',
-        quantity: qty, expected_stock_revision: Number(product.stock_revision), reason }), env, auth, json);
+        quantity: qty, expected_stock_revision: Number(product.stock_revision), reason }), env, auth, json,
+        restoreLots?{operation_id:body.operation_id}:null);
       if (res.status !== 200 && res.status !== 201 && !await exists('canonical_inventory_operations', op)) return fail('stock:' + m.line_number, res);
     }
     effects.stock_returned.push({ line_number: m.line_number, product_id: m.product_id, quantity: qty });

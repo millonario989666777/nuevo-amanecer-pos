@@ -141,9 +141,17 @@
           return candidate && sameId(candidate.product_id !== undefined ? candidate.product_id : candidate.id, item.product_id);
         });
         if (!product || product.tracks_inventory === 0 || product.tracks_inventory === false || product.controlInventario === false) return;
+        if(Array.isArray(product._canonicalLotReceiptOperations)&&product._canonicalLotReceiptOperations.indexOf(operationId)>=0)return;
         var current = product.projected_stock !== undefined ? product.projected_stock :
           (product.current_stock_quantity !== undefined ? product.current_stock_quantity : product.stock);
         if (typeof current !== 'number' || !Number.isFinite(current)) return;
+        if(Array.isArray(product.lots)&&product.lots.length&&root.NA_STOCK_LOTS){
+          try{
+            var allocations=Array.isArray(entry.receipt.lot_allocations)?entry.receipt.lot_allocations.filter(function(a){return a.product_id===item.product_id;}):
+              root.NA_STOCK_LOTS.plan(current,product.lots,item.quantity,root.NA_STOCK_LOTS.businessDate(entry.payload.created_at),item.allow_expired_lots).allocations;
+            allocations.forEach(function(a){if(!a.lot_id)return;var lot=product.lots.find(function(l){return l.lot_id===a.lot_id;});if(lot)lot.quantity=Math.max(0,root.NA_STOCK_LOTS.round(lot.quantity-a.quantity));});
+          }catch(_){return;}
+        }
         product.projected_stock = Math.max(0, current - Number(item.quantity || 0));
       });
     });
@@ -263,6 +271,7 @@
         var id = product.product_id !== undefined ? product.product_id : product.id;
         var match = id !== undefined && id !== null ? projectedById.get(String(id)) : undefined;
         if (match && typeof match.projected_stock === 'number' && Number.isFinite(match.projected_stock)) {
+          if(Array.isArray(match.lots))product.lots=copy(match.lots);
           var remoteStock = Number(product.stock);
           product._canonicalRemoteStock = remoteStock;
           product._canonicalProjectedStock = match.projected_stock;

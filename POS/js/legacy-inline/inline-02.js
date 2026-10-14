@@ -20,7 +20,7 @@ const SECURITY_KEY='na_security_v26';
 const SECURITY_DEFAULTS={
   pinEnabled:false,pinHash:'',autoLockMinutes:0,
   requirePin:{locks:true,anularVenta:true,descuentos:false,reset:true,cerrarCaja:false,importar:true,configuracion:false},
-  rules:{allowDiscounts:true,maxDiscount:20,allowGenericProducts:true,auditEnabled:true},
+  rules:{allowDiscounts:true,maxDiscount:20,allowGenericProducts:true,allowExpiredLots:false,auditEnabled:true},
   logs:[]
 };
 function _naSecMerge(raw={}){return{...SECURITY_DEFAULTS,...raw,requirePin:{...SECURITY_DEFAULTS.requirePin,...(raw.requirePin||{})},rules:{...SECURITY_DEFAULTS.rules,...(raw.rules||{})},logs:Array.isArray(raw.logs)?raw.logs.slice(0,500):[]};}

@@ -1,5 +1,6 @@
 import { getDatabase } from './database-binding.js';
 import { sha256Hex, stableStringify } from './a5-import-core.js';
+import { lotsCore, lotsReady, productLots, effectStatements, receiptStatements, annulAllocations, lotError } from './stock-lots.js';
 
 export const INVENTORY_COMMANDS = new Set(['inventory.adjust']);
 
@@ -18,7 +19,7 @@ function cleanReason(value){
 
 function normalize(body){
   if(!body||typeof body!=='object'||Array.isArray(body))return{error:'invalid_inventory_request'};
-  const allowed=new Set(['operation_id','promotion_id','authority_epoch','expected_control_revision','client_contract','created_at','product_id','movement_type','quantity','expected_stock_revision','reason']);
+  const allowed=new Set(['operation_id','promotion_id','authority_epoch','expected_control_revision','client_contract','created_at','product_id','movement_type','quantity','expected_stock_revision','reason','lots','allow_expired_lots']);
   if(Object.keys(body).some((key)=>!allowed.has(key)))return{error:'invalid_inventory_request'};
   for(const key of ['operation_id','promotion_id','client_contract','product_id'])if(!validId(body[key]))return{error:'invalid_inventory_request',field:key};
   if(!uint(body.authority_epoch)||!uint(body.expected_control_revision)||!uint(body.expected_stock_revision))return{error:'invalid_inventory_request'};
@@ -28,11 +29,17 @@ function normalize(body){
   const reason=cleanReason(body.reason);
   if(!reason)return{error:'invalid_inventory_request',field:'reason'};
   const delta=type==='ENTRADA'?body.quantity:-body.quantity;
+  const extra={};
+  if(body.lots!==undefined){
+    if(type!=='ENTRADA'||body.return_sale_operation!==undefined)return{error:'invalid_inventory_lots'};
+    try{extra.lots=lotsCore.normalizeReceipts(body.lots,body.quantity);}catch{return{error:'invalid_inventory_lots'};}
+  }
+  if(body.allow_expired_lots!==undefined){if(typeof body.allow_expired_lots!=='boolean'||type!=='SALIDA')return{error:'invalid_inventory_lots'};extra.allow_expired_lots=body.allow_expired_lots;}
   return{value:{
     operation_id:body.operation_id,promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,
     expected_control_revision:body.expected_control_revision,client_contract:body.client_contract,
     created_at:body.created_at,product_id:body.product_id,movement_type:type,quantity:body.quantity,
-    delta,expected_stock_revision:body.expected_stock_revision,reason
+    delta,expected_stock_revision:body.expected_stock_revision,reason,...extra
   }};
 }
 
@@ -70,11 +77,14 @@ async function findProduct(db,body){
   return row;
 }
 
-export async function adjustCanonicalInventory(request,env,auth,json){
+export async function adjustCanonicalInventory(request,env,auth,json,internalReturn=null){
   let raw;try{raw=await request.json();}catch{return json({error:'invalid_json'},400);}
   const checked=normalize(raw);
   if(checked.error)return json({error:checked.error,...(checked.field?{field:checked.field}:{})},400);
   const body=checked.value,db=getDatabase(env);
+  // Only the annulment orchestrator can request original allocations. No public
+  // inventory payload can forge a return or add another reversal line.
+  if(internalReturn){if(body.movement_type!=='ENTRADA'||body.lots!==undefined)return json({error:'invalid_lot_return'},400);body.return_sale_operation=internalReturn.operation_id;}
 
   if(!await schemaReady(db))return json({error:'inventory_schema_not_ready'},503);
   const denied=await authorityError(db,auth,body);
@@ -98,6 +108,19 @@ export async function adjustCanonicalInventory(request,env,auth,json){
   if(!Number.isFinite(before)||before<0)return json({error:'invalid_stock_state',product_id:body.product_id},409);
   const after=before+body.delta;
   if(!Number.isFinite(after)||after<0)return json({error:'insufficient_stock',product_id:body.product_id,current_stock_quantity:before},409);
+
+  const lotSchema=await lotsReady(db);
+  if(!lotSchema&&(body.lots?.length||body.return_sale_operation||body.allow_expired_lots))return json({error:'lots_schema_not_ready'},503);
+  let rows=[],allocations=[];
+  if(lotSchema){
+    rows=await productLots(db,body.promotion_id,body.product_id);
+    try{
+      // Validate coherence also on entry; an input cannot silently repair corruption.
+      if(rows.length)lotsCore.plan(before,rows,Math.max(1e-9,before),'9999-12-31',true);
+      if(body.return_sale_operation)allocations=await annulAllocations(db,body);
+      else if(body.movement_type==='SALIDA')allocations=lotsCore.plan(before,rows,body.quantity,lotsCore.businessDate(body.created_at),body.allow_expired_lots).allocations;
+    }catch(error){return json({error:body.return_sale_operation?'invalid_lot_return':lotError(error)},409);}
+  }
 
   const movementId=crypto.randomUUID();
   const result={
@@ -126,6 +149,13 @@ export async function adjustCanonicalInventory(request,env,auth,json){
     db.prepare('INSERT INTO canonical_assertions(assertion_id,ok) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)').bind(token+':movement'),
     db.prepare('DELETE FROM canonical_assertions WHERE assertion_id IN (?1,?2)').bind(token+':operation',token+':movement')
   ];
+  if(lotSchema){
+    // Cleanup remains last: asserts participate in the stock/movement transaction.
+    statements.splice(statements.length-1,0,
+      ...(body.return_sale_operation?effectStatements(db,body,allocations,1,rows,token):
+        body.movement_type==='SALIDA'?effectStatements(db,body,allocations,-1,rows,token):receiptStatements(db,body)),
+      db.prepare('DELETE FROM canonical_assertions WHERE assertion_id LIKE ?1').bind(token+':lot:%'));
+  }
 
   try{await db.batch(statements);}
   catch{

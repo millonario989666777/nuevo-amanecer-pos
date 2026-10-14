@@ -6,12 +6,13 @@
 import { getDatabase } from './database-binding.js';
 import { adjustCanonicalInventory } from './a6-inventory.js';
 import { posRoleFor, verifyOwnerPin } from './pos-roles.js';
+import { lotsCore, lotsReady } from './stock-lots.js';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const PID = v => typeof v === 'string' && v.length > 0 && v.length <= 160 && !/[\x00-\x1f\x7f]/.test(v);
 const uint = v => Number.isSafeInteger(v) && v >= 0;
 const ALLOWED = ['operation_id','promotion_id','authority_epoch','expected_control_revision','client_contract','created_at','supplier','document_ref','lines'];
-const LINE = ['line','product_id','quantity','unit_cost_cents'];
+const LINE = ['line','product_id','quantity','unit_cost_cents','lots'];
 const opt = (v, max) => { if (v == null || v === '') return null; const t = String(v).replace(/[\x00-\x1f\x7f]+/g, ' ').trim().replace(/\s+/g, ' '); return t ? t.slice(0, max) : null; };
 
 function validate(b) {
@@ -27,12 +28,20 @@ function validate(b) {
     seen.add(l.line);
     if (!PID(l.product_id) || !(typeof l.quantity === 'number' && Number.isFinite(l.quantity) && l.quantity > 0 && l.quantity <= 1e6)) return 'invalid_line';
     if (l.unit_cost_cents != null && !(uint(l.unit_cost_cents) && l.unit_cost_cents <= 1e9)) return 'invalid_line';
+    if(l.lots!==undefined){try{l.lots=lotsCore.normalizeReceipts(l.lots,l.quantity);}catch{return'invalid_line';}}
   }
   return null;
 }
 async function closuresReady(db) { return !!(await db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='pos_purchase_closures'").first()); }
 async function closureOf(db, id) { return (await closuresReady(db)) ? await db.prepare('SELECT * FROM pos_purchase_closures WHERE purchase_id=?1').bind(id).first() : null; }
 function subRequest(body) { return new Request('https://internal.invalid/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); }
+async function withLots(db,lines){
+  if(!lines.length||!await lotsReady(db))return lines;
+  const ids=[...new Set(lines.map(l=>l.purchase_id))];
+  const stored=(await db.prepare('SELECT purchase_id,line_number,lots_json FROM pos_purchase_line_lots WHERE purchase_id IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(ids)).all()).results||[];
+  const byId=new Map(stored.map(l=>[l.purchase_id+':'+l.line_number,JSON.parse(l.lots_json)]));
+  return lines.map(l=>{const lots=byId.get(l.purchase_id+':'+l.line_number);return lots?.length?{...l,lots}:l;});
+}
 
 export async function purchasesRoute(request, env, auth, json) {
   const db = getDatabase(env);
@@ -47,7 +56,8 @@ export async function purchasesRoute(request, env, auth, json) {
       // Para una compra a medias, qué líneas ya sumaron stock (la app las muestra y completa solo las que faltan).
       let lines = [];
       if (r) {
-        lines = (await db.prepare('SELECT line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(one).all()).results || [];
+        lines = (await db.prepare('SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(one).all()).results || [];
+        lines=await withLots(db,lines);
         for (const l of lines) l.applied = !!(await db.prepare('SELECT 1 ok FROM canonical_inventory_operations WHERE operation_id=?1').bind(one + ':' + l.line_number).first());
       }
       const closed = r ? await closureOf(db, one) : null;
@@ -68,15 +78,24 @@ export async function purchasesRoute(request, env, auth, json) {
     }
     const ids = rows.map(r => r.purchase_id);
     const lines = ids.length ? ((await db.prepare(`SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id IN (${ids.map((_, i) => '?' + (i + 1)).join(',')}) ORDER BY purchase_id,line_number`).bind(...ids).all()).results || []) : [];
-    rows.forEach(r => { r.lines = lines.filter(l => l.purchase_id === r.purchase_id); });
+    const detailed=await withLots(db,lines);
+    rows.forEach(r => { r.lines = detailed.filter(l => l.purchase_id === r.purchase_id); });
     return json({ purchases: rows });
   }
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, OPTIONS' });
   if (!ready) return json({ error: 'purchase_schema_not_ready' }, 503);
   let b; try { b = await request.json(); } catch { return json({ error: 'invalid_json' }, 400); }
   const invalid = validate(b); if (invalid) return json({ error: invalid }, 400);
+  const lotSchema=await lotsReady(db);
+  if(b.lines.some(l=>l.lots?.length)&&!lotSchema)return json({error:'lots_schema_not_ready'},503);
   const supplier = opt(b.supplier, 120), doc = opt(b.document_ref, 80);
   const total = b.lines.reduce((s, l) => s + (l.unit_cost_cents == null ? 0 : Math.round(l.unit_cost_cents * l.quantity)), 0);
+  async function payloadMatches(saved){
+    const stored=await withLots(db,(await db.prepare('SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results||[]);
+    const want=[...b.lines].sort((x,y)=>x.line-y.line).map(l=>[l.line,String(l.product_id),Number(l.quantity),l.unit_cost_cents??null,l.lots||[]]);
+    const have=stored.map(l=>[Number(l.line_number),String(l.product_id),Number(l.quantity),l.unit_cost_cents==null?null:Number(l.unit_cost_cents),l.lots||[]]);
+    return JSON.stringify(want)===JSON.stringify(have)&&(saved.supplier??null)===supplier&&(saved.document_ref??null)===doc;
+  }
 
   let claim = await db.prepare('SELECT * FROM pos_purchases WHERE purchase_id=?1').bind(b.operation_id).first();
   // Mismo id con otro contenido (líneas, cantidades, costos, proveedor o comprobante): 409 y no se aplica nada.
@@ -85,19 +104,26 @@ export async function purchasesRoute(request, env, auth, json) {
   if (claim && claim.status !== 'aplicada' && await closureOf(db, b.operation_id))
     return json({ error: 'purchase_closed_partial', purchase_id: b.operation_id, status: 'closed' }, 409);
   if (claim) {
-    const stored = (await db.prepare('SELECT line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results || [];
-    const want = [...b.lines].sort((x, y) => x.line - y.line).map(l => [l.line, String(l.product_id), Number(l.quantity), l.unit_cost_cents ?? null]);
-    const have = stored.map(l => [Number(l.line_number), String(l.product_id), Number(l.quantity), l.unit_cost_cents == null ? null : Number(l.unit_cost_cents)]);
-    const same = JSON.stringify(want) === JSON.stringify(have) && (claim.supplier ?? null) === supplier && (claim.document_ref ?? null) === doc;
-    if (!same) return json({ error: 'purchase_payload_mismatch', purchase_id: b.operation_id, status: claim.status === 'aplicada' ? 'applied' : 'in_progress' }, 409);
+    if (!await payloadMatches(claim)) return json({ error: 'purchase_payload_mismatch', purchase_id: b.operation_id, status: claim.status === 'aplicada' ? 'applied' : 'in_progress' }, 409);
   }
   if (claim && claim.status === 'aplicada') return json({ status: 'already_processed', purchase_id: b.operation_id, idempotent: true }, 200);
   if (!claim) {
+    const assertion='purchase:'+crypto.randomUUID();
     const stmts = [db.prepare(`INSERT INTO pos_purchases(purchase_id,promotion_id,supplier,document_ref,total_cost_cents,line_count,status,principal_id,created_at)
       VALUES(?1,?2,?3,?4,?5,?6,'en_curso',?7,?8) ON CONFLICT DO NOTHING`).bind(b.operation_id, b.promotion_id, supplier, doc, total, b.lines.length, String(auth.principalId || 'unknown'), b.created_at)];
+    // Only the request that created the header can create its immutable lines/lots.
+    // A concurrent loser rolls back before inserting metadata into another receipt.
+    stmts.push(db.prepare('INSERT INTO canonical_assertions(assertion_id,ok) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)').bind(assertion));
     b.lines.forEach(l => stmts.push(db.prepare('INSERT INTO pos_purchase_lines(purchase_id,line_number,product_id,quantity,unit_cost_cents) VALUES(?1,?2,?3,?4,?5) ON CONFLICT DO NOTHING')
       .bind(b.operation_id, l.line, l.product_id, l.quantity, l.unit_cost_cents ?? null)));
-    await db.batch(stmts);
+    if(lotSchema)b.lines.filter(l=>l.lots?.length).forEach(l=>stmts.push(db.prepare('INSERT INTO pos_purchase_line_lots(purchase_id,line_number,lots_json) VALUES(?1,?2,?3) ON CONFLICT DO NOTHING').bind(b.operation_id,l.line,JSON.stringify(l.lots))));
+    stmts.push(db.prepare('DELETE FROM canonical_assertions WHERE assertion_id=?1').bind(assertion));
+    try{await db.batch(stmts);}catch(error){
+      claim=await db.prepare('SELECT * FROM pos_purchases WHERE purchase_id=?1').bind(b.operation_id).first();
+      if(!claim)throw error;
+      if(!await payloadMatches(claim))return json({error:'purchase_payload_mismatch',purchase_id:b.operation_id,status:claim.status==='aplicada'?'applied':'in_progress'},409);
+      if(claim.status==='aplicada')return json({status:'already_processed',purchase_id:b.operation_id,idempotent:true},200);
+    }
   }
   const common = { promotion_id: b.promotion_id, authority_epoch: b.authority_epoch, expected_control_revision: b.expected_control_revision, client_contract: b.client_contract, created_at: b.created_at };
   const applied = [], skipped = [];
@@ -108,7 +134,7 @@ export async function purchasesRoute(request, env, auth, json) {
     if (!product) product = await db.prepare('SELECT stock_revision,tracks_inventory FROM canonical_live_products WHERE promotion_id=?1 AND product_id=?2').bind(b.promotion_id, l.product_id).first();
     if (!product) return json({ error: 'purchase_line_failed', line: l.line, detail: { error: 'product_not_found' }, applied, retry_same_operation_id: true }, 409);
     const reason = ('Compra ' + (supplier ? supplier + ' ' : '') + (doc ? doc + ' ' : '') + b.operation_id + ', línea ' + l.line + ': +' + l.quantity).slice(0, 480);
-    const res = await adjustCanonicalInventory(subRequest({ ...common, operation_id: op, product_id: l.product_id, movement_type: 'ENTRADA', quantity: l.quantity, expected_stock_revision: Number(product.stock_revision), reason }), env, auth, json);
+    const res = await adjustCanonicalInventory(subRequest({ ...common, operation_id: op, product_id: l.product_id, movement_type: 'ENTRADA', quantity: l.quantity, expected_stock_revision: Number(product.stock_revision), reason,...(l.lots?.length?{lots:l.lots}:{}) }), env, auth, json);
     if (res.status !== 200 && res.status !== 201) {
       let detail = null; try { detail = await res.json(); } catch {}
       return json({ error: 'purchase_line_failed', line: l.line, detail, applied, retry_same_operation_id: true }, res.status >= 500 ? 503 : 409);

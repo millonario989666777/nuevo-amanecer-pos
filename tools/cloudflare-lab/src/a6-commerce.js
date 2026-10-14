@@ -1,5 +1,6 @@
 import { getDatabase } from './database-binding.js';
 import { sha256Hex, stableStringify } from './a5-import-core.js';
+import { lotsCore, lotsReady, rememberLotSchema, productsLots, effectStatements, lotError, saleLotReceipt } from './stock-lots.js';
 
 const METHODS = new Set(['efectivo', 'yape', 'plin', 'transferencia', 'credito', 'mixto']);
 export const CANONICAL_CLIENT_CONTRACT = 'a6-gate-c-v1';
@@ -13,23 +14,54 @@ function firstBatchRow(result) {
 
 async function commerceCapabilities(db) {
   let cached = commerceCapabilityCache.get(db);
-  if (cached) return cached;
+  if (cached && Date.now() < cached.expiresAt) return cached.capabilities;
   const pending = db.prepare(`SELECT
       SUM(CASE WHEN type='table' AND name IN ('canonical_product_operations','canonical_live_products','canonical_live_inventory_effects') THEN 1 ELSE 0 END) AS live_product_tables,
       SUM(CASE WHEN type='table' AND name='canonical_generic_sale_lines' THEN 1 ELSE 0 END) AS generic_sale_tables,
       SUM(CASE WHEN type='table' AND name IN ('canonical_customer_operations','canonical_customer_registry','canonical_live_customers') THEN 1 ELSE 0 END) AS live_customer_tables,
       SUM(CASE WHEN type='table' AND name='canonical_customer_credit_policies' THEN 1 ELSE 0 END) AS credit_policy_tables,
-      SUM(CASE WHEN type='table' AND name='canonical_reconciliation_credits' THEN 1 ELSE 0 END) AS reconciliation_tables
-    FROM sqlite_master`).first().then(row => Object.freeze({
+      SUM(CASE WHEN type='table' AND name='canonical_reconciliation_credits' THEN 1 ELSE 0 END) AS reconciliation_tables,
+      SUM(CASE WHEN type='table' AND name IN ('canonical_stock_lots','canonical_stock_lot_effects') THEN 1 ELSE 0 END) AS lot_tables
+    FROM sqlite_master`).first().then(row => {
+      rememberLotSchema(db,new Set(Number(row?.lot_tables)===2?['canonical_stock_lots','canonical_stock_lot_effects']:[]));
+      return Object.freeze({
       liveProducts:Number(row?.live_product_tables)===3,
       genericSales:Number(row?.generic_sale_tables)===1,
       liveCustomers:Number(row?.live_customer_tables)===3,
       creditPolicy:Number(row?.credit_policy_tables)===1,
       reconciliation:Number(row?.reconciliation_tables)===1,
-    }));
-  commerceCapabilityCache.set(db,pending);
-  try { return await pending; }
-  catch (error) { commerceCapabilityCache.delete(db); throw error; }
+      stockLots:Number(row?.lot_tables)===2,
+    });});
+  const observed = await pending;
+  const known = commerceCapabilityCache.get(db)?.capabilities;
+  const capabilities = Object.freeze(Object.fromEntries(Object.entries(observed)
+    .map(([key,value]) => [key, value || known?.[key] === true])));
+  // Additive migrations can arrive while this isolate stays alive.
+  commerceCapabilityCache.set(db, { capabilities, expiresAt:
+    Object.values(capabilities).every(value => value === true) ? Infinity : Date.now() + 60000 });
+  return capabilities;
+}
+
+// A sale is already charged locally. Expiry consent is a till warning, not a
+// reason to strand its durable receipt; retain the original consent for audit.
+function saleLotPlan(product, lots, item, body) {
+  const plan=lotsCore.plan(Number(product.current_stock_quantity),lots,item.quantity,lotsCore.businessDate(body.created_at),true);
+  return {...plan,expired_lots_unconfirmed:plan.expired_quantity>0&&item.allow_expired_lots!==true};
+}
+
+// Diagnose an actual lot CAS race after rollback, rather than treating every
+// unrelated batch failure as retryable just because the sale has lots.
+async function saleLotStockFailure(db, body, plans) {
+  const used=plans.filter(entry=>entry.allocations.some(a=>a.lot_id));
+  if(!used.length)return null;
+  const current=await productsLots(db,body.promotion_id,used.map(entry=>entry.item.product_id));
+  for(const entry of used){
+    const before=new Map(entry.lots.map(lot=>[lot.lot_id,Number(lot.quantity)]));
+    const after=new Map((current.get(entry.item.product_id)||[]).map(lot=>[lot.lot_id,Number(lot.quantity)]));
+    if(entry.allocations.some(a=>a.lot_id&&before.get(a.lot_id)!==after.get(a.lot_id)))
+      return {error:'stale_stock',product_id:entry.item.product_id};
+  }
+  return null;
 }
 
 
@@ -128,6 +160,7 @@ export function validateCanonicalSale(body) {
   let total = 0;
   const seen = new Set();
   for (const item of body.items) {
+    if(isObject(item)&&item.allow_expired_lots!==undefined&&typeof item.allow_expired_lots!=='boolean')return{error:'invalid_expired_confirmation'};
     if (!isObject(item) || !validId(item.product_id) || seen.has(item.product_id) || !Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > Number.MAX_SAFE_INTEGER ||
         !Number.isSafeInteger(item.unit_price_cents) || item.unit_price_cents < 0 || !Number.isSafeInteger(item.line_total_cents) ||
         item.line_total_cents !== Math.round(item.quantity * item.unit_price_cents) ||
@@ -187,7 +220,7 @@ function fastProductSql() {
   ) ORDER BY source_rank LIMIT 1`;
 }
 
-async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json) {
+async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json, lotFailure = null, lotPlans = []) {
   const reads = [
     db.prepare(`SELECT c.*,s.session_id,s.status AS session_status,d.device_id,d.role AS device_role,
       d.status AS device_status,d.credential_hash
@@ -239,7 +272,7 @@ async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json) {
   const existing = rows[1];
   if (existing) {
     return existing.payload_hash === payloadHash
-      ? json({status:'already_processed',operation_id:body.operation_id,sale_id:existing.sale_id,idempotent:true})
+      ? json({status:'already_processed',operation_id:body.operation_id,sale_id:existing.sale_id,idempotent:true,...await saleLotReceipt(db,body)})
       : json({error:'operation_id_conflict',operation_id:body.operation_id},409);
   }
   if (rows[2] || rows[3]) return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
@@ -253,12 +286,34 @@ async function diagnoseFastSaleFailure(db, body, auth, payloadHash, json) {
   conflictIndexes.forEach(entry => { conflictRows[entry.key] = rows[entry.index]; });
   const conflict = saleConflictError(body, conflictRows) || cashStateError(body, cashIndex>=0 ? rows[cashIndex] : null);
   if (conflict) return json(conflict,409);
+  if(lotFailure)return json(lotFailure,409);
+  const lotRace=await saleLotStockFailure(db,body,lotPlans);
+  if(lotRace)return json(lotRace,409);
   return json({error:'canonical_sale_conflict',operation_id:body.operation_id},409);
 }
 
 async function createCanonicalSaleFast(body, env, auth, json) {
   const db = getDatabase(env);
+  const lotEffects=[];
   const payloadHash = await sha256Hex(stableStringify(body));
+  if(await lotsReady(db)){
+    // Reads are in one pipeline; the existing stock CAS fences this plan in the write batch.
+    const reads=body.items.map(item=>db.prepare(`SELECT p.*,COALESCE((SELECT json_group_array(json_object(
+      'lot_id',lot_id,'lot_code',lot_code,'expiry_date',expiry_date,'quantity',quantity,'received_at',received_at))
+      FROM canonical_stock_lots WHERE promotion_id=?1 AND product_id=?2),'[]') AS lots_json
+      FROM (${fastProductSql()}) p`).bind(body.promotion_id,item.product_id));
+    reads.push(db.prepare('SELECT sale_id FROM sales WHERE operation_id=?1').bind(body.operation_id));
+    const rows=(await db.batch(reads)).map(firstBatchRow);
+    if(rows.at(-1))return diagnoseFastSaleFailure(db,body,auth,payloadHash,json);
+    for(const [index,item] of body.items.entries()){
+      const p=rows[index],failure=saleStockFailure(p,item);if(failure)return diagnoseFastSaleFailure(db,body,auth,payloadHash,json);
+      if(Number(p.tracks_inventory)===1){
+        try{const lots=lotsCore.lots(p),plan=saleLotPlan(p,lots,item,body);
+          lotEffects.push({item,lots,...plan});
+        }catch(error){return diagnoseFastSaleFailure(db,body,auth,payloadHash,json,{error:lotError(error),product_id:item.product_id});}
+      }
+    }
+  }
   const token = crypto.randomUUID();
   const atomic = [];
   const assertion = statement => atomic.push(statement);
@@ -410,6 +465,8 @@ async function createCanonicalSaleFast(body, env, auth, json) {
       body.total_cents,body.payment.cash_cents,body.payment.digital_cents,body.payment.credit_cents,
       body.payment.digital_method,body.payment.reference,body.created_at),'cash');
 
+  for(const entry of lotEffects)atomic.push(...effectStatements(db,{...body,...entry.item},entry.allocations,-1,entry.lots,token+':'+entry.item.product_id,body.sale_id));
+
   checked(db.prepare(`UPDATE canonical_control
     SET first_live_operation_id=COALESCE(first_live_operation_id,?1)
     WHERE id=1 AND mode='ACTIVE' AND active_promotion_id=?2 AND authority_epoch=?3 AND revision=?4
@@ -424,10 +481,12 @@ async function createCanonicalSaleFast(body, env, auth, json) {
   try {
     await db.batch(atomic);
   } catch {
-    return diagnoseFastSaleFailure(db,body,auth,payloadHash,json);
+    return diagnoseFastSaleFailure(db,body,auth,payloadHash,json,null,lotEffects);
   }
   return json({status:'created',operation_id:body.operation_id,sale_id:body.sale_id,
-    promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false},201);
+    promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false,
+    ...(lotEffects.some(e=>e.expired_lots_unconfirmed)?{expired_lots_unconfirmed:true}:{}),
+    ...(lotEffects.some(e=>e.lots.length)?{lot_allocations:lotEffects.flatMap(e=>e.allocations.map(a=>({...a,product_id:e.item.product_id})))}:{})},201);
 }
 
 export async function createCanonicalCreditAccount(request, env, auth, json) {
@@ -546,7 +605,11 @@ export async function createCanonicalSale(request, env, auth, json) {
         ) ORDER BY source_rank LIMIT 1`
       : `SELECT product_id,current_stock_quantity,stock_revision,tracks_inventory,'IMPORT' AS provenance
           FROM products WHERE promotion_id=?1 AND product_id=?2`;
-    readIndex.products.push(addRead(db.prepare(productSql).bind(body.promotion_id,item.product_id)));
+    const withLots=capabilities.stockLots ? `SELECT p.*,COALESCE((SELECT json_group_array(json_object(
+      'lot_id',lot_id,'lot_code',lot_code,'expiry_date',expiry_date,'quantity',quantity,'received_at',received_at))
+      FROM canonical_stock_lots WHERE promotion_id=?1 AND product_id=?2),'[]') AS lots_json
+      FROM (${productSql}) p` : productSql;
+    readIndex.products.push(addRead(db.prepare(withLots).bind(body.promotion_id,item.product_id)));
   }
 
   readIndex.customer=-1;
@@ -611,7 +674,7 @@ export async function createCanonicalSale(request, env, auth, json) {
     const stale=await authorityError();
     if (stale) return json({error:stale},409);
     return existing.payload_hash===payloadHash
-      ? json({status:'already_processed',operation_id:body.operation_id,sale_id:existing.sale_id,idempotent:true})
+      ? json({status:'already_processed',operation_id:body.operation_id,sale_id:existing.sale_id,idempotent:true,...await saleLotReceipt(db,body)})
       : json({error:'operation_id_conflict',operation_id:body.operation_id},409);
   }
   if (validation[readIndex.financialOperation]) return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
@@ -657,6 +720,17 @@ export async function createCanonicalSale(request, env, auth, json) {
     }
   }
   const token = crypto.randomUUID();
+  const lotEffects=[];
+  const lotAllocations=[];
+  const lotPlans=[];
+  if(capabilities.stockLots)for(const [index,item] of body.items.entries()){
+    const p=products[index];if(Number(p.tracks_inventory)!==1)continue;
+    try{const lots=lotsCore.lots(p),plan=saleLotPlan(p,lots,item,body);
+      lotPlans.push({item,lots,...plan});
+      lotEffects.push(...effectStatements(db,{...body,...item},plan.allocations,-1,lots,token+':'+index,body.sale_id));
+      if(lots.length)lotAllocations.push(...plan.allocations.map(a=>({...a,product_id:item.product_id})));
+    }catch(error){return json({error:lotError(error),product_id:item.product_id},409);}
+  }
   const statements = [
     db.prepare(`INSERT INTO canonical_write_guards(operation_id,commit_token,promotion_id,authority_epoch,control_revision,client_contract,principal_id,credential_hash)
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?7
@@ -745,12 +819,13 @@ export async function createCanonicalSale(request, env, auth, json) {
   for (const [index,statement] of statements.entries()) {
     atomic.push(statement,db.prepare('INSERT INTO canonical_assertions(assertion_id,ok) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)').bind(`${token}:changed:${index}`));
   }
+  atomic.push(...lotEffects);
   atomic.push(db.prepare('DELETE FROM canonical_assertions WHERE assertion_id LIKE ?1').bind(`${token}:%`));
   try { await db.batch(atomic); }
   catch { const replay=await db.prepare('SELECT sale_id,payload_hash FROM sales WHERE operation_id=?1').bind(body.operation_id).first();
     const stale=await authorityError();
     if(stale)return json({error:stale},409);
-    if(replay?.payload_hash===payloadHash)return json({status:'already_processed',operation_id:body.operation_id,sale_id:replay.sale_id,idempotent:true});
+    if(replay?.payload_hash===payloadHash)return json({status:'already_processed',operation_id:body.operation_id,sale_id:replay.sale_id,idempotent:true,...await saleLotReceipt(db,body)});
     if(replay)return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
     if(await db.prepare('SELECT operation_id FROM canonical_financial_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
     if(creditLine&&creditLine.mode==='MANUAL'){
@@ -766,6 +841,8 @@ export async function createCanonicalSale(request, env, auth, json) {
       let cashRow=null; try { cashRow=await cashStateRead(db,body).first(); } catch { cashRow=null; }
       const cashError=cashStateError(body,cashRow); if(cashError)return json(cashError,409);
     }
+    const lotRace=await saleLotStockFailure(db,body,lotPlans);
+    if(lotRace)return json(lotRace,409);
     return json({error:'canonical_sale_conflict',operation_id:body.operation_id},409); }
-  return json({status:'created',operation_id:body.operation_id,sale_id:body.sale_id,promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false},201);
+  return json({status:'created',operation_id:body.operation_id,sale_id:body.sale_id,promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,idempotent:false,...(lotAllocations.length?{lot_allocations:lotAllocations}:{}),...(lotPlans.some(e=>e.expired_lots_unconfirmed)?{expired_lots_unconfirmed:true}:{})},201);
 }

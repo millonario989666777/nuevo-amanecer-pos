@@ -78,6 +78,7 @@
           return;
         }
         if (product.tracks_inventory === 0 || product.tracks_inventory === false || product.controlInventario === false) return;
+        if(Array.isArray(product._canonicalLotReceiptOperations)&&product._canonicalLotReceiptOperations.indexOf(intent.operation_id)>=0)return;
         var current = product.projected_stock !== undefined ? product.projected_stock :
           (product.current_stock_quantity !== undefined ? product.current_stock_quantity : product.stock);
         if (typeof current !== 'number' || !Number.isFinite(current)) current = 0;
@@ -87,6 +88,12 @@
         if (next < 0) {
           if (!sale.conflict) { sale.conflict = true; sale.reason = 'INSUFFICIENT_PROJECTED_STOCK'; }
           return;
+        }
+        if(root.NA_STOCK_LOTS&&Array.isArray(product.lots)&&product.lots.length){
+          try{
+            var allocation=root.NA_STOCK_LOTS.plan(current,product.lots,item.quantity,root.NA_STOCK_LOTS.businessDate(intent.created_at),item.allow_expired_lots);
+            allocation.allocations.forEach(function(a){if(!a.lot_id)return;var lot=product.lots.find(function(r){return r.lot_id===a.lot_id;});lot.quantity=root.NA_STOCK_LOTS.round(lot.quantity-a.quantity);});
+          }catch(error){if(!sale.conflict){sale.conflict=true;sale.reason=error.message;}return;}
         }
         product.projected_stock = next;
       });

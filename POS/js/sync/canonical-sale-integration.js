@@ -16,14 +16,14 @@
     var outbox = root.NuevoAmanecerCanonicalSaleOutbox;
     if (!canonical || typeof canonical.snapshot !== 'function')
       return { ready:false, reason:'La base local de CANON no está disponible' };
-    if (!outbox || typeof outbox.snapshot !== 'function' || typeof outbox.enqueue !== 'function')
+    if (!outbox || typeof outbox.enqueue !== 'function')
       return { ready:false, reason:'La cola local de ventas no está disponible' };
     try {
       // A4 local-first contract: capture depends on durable local state, never on
       // cloud freshness. Remote ACTIVE/read_only/auth state is evaluated later by
       // the background sender; it must not block the cashier from recording a sale.
       canonical.snapshot();
-      outbox.snapshot();
+      if (typeof outbox.snapshot === 'function') outbox.snapshot();
     } catch (_) {
       return { ready:false, reason:'No se pudo validar el almacenamiento local de ventas · reintenta' };
     }
@@ -376,6 +376,25 @@
     var receiptItems=copy(cart),receiptReceived=method==='efectivo'?Number(root.document.getElementById('mMontoRec')?.value):method==='mixto'?mixed.cash:cart.reduce(function(sum,item){return sum+Number(item.qty)*Number(item.precio);},0);
     var cashTill = (method === 'efectivo' || method === 'mixto') ? openCanonicalSession() : null;
     if (cashTill) input.session_id = cashTill;
+    // Check the same projected catalog used for pending stock, before creating
+    // the durable intent. Consent is captured per item, never inherited by a retry/new sale.
+    if(root.NA_STOCK_LOTS_UI){
+      try{
+        var lotProducts=root.NA_STOCK_LOTS_UI.currentProducts(),lotRequested=new Map();
+        input.items.forEach(function(line){if(line.product_id)lotRequested.set(line.product_id,(lotRequested.get(line.product_id)||0)+line.quantity);});
+        for(var pair of lotRequested){
+          var lotProduct=lotProducts.find(function(p){return p.product_id===pair[0];});
+          if(!lotProduct||Number(lotProduct.tracks_inventory)!==1)continue;
+          var consent=root.NA_STOCK_LOTS_UI.confirmConsumption(lotProduct,pair[1],createdAt);
+          if(consent&&typeof consent.then==='function'){
+            setBusy(true);
+            try{consent=await consent;}finally{setBusy(false);}
+          }
+          if(consent===null){failClosed(root.NA_STOCK_LOTS_UI.denialMessage||'Venta cancelada: no se autorizó usar lotes vencidos.',null);return;}
+          if(consent===true)input.items.forEach(function(line){if(line.product_id===pair[0])line.allow_expired_lots=true;});
+        }
+      }catch(lotError){/* Advisory prevalidation unavailable; the server validates lots. */}
+    }
     var getBusiness = lexical('getBusiness');
     var receiptCashier=root._naCashierSnapshot?.()||{nombre:getBusiness?getBusiness().cajero||'':''};
     var durable = false;
