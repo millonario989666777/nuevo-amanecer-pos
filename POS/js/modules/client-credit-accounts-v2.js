@@ -1429,7 +1429,7 @@ function labCategorySummary(client, category) {
     }
     // Otro abono (de otra ficha) sigue enviándose: se avisa y este queda guardado tal cual, sin enviar nada.
     if (naV2PendingBatch()) {
-      if (typeof toast === 'function') toast('Hay otro abono terminando de enviarse. Este queda guardado: espera unos segundos y vuelve a pulsar Confirmar.','warning');
+      if (typeof toast === 'function') toast('Hay un abono pendiente, espera unos segundos','warning');
       return false;
     }
     labBatchSubmitInFlight = true;
@@ -2394,6 +2394,21 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       labRenderRoute('replace');
     }
   },0);});
+  // Abono pendiente resuelto por el reintento automático: se borran los borradores enviados de ese lote
+  // (sin lote pendiente ya no hay nada que reenviar) y se redibuja la ficha abierta para que Confirmar no quede activo.
+  root.addEventListener('na:payment-batch-resolved', function (e) {
+    var op = e && e.detail && e.detail.operation_id, touched = false;
+    try {
+      for (var i = root.localStorage.length - 1; i >= 0; i--) {
+        var k = root.localStorage.key(i); if (!k || k.indexOf(NA_V2_DRAFT_KEY + ':') !== 0) continue;
+        var d = null; try { d = JSON.parse(root.localStorage.getItem(k) || 'null'); } catch (_) {}
+        if (d && d.submitted && (!op || !d.batch || (d.batch.payload && d.batch.payload.operation_id) === op)) {
+          root.localStorage.removeItem(k); if (labClientScreenState && String(d.clientId) === String(labClientScreenState.clientId)) touched = true;
+        }
+      }
+    } catch (_) {}
+    if (touched && !labBatchSubmitInFlight) { naV2DraftSkip = true; try { labRenderRoute('replace'); } finally { root.setTimeout(function () { naV2DraftSkip = false; }, 0); } }
+  });
   root.addEventListener('load',naBindRuntime);
   root.addEventListener('pageshow',naBindRuntime);
   if (typeof MutationObserver === 'function') {

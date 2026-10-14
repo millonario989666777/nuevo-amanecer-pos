@@ -153,9 +153,14 @@
     if (now < nextRetryAt) return false;
     nextRetryAt = now + BACKOFF[Math.min(backoffStep, BACKOFF.length - 1)];
     backoffStep += 1;
+    var opId = pending.payload && pending.payload.operation_id;
     await retryOnReconnect();
     var after = null; try { after = c.pendingSnapshot(); } catch (_) {}
-    if (!after || after.command !== 'payment.batch') { backoffStep = 0; nextRetryAt = 0; }
+    if (!after || after.command !== 'payment.batch' || (after.payload && after.payload.operation_id) !== opId) {
+      backoffStep = 0; nextRetryAt = 0;
+      // Avisar a la ficha: ese abono ya quedó (o se liberó); su borrador se borra y la ficha se redibuja.
+      if (!after || after.command !== 'payment.batch') try { root.dispatchEvent(new CustomEvent('na:payment-batch-resolved', { detail: { operation_id: opId } })); } catch (_) {}
+    }
     return true;
   }
   var ticks = 0;

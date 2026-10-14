@@ -40,7 +40,7 @@ test('migra el borrador único anterior a la ranura de su cliente', () => {
 test('restaurar: solo se bloquea la ficha con su propio abono enviado; aviso al confirmar con otro pendiente', () => {
   assert.match(v2, /var own = naV2StoredRead\(draft\.clientId\); if \(own && own\.submitted && naV2PendingBatch\(\)\) return;/);
   assert.doesNotMatch(v2, /    if \(naV2PendingBatch\(\)\) return; \/\/ hay un lote/);
-  assert.ok(v2.includes('Hay otro abono terminando de enviarse. Este queda guardado'));
+  assert.ok(v2.includes("toast('Hay un abono pendiente, espera unos segundos'"));
   assert.match(v2, /var subCid = labClientScreenState\.clientId;/);
   assert.match(v2, /naV2DraftMarkSubmitted\(subCid\)/);
 });
@@ -66,4 +66,18 @@ test('«Reintentar» desactivado con «disponible en N s», se activa solo; 44 p
   assert.match(css, /\.na-dni-retry\{[^}]*min-height:44px;min-width:16\.5em;[^}]*font-variant-numeric:tabular-nums/);
   assert.match(css, /body\.dark \.na-dni-retry:disabled\{background:#334155;color:#f1f5f9\}/);
   assert.doesNotMatch(dniClient, /opacity:\.8/, 'la opacidad del aviso bajaba el contraste del botón');
+});
+
+test('abono resuelto por el reintento automático: avisa a la ficha, que borra el borrador y se redibuja', async () => {
+  const banner = readFileSync('POS/js/sync/canonical-status-banner.js', 'utf8');
+  const events = [];
+  const pend = { value: { command: 'payment.batch', payload: { operation_id: 'op-r' } } };
+  const root = { navigator: { onLine: true }, setTimeout, clearTimeout, dispatchEvent: e => events.push(e), CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o.detail; } },
+    NuevoAmanecerCanonical: { enabled: () => true, pendingSnapshot: () => pend.value, retryPending: async () => { pend.value = null; }, refresh: async () => {} } };
+  vm.runInNewContext(banner, { globalThis: root, Date, Promise, CustomEvent: root.CustomEvent, setTimeout, clearTimeout });
+  await root.NuevoAmanecerStatusBanner.retryPendingPayment(1);
+  assert.equal(events.length, 1); assert.equal(events[0].type, 'na:payment-batch-resolved'); assert.equal(events[0].detail.operation_id, 'op-r');
+  assert.match(v2, /addEventListener\('na:payment-batch-resolved'/);
+  assert.match(v2, /root\.localStorage\.removeItem\(k\); if \(labClientScreenState && String\(d\.clientId\) === String\(labClientScreenState\.clientId\)\) touched = true;/);
+  assert.match(v2, /if \(touched && !labBatchSubmitInFlight\) \{ naV2DraftSkip = true; try \{ labRenderRoute\('replace'\);/);
 });
