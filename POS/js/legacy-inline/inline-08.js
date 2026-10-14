@@ -54,7 +54,7 @@ guardarProd=async function(...args){const icon=document.getElementById('pIcon');
 document.addEventListener('DOMContentLoaded',()=>{const canvas=_naF12Canvas();canvas?.addEventListener('pointerdown',_naF12DesignerDown);canvas?.addEventListener('pointermove',_naF12DesignerMove);canvas?.addEventListener('pointerup',_naF12DesignerUp);canvas?.addEventListener('pointercancel',_naF12DesignerUp);canvas?.addEventListener('pointerleave',_naF12DesignerUp);_naF12RenderVisual();});
 
 function _naProductFormState(product){
- const stock=document.getElementById('pStock');stock.readOnly=!!product;
+ const stock=document.getElementById('pStock');stock.readOnly=false;
  document.getElementById('pStockLabel').textContent=product?'Stock actual':'Stock inicial';
  document.getElementById('pAdjustStock').hidden=!product;
  document.getElementById('pManageLots').hidden=!product;

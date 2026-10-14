@@ -12,7 +12,7 @@ for(const width of [320,360,390,430,768,1024,1366,1920])test('inventory controls
  await expect(page.getByRole('button',{name:'OCR compras',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Cargar fotos',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/Vencidos/})).toBeVisible();await page.getByRole('button',{name:/Vencidos/}).click();await page.getByRole('button',{name:/Todos/}).click();
  for(const action of ['Entrada de stock','Salida de stock','Editar producto'])await expect(page.getByRole('button',{name:action,exact:true})).toBeVisible();
- await page.locator('.btn-edt').click();await expect(page.locator('#pStock')).toHaveJSProperty('readOnly',true);await expect(page.locator('#pVenc')).toHaveJSProperty('readOnly',true);
+ await page.locator('.btn-edt').click();await expect(page.locator('#pStock')).toHaveJSProperty('readOnly',false);await expect(page.locator('#pVenc')).toHaveJSProperty('readOnly',true);
  await expect(page.locator('#pNombre')).toBeVisible();await expect(page.locator('#mProd .mbtn-ok')).toBeVisible();
  if(width<768)expect(await page.locator('#mProd .modal').evaluate(el=>Math.round(el.getBoundingClientRect().width))).toBe(width);
  await page.locator('#mProd .mbtn-cancel').click();

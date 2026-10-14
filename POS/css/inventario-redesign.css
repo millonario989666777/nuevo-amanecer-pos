@@ -164,3 +164,10 @@
  #pageInventario.inv-mobile-simple .stats-strip .ss-num{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
  #pageInventario.inv-mobile-simple #invBody>tr{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-areas:"p s" "c m" "v v" "a a"}
 }
+/* 390px: el formulario de producto es una hoja opaca a pantalla completa; la lista no debe verse por arriba ni por abajo. */
+@media(max-width:767px){
+ #mProd.modal-overlay{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;min-height:100dvh;background:#fff!important;opacity:1!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;overflow:hidden!important;z-index:1000}
+ #mProd.modal-overlay .modal{position:absolute!important;inset:0!important;height:100%!important;max-height:none!important;background:#fff!important;opacity:1!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+ #mProd .mhead,#mProd .mbody,#mProd .mbtns{background:#fff!important;opacity:1!important}
+ html:has(#mProd.open),html:has(#mProd.open) body{height:100%!important;max-height:100dvh;overflow:hidden!important}
+}

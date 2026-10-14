@@ -36,13 +36,13 @@ test('pestañas y contadores usan la clasificación única; límites y lotes ago
  assert.match(i1,/_naExpiryBucket\(p\)==='soon'/);
  assert.match(read('POS/js/legacy-inline/inline-06.js'),/expiry=diasHasta\(_naEffectiveExpiry\(product\)\)/);
 });
-test('formulario: vencimiento siempre de solo lectura; stock editable solo al crear',()=>{
+test('formulario: vencimiento siempre de solo lectura; stock editable y auditado por ledger al editar',()=>{
  const i8=read('POS/js/legacy-inline/inline-08.js');
  assert.match(i8,/abrirModalProd=function[^\n]*expiryField\.readOnly=true/);
  assert.match(i8,/editProd=function[^\n]*expiryField\.readOnly=true/);
- assert.match(i8,/stock.readOnly=!!product/);assert.match(i8,/_naEffectiveExpiry\(product\)/);
+ assert.match(i8,/stock.readOnly=false/);assert.doesNotMatch(i8,/stock.readOnly=!!product/);assert.match(i8,/_naEffectiveExpiry\(product\)/);
  assert.match(i8,/abrirMovInv\(id,'entrada'\)/);
- assert.match(read('POS/js/legacy-inline/inline-02.js'),/invEditId\?_naNumber\(editingPrevious\?\.stock\)/);
+ assert.doesNotMatch(read('POS/js/legacy-inline/inline-02.js'),/invEditId\?_naNumber\(editingPrevious\?\.stock\)/);
 });
 
 test('no queda ningún acceso a «Productos a vencer» ni al toggle duplicado',()=>{

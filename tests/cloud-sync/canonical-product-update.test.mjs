@@ -132,7 +132,7 @@ test('R3 regresión: el formulario de edición guarda el precio nuevo a través 
   assert.ok(tab.toasts.some(([m]) => /Producto actualizado/.test(m)));
 });
 
-test('edición ignora stock del formulario y conserva stock remoto; código ajeno no envía nada', async (t) => {
+test('edición: cambios no editables (stock) se avisan claro y no envían nada; código ajeno nombra al producto', async (t) => {
   const f = await activeCanon(t, { migrations: MIGRATIONS });
   const seed = await device(f, { token: 'seed2', deviceId: 'seed2' });
   await seed.api.createProduct(product('P-A')); await seed.api.refresh();
@@ -142,10 +142,9 @@ test('edición ignora stock del formulario y conserva stock remoto; código ajen
   fillForm(tab, legacy);
   tab.el('pStock').value = '99';
   const posts = () => tab.fetchLog.filter((x) => x.method === 'POST').length;
-  assert.equal(await tab.context.NuevoAmanecerCanonicalProductBridge.save(), true);
-  await tab.api.refresh();
-  assert.equal(tab.api.legacySnapshot().products.find(p => String(p.id) === 'P-A').stock, legacy.stock, 'editar ficha nunca ajusta stock');
   const n = posts();
+  assert.equal(await tab.context.NuevoAmanecerCanonicalProductBridge.save(), false);
+  assert.match(tab.toasts.at(-1)[0], /stock \(usa Entrada\/Salida/);
   fillForm(tab, legacy);
   tab.el('pBarcode').value = 'p-b-bar';
   assert.equal(await tab.context.NuevoAmanecerCanonicalProductBridge.save(), false);
