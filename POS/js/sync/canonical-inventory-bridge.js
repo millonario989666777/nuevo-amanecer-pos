@@ -78,6 +78,7 @@
   }
   function pendingMessage(error){
     var pending=pendingRecord(),code=clean(error&&error.message);
+    if(code==='LOT_STOCK_RESERVED_BY_PENDING_SALE')return 'No se registró la salida: hay lotes reservados por ventas pendientes de este producto. Espera a que se confirmen antes de retirar stock.';
     if(code==='INSUFFICIENT_PROJECTED_STOCK')return 'No se registró la salida: parte de ese stock ya está vendido en ventas que aún se están enviando a CANON. Espera a que se sincronicen o registra una cantidad menor.';
     if(code==='INSUFFICIENT_CANONICAL_STOCK')return 'No se registró la salida: no hay suficiente stock en CANON.';
     if(pending&&pending.command==='inventory.adjust'&&!pending.invalid){
@@ -158,12 +159,28 @@
       if(!client||typeof client.adjustInventory!=='function'){notify('No se registró el movimiento: CANONICAL_INVENTORY_UNAVAILABLE','error');return false;}
 
       var movementType=ctx.type==='entrada'?'ENTRADA':'SALIDA';
+      var extra={};
+      try{
+        var lotUi=root.NA_STOCK_LOTS_UI;
+        if(lotUi&&movementType==='ENTRADA'){
+          var receipts=lotUi.readMovementLots(snapshotProduct(ctx.productId));if(receipts!==undefined)extra.lots=receipts;
+        }
+        if(lotUi&&movementType==='SALIDA'){
+          var current=snapshotProduct(ctx.productId),consent=await lotUi.confirmConsumption(current,quantity,new Date().toISOString());
+          if(consent===null){notify(lotUi.denialMessage||'Salida cancelada: no se autorizó usar lotes vencidos.','error');return false;}
+          if(consent===true)extra.allow_expired_lots=true;
+        }
+      }catch(lotError){
+        if(movementType==='ENTRADA'){notify('Revisa los lotes: '+lotError.message,'error');return false;}
+        // SALIDA prevalidation is advisory; the server validates the movement.
+      }
       var receipt;
       try{
         receipt=await client.adjustInventory({
           product_id:ctx.productId,
           movement_type:movementType,
           quantity:quantity,
+          ...extra,
           reason:(selectedReason()||(movementType==='ENTRADA'?'Entrada de inventario':'Salida de inventario'))+
             ': '+(movementType==='ENTRADA'?'+':'-')+quantityText(quantity)
         });
@@ -237,7 +254,7 @@
       rows.push({sourceIndex:sourceIndex,productId:proposal.productId==null?'':String(proposal.productId),
         quantity:typeof proposal.quantity==='number'?proposal.quantity:Number(proposal.quantity),
         unitCost:typeof proposal.unitCost==='number'&&isFinite(proposal.unitCost)&&proposal.unitCost>=0?proposal.unitCost:null,
-        operationId:operation+':'+line});
+        operationId:operation+':'+line,...(proposal.lots!==undefined?{lots:proposal.lots}:{})});
     });
     if(!rows.length){errors.push(purchaseError('NO_CONFIRMED_ROWS','No hay filas confirmadas para aplicar.'));return result();}
 
@@ -286,7 +303,7 @@
       if(purchases&&typeof purchases.submit==='function'&&intLines&&operation.length<=120&&root.navigator&&root.navigator.onLine!==false){
         try{
           var out=await purchases.submit(operation,rows.map(function(row){return{line:Number(row.sourceIndex),product_id:row.productId,quantity:row.quantity,
-            unit_cost_cents:row.unitCost==null?null:Math.round(row.unitCost*100)};}),{supplier:clean(settings.supplier),documentRef:clean(settings.documentRef)});
+            unit_cost_cents:row.unitCost==null?null:Math.round(row.unitCost*100),...(row.lots!==undefined?{lots:row.lots}:{})};}),{supplier:clean(settings.supplier),documentRef:clean(settings.documentRef)});
           (out&&out.applied||[]).forEach(function(a){applied.push({sourceIndex:a.line,productId:a.product_id,quantity:a.quantity,referenceId:operation+':'+a.line,status:'applied',stockAfter:a.stock_after});});
           (out&&out.skipped||[]).forEach(function(a){var row=rows.find(function(r){return Number(r.sourceIndex)===a.line;});skipped.push({sourceIndex:a.line,productId:row?row.productId:null,reason:'ALREADY_APPLIED',referenceId:operation+':'+a.line});});
           if(out&&out.idempotent)rows.forEach(function(row){skipped.push({sourceIndex:row.sourceIndex,productId:row.productId,reason:'ALREADY_APPLIED',referenceId:row.operationId});});
@@ -319,6 +336,7 @@
             product_id:row.productId,
             movement_type:'ENTRADA',
             quantity:row.quantity,
+            ...(row.lots!==undefined?{lots:row.lots}:{}),
             reason:'Compra OCR '+operation+', línea '+row.sourceIndex+': +'+quantityText(row.quantity)
           });
         }catch(error){

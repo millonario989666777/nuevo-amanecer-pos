@@ -1060,13 +1060,13 @@
     });
   }
 
-  function pendingSaleUnits(productId) {
+  function pendingSaleUnits(productId,physical) {
     var outbox = root.NuevoAmanecerCanonicalSaleOutbox, intents = [];
     try { intents = outbox && typeof outbox.snapshot === 'function' ? outbox.snapshot().intents || [] : []; }
     catch (_) { fail('INSUFFICIENT_PROJECTED_STOCK'); }
     return intents.reduce(function (sum, intent) {
       return sum + (Array.isArray(intent && intent.items) ? intent.items : []).reduce(function (units, item) {
-        return units + (item && item.product_id === productId && item.generic_line === undefined && Number.isSafeInteger(item.quantity) ? item.quantity : 0);
+        return units + (item && item.product_id === productId && item.generic_line === undefined && (physical?Number.isFinite(item.quantity)&&item.quantity>0:Number.isSafeInteger(item.quantity)) ? item.quantity : 0);
       }, 0);
     }, 0);
   }
@@ -1075,6 +1075,8 @@
     if(!validId(input.product_id))fail('INVALID_CANONICAL_INVENTORY');
     var type=String(input.movement_type||'').trim().toUpperCase();
     if(!['ENTRADA','SALIDA'].includes(type)||typeof input.quantity!=='number'||!Number.isFinite(input.quantity)||input.quantity<=0||!validReason(input.reason))fail('INVALID_CANONICAL_INVENTORY');
+    if(input.allow_expired_lots!==undefined&&(type!=='SALIDA'||typeof input.allow_expired_lots!=='boolean'))fail('EXPIRED_CONFIRMATION_INVALID');
+    if(input.lots!==undefined&&type!=='ENTRADA')fail('INVALID_CANONICAL_INVENTORY');
     var product=data&&Array.isArray(data.products)?data.products.find(function(item){return item.product_id===input.product_id;}):null;
     if(!product||Number(product.tracks_inventory)!==1||!uint(product.stock_revision)||typeof product.current_stock_quantity!=='number'||!Number.isFinite(product.current_stock_quantity)||product.current_stock_quantity<0)fail('INVALID_CANONICAL_PRODUCT');
     if(type==='SALIDA'&&input.quantity>product.current_stock_quantity)fail('INSUFFICIENT_CANONICAL_STOCK');
@@ -1082,6 +1084,9 @@
     // reach CANON. A SALIDA may only use what is left after them; otherwise the
     // queued sale is rejected and the cash and the stock stop matching.
     if(type==='SALIDA'&&input.quantity>product.current_stock_quantity-pendingSaleUnits(product.product_id))fail('INSUFFICIENT_PROJECTED_STOCK');
+    // A pending charged sale owns its FEFO units locally. The Worker cannot
+    // see that reservation yet, so do not let a manual exit steal its valid lot.
+    if(type==='SALIDA'&&Array.isArray(product.lots)&&product.lots.length&&pendingSaleUnits(product.product_id,true)>0)fail('LOT_STOCK_RESERVED_BY_PENDING_SALE');
     // Optional caller-supplied operation_id (e.g. OCR purchase "OCR-PURCHASE-<hash>:<line>")
     // so a re-applied document maps to the SAME operation and can never double-count.
     var common=commonPayload();
@@ -1094,7 +1099,9 @@
       movement_type:type,
       quantity:input.quantity,
       expected_stock_revision:product.stock_revision,
-      reason:String(input.reason).trim().replace(/\s+/g,' ')
+      reason:String(input.reason).trim().replace(/\s+/g,' '),
+      ...(input.lots!==undefined?{lots:root.NA_STOCK_LOTS?root.NA_STOCK_LOTS.validateReceiptEntry(product,input.lots,input.quantity):fail('LOT_ENGINE_UNAVAILABLE')}:{}),
+      ...(input.allow_expired_lots!==undefined?{allow_expired_lots:input.allow_expired_lots}:{})
     });
   }
 
@@ -1109,7 +1116,9 @@
       var line = Math.round(requested.quantity * product.price_cents);
       if (!Number.isSafeInteger(line) || line < 0) fail('UNSAFE_CANONICAL_TOTAL');
       total += line; if (!Number.isSafeInteger(total)) fail('UNSAFE_CANONICAL_TOTAL');
-      return { product_id: product.product_id, quantity: requested.quantity, unit_price_cents: product.price_cents, line_total_cents: line, expected_stock_revision: product.stock_revision };
+      var out={ product_id: product.product_id, quantity: requested.quantity, unit_price_cents: product.price_cents, line_total_cents: line, expected_stock_revision: product.stock_revision };
+      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}
+      return out;
     });
     if (total <= 0) fail('INVALID_CANONICAL_SALE');
     var payload = Object.assign(commonPayload(), {
@@ -1137,12 +1146,13 @@
         !METHODS.includes(intent.payment_method) || !uint(intent.total_cents) || intent.total_cents === 0) fail('INVALID_CANONICAL_INTENT');
     var seen = new Set(), total = 0;
     var items = intent.items.map(function (requested) {
-      if (!requested || !validId(requested.product_id) || seen.has(requested.product_id) || !Number.isSafeInteger(requested.quantity) || requested.quantity <= 0 ||
+      if (!requested || !validId(requested.product_id) || seen.has(requested.product_id) || !Number.isFinite(requested.quantity) || requested.quantity <= 0 ||
           !uint(requested.unit_price_cents) || !uint(requested.line_total_cents)) fail('INVALID_CANONICAL_ITEM');
       seen.add(requested.product_id);
       var generic = requested.generic_line;
       var expectedRevision = 0;
       if (generic !== undefined) {
+        if(!Number.isSafeInteger(requested.quantity))fail('INVALID_CANONICAL_GENERIC_LINE');
         if (!generic || typeof generic !== 'object' || Array.isArray(generic) || requested.product_id.slice(0,8) !== 'GENERIC:' ||
             requested.quantity > 9999 || requested.unit_price_cents <= 0 ||
             typeof generic.name !== 'string' || !generic.name.trim() || generic.name.length > 240 || /[\x00-\x1f\x7f]/.test(generic.name) ||
@@ -1150,6 +1160,7 @@
       } else {
         var product = data.products.find(function (item) { return item.product_id === requested.product_id; });
         if (!product || !uint(product.stock_revision)) fail('INVALID_CANONICAL_PRODUCT');
+        if(!Number.isSafeInteger(requested.quantity)&&!(Array.isArray(product.lots)&&product.lots.length&&/^(kilogramos?|kilos?|kgs?|gramos?|grs?|g|litros?|lts?|l|mililitros?|ml|metros?|m)$/i.test(product.unit||'')&&Math.abs(Math.round(requested.quantity*1000)-requested.quantity*1000)<1e-6))fail('INVALID_CANONICAL_ITEM');
         expectedRevision = product.stock_revision;
       }
       var line = requested.quantity * requested.unit_price_cents;
@@ -1158,6 +1169,7 @@
       var out = { product_id: requested.product_id, quantity: requested.quantity, unit_price_cents: requested.unit_price_cents,
         line_total_cents: requested.line_total_cents, expected_stock_revision: expectedRevision };
       if (generic !== undefined) out.generic_line = { name: generic.name.trim().replace(/\s+/g,' '), code: generic.code.trim() };
+      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}
       return out;
     });
     if (total !== intent.total_cents) fail('INVALID_CANONICAL_TOTAL');
@@ -1518,11 +1530,25 @@
       var tracks = Number(product.tracks_inventory);
       if (tracks === 0) continue;
       if (tracks !== 1 || typeof product.current_stock_quantity !== 'number' || product.current_stock_quantity < item.quantity) return false;
-      updates.push([product, item.quantity]);
+      var nextLots=null;
+      if(Array.isArray(product.lots)&&product.lots.length){
+        if(!Array.isArray(result.lot_allocations))return false;
+        nextLots=copy(product.lots);
+        var allocations=result.lot_allocations.filter(function(a){return a.product_id===item.product_id;}),sum=0;
+        for(var j=0;j<allocations.length;j++){
+          var a=allocations[j];if(!Number.isFinite(a.quantity)||a.quantity<=0)return false;sum+=a.quantity;
+          if(!a.lot_id)continue;
+          var lot=nextLots.find(function(l){return l.lot_id===a.lot_id;});if(!lot||lot.quantity<a.quantity)return false;
+          lot.quantity=Math.round((lot.quantity-a.quantity)*1e9)/1e9;
+        }
+        if(Math.abs(sum-item.quantity)>1e-8)return false;
+      }
+      updates.push([product, item.quantity,nextLots]);
     }
     updates.forEach(function (entry) {
       entry[0].current_stock_quantity -= entry[1];
       entry[0].stock_revision = Number(entry[0].stock_revision) + 1;
+      if(entry[2]){entry[0].lots=entry[2];entry[0]._canonicalLotReceiptOperations=(entry[0]._canonicalLotReceiptOperations||[]).concat(record.payload.operation_id);}
     });
     return true;
   }
@@ -2074,7 +2100,7 @@
     return withWriterLock(function () {
       var record=journal();
       if(!record||record.state!=='PENDING'||record.command!=='inventory.adjust')return false;
-      var safeErrors=['invalid_inventory_request','product_not_found','product_inventory_disabled','stale_stock','insufficient_stock','invalid_stock_state','operation_id_conflict','stale_authority','canonical_not_active','canonical_inventory_conflict'];
+      var safeErrors=['invalid_inventory_request','invalid_inventory_lots','expired_lots_confirmation_required','invalid_lot_state','product_not_found','product_inventory_disabled','stale_stock','insufficient_stock','invalid_stock_state','operation_id_conflict','stale_authority','canonical_not_active','canonical_inventory_conflict'];
       if(![400,404,409].includes(record.last_status)||!safeErrors.includes(record.last_error))return false;
       root.localStorage.removeItem(JOURNAL);
       if(root.localStorage.getItem(JOURNAL)!==null)fail('CANONICAL_STORAGE_NOT_DURABLE');
@@ -2088,7 +2114,7 @@
       // 400/409 are definitive Worker rejections. D1 sale.create is atomic, so
       // these statuses prove this pending intent did not commit a sale/mov/stock.
       // Transport uncertainty (5xx / lost ACK) must stay pending for same operation_id replay.
-      var safeErrors = ['stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed', 'credit_limit_exceeded'];
+      var safeErrors = ['expired_lots_confirmation_required','invalid_lot_state','stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed', 'credit_limit_exceeded'];
       if (![400, 404, 409].includes(record.last_status) || !safeErrors.includes(record.last_error)) return false;
       root.localStorage.removeItem(JOURNAL);
       if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');

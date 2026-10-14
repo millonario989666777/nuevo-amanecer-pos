@@ -265,6 +265,7 @@
     switch (id) {
       case 'stock':
         return '<label class="na9-f">Stock mínimo por defecto<input class="na9-wide" type="number" data-na9="stockMin" value="' + esc(c.stockMin != null ? c.stockMin : 5) + '" min="0" max="100000" step="1"></label>'
+          + row('Permitir vender lotes vencidos', 'Requiere confirmación y PIN del admin en cada venta', sw('expiredLots', call('_naGetSecurityPath', 'rules.allowExpiredLots') === true), 'este aparato')
           + row('Avisar cuando el stock esté bajo', 'Se marca en inventario y en el resumen', sw('stockAlertActive', !!c.stockAlertActive))
           + row('Aplicar el mínimo a todo el catálogo', 'Pone el stock mínimo actual en todos los productos', '<button type="button" class="na9-btn sec sm" data-act="stockAll">Aplicar ahora</button>')
           + row('Importar productos', 'Cargar el catálogo desde Excel o CSV', '<button type="button" class="na9-btn sec sm" data-act="imp">' + (st.imp ? 'Cerrar' : 'Abrir') + '</button>')
@@ -478,6 +479,7 @@
     if (/^zone\./.test(k)) { try { var s = root._naF11State(); s.settings[k.slice(5)].enabled = !!v; root._naF11PersistState(s); } catch (_) {} refreshPreview(); autosave(true); return; }
     if (/^cred\./.test(k)) { call('creditPolicySetNumber', k.slice(5), v); autosave(true); return; }
     switch (k) {
+      case 'expiredLots': call('_naSetSecurityPath', 'rules.allowExpiredLots', !!v); call('_naSaveSecurity'); autosave(false); return;
       case 'stockMin': call('actualizarStockMinPredeterminado', v); autosave(true); return;
       case 'stockAlertActive': case 'igvActive': case 'margenActive': case 'mayoristaActive': case 'printAuto':
         var ids = { stockAlertActive: 'stockToggle', igvActive: 'igvToggle', margenActive: 'margenToggle', mayoristaActive: 'mayoristaToggle', printAuto: 'printToggle' };

@@ -84,6 +84,7 @@
       metadataRevision: integer(p.metadata_revision, 0),
       stockMin: number(p.stock_min_quantity, 0),
       venc: text(p.expiry_date),
+      ...(Array.isArray(p.lots)?{lots:JSON.parse(JSON.stringify(p.lots))}:{}),
       incluyeIGV: p.includes_igv !== 0 && p.includes_igv !== false,
       tipoImpuesto: text(p.tax_type),
       impuestoComplementario: text(p.complementary_tax),

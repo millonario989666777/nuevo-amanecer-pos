@@ -60,10 +60,12 @@
     return '<div class="na-pur-line" data-i="' + i + '"><input class="na-pur-prod" list="naPurProducts" placeholder="Producto" autocomplete="off">' +
       '<input class="na-pur-qty" type="number" min="0" step="any" inputmode="decimal" placeholder="Cant.">' +
       '<input class="na-pur-cost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Costo S/">' +
+      '<input class="na-pur-lot" maxlength="120" placeholder="Lote (opcional)" aria-label="Código de lote">' +
+      '<input class="na-pur-expiry" type="date" aria-label="Vencimiento del lote">' +
       '<button type="button" class="na-pur-del" aria-label="Quitar línea">✕</button></div>';
   }
   function readLines(w) {
-    var out = [], bad = [];
+    var out = [], bad = [], codes = new Set();
     [].slice.call(w.querySelectorAll('.na-pur-line')).forEach(function (row, idx) {
       var label = row.querySelector('.na-pur-prod').value, qty = Number(row.querySelector('.na-pur-qty').value), costRaw = row.querySelector('.na-pur-cost').value;
       if (!label && !row.querySelector('.na-pur-qty').value) return;
@@ -71,7 +73,13 @@
       if (!p || !(qty > 0)) { bad.push(idx + 1); return; }
       var cost = costRaw === '' ? null : Math.round(Number(costRaw) * 100);
       if (cost != null && !(cost >= 0)) { bad.push(idx + 1); return; }
-      out.push({ line: out.length + 1, product_id: String(p.id), quantity: qty, unit_cost_cents: cost });
+      var entry={ line: out.length + 1, product_id: String(p.id), quantity: qty, unit_cost_cents: cost };
+      var code=row.querySelector('.na-pur-lot').value.trim(),expiry=row.querySelector('.na-pur-expiry').value;
+      if(code||expiry){
+        try{entry.lots=root.NA_STOCK_LOTS.validateReceiptEntry(p,[{lot_code:code,expiry_date:expiry,quantity:qty}],qty);
+          var key=JSON.stringify([String(p.id),code]);if(codes.has(key))throw Error('DUPLICATE_LOT_CODE');codes.add(key);}catch(_){bad.push(idx+1);return;}
+      }
+      out.push(entry);
     });
     return { lines: out, bad: bad };
   }
@@ -82,7 +90,7 @@
   // El id de una compra sin confirmar queda atado a su contenido (líneas, cantidades, costos, proveedor y
   // comprobante). Si el contenido cambió o es una compra nueva, primero se pregunta al servidor por el id viejo.
   function fingerprint(lines, meta) {
-    return JSON.stringify({ l: (lines || []).map(function (x) { return [x.line, String(x.product_id), Number(x.quantity), x.unit_cost_cents == null ? null : Number(x.unit_cost_cents)]; }),
+    return JSON.stringify({ l: (lines || []).map(function (x) { var values=[x.line, String(x.product_id), Number(x.quantity), x.unit_cost_cents == null ? null : Number(x.unit_cost_cents)];if(x.lots&&x.lots.length)values.push(x.lots);return values; }),
       s: String(meta && meta.supplier || '').trim(), d: String(meta && meta.documentRef || '').trim() });
   }
   // Compras sin confirmar: un mapa por id ({ id: { fp, at, noted } }). Una segunda respuesta perdida no borra la
@@ -121,7 +129,7 @@
           var desc = function (a) { return a.map(function (l) { return nameOf(l.product_id) + ' +' + l.quantity; }).join(', ') || 'ninguna'; };
           return { stop: 'La compra anterior quedó a medias. Ya sumaron stock: ' + desc(done) + '. Faltan: ' + desc(miss) +
             '. Para no duplicar, termínala con «Terminar compra anterior» (solo suma lo que falta). Esta compra NO se registró.',
-            finish: { id: id, lines: old.map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) }; }),
+            finish: { id: id, lines: old.map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
               meta: { supplier: (st.purchase && st.purchase.supplier) || '', documentRef: (st.purchase && st.purchase.document_ref) || '' } } };
         }
         half++; m[id].noted = true;
@@ -144,7 +152,7 @@
       '<div class="na-pur-head"><input id="naPurSupplier" maxlength="120" placeholder="Proveedor (opcional)"><input id="naPurDoc" maxlength="80" placeholder="Factura o boleta (opcional)"></div>' +
       '<datalist id="naPurProducts">' + opts + '</datalist><div class="na-pur-lines">' + lineHtml(0) + '</div>' +
       '<button type="button" class="na-pur-add">+ Agregar producto</button><div class="na-pur-total">Total costo: S/ 0.00</div>' +
-      '<p class="na-pur-hint">Suma el stock al registrar. Necesita internet.</p>' +
+      '<p class="na-pur-hint">Suma el stock al registrar. Necesita internet. Lote y vencimiento son opcionales; para varios lotes agrega el mismo producto en otras líneas. Cantidad en unidad física de stock.</p>' +
       '<div class="na-pur-err" role="alert" hidden></div>' +
       '<div class="na-review-actions" style="justify-content:space-between"><button type="button" class="na-pur-hist" style="background:#64748b">Historial</button>' +
       '<span><button type="button" class="na-pur-cancel" style="background:#64748b">Cancelar</button> <button type="button" class="na-pur-ok">Registrar compra</button></span></div>');
@@ -183,7 +191,7 @@
       if (!cloud()) { fail('El registro de compras funciona con la nube activa.'); return; }
       if (root.navigator.onLine === false) { fail('Sin conexión: registrar una compra necesita internet. No se guardó nada.'); return; }
       var r = readLines(w);
-      if (r.bad.length) { fail('Revisa la línea ' + r.bad.join(', ') + ': elige un producto de la lista y una cantidad mayor que 0.'); return; }
+      if (r.bad.length) { fail('Revisa la línea ' + r.bad.join(', ') + ': elige un producto y una cantidad mayor que 0; el lote debe tener vencimiento vigente y código único para ese producto.'); return; }
       if (!r.lines.length) { fail(ERR.invalid_lines); return; }
       busy = true; var btn = this; btn.disabled = true; btn.textContent = 'Registrando…';
       try {
@@ -208,7 +216,7 @@
   // Terminar una compra incompleta desde el Historial: MISMO id y mismas líneas guardadas en el servidor;
   // el servidor salta las líneas que ya sumaron stock (idempotente).
   function historyFinishArgs(row) {
-    return { id: String(row.purchase_id), lines: (row.lines || []).map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) }; }),
+    return { id: String(row.purchase_id), lines: (row.lines || []).map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
       meta: { supplier: row.supplier || '', documentRef: row.document_ref || '' } };
   }
   async function finishPurchase(row) {
@@ -238,7 +246,7 @@
       var byId = {}; products().forEach(function (p) { byId[String(p.id)] = p.nombre || p.name || p.id; });
       var rows = out.purchases || [];
       var lock = '<i class="na-ic na-ic-lock" aria-hidden="true"></i>';
-      var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join(''); };
+      var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + (l.lots?l.lots.map(function(r){return '<small>Lote '+esc(r.lot_code)+' · vence '+esc(root.NA_STOCK_LOTS.displayDate(r.expiry_date))+' · '+esc(r.quantity)+'</small>';}).join(''):'') + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join(''); };
       list.innerHTML = rows.length ? rows.map(function (p) {
         var head = '<strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents);
         if (p.status === 'en_curso') {

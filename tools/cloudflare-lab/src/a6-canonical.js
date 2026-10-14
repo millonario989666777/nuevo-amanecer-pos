@@ -1,4 +1,5 @@
 import { getDatabase } from './database-binding.js';
+import { rememberLotSchema, lotsReady } from './stock-lots.js';
 import { A6_FIELD_MAP, A6_MAPPING_VERSION, A6_POLICY, A6_SCHEMA_VERSION, a6PolicyHash, mapStagingRow } from './a6-mapping.js';
 import { buildManifest, sha256Hex, stableStringify } from './a5-import-core.js';
 
@@ -684,6 +685,17 @@ async function loadCollectionRows(db,type,before,page,schema=null){
         if(contact.identity_json){const [document,address]=JSON.parse(contact.identity_json);row.document=document;row.address=address;}}}
     }
   }
+  if(sqlName==='products'&&before.mode==='ACTIVE'&&await lotsReady(db)){
+    const selected=rows?.results||[];
+    if(selected.length){
+      const ids=selected.map(p=>p.product_id);
+      const lots=(await db.prepare(`SELECT product_id,lot_id,lot_code,expiry_date,quantity,received_at FROM canonical_stock_lots
+        WHERE promotion_id=?1 AND product_id IN (SELECT value FROM json_each(?2)) ORDER BY expiry_date,received_at,lot_id`)
+        .bind(before.active_promotion_id,JSON.stringify(ids)).all()).results||[];
+      const byId=new Map();for(const lot of lots){const list=byId.get(lot.product_id)||[];list.push(lot);byId.set(lot.product_id,list);}
+      for(const p of selected)p.lots=byId.get(p.product_id)||[];
+    }
+  }
   return rows||{results:[]};
 }
 
@@ -902,7 +914,7 @@ const CUSTOMER_CONTACT_SCHEMA_TABLES=['canonical_customer_contacts'];
 // Identity rows share the contact operation/revision, so the contact ledger term already counts them.
 const CUSTOMER_IDENTITY_SCHEMA_TABLES=['canonical_customer_identities'];
 const PRODUCT_REVISION_SCHEMA_TABLES=['canonical_product_revisions'];
-const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...CUSTOMER_IDENTITY_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES])];
+const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...CUSTOMER_IDENTITY_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES,'canonical_stock_lots','canonical_stock_lot_effects'])];
 // Same order and conditions as the legacy readControl ledger additions.
 const LEDGER_REVISION_TERMS=[
   [EXPENSE_SCHEMA_TABLES,['canonical_expense_operations']],
@@ -917,7 +929,8 @@ const LEDGER_REVISION_TERMS=[
 function hasAll(schema,tables){return tables.every((name)=>schema.has(name));}
 async function loadReadSchema(db){
   const rows=await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (${READ_PLAN_SCHEMA_TABLES.map((name)=>`'${name}'`).join(',')})`).all();
-  return new Set((rows.results??[]).map((row)=>row.name));
+  const schema=new Set((rows.results??[]).map((row)=>row.name));
+  rememberLotSchema(db,schema);return schema;
 }
 async function readPlan(db,options={}){
   const legacy={schema:null,current:async()=>{const c=await control(db);return c?.mode==='ACTIVE'?await readControl(db):c;}};
