@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized deploy of lots + FEFO (#643). Migration 0030 already applied and verified by canon-migration-0030 run 38615111925. This run deploys code only: no schema changes, no live sale. Rollback to d0c189d.",
-  "target_commit": "0c7b46567b6c3b0dda846709b860751e6df03298",
+  "authorization_context": "Owner authorized deploy of lots + FEFO (#643) after #646 (visible secret-sync diagnostics). Migration 0030 already applied (run 38615111925). Code only: no schema changes, no live sale. Rollback to d0c189d.",
+  "target_commit": "57c536b3252d1cf3749776d475fc178ac81267b9",
   "rollback_ref": "d0c189d683673e1a3cc2c7c31f29cf057af8cc53",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 29,
+  "attempt": 30,
   "optimization": "STOCK_LOTS_FEFO"
 }
