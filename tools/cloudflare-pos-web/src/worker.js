@@ -22,6 +22,7 @@ function canonicalBackendOrigin(env) {
 
 function isCanonicalApiPath(pathname) {
   return pathname === '/health' ||
+    pathname === '/settings' ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/read/') ||
     pathname.startsWith('/commands/') ||

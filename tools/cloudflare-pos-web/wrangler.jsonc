@@ -16,7 +16,8 @@
       "/read/*",
       "/commands/*",
       "/imports/*",
-      "/sync/operations*"
+      "/sync/operations*",
+      "/settings"
     ],
     "html_handling": "none",
     "not_found_handling": "none"
