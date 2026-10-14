@@ -117,3 +117,12 @@ test('Caja: un "@" suelto al final de la etiqueta del movimiento no se muestra',
   const src = read('js/legacy-inline/inline-11.js');
   assert.match(src, /String\(movement\.desc\|\|'Movimiento'\)\.replace\(\/\\s\*@\+\\s\*\$\/,''\)/);
 });
+
+test('Caja responsive vive en hoja CANON propia (pages/caja.css es espejo LAB)', () => {
+  const css = read('css/canon-caja-responsive.css');
+  assert.match(css, /#pageCaja #cajContent:has\(> \.cj-stats-grid\)/);
+  assert.match(css, /#pageCaja \.tabs-wrap \{[^}]*overflow-x: auto/);
+  const html = read('index.html');
+  assert.ok(html.indexOf('css/canon-caja-responsive.css') > html.indexOf('css/experience-v2/pages/caja.css'));
+  assert.match(read('sw.js'), /'\.\/css\/canon-caja-responsive\.css'/);
+});
