@@ -155,8 +155,10 @@
       return Array.isArray(snapshot?.customers)?snapshot.customers:[];
     }catch(_){return[];}
   }
+  // DNI/RUC pegado con guiones, espacios o puntos se guarda solo con dígitos.
+  function docDigits(v){var d=String(v||'').replace(/[\s.\-]/g,'');return /^(\d{8}|\d{11})$/.test(d)?d:v;}
   function buildInput(){
-    var name=clean(value('cNombre')),documentId=clean(value('cDni')),phone=clean(value('cTel')),address=clean(value('cDir'));
+    var name=clean(value('cNombre')),documentId=docDigits(clean(value('cDni'))),phone=clean(value('cTel')),address=clean(value('cDir'));
     if(!name){notify('El nombre es obligatorio','error');return null;}
     if(name.length>240||documentId.length>32||phone.length>64||address.length>500){
       notify('Uno de los datos del cliente es demasiado largo','error');return null;
