@@ -8,7 +8,9 @@ import { sha256Hex } from './a5-import-core.js';
 
 export const DNI_LOOKUP_PATH = '/auth/dni-lookup';
 export const DECOLECTA_URL = 'https://api.decolecta.com/v1/reniec/dni';
+export const DECOLECTA_RUC_URL = 'https://api.decolecta.com/v1/sunat/ruc';
 const DNI = /^\d{8}$/;
+const RUC = /^(?:10|15|17|20)\d{9}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 export const LIMITS = { employeePerMinute: 3, employeePerDay: 20, monthlyDefault: 95, timeoutMs: 2500 };
 const RECENT_FAIL = new Map();
@@ -101,11 +103,36 @@ export async function queryDecolecta(dni, token, fetchImpl = fetch, timeoutMs = 
   } finally { clearTimeout(timer); }
 }
 
+export async function queryDecolectaRuc(ruc, token, fetchImpl = fetch, timeoutMs = LIMITS.timeoutMs) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetchImpl(`${DECOLECTA_RUC_URL}?numero=${ruc}`, {
+      method: 'GET', signal: ctrl.signal, redirect: 'manual', // Workers no admite 'error': lanzaba TypeError y todo caía en «nombre a mano»
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+    });
+    if (r.status === 404 || r.status === 422 || r.status === 400) return { status: 'not_found' };
+    if (r.status === 401 || r.status === 403) return { status: 'provider_auth' };
+    if (r.status === 429) return { status: 'provider_limit' };
+    if (r.status >= 300 && r.status < 400) return { status: 'provider_error' };
+    if (!r.ok) return { status: 'provider_error' };
+    let data = {}; try { data = await r.json(); } catch { return { status: 'provider_error' }; }
+    const name = cleanName(data.razon_social ?? data.razonSocial ?? data.nombre_o_razon_social);
+    if (!name) return { status: 'not_found' };
+    const address = String(data.direccion ?? data.direccion_completa ?? data.domicilio_fiscal ?? '')
+      .replace(/[\x00-\x1f\x7f]+/g, ' ').trim().replace(/\s+/g, ' ').slice(0, 200);
+    return { status: 'found', name, ...(address && address !== '-' ? { address } : {}), doc_type: 'ruc' };
+  } catch (e) {
+    return { status: e?.name === 'AbortError' ? 'timeout' : 'provider_error' };
+  } finally { clearTimeout(timer); }
+}
+
 export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
   let body = {}; try { body = await request.json(); } catch { body = {}; }
   const dni = String(body?.dni ?? '').trim();
-  if (!DNI.test(dni)) return json({ error: 'invalid_dni' }, 400);
+  const isRuc = RUC.test(dni);
+  if (!DNI.test(dni) && !isRuc) return json({ error: 'invalid_dni' }, 400);
   const promotionId = SAFE_ID.test(String(body?.promotion_id || '')) ? String(body.promotion_id) : null;
   const existing = await existingCustomer(db, dni, promotionId);
   if (existing) return json({ status: 'existing', customer_id: existing.customer_id, name: cleanName(existing.name) });
@@ -119,7 +146,11 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   try { denied = await reserveLookup(db, auth, env, (deps.now || Date.now)()); }
   catch (e) { if (missingTable(e)) return json({ status: 'manual', reason: 'not_ready' }); throw e; }
   if (denied) return json({ status: 'manual', reason: denied }, 429);
-  const out = await queryDecolecta(dni, token, deps.fetch || fetch, deps.timeoutMs);
+  let out = await (isRuc ? queryDecolectaRuc : queryDecolecta)(dni, token, deps.fetch || fetch, deps.timeoutMs);
+  if (isRuc && dni.startsWith('10') && out.status !== 'found') {
+    const fallback = await queryDecolecta(dni.slice(2, 10), token, deps.fetch || fetch, deps.timeoutMs);
+    if (fallback.status === 'found') out = { status: 'found', name: fallback.name, doc_type: 'ruc', source: 'reniec' };
+  }
   if (out.status === 'timeout' || out.status === 'provider_error' || out.status === 'provider_limit') { RECENT_FAIL.set(dni, nowMs); if (RECENT_FAIL.size > 500) RECENT_FAIL.clear(); }
   if (out.status === 'found') return json(out);
   return json({ status: 'manual', reason: out.status });

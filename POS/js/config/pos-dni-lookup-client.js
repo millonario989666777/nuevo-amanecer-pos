@@ -45,8 +45,11 @@
       call('cliRender');
       var card = found.id != null && doc.getElementById('cc-' + found.id); if (card) { card.classList.add('open'); opened = true; }
     }
-    say(opened ? 'Este DNI ya es de «' + clean(found.name) + '». Se abrió su ficha.' : 'Este DNI ya es de «' + clean(found.name) + '». Búsquelo en Clientes.', 'info');
+    var kind = dni.length === 11 ? 'RUC' : 'DNI';
+    say(opened ? 'Este ' + kind + ' ya es de «' + clean(found.name) + '». Se abrió su ficha.' : 'Este ' + kind + ' ya es de «' + clean(found.name) + '». Búsquelo en Clientes.', 'info');
   }
+  // RUC: la dirección fiscal solo se escribe si el campo está vacío.
+  function fillAddress(address) { var el = doc.getElementById('cDir'); if (address && el && !clean(el.value)) el.value = address; }
   var MANUAL = 'No se encontró el nombre. Escríbalo a mano.';
   var SLOW = 'La búsqueda tarda. Escriba el nombre a mano; si llega, se completa solo.';
   function apply(out, dni) {
@@ -54,9 +57,10 @@
     if (!input || !nameEl || clean(input.value) !== dni) return;
     if (out.status === 'existing') { hint(''); openExisting({ id: out.customer_id, name: out.name }, dni); return; }
     if (out.status === 'found' && out.name) {
-      asked[dni] = { name: out.name };
-      if (!clean(nameEl.value)) { nameEl.value = out.name; hint('Nombre encontrado. Puede corregirlo si hace falta.'); }
+      asked[dni] = { name: out.name, address: out.address || '' };
+      if (!clean(nameEl.value)) { nameEl.value = out.name; hint(dni.length === 11 ? 'Razón social encontrada. Puede corregirla si hace falta.' : 'Nombre encontrado. Puede corregirlo si hace falta.'); }
       else hint('');
+      fillAddress(out.address);
       return;
     }
     var reason = String(out.reason || '');
@@ -85,8 +89,8 @@
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
     if (!input || !nameEl) return;
     var modal = doc.getElementById('mCli'); if (modal && !modal.classList.contains('open')) return;
-    var dni = clean(input.value).replace(/\D/g, ''), my = ++seq;
-    if (!/^\d{8}$/.test(dni) || clean(input.value).length !== 8) { hint(''); return; }
+    var dni = String(input.value).trim(), my = ++seq;
+    if (!/^(?:\d{8}|\d{11})$/.test(dni)) { hint(''); return; }
     var local = findLocal(dni);
     if (local) { hint(''); openExisting(local, dni); return; }
     // keyup/blur/change del mismo DNI: ni consulta repetida ni aviso que pise «Buscando…» / «La búsqueda tarda».
@@ -96,10 +100,10 @@
     if (clean(nameEl.value)) { hint('Ya hay un nombre escrito. Bórrelo si quiere buscarlo por DNI.'); return; }
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
-    if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
+    if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; fillAddress(asked[dni].address); hint(''); } else hint(MANUAL); return; }
     // Tras un error del servicio o de red no se vuelve a consultar en cada tecla: espera 45 s o «Reintentar».
     if (failedAt[dni] && Date.now() - failedAt[dni].at < COOLDOWN_MS) { if (failedAt[dni].limit) hint(LIMIT_MSG); else retryHint(dni); return; }
-    hint('Buscando DNI…');
+    hint(dni.length === 11 ? 'Buscando RUC…' : 'Buscando DNI…');
     var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
     root.setTimeout(function () { if (!done && inflight === dni) hint(SLOW); }, TIMEOUT_MS);

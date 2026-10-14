@@ -184,3 +184,69 @@ test('tablet/PC: Caja y Ventas se desplazan como página completa (KPIs no tapan
   assert.match(block, /#pageCaja\.active,#pageVentas\.active\{overflow-y:auto!important/);
   assert.match(block, /#pageCaja #cajContent,#pageVentas #ventasContent\{flex:none!important;overflow-y:visible!important/);
 });
+
+test('RUC 20: SUNAT devuelve razón social y dirección con el mismo endpoint', async t => {
+  const f = await setup(t);
+  const { DECOLECTA_RUC_URL } = await import('../../tools/cloudflare-lab/src/pos-dni-lookup.js');
+  globalThis.fetch = async (url, init) => {
+    f.calls.push({ url: String(url), auth: init?.headers?.authorization });
+    return new Response(JSON.stringify({ razon_social: '  NEGOCIO\n NUEVO AMANECER  ', direccion: ' AV.\t LIMA 123 ' }), { status: 200 });
+  };
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '20123456789' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { status: 'found', name: 'NEGOCIO NUEVO AMANECER', address: 'AV. LIMA 123', doc_type: 'ruc' });
+  assert.equal(DECOLECTA_RUC_URL, 'https://api.decolecta.com/v1/sunat/ruc');
+  assert.deepEqual(f.calls, [{ url: DECOLECTA_RUC_URL + '?numero=20123456789', auth: 'Bearer ' + FAKE }]);
+  assert.equal(JSON.parse(f.sql("SELECT value_json FROM pos_settings WHERE key='internal:dni:month'").value_json).n, 1);
+});
+
+test('RUC 10: SUNAT 404 usa RENIEC con el DNI incluido y una sola reserva', async t => {
+  const f = await setup(t);
+  const { DECOLECTA_RUC_URL } = await import('../../tools/cloudflare-lab/src/pos-dni-lookup.js');
+  globalThis.fetch = async (url, init) => {
+    f.calls.push({ url: String(url), auth: init?.headers?.authorization });
+    if (String(url).startsWith(DECOLECTA_RUC_URL)) return new Response('{}', { status: 404 });
+    assert.equal(String(url), DECOLECTA_URL + '?numero=78203419');
+    return new Response(JSON.stringify({ first_name: 'ANA', first_last_name: 'PEREZ', second_last_name: 'RUIZ' }), { status: 200 });
+  };
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '10782034192' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { status: 'found', name: 'ANA PEREZ RUIZ', doc_type: 'ruc', source: 'reniec' });
+  assert.deepEqual(f.calls, [
+    { url: DECOLECTA_RUC_URL + '?numero=10782034192', auth: 'Bearer ' + FAKE },
+    { url: DECOLECTA_URL + '?numero=78203419', auth: 'Bearer ' + FAKE },
+  ]);
+  assert.equal(JSON.parse(f.sql("SELECT value_json FROM pos_settings WHERE key='internal:dni:month'").value_json).n, 1);
+});
+
+test('RUC inválido: longitud, prefijo y caracteres se rechazan sin consultar', async t => {
+  const f = await setup(t);
+  for (const dni of ['1234567890', '30123456789', '1078203419a']) {
+    const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni });
+    assert.equal(r.status, 400, dni);
+    assert.deepEqual(r.body, { error: 'invalid_dni' });
+  }
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.sql("SELECT COUNT(*) n FROM pos_settings WHERE key='internal:dni:month'").n, 0);
+});
+
+test('cliente: RUC de 11 dígitos rellena razón social y dirección vacía; 9-10 dígitos no consulta', async () => {
+  const vm = await import('node:vm');
+  const src = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  const els = {};
+  const el = id => (els[id] ||= { id, value: '', dataset: {}, hidden: false, textContent: '', style: {}, classList: { contains: () => true, add() {}, remove() {} },
+    setAttribute() {}, addEventListener() {}, appendChild() {}, querySelector: () => null,
+    insertAdjacentElement(_, n) { els[n.id] = n; } });
+  ['cDni', 'cNombre', 'cDir', 'mCli'].forEach(el);
+  const document = { readyState: 'complete', getElementById: id => els[id] || null, createElement: () => el('tmp' + Math.random()), addEventListener() {} };
+  const posted = [];
+  const win = { document, navigator: { onLine: true }, setTimeout: () => 0,
+    NA_ROLES: { api: async (path, body) => { posted.push([path, body]); return { status: 'found', name: 'MI EMPRESA SAC', address: 'AV. LIMA 123', doc_type: 'ruc' }; } } };
+  vm.runInNewContext(src, { window: win, globalThis: win, Date, String, Array, Object });
+  els.cDni.value = '1234567890'; await win.NA_DNI_LOOKUP.check();
+  assert.equal(posted.length, 0);
+  els.cDni.value = '20123456789'; await win.NA_DNI_LOOKUP.check();
+  assert.equal(JSON.stringify(posted), JSON.stringify([['/auth/dni-lookup', { dni: '20123456789' }]]));
+  assert.equal(els.cNombre.value, 'MI EMPRESA SAC');
+  assert.equal(els.cDir.value, 'AV. LIMA 123');
+});
