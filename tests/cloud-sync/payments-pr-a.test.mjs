@@ -63,7 +63,7 @@ test('rechazo definitivo o venta pendiente: el reintento automático no envía',
 test('PRIOR_CANONICAL_PAYMENT_CONFIRMED es rechazo local y el formulario vuelve lleno', () => {
   assert.match(v2, /BATCH_CASH_SESSION_REQUIRED\|PRIOR_CANONICAL_PAYMENT_CONFIRMED\)\$\//);
   assert.match(v2, /sd\.submitted = false; delete sd\.batch; naV2StoredWrite\(sd\);\s*\/\/[^\n]*\n\s*root\.setTimeout\(function \(\) \{ var sc = labScreen\(\); if \(sc && sc\.querySelector\) naV2DraftRestore\(sc, sd\); \}, 0\);/);
-  assert.match(v2, /if \(!labBatchSubmitInFlight && !naV2PendingBatch\(\)\) naV2StoredWrite\(null\);/, 'en vuelo no se borra el borrador');
+  assert.match(v2, /if \(!labBatchSubmitInFlight && !naV2PendingBatch\(\)\) naV2StoredWrite\(null, d\.clientId\);/, 'en vuelo no se borra el borrador');
 });
 
 test('redibujo en segundo plano conserva las deudas elegidas y avisa si cambiaron', () => {
