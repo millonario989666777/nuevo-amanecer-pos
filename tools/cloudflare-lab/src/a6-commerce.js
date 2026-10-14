@@ -1,4 +1,4 @@
-import { consumeApproval } from './pos-roles.js';
+import { consumeApproval, expiredApprovalRequired, markExpiredApprovalRequired } from './pos-roles.js';
 import { getDatabase } from './database-binding.js';
 import { sha256Hex, stableStringify } from './a5-import-core.js';
 import { lotsCore, lotsReady, rememberLotSchema, productsLots, effectStatements, lotError, saleLotReceipt } from './stock-lots.js';
@@ -62,15 +62,20 @@ async function expiredLotsAllowed(db) {
   try { const row=await db.prepare("SELECT value_json FROM pos_settings WHERE key='pos.lots'").first(); return JSON.parse(row?.value_json||'null')?.allowExpiredLots===true; }
   catch (e) { if (/no such table/i.test(String(e?.message||e))) return false; throw e; }
 }
+// An operation once rejected online for expired lots keeps needing toggle + PIN on
+// every retry, whatever its age. Marker row in pos_owner_approvals (no migration):
+// its action is never an approval action, used_at is set, so it can't authorize anything.
 async function expiredSaleGate(db, auth, body, plans) {
   const expired=plans.filter(entry=>entry.expired_quantity>0);
   if(!expired.length)return null;
-  const age=Date.now()-Date.parse(body.created_at),recent=age<=EXPIRED_ONLINE_WINDOW_MS; // a fast till clock (future created_at) counts as online; never rejected for its time
+  // A fast till clock (future created_at) counts as online; never rejected for its time.
+  const age=Date.now()-Date.parse(body.created_at),recent=age<=EXPIRED_ONLINE_WINDOW_MS||await expiredApprovalRequired(db,body.operation_id);
   let approved=await expiredLotsAllowed(db);
   for(const entry of expired)
     if(approved&&!await consumeApproval(db,auth.principalId,entry.item.expired_lot_approval,'expired_lot_sale',body.operation_id))approved=false;
   if(!approved&&recent){
     const entry=expired.find(e=>typeof e.item.expired_lot_approval!=='string')||expired[0];
+    await markExpiredApprovalRequired(db,auth,body.operation_id);
     return (await expiredLotsAllowed(db))?{error:'expired_lot_approval_required',product_id:entry.item.product_id}:{error:'expired_lots_not_allowed',product_id:entry.item.product_id};
   }
   const flag=!approved||age>LATE_REVIEW_MS;

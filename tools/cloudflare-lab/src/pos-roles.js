@@ -162,6 +162,18 @@ export async function consumeApproval(db, deviceId, approvalId, action, operatio
   } catch (e) { if (missingTable(e)) return false; throw e; }
 }
 
+const EXPIRED_REQUIRED_ACTION='expired_lot_required';
+async function expiredMarkerId(operationId){return 'xreq:'+(await sha256Hex(String(operationId))).slice(0,64);}
+export async function expiredApprovalRequired(db, operationId) {
+  try { return !!await db.prepare('SELECT 1 FROM pos_owner_approvals WHERE approval_id=?1 AND action=?2').bind(await expiredMarkerId(operationId),EXPIRED_REQUIRED_ACTION).first(); }
+  catch (e) { if (/no such table/i.test(String(e?.message||e))) return false; throw e; }
+}
+export async function markExpiredApprovalRequired(db, auth, operationId) {
+  const t=new Date().toISOString();
+  try { await db.prepare(`INSERT OR IGNORE INTO pos_owner_approvals(approval_id,device_id,action,operation_id,created_at,expires_at,used_at)
+    VALUES(?1,?2,?3,?4,?5,'9999-12-31T00:00:00.000Z',?5)`).bind(await expiredMarkerId(operationId),auth.principalId,EXPIRED_REQUIRED_ACTION,operationId,t).run(); }
+  catch (e) { if (!/no such table/i.test(String(e?.message||e))) throw e; }
+}
 // Puerta para comandos del dueño. null = permitido.
 export async function ownerGate(request, env, auth, action, json, db, always = false) {
   const role = auth.posRole || await posRoleFor(db, auth.principalId);

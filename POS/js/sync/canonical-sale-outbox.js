@@ -690,6 +690,13 @@
           entry.rebound_by = meta.by != null ? String(meta.by) : null;
           again.session_id = target.session_id; again = validateIntent(again);
         }
+        if (entry.reason === 'expired_lots_not_allowed' || entry.reason === 'expired_lot_approval_required') {
+          // The server keeps requiring toggle + owner PIN for this operation_id.
+          var approvalId = meta && meta.expiredLotApproval;
+          if (typeof approvalId !== 'string' || !approvalId) fail('QUARANTINE_EXPIRED_NEEDS_PIN');
+          again.items.forEach(function (line) { if (!line.generic_line) { line.allow_expired_lots = true; line.expired_lot_approval = approvalId; } });
+          again = validateIntent(again);
+        }
         if (entry.reason === 'promotion_changed') clearHold(operationId);
         await withStore(function () {
           var current = parseStored();

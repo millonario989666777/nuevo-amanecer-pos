@@ -180,3 +180,25 @@ test('sin conexión la venta con lotes vencidos sigue bloqueada (el PIN necesita
   assert.match(ui,/remote\.approve\('expired_lot_sale'/);
 });
 test('sin internet el diálogo de PIN dice que hace falta conexión',()=>{assert.match(read('POS/js/inventory/stock-lots-ui.js'),/onLine===false\)notice\('Sin internet/);});
+test('operación rechazada en línea por vencidos sigue exigiendo PIN al reintentar tarde; con aprobación válida 201',async t=>{
+  const f=await setup(t);
+  let r=await call(f,'/commands/sale.create',sale(f,'rt-1',new Date().toISOString(),{allow_expired_lots:true}));
+  assert.equal(r.status,409);assert.equal(r.body.error,'expired_lots_not_allowed');
+  const tenMinAgo=new Date(Date.now()-10*60000).toISOString();
+  r=await call(f,'/commands/sale.create',sale(f,'rt-1',tenMinAgo,{allow_expired_lots:true}));
+  assert.equal(r.status,409,'reintento tardío sin aprobación sigue bloqueado');
+  assert.equal((await call(f,'/settings',{key:'pos.lots',value:{allowExpiredLots:true}})).status,200);
+  r=await call(f,'/commands/sale.create',sale(f,'rt-1',tenMinAgo,{allow_expired_lots:true}));
+  assert.equal(r.status,409);assert.equal(r.body.error,'expired_lot_approval_required');
+  const ok=(await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'})).body.approval_id;
+  r=await call(f,'/commands/sale.create',sale(f,'rt-1',tenMinAgo,{allow_expired_lots:true,expired_lot_approval:ok}));
+  assert.equal(r.status,201,JSON.stringify(r));assert.notEqual(r.body.expired_lots_unconfirmed,true);
+  // la marca no sirve como aprobación de nada
+  const marker=f.sql("SELECT action,used_at FROM pos_owner_approvals WHERE action='expired_lot_required'");
+  assert.equal(marker.action,'expired_lot_required');assert.ok(marker.used_at);
+});
+test('Reintentar en revisión por vencidos pide el PIN del dueño y reenvía con la aprobación',()=>{
+  const outbox=read('POS/js/sync/canonical-sale-outbox.js'),bridge=read('POS/js/sync/canonical-cash-bridge.js');
+  assert.match(outbox,/fail\('QUARANTINE_EXPIRED_NEEDS_PIN'\)/);assert.match(outbox,/line\.expired_lot_approval = approvalId/);
+  assert.match(bridge,/NA_ROLES\.approve\('expired_lot_sale'[\s\S]{0,400}expiredLotApproval: expiredApproval/);
+});
