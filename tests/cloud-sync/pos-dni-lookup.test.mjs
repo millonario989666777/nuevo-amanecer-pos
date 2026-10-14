@@ -167,7 +167,7 @@ test('lote abono: guardia frena con abono escrito, confirmación abierta y cola;
   assert.match(v2, /na_v2_abono_draft_v1/);
   assert.match(v2, /labBatchSubmitInFlight = true;\s*naV2DraftMarkSubmitted\(\);/);
   assert.match(v2, /naV2DraftSkip = true;\s*naV2DraftClear\(\);/);
-  assert.match(v2, /if \(d\.submitted \|\|/);
+  assert.match(v2, /if \(d\.submitted\) \{[\s\S]{0,400}return null;/);
   assert.match(v2, /draft\.checks/);
 });
 

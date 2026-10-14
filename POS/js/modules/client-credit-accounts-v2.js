@@ -784,7 +784,12 @@ function labCategorySummary(client, category) {
     if (!content || naV2DraftSkip || labBatchSubmitInFlight) return null;
     var out = { clientId:labClientScreenState.clientId, values:{} }, any = false;
     NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && el.value !== '' && el.value != null) { out.values[id] = el.value; if (id !== 'naV2BatchMethod') any = true; } });
-    return any ? out : null;
+    if (!any) return null;
+    // Deudas elegidas en pantalla; si la ficha aún no las pintó, las del borrador guardado.
+    var boxes = content.querySelectorAll('.na-v2-batch-check');
+    if (boxes.length) out.checks = Array.from(content.querySelectorAll('.na-v2-batch-check:checked')).map(function (i) { return String(i.value || ''); });
+    else { var st = naV2StoredRead(); if (st && st.clientId === out.clientId && Array.isArray(st.checks)) out.checks = st.checks.slice(); }
+    return out;
   }
   // Borrador del abono guardado en el aparato (monto, método, referencia y deudas elegidas): sobrevive a una
   // recarga (p. ej. la actualización automática). Se borra cuando el servidor confirma el abono. Si la recarga
@@ -793,9 +798,9 @@ function labCategorySummary(client, category) {
   var NA_V2_DRAFT_KEY = 'na_v2_abono_draft_v1', NA_V2_DRAFT_TTL = 24 * 3600 * 1000;
   function naV2StoredRead() { try { var d = JSON.parse(root.localStorage.getItem(NA_V2_DRAFT_KEY) || 'null'); return d && d.clientId && d.values ? d : null; } catch (_) { return null; } }
   function naV2StoredWrite(d) { try { if (d) root.localStorage.setItem(NA_V2_DRAFT_KEY, JSON.stringify(d)); else root.localStorage.removeItem(NA_V2_DRAFT_KEY); } catch (_) {} }
-  var naV2Restoring = false;
+  var naV2Restoring = false, naV2StaleWarned = '';
   // Códigos del puente en los que NO salió nada al servidor: el borrador vuelve a ser editable.
-  var NA_V2_LOCAL_CODES = /^(CANONICAL_PAYMENT_DISABLED|CANONICAL_PAYMENT_BUSY|INVALID_BATCH_\w+|EMPTY_BATCH|CANONICAL_OFFLINE|BATCH_REFERENCE_ALREADY_USED|BATCH_CREDIT_BALANCE_CHANGED|BATCH_CASH_SESSION_REQUIRED)$/;
+  var NA_V2_LOCAL_CODES = /^(CANONICAL_PAYMENT_DISABLED|CANONICAL_PAYMENT_BUSY|INVALID_BATCH_\w+|EMPTY_BATCH|CANONICAL_OFFLINE|BATCH_REFERENCE_ALREADY_USED|BATCH_CREDIT_BALANCE_CHANGED|BATCH_CASH_SESSION_REQUIRED|PRIOR_CANONICAL_PAYMENT_CONFIRMED)$/;
   function naV2PendingBatch() {
     try { var c = root.NuevoAmanecerCanonical, p = c && c.pendingSnapshot && c.pendingSnapshot(); return p && p.command === 'payment.batch' ? p : null; } catch (_) { return null; }
   }
@@ -814,7 +819,13 @@ function labCategorySummary(client, category) {
   function naV2DraftClear() { naV2StoredWrite(null); }
   function naV2DraftFromStore() {
     var d = naV2StoredRead(); if (!d) return null;
-    if (d.submitted || !(Date.now() - Number(d.at || 0) < NA_V2_DRAFT_TTL)) { naV2StoredWrite(null); return null; }
+    if (!(Date.now() - Number(d.at || 0) < NA_V2_DRAFT_TTL)) { naV2StoredWrite(null); return null; }
+    if (d.submitted) {
+      // En vuelo: no se toca (el puente puede devolver un rechazo local y el formulario debe volver lleno).
+      // Con lote pendiente se conserva con su `batch` para reusar los mismos ids. Sin nada pendiente ya se resolvió.
+      if (!labBatchSubmitInFlight && !naV2PendingBatch()) naV2StoredWrite(null);
+      return null;
+    }
     return d.clientId === labClientScreenState.clientId ? d : null;
   }
   function naV2DraftRestore(content, draft) {
@@ -829,7 +840,14 @@ function labCategorySummary(client, category) {
     // Deudas elegidas: después del monto (que autoselecciona) para respetar la elección del cajero.
     if (Array.isArray(draft.checks) && draft.checks.length) {
       var want = new Set(draft.checks.map(String)), boxes = Array.from(content.querySelectorAll('.na-v2-batch-check'));
-      if (boxes.length) { boxes.forEach(function (i) { i.checked = want.has(String(i.value || '')); }); try { labBatchUpdatePreview(); } catch (_) {} }
+      if (boxes.length) {
+        boxes.forEach(function (i) { i.checked = want.has(String(i.value || '')); });
+        try { labBatchUpdatePreview(); } catch (_) {}
+        var have = new Set(boxes.filter(function (i) { return !i.disabled; }).map(function (i) { return String(i.value || ''); }));
+        var stale = draft.checks.some(function (id) { return !have.has(String(id)); });
+        var warnKey = draft.clientId + ':' + (draft.at || '');
+        if (stale && naV2StaleWarned !== warnKey && typeof toast === 'function') { naV2StaleWarned = warnKey; toast('La deuda elegida ya fue pagada o cambió; revisa el abono','error'); }
+      }
     }
     } finally { root.setTimeout(function () { naV2Restoring = false; }, 0); }
   }
@@ -1429,7 +1447,11 @@ function labCategorySummary(client, category) {
         var sd = naV2StoredRead(), pend = naV2PendingBatch();
         if (sd && sd.submitted) {
           if (pend) { sd.batch = pend; naV2StoredWrite(sd); }                    // guarda el lote exacto para reusar sus ids
-          else if (result && NA_V2_LOCAL_CODES.test(String(result.code || ''))) { sd.submitted = false; delete sd.batch; naV2StoredWrite(sd); }
+          else if (result && NA_V2_LOCAL_CODES.test(String(result.code || ''))) {
+            sd.submitted = false; delete sd.batch; naV2StoredWrite(sd);
+            // Nada del abono nuevo salió: si la ficha se redibujó vacía, se vuelve a llenar.
+            root.setTimeout(function () { var sc = labScreen(); if (sc && sc.querySelector) naV2DraftRestore(sc, sd); }, 0);
+          }
         }
       }
       labBatchSubmitInFlight = false;
