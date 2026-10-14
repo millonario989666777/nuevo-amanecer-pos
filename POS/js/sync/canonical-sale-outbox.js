@@ -113,7 +113,7 @@
   // free the journal and wait for a new session/binding.
   var SALE_REJECTIONS = ['product_not_found', 'insufficient_stock', 'stale_stock', 'invalid_sale_request', 'customer_not_found',
     'sale_id_conflict', 'operation_id_conflict', 'canonical_sale_conflict', 'payment_reference_conflict',
-    'cash_session_closed', 'cash_session_required', 'credit_limit_exceeded'];
+    'cash_session_closed', 'cash_session_required', 'expired_lots_not_allowed', 'expired_lot_approval_required', 'credit_limit_exceeded'];
   var SYSTEM_ERRORS = ['unauthorized', 'session_revoked', 'read_only_session', 'stale_authority', 'canonical_not_active', 'HTTP_401', 'HTTP_403'];
   function systemRejection(record) {
     return !!record && !!record.last_error && (record.last_status === 401 || record.last_status === 403 || SYSTEM_ERRORS.indexOf(String(record.last_error)) !== -1);
@@ -121,6 +121,8 @@
   function definitive(record) { return !!record && !!record.last_error && [400, 404, 409].indexOf(record.last_status) !== -1; }
   var REASON_TEXT = {
     expired_lots_confirmation_required: 'el servidor anterior rechazó una venta ya cobrada por vencimiento. Pulsa Reintentar para registrarla con auditoría, sin volver a cobrar',
+    expired_lots_not_allowed: 'la venta usa lotes vencidos y «Permitir vender lotes vencidos» está apagado en el servidor. Pulsa Reintentar en unos minutos para registrarla con auditoría, sin volver a cobrar',
+    expired_lot_approval_required: 'la venta usa lotes vencidos sin autorización válida del dueño. Pulsa Reintentar en unos minutos para registrarla con auditoría, sin volver a cobrar',
     invalid_lot_state: 'los lotes y el stock de este producto necesitan revisión; no se aplicó la venta',
     cash_closed_before_sale: 'la caja ya estaba cerrada en el servidor cuando la venta iba a confirmarse',
     insufficient_stock: 'no había stock suficiente en CANON: el stock de este aparato estaba desactualizado (otro equipo o una salida usó esas unidades). Revisa el producto y pulsa Reintentar, o Anular si no se cobró',
@@ -180,7 +182,7 @@
   // catches up, stock arrives, or the missing customer/product is registered.
   var RETRYABLE = DETERMINISTIC.concat(['insufficient_stock', 'stale_stock', 'customer_not_found', 'product_not_found', 'sale_id_conflict',
     'cash_session_closed', 'cash_session_required', 'promotion_changed', 'credit_limit_exceeded']);
-  RETRYABLE.push('expired_lots_confirmation_required');
+  RETRYABLE.push('expired_lots_confirmation_required', 'expired_lots_not_allowed', 'expired_lot_approval_required');
   // Retrying these re-assigns the charged sale explicitly (owner action).
   var REBIND_ON_RETRY = ['cash_session_closed', 'cash_session_required'];
   function retryable(reason) { return RETRYABLE.indexOf(reason) !== -1; }

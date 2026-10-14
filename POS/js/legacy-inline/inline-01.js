@@ -921,5 +921,6 @@ function _naEffectiveExpiry(product){
   let rows=[];
   try{rows=typeof NA_STOCK_LOTS!=='undefined'?NA_STOCK_LOTS.lots(product):Array.isArray(product.lots)?product.lots:JSON.parse(product.lots_json||'[]');}catch(_){}
   const stocked=(Array.isArray(rows)?rows:[]).filter(row=>Number(row.quantity)>0&&row.expiry_date);
-  return stocked.length?stocked.reduce((nearest,row)=>!nearest||row.expiry_date<nearest?row.expiry_date:nearest,null):product.venc||null;
+  if(Array.isArray(rows)&&rows.length)return stocked.reduce((nearest,row)=>!nearest||row.expiry_date<nearest?row.expiry_date:nearest,null);
+  return product.venc||null;
 }

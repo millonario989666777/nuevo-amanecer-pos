@@ -1119,7 +1119,7 @@
       if (!Number.isSafeInteger(line) || line < 0) fail('UNSAFE_CANONICAL_TOTAL');
       total += line; if (!Number.isSafeInteger(total)) fail('UNSAFE_CANONICAL_TOTAL');
       var out={ product_id: product.product_id, quantity: requested.quantity, unit_price_cents: product.price_cents, line_total_cents: line, expected_stock_revision: product.stock_revision };
-      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}
+      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}if(requested.expired_lot_approval!==undefined){if(requested.allow_expired_lots!==true||typeof requested.expired_lot_approval!=='string'||!requested.expired_lot_approval.length||requested.expired_lot_approval.length>80)fail('EXPIRED_CONFIRMATION_INVALID');out.expired_lot_approval=requested.expired_lot_approval;}
       return out;
     });
     if (total <= 0) fail('INVALID_CANONICAL_SALE');
@@ -1171,7 +1171,7 @@
       var out = { product_id: requested.product_id, quantity: requested.quantity, unit_price_cents: requested.unit_price_cents,
         line_total_cents: requested.line_total_cents, expected_stock_revision: expectedRevision };
       if (generic !== undefined) out.generic_line = { name: generic.name.trim().replace(/\s+/g,' '), code: generic.code.trim() };
-      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}
+      if(requested.allow_expired_lots!==undefined){if(typeof requested.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=requested.allow_expired_lots;}if(requested.expired_lot_approval!==undefined){if(requested.allow_expired_lots!==true||typeof requested.expired_lot_approval!=='string'||!requested.expired_lot_approval.length||requested.expired_lot_approval.length>80)fail('EXPIRED_CONFIRMATION_INVALID');out.expired_lot_approval=requested.expired_lot_approval;}
       return out;
     });
     if (total !== intent.total_cents) fail('INVALID_CANONICAL_TOTAL');
@@ -2118,7 +2118,7 @@
       // 400/409 are definitive Worker rejections. D1 sale.create is atomic, so
       // these statuses prove this pending intent did not commit a sale/mov/stock.
       // Transport uncertainty (5xx / lost ACK) must stay pending for same operation_id replay.
-      var safeErrors = ['expired_lots_confirmation_required','invalid_lot_state','stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed', 'credit_limit_exceeded'];
+      var safeErrors = ['expired_lots_not_allowed','expired_lot_approval_required','expired_lots_confirmation_required','invalid_lot_state','stale_stock', 'insufficient_stock', 'stock_revision_conflict', 'invalid_sale_request', 'product_not_found', 'operation_id_conflict', 'sale_id_conflict', 'stale_authority', 'canonical_not_active', 'canonical_sale_conflict', 'cash_session_required', 'cash_session_closed', 'credit_limit_exceeded'];
       if (![400, 404, 409].includes(record.last_status) || !safeErrors.includes(record.last_error)) return false;
       root.localStorage.removeItem(JOURNAL);
       if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');

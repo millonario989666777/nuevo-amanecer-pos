@@ -17,7 +17,7 @@ const lot=(id,date,q)=>({lot_id:id,lot_code:id,expiry_date:date,quantity:q,recei
 test('_naEffectiveExpiry: lote más próximo con saldo, ignora saldo 0, cae a venc, null sin vencimiento',()=>{
   const {f,d}=helper();assert.equal(d,30);
   assert.equal(f({venc:'2030-01-01',lots_json:JSON.stringify([lot('a','2026-12-01',2),lot('b','2026-11-01',0),lot('c','2027-01-01',1)])}),'2026-12-01');
-  assert.equal(f({venc:'2030-01-01',lots_json:JSON.stringify([lot('b','2026-11-01',0)])}),'2030-01-01');
+  assert.equal(f({venc:'2030-01-01',lots_json:JSON.stringify([lot('b','2026-11-01',0)])}),null,'lotes agotados: sin vencimiento, no cae a venc');
   assert.equal(f({venc:'2030-01-01'}),'2030-01-01');
   assert.equal(f({}),null);assert.equal(f({lots_json:'{roto'}),null);
 });
@@ -87,4 +87,47 @@ test('LOT_STOCK_INCOHERENT: entrada permitida, salida bloqueada',async t=>{
   const out=await move(f,'out-x','SALIDA',1,{allow_expired_lots:true,expired_lot_approval:(await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'})).body.approval_id});
   assert.equal(out.status,409);
   const entry=await move(f,'in-fix','ENTRADA',5);assert.equal(entry.status,201,JSON.stringify(entry));
+});
+
+test('pVenc de solo lectura no se guarda: legado conserva venc y CANON reenvía el valor del servidor',()=>{
+  assert.match(read('POS/js/legacy-inline/inline-02.js'),/venc:controlInventario\?\(document\.getElementById\('pVenc'\)\.readOnly&&editingPrevious\?\(editingPrevious\.venc\|\|null\)/);
+  const save=read('POS/js/sync/canonical-product-bridge.js');
+  assert.match(save,/getElementById\('pVenc'\)\?\.readOnly\) input\.expiry_date = raw\.expiry_date \|\| null/);
+});
+
+test('autorización local resuelve true (no un objeto)',async()=>{
+  const ui=read('POS/js/inventory/stock-lots-ui.js');
+  assert.match(ui,/root\._naPinValid\(pin\)\?\{ok:true,value:true\}/);
+  assert.match(read('POS/js/config/pos-roles-client.js'),/if \(r && r\.ok\) \{ done\(r\.value\); return; \}/);
+});
+
+function sale(f,op,createdAt,extra={}){return{...ctl(f),operation_id:op,sale_id:op,created_at:createdAt,payment_method:'yape',total_cents:1000,payment:{cash_cents:0,digital_cents:1000,credit_cents:0,reference:op},items:[{product_id:'00003',quantity:1,unit_price_cents:1000,line_total_cents:1000,expected_stock_revision:product(f).stock_revision,...extra}]};}
+test('venta en línea con lotes vencidos: exige interruptor del servidor y aprobación expired_lot_sale',async t=>{
+  const f=await setup(t),now=()=>new Date().toISOString();
+  let r=await call(f,'/commands/sale.create',sale(f,'on-1',now(),{allow_expired_lots:true}));
+  assert.equal(r.status,409);assert.equal(r.body.error,'expired_lots_not_allowed');
+  assert.equal((await call(f,'/settings',{key:'pos.lots',value:{allowExpiredLots:true}})).status,200);
+  r=await call(f,'/commands/sale.create',sale(f,'on-2',now(),{allow_expired_lots:true}));assert.equal(r.body.error,'expired_lot_approval_required');
+  const wrong=(await call(f,'/auth/owner-approval',{pin:'4821',action:'discount'})).body.approval_id;
+  r=await call(f,'/commands/sale.create',sale(f,'on-3',now(),{allow_expired_lots:true,expired_lot_approval:wrong}));assert.equal(r.body.error,'expired_lot_approval_required');
+  const ok=(await call(f,'/auth/owner-approval',{pin:'4821',action:'expired_lot_sale'})).body.approval_id;
+  r=await call(f,'/commands/sale.create',sale(f,'on-4',now(),{allow_expired_lots:true,expired_lot_approval:ok}));
+  assert.equal(r.status,201,JSON.stringify(r));assert.notEqual(r.body.expired_lots_unconfirmed,true);
+  assert.equal(product(f).current_stock_quantity,1);
+});
+test('venta tardía del outbox con lotes vencidos: se acepta (nunca cuarentena) y queda marcada para revisión',async t=>{
+  const f=await setup(t),late=new Date(Date.now()-60*60*1000).toISOString();
+  const r=await call(f,'/commands/sale.create',sale(f,'late-1',late));
+  assert.equal(r.status,201,JSON.stringify(r));assert.equal(r.body.expired_lots_unconfirmed,true);
+  const r2=await call(f,'/commands/sale.create',sale(f,'late-2',late,{allow_expired_lots:true}));
+  assert.equal(r2.status,201,JSON.stringify(r2));assert.equal(f.sql("SELECT expired_confirmed FROM canonical_stock_lot_effects WHERE operation_id='late-2'").expired_confirmed,1,'consentimiento local auditado');
+  const outbox=read('POS/js/sync/canonical-sale-outbox.js');
+  assert.match(outbox,/RETRYABLE\.push\([^)]*'expired_lots_not_allowed', 'expired_lot_approval_required'/);
+});
+
+test('servidor: salida manual de producto sin lotes no usa plan() y registra efecto sin lote',async t=>{
+  const f=await activeCanon(t,{migrations});f.database.exec(read('infra/database/migrations/0030_canonical_stock_lots.sql'));f.addDevice('owner','writer','active','owner-token');
+  const r=await move(f,'nolot-out','SALIDA',1);assert.equal(r.status,201,JSON.stringify(r));
+  assert.deepEqual(f.all("SELECT lot_id,quantity FROM canonical_stock_lot_effects WHERE operation_id='nolot-out'").map(x=>[x.lot_id,x.quantity]),[['',-1]]);
+  assert.match(read('tools/cloudflare-lab/src/a6-inventory.js'),/movement_type==='SALIDA'&&!rows\.length\)allocations=\[\{lot_id:'',quantity:body\.quantity\}\]/);
 });

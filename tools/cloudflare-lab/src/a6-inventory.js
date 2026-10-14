@@ -122,6 +122,7 @@ export async function adjustCanonicalInventory(request,env,auth,json,internalRet
       // An entry can repair incoherent lot stock; exits remain blocked.
       if(body.movement_type==='SALIDA'&&rows.length)lotsCore.plan(before,rows,Math.max(2e-9,before),'9999-12-31',true);
       if(body.return_sale_operation)allocations=await annulAllocations(db,body);
+      else if(body.movement_type==='SALIDA'&&!rows.length)allocations=[{lot_id:'',quantity:body.quantity}];
       else if(body.movement_type==='SALIDA')allocations=lotsCore.plan(before,rows,body.quantity,lotsCore.businessDate(body.created_at),body.allow_expired_lots).allocations;
     }catch(error){return json({error:body.return_sale_operation?'invalid_lot_return':lotError(error)},409);}
   }

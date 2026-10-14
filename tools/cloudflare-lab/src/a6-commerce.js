@@ -1,3 +1,4 @@
+import { consumeApproval } from './pos-roles.js';
 import { getDatabase } from './database-binding.js';
 import { sha256Hex, stableStringify } from './a5-import-core.js';
 import { lotsCore, lotsReady, rememberLotSchema, productsLots, effectStatements, lotError, saleLotReceipt } from './stock-lots.js';
@@ -47,6 +48,27 @@ async function commerceCapabilities(db) {
 function saleLotPlan(product, lots, item, body) {
   const plan=lotsCore.plan(Number(product.current_stock_quantity),lots,item.quantity,lotsCore.businessDate(body.created_at),true);
   return {...plan,expired_lots_unconfirmed:plan.expired_quantity>0&&item.allow_expired_lots!==true};
+}
+
+// Online sale (created within the approval window): expired lots need the shared
+// toggle (pos_settings 'pos.lots') plus a valid expired_lot_sale approval per item.
+// A late outbox sale was already charged: accept it and flag it for review.
+export const EXPIRED_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+async function expiredLotsAllowed(db) {
+  try { const row=await db.prepare("SELECT value_json FROM pos_settings WHERE key='pos.lots'").first(); return JSON.parse(row?.value_json||'null')?.allowExpiredLots===true; }
+  catch (e) { if (/no such table/i.test(String(e?.message||e))) return false; throw e; }
+}
+async function expiredSaleGate(db, auth, body, plans) {
+  const expired=plans.filter(entry=>entry.expired_quantity>0);
+  if(!expired.length)return null;
+  const age=Date.now()-Date.parse(body.created_at);
+  if(!(age<=EXPIRED_ONLINE_WINDOW_MS))return null; // keeps expired_lots_unconfirmed (no consent) for review
+  if(!await expiredLotsAllowed(db))return{error:'expired_lots_not_allowed',product_id:expired[0].item.product_id};
+  for(const entry of expired)
+    if(!await consumeApproval(db,auth.principalId,entry.item.expired_lot_approval,'expired_lot_sale',body.operation_id))
+      return{error:'expired_lot_approval_required',product_id:entry.item.product_id};
+  expired.forEach(entry=>{entry.expired_lots_unconfirmed=false;});
+  return null;
 }
 
 // Diagnose an actual lot CAS race after rollback, rather than treating every
@@ -161,6 +183,7 @@ export function validateCanonicalSale(body) {
   const seen = new Set();
   for (const item of body.items) {
     if(isObject(item)&&item.allow_expired_lots!==undefined&&typeof item.allow_expired_lots!=='boolean')return{error:'invalid_expired_confirmation'};
+    if(isObject(item)&&item.expired_lot_approval!==undefined&&(item.allow_expired_lots!==true||typeof item.expired_lot_approval!=='string'||!item.expired_lot_approval.length||item.expired_lot_approval.length>80))return{error:'invalid_expired_confirmation'};
     if (!isObject(item) || !validId(item.product_id) || seen.has(item.product_id) || !Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > Number.MAX_SAFE_INTEGER ||
         !Number.isSafeInteger(item.unit_price_cents) || item.unit_price_cents < 0 || !Number.isSafeInteger(item.line_total_cents) ||
         item.line_total_cents !== Math.round(item.quantity * item.unit_price_cents) ||
@@ -313,6 +336,7 @@ async function createCanonicalSaleFast(body, env, auth, json) {
         }catch(error){return diagnoseFastSaleFailure(db,body,auth,payloadHash,json,{error:lotError(error),product_id:item.product_id});}
       }
     }
+    const gate=await expiredSaleGate(db,auth,body,lotEffects);if(gate)return json(gate,409);
   }
   const token = crypto.randomUUID();
   const atomic = [];
@@ -731,6 +755,7 @@ export async function createCanonicalSale(request, env, auth, json) {
       if(lots.length)lotAllocations.push(...plan.allocations.map(a=>({...a,product_id:item.product_id})));
     }catch(error){return json({error:lotError(error),product_id:item.product_id},409);}
   }
+  const gate=await expiredSaleGate(db,auth,body,lotPlans);if(gate)return json(gate,409);
   const statements = [
     db.prepare(`INSERT INTO canonical_write_guards(operation_id,commit_token,promotion_id,authority_epoch,control_revision,client_contract,principal_id,credential_hash)
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?7

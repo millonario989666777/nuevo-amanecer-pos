@@ -391,7 +391,7 @@
             try{consent=await consent;}finally{setBusy(false);}
           }
           if(consent===null){failClosed(root.NA_STOCK_LOTS_UI.denialMessage||'Venta cancelada: no se autorizó usar lotes vencidos.',null);return;}
-          if(consent)input.items.forEach(function(line){if(line.product_id===pair[0])line.allow_expired_lots=true;});
+          if(consent)input.items.forEach(function(line){if(line.product_id===pair[0]){line.allow_expired_lots=true;if(consent.approval_id)line.expired_lot_approval=consent.approval_id;}});
         }
       }catch(lotError){/* Advisory prevalidation unavailable; the server validates lots. */}
     }

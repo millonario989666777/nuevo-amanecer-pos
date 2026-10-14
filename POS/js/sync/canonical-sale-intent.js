@@ -103,6 +103,7 @@
       if (lineTotal !== rawLine) fail('LINE_TOTAL_MISMATCH');
       var out = { product_id: productId, quantity: quantity, unit_price_cents: unitPrice, line_total_cents: lineTotal };
       if(item.allow_expired_lots!==undefined){if(typeof item.allow_expired_lots!=='boolean')fail('EXPIRED_CONFIRMATION_INVALID');out.allow_expired_lots=item.allow_expired_lots;}
+      if(item.expired_lot_approval!==undefined){if(item.allow_expired_lots!==true||typeof item.expired_lot_approval!=='string'||!item.expired_lot_approval.length||item.expired_lot_approval.length>80)fail('EXPIRED_CONFIRMATION_INVALID');out.expired_lot_approval=item.expired_lot_approval;}
       if (generic) {
         var genericMeta = item.generic_line || null;
         out.generic_line = {
@@ -122,7 +123,7 @@
         var prev = byId.get(item.product_id);
         if (!prev) { byId.set(item.product_id, item); merged.push(item); return; }
         if (prev.unit_price_cents !== item.unit_price_cents) fail('PRODUCT_ID_DUPLICATE_PRICE');
-        if(prev.allow_expired_lots!==item.allow_expired_lots)fail('EXPIRED_CONFIRMATION_INVALID');
+        if(prev.allow_expired_lots!==item.allow_expired_lots||prev.expired_lot_approval!==item.expired_lot_approval)fail('EXPIRED_CONFIRMATION_INVALID');
         if (prev.generic_line || item.generic_line) {
           if (JSON.stringify(prev.generic_line || null) !== JSON.stringify(item.generic_line || null)) fail('PRODUCT_ID_DUPLICATE');
           if (!Number.isSafeInteger(prev.quantity + item.quantity) || prev.quantity + item.quantity > 9999) fail('GENERIC_QUANTITY_INVALID');
