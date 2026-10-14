@@ -177,3 +177,10 @@ test('DNI: tras rellenar no repite ni avisa; «La búsqueda tarda» no lo pisa k
   assert.ok(client.indexOf('if (inflight === dni) return;') < client.indexOf("hint('Ya hay un nombre escrito"));
   assert.match(client, /clean\(nameEl\.value\) === clean\(asked\[dni\]\.name\)\) return;/);
 });
+
+test('tablet/PC: Caja y Ventas se desplazan como página completa (KPIs no tapan Reportes); celular sin cambios', () => {
+  const css = readFileSync(new URL('../../POS/css/canon-ux-fixes.css', import.meta.url), 'utf8');
+  const block = css.slice(css.lastIndexOf('@media (min-width:701px){'));
+  assert.match(block, /#pageCaja\.active,#pageVentas\.active\{overflow-y:auto!important/);
+  assert.match(block, /#pageCaja #cajContent,#pageVentas #ventasContent\{flex:none!important;overflow-y:visible!important/);
+});
