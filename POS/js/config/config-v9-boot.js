@@ -9,32 +9,18 @@
   var doc = root.document;
   if (!doc || root.NA_CONFIG_V9_BOOT) return;
   var MQ = root.matchMedia ? root.matchMedia('(min-width: 701px)') : { matches: true };
-  var darkMQ = root.matchMedia ? root.matchMedia('(prefers-color-scheme: dark)') : null;
   var AP_KEY = 'na_v9_appearance', THEMES = ['verde', 'naranja', 'azul', 'celeste', 'simple'];
   var JS = 'js/config/config-v9.js', CSS = 'css/config-v9-screen.css';
   function wide() { return !!MQ.matches; }
   function ap() { var d = { theme: 'verde', mode: null }; try { var v = JSON.parse(root.localStorage.getItem(AP_KEY) || '{}'); if (THEMES.indexOf(v.theme) >= 0) d.theme = v.theme; if (/^(claro|noche|auto)$/.test(v.mode)) d.mode = v.mode; } catch (_) {} return d; }
-  function isDarkMode(d) { return d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches)); }
   // Igual que config-v9.js antes de cargarse: en teléfono no se toca nada fuera de Configuración.
   function applyAppearance() {
-    if (root.NA_CONFIG_V9) { root.NA_CONFIG_V9.applyAppearance(); return; }
-    var html = doc.documentElement, d = ap();
-    html.setAttribute('data-na-theme', d.theme);
-    if (!d.mode || !doc.body) return;
-    var dark = isDarkMode(d);
-    if (d.mode !== 'claro' || doc.body.classList.contains('dark') !== dark) {
-      doc.body.classList.toggle('dark', dark);
-      try { root.isDark = dark; } catch (_) {}
-      try { isDark = dark; } catch (_) {} // eslint-disable-line no-undef
-      var b = doc.getElementById('btnDarkMode'); if (b) { if (root.NA_ICON) b.innerHTML = root.NA_ICON(dark ? 'sun' : 'moon'); else b.textContent = dark ? '☀️' : '🌙'; }
-    }
+    var d = ap(), dark = root.NA_THEME.apply();
+    doc.documentElement.setAttribute('data-na-theme', d.theme);
+    var box = doc.getElementById('naCfgV9');
+    if (box) { box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', dark); box.classList.toggle('na9-lt', !dark); }
   }
-  function wrapDark() {
-    if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
-    var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} } applyAppearance(); return r; };
-    root.toggleDark.__na9 = true;
-  }
+  function wrapDark() { /* toggleDark already persists through NA_THEME. */ }
   function canEdit() {
     try {
       var R = root.NA_ROLES; if (!R || !R.isOwner()) return false;
@@ -62,8 +48,7 @@
     var page = doc.getElementById('pageConfig'); if (!page) return;
     var el = doc.getElementById('naCfgV9');
     if (!el) { el = doc.createElement('div'); el.id = 'naCfgV9'; el.className = 'na9'; el.innerHTML = '<nav class="na9-nav" id="na9Nav" aria-label="Configuración"></nav><main class="na9-main" id="na9Main"></main><div class="na9-saved" id="na9Saved" role="status" aria-live="polite"></div>'; page.appendChild(el); }
-    var d = ap(), pd = !wide() && d.mode ? isDarkMode(d) : !!(doc.body && doc.body.classList.contains('dark'));
-    if (wide() && d.mode) pd = isDarkMode(d);
+    var d = ap(), pd = root.NA_THEME.apply();
     el.setAttribute('data-na9-theme', d.theme); el.classList.toggle('na9-dk', pd); el.classList.toggle('na9-lt', !pd); el.classList.toggle('na9-mob', !wide()); el.classList.remove('na9-open');
     var nav = doc.getElementById('na9Nav'), main = doc.getElementById('na9Main');
     nav.innerHTML = ''; nav.hidden = true;
@@ -86,7 +71,6 @@
   }
   function boot() { applyAppearance(); wrapDark(); watch(); }
   if (MQ.addEventListener) MQ.addEventListener('change', applyAppearance);
-  if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', applyAppearance);
   root.addEventListener('na:role', openConfig);
   root.addEventListener('online', openConfig); root.addEventListener('offline', openConfig);
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', boot); else boot();
