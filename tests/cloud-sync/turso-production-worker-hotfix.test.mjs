@@ -35,3 +35,16 @@ test('focused regressions and dry-run happen before deploy, then health verifica
   assert.match(rollbackBlock,/wrangler\.turso-prod\.jsonc/);
   assert.doesNotMatch(rollbackBlock,/wrangler\.jsonc(?:\s|$)/);
 });
+
+test('DNI secret sync keeps the value off logs and wrangler output visible for diagnosis',()=>{
+  const start=workflow.indexOf('Sync Decolecta DNI secret');
+  const block=workflow.slice(start,workflow.indexOf('Verify production health after secret sync'));
+  assert.ok(start>=0);
+  assert.match(block,/echo "::add-mask::\$DECOLECTA_API_TOKEN"/);
+  assert.match(block,/printf '%s' "\$DECOLECTA_API_TOKEN" \| npx wrangler secret put DECOLECTA_API_TOKEN/);
+  assert.doesNotMatch(block,/\/dev\/null/);
+  assert.doesNotMatch(block,/set -x/);
+  assert.doesNotMatch(block,/secret list[^\n]*\| *grep/,'grep -q in a pipe can SIGPIPE wrangler under pipefail');
+  const echoes=[...block.matchAll(/echo[^\n]*DECOLECTA_API_TOKEN[^\n]*/g)].map(m=>m[0]);
+  assert.ok(echoes.every(e=>e.includes('::add-mask::')||!e.includes('$DECOLECTA_API_TOKEN')),JSON.stringify(echoes));
+});
