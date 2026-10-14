@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Caja del Día responsive (#653) + paridad LAB caja.css (#657); desplegar solo POS web.",
-  "retry_attempt": 118,
-  "retry_reason": "Deploy de base ff791460d2c8eb51a646250b019e56e8057b9896[:8]; reintento tras fallo de paridad LAB del attempt 117. Sin migraciones.",
-  "requested_at_utc": "2026-10-14T21:49:36Z",
-  "approved_base": "ff791460d2c8eb51a646250b019e56e8057b9896"
+  "note": "Proxy /settings al backend CANON (#660); desplegar solo POS web.",
+  "retry_attempt": 119,
+  "retry_reason": "Deploy de base 7e5df996 (#660 proxy /settings). Solo POS web. Sin migraciones. Rollback: 897a25bf372cf65a4f02e6f578cc13353d5cb26d.",
+  "requested_at_utc": "2026-10-14T22:00:00Z",
+  "approved_base": "7e5df996d75ca2c955c97d60034b54d311ba8db8"
 }
