@@ -198,7 +198,8 @@
     var costCents = moneyCents(value('pCosto'), true);
     var priceCents = moneyCents(value('pPrecio'), false);
     var controlInventory = checked('pControlInventario');
-    var stock = controlInventory ? number(value('pStock'), NaN) : 0;
+    var editingStock = typeof invEditId !== 'undefined' && invEditId != null ? legacyProduct(String(invEditId)) : null;
+    var stock = controlInventory ? (editingStock ? Number(editingStock.stock) || 0 : number(value('pStock'), NaN)) : 0;
     var stockMin = controlInventory ? number(value('pStockMin'), 0) : 0;
     var alternateCodes = readAlternateCodes();
     if (alternateCodes === null) return null;
@@ -211,7 +212,7 @@
       notify('Las unidades por presentación deben ser mayores que cero', 'error');
       return null;
     }
-    if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(stockMin) || stockMin < 0) {
+    if (!Number.isFinite(stock) || (!editingStock && stock < 0) || !Number.isFinite(stockMin) || stockMin < 0) {
       notify('Stock inicial y stock mínimo deben ser valores válidos', 'error');
       return null;
     }
@@ -415,6 +416,7 @@
     var input = null;
     if (!pending) {
       input = buildInput();
+      if (input) input.initial_stock_quantity = Number(legacy.stock) || 0;
       if (!input) return false;
       if (!clean(value('pSku'))) input.sku = raw.sku || null;
       // pVenc de solo lectura = calculado desde lotes: no se guarda en la ficha.

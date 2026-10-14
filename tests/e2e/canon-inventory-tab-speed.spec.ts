@@ -35,18 +35,18 @@ test('408 products with photos and sales change tabs with bounded work',async({p
   },tab);
   results.push(result);
   if(tab==='sugerencia'){await expect(page.locator('.purchase-summary')).toBeVisible();expect(await page.locator('.purchase-card').count()).toBeLessThanOrEqual(48);}
-  else {expect(await page.locator('#invBody .inv-product-menu').count()).toBeLessThanOrEqual(48);await expect(page.locator('#invBody img').first()).toHaveAttribute('loading','lazy');await expect(page.locator('#invBody img').first()).toHaveAttribute('decoding','async');}
+  else {expect(await page.locator('#invBody .prod-name-sm').count()).toBeLessThanOrEqual(48);await expect(page.locator('#invBody img').first()).toHaveAttribute('loading','lazy');await expect(page.locator('#invBody img').first()).toHaveAttribute('decoding','async');}
  }
  console.log('INVENTORY_TAB_TIMINGS',JSON.stringify(results));
  for(const result of results){expect(result.dateReads).toBe(1000);expect(result.skuReads).toBeLessThan(5000);expect(result.categoryReads).toBeLessThan(5000);expect(result.htmlBytes).toBeLessThan(1000000);}
  await expect.poll(()=>page.locator('#invBody img').first().evaluate(img=>img.naturalWidth)).toBe(256);
  // All products and their original actions remain reachable by continuous scrolling.
- for(let i=0;i<20&&await page.locator('#invBody .inv-product-menu').count()<408;i++){
-  const count=await page.locator('#invBody .inv-product-menu').count();
+ for(let i=0;i<20&&await page.locator('#invBody .prod-name-sm').count()<408;i++){
+  const count=await page.locator('#invBody .prod-name-sm').count();
   await page.locator('#invBody tr').last().scrollIntoViewIfNeeded();
-  if(count<408)await expect.poll(()=>page.locator('#invBody .inv-product-menu').count()).toBeGreaterThan(count);
+  if(count<408)await expect.poll(()=>page.locator('#invBody .prod-name-sm').count()).toBeGreaterThan(count);
  }
- await expect(page.locator('#invBody .inv-product-menu')).toHaveCount(408);
+ await expect(page.locator('#invBody .prod-name-sm')).toHaveCount(408);
  await expect(page.locator('#invBody .btn-edt')).toHaveCount(408);
  expect(await page.locator('#invBody .prod-name-sm').allTextContents()).toEqual(Array.from({length:408},(_,i)=>'Producto '+i));
  expect(await page.evaluate(()=>JSON.stringify({productos,ventas}))).toBe(before);

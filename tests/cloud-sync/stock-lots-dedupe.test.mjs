@@ -22,20 +22,27 @@ test('_naEffectiveExpiry: lote más próximo con saldo, ignora saldo 0, cae a ve
   assert.equal(f({}),null);assert.equal(f({lots_json:'{roto'}),null);
 });
 
-test('pestañas, contador y sugerencia usan el helper y la constante (definiciones que corren)',()=>{
-  const i9=read('POS/js/legacy-inline/inline-09.js'),i3=read('POS/js/legacy-inline/inline-03.js'),i6=read('POS/js/legacy-inline/inline-06.js'),i1=read('POS/js/legacy-inline/inline-01.js');
-  for(const src of [i9.slice(i9.indexOf('_baseInvRender=function')),i3.slice(i3.indexOf('invBadges=function'),i3.indexOf('invRender=function')),i1.slice(i1.indexOf('function _baseInvRender'),i1.indexOf('const NA_MAX_ALT_BARCODES'))]){
-    assert.match(src,/_naEffectiveExpiry\(/);assert.match(src,/NA_EXPIRY_SOON_DAYS/);assert.doesNotMatch(src.split('\n')[0]+src,/diasHasta\(p(roduct)?\.venc\)/);
-  }
-  assert.match(i6,/expiry=diasHasta\(_naEffectiveExpiry\(product\)\)/);
-  // productos sin vencimiento quedan fuera: diasHasta(null) debe ser null y los filtros exigen d!==null.
-  assert.match(i3,/d!==null&&d>=0&&d<=NA_EXPIRY_SOON_DAYS/);
+test('pestañas y contadores usan la clasificación única; límites y lotes agotados',()=>{
+ const i9=read('POS/js/legacy-inline/inline-09.js'),i3=read('POS/js/legacy-inline/inline-03.js'),i1=read('POS/js/legacy-inline/inline-01.js');
+ assert.match(i9,/_naExpiryBucket\(product\)==='soon'/);assert.match(i9,/_naExpiryBucket\(product\)==='expired'/);
+ assert.match(i3,/_naExpiryBuckets\(\).soon.length/);assert.match(i3,/_naExpiryBuckets\(\).expired.length/);
+ const ctx=helper();ctx._naTracksStock=p=>p.controlInventario!==false;ctx.diasHasta=date=>date===null?null:Number(date);
+ assert.equal(vm.runInContext("_naExpiryBucket({venc:'0'})",ctx),'soon');
+ assert.equal(vm.runInContext("_naExpiryBucket({venc:'30'})",ctx),'soon');
+ assert.equal(vm.runInContext("_naExpiryBucket({venc:'31'})",ctx),'later');
+ assert.equal(vm.runInContext("_naExpiryBucket({venc:'-1'})",ctx),'expired');
+ assert.equal(vm.runInContext("_naExpiryBucket({})",ctx),'none');
+ assert.equal(vm.runInContext("_naExpiryBucket({venc:'1',controlInventario:false})",ctx),'none');
+ assert.match(i1,/_naExpiryBucket\(p\)==='soon'/);
+ assert.match(read('POS/js/legacy-inline/inline-06.js'),/expiry=diasHasta\(_naEffectiveExpiry\(product\)\)/);
 });
-
-test('formulario: pVenc solo lectura con lotes, editable en producto nuevo',()=>{
-  const i8=read('POS/js/legacy-inline/inline-08.js');
-  assert.match(i8,/abrirModalProd=function[^\n]*expiryField\.readOnly=false/);
-  assert.match(i8,/editProd=function[^\n]*Calculado desde lotes[^\n]*_naEffectiveExpiry\(product\)/);
+test('formulario: vencimiento siempre de solo lectura; stock editable solo al crear',()=>{
+ const i8=read('POS/js/legacy-inline/inline-08.js');
+ assert.match(i8,/abrirModalProd=function[^\n]*expiryField\.readOnly=true/);
+ assert.match(i8,/editProd=function[^\n]*expiryField\.readOnly=true/);
+ assert.match(i8,/stock.readOnly=!!product/);assert.match(i8,/_naEffectiveExpiry\(product\)/);
+ assert.match(i8,/abrirMovInv\(id,'entrada'\)/);
+ assert.match(read('POS/js/legacy-inline/inline-02.js'),/invEditId\?_naNumber\(editingPrevious\?\.stock\)/);
 });
 
 test('no queda ningún acceso a «Productos a vencer» ni al toggle duplicado',()=>{

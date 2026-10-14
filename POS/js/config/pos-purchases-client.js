@@ -149,13 +149,14 @@
   function openNew() {
     var opts = products().slice(0, 3000).map(function (p) { return '<option value="' + esc(p.nombre || p.name || p.id) + '"></option>'; }).join('');
     var w = overlay('naPurchaseDialog', '<h3>Nueva compra</h3>' +
-      '<div class="na-pur-head"><input id="naPurSupplier" maxlength="120" placeholder="Proveedor (opcional)"><input id="naPurDoc" maxlength="80" placeholder="Factura o boleta (opcional)"></div>' +
+      '<button type="button" class="na-pur-ocr">Desde foto/OCR</button><div class="na-pur-head"><input id="naPurSupplier" maxlength="120" placeholder="Proveedor (opcional)"><input id="naPurDoc" maxlength="80" placeholder="Factura o boleta (opcional)"></div>' +
       '<datalist id="naPurProducts">' + opts + '</datalist><div class="na-pur-lines">' + lineHtml(0) + '</div>' +
       '<button type="button" class="na-pur-add">+ Agregar producto</button><div class="na-pur-total">Total costo: S/ 0.00</div>' +
       '<p class="na-pur-hint">Suma el stock al registrar. Necesita internet. Lote y vencimiento son opcionales; para varios lotes agrega el mismo producto en otras líneas. Cantidad en unidad física de stock.</p>' +
       '<div class="na-pur-err" role="alert" hidden></div>' +
       '<div class="na-review-actions" style="justify-content:space-between"><button type="button" class="na-pur-hist" style="background:#64748b">Historial</button>' +
       '<span><button type="button" class="na-pur-cancel" style="background:#64748b">Cancelar</button> <button type="button" class="na-pur-ok">Registrar compra</button></span></div>');
+    w.querySelector('.na-pur-ocr').onclick = function () { closeW(); doc.getElementById('mOcrPurchaseSource').classList.add('open'); };
     var lines = w.querySelector('.na-pur-lines');
     w.querySelector('.na-pur-add').onclick = function () { lines.insertAdjacentHTML('beforeend', lineHtml(lines.children.length)); };
     lines.addEventListener('click', function (ev) { var b = ev.target.closest('.na-pur-del'); if (b && lines.children.length > 1) { b.parentElement.remove(); total(w); } });
