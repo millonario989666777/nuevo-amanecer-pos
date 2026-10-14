@@ -89,5 +89,5 @@ test('aparato de empleado: sin permisos de dueño aunque el cajero local sea adm
 test('DNI: «Reintentar» no se recrea con el blur y el aviso de límite no se pisa', () => {
   assert.match(dni, /el\.dataset\.naRetry === dni && el\.querySelector\('button'\)\) return;/);
   assert.match(dni, /btn\.addEventListener\('pointerdown', go\)/);
-  assert.match(dni, /if \(failedAt\[dni\]\.limit\) hint\(LIMIT_MSG\); else retryHint\(dni\);/);
+  assert.match(dni, /if \(failedAt\[dni\]\.limit\) hint\(limitMsg\(dni\)\); else retryHint\(dni\);/);
 });

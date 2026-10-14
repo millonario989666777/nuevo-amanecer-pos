@@ -74,7 +74,9 @@
   }
   function isRuc(dni) { return dni.length === 11; }
   function manualMsg(dni) { return isRuc(dni) ? 'No se encontró la razón social. Escríbala a mano.' : 'No se encontró el nombre. Escríbalo a mano.'; }
-  var SLOW = 'La búsqueda tarda. Escriba el nombre a mano; si llega, se completa solo.';
+  // Para RUC se habla de razón social.
+  function what(dni) { return dni && dni.length === 11 ? 'la razón social' : 'el nombre'; }
+  function slowMsg(dni) { return 'La búsqueda tarda. Escriba ' + what(dni) + ' a mano; si llega, se completa ' + (dni && dni.length === 11 ? 'sola.' : 'solo.'); }
   function apply(out, dni) {
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
     if (!input || !nameEl || digits(input.value) !== dni) return;
@@ -89,17 +91,17 @@
     var reason = String(out.reason || '');
     // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
     if (reason === 'not_found') asked[dni] = { name: null };
-    if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
-    else if (/limit/.test(reason)) { failedAt[dni] = { at: Date.now(), limit: true }; hint(LIMIT_MSG); }
+    if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba ' + what(dni) + ' a mano.');
+    else if (/limit/.test(reason)) { failedAt[dni] = { at: Date.now(), limit: true }; hint(limitMsg(dni)); }
     else if (reason === 'not_found') hint(manualMsg(dni));
     else { failedAt[dni] = { at: Date.now(), limit: false }; retryHint(dni); }
   }
-  var LIMIT_MSG = 'Límite de búsquedas alcanzado. Escriba el nombre a mano.';
+  function limitMsg(dni) { return 'Límite de búsquedas alcanzado. Escriba ' + what(dni) + ' a mano.'; }
   function retryHint(dni) {
     var el = doc.getElementById('cDniHint');
     // Mismo DNI y el botón ya está: no se repinta (si no, el blur lo recrea y el clic se pierde).
     if (el && el.dataset.naRetry === dni && el.querySelector('button')) return;
-    hint('No se pudo buscar ahora. Escriba el nombre a mano o ');
+    hint('No se pudo buscar ahora. Escriba ' + what(dni) + ' a mano o ');
     el = doc.getElementById('cDniHint'); if (!el) return;
     el.dataset.naRetry = dni;
     var btn = doc.createElement('button'); btn.type = 'button'; btn.textContent = 'Reintentar';
@@ -114,6 +116,8 @@
     var modal = doc.getElementById('mCli'); if (modal && !modal.classList.contains('open')) return;
     // Solo cuentan los dígitos: «10-78203419-2» pegado vale como RUC. DNI = 8 dígitos, RUC = 11.
     var dni = digits(input.value), my = ++seq;
+    // Pegado con guiones/espacios/puntos: el campo queda solo con dígitos, así el cliente se guarda limpio.
+    if ((dni.length === 8 || dni.length === 11) && input.value !== dni && /^[\d\s.\-]+$/.test(input.value)) input.value = dni;
     if (!/^(?:\d{8}|\d{11})$/.test(dni)) { hint(''); return; }
     if (isRuc(dni) && !rucOk(dni)) { hint('RUC inválido. Revise los 11 dígitos.'); return; }
     var local = findLocal(dni);
@@ -124,14 +128,14 @@
     if (asked[dni] && asked[dni].name && clean(nameEl.value) === clean(asked[dni].name)) return;
     if (clean(nameEl.value)) { hint(isRuc(dni) ? 'Ya hay una razón social escrita. Bórrela si quiere buscarla por RUC.' : 'Ya hay un nombre escrito. Bórrelo si quiere buscarlo por DNI.'); return; }
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
-    if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
+    if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba ' + what(dni) + ' a mano.'); return; }
     if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; fillAddress(asked[dni].address); hint(''); } else hint(manualMsg(dni)); return; }
     // Tras un error del servicio o de red no se vuelve a consultar en cada tecla: espera 45 s o «Reintentar».
-    if (failedAt[dni] && Date.now() - failedAt[dni].at < COOLDOWN_MS) { if (failedAt[dni].limit) hint(LIMIT_MSG); else retryHint(dni); return; }
+    if (failedAt[dni] && Date.now() - failedAt[dni].at < COOLDOWN_MS) { if (failedAt[dni].limit) hint(limitMsg(dni)); else retryHint(dni); return; }
     hint(dni.length === 11 ? 'Buscando RUC…' : 'Buscando DNI…');
     var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.
-    root.setTimeout(function () { if (!done && inflight === dni) hint(SLOW); }, TIMEOUT_MS);
+    root.setTimeout(function () { if (!done && inflight === dni) hint(slowMsg(dni)); }, TIMEOUT_MS);
     var out;
     try { out = await root.NA_ROLES.api('/auth/dni-lookup', { dni: dni }); }
     catch (e) { out = (e && e.data && e.data.status) ? e.data : { status: 'manual', reason: (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) ? 'no_session' : 'network' }; }

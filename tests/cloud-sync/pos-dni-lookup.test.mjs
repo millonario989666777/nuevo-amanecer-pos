@@ -173,7 +173,7 @@ test('lote abono: guardia frena con abono escrito, confirmación abierta y cola;
 
 test('DNI: tras rellenar no repite ni avisa; «La búsqueda tarda» no lo pisa keyup/blur', () => {
   const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
-  assert.match(client, /if \(!done && inflight === dni\) hint\(SLOW\)/);
+  assert.match(client, /if \(!done && inflight === dni\) hint\(slowMsg\(dni\)\)/);
   assert.ok(client.indexOf('if (inflight === dni) return;') < client.indexOf("'Ya hay un nombre escrito"));
   assert.match(client, /clean\(nameEl\.value\) === clean\(asked\[dni\]\.name\)\) return;/);
 });
@@ -253,7 +253,7 @@ test('cliente: RUC de 11 dígitos rellena razón social y dirección vacía; 9-1
 
 // ---- Revisión PR #650 ----
 import { rucCheckOk } from '../../tools/cloudflare-lab/src/pos-dni-lookup.js';
-async function clientHarness({ clientes = [], reply } = {}) {
+async function clientHarness({ clientes = [], reply, online = true } = {}) {
   const vm = await import('node:vm');
   const src = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
   const els = {};
@@ -262,11 +262,12 @@ async function clientHarness({ clientes = [], reply } = {}) {
   ['cDni', 'cNombre', 'cDir', 'mCli'].forEach(el);
   const document = { readyState: 'complete', getElementById: id => els[id] || null, createElement: () => el('tmp' + Math.random()), addEventListener() {} };
   const posted = [];
-  const win = { document, navigator: { onLine: true }, setTimeout: () => 0,
+  const timers = [];
+  const win = { document, navigator: { onLine: online }, setTimeout: fn => { timers.push(fn); return 0; },
     NA_ROLES: { api: async (path, body) => { posted.push(body.dni); return reply ? reply(body.dni) : { status: 'manual', reason: 'not_found' }; } } };
   vm.runInNewContext(`var clientes = ${JSON.stringify(clientes)};\n` + src, { window: win, globalThis: win, Date, String, Array, Object, Number });
   const type = async v => { els.cDni.value = v; await win.NA_DNI_LOOKUP.check(); };
-  return { els, posted, type, api: win.NA_DNI_LOOKUP, hint: () => els.cDniHint?.textContent || '' };
+  return { els, posted, type, timers, api: win.NA_DNI_LOOKUP, hint: () => els.cDniHint?.textContent || '' };
 }
 
 test('1 cliente: RUC 10 encuentra al cliente guardado con su DNI (y al revés), sin consultar', async () => {
@@ -359,6 +360,69 @@ test('7 servidor: RUC 10 encuentra al cliente guardado con el DNI incluido, sin 
   const req = new Request('http://localhost/auth/dni-lookup', { method: 'POST', body: JSON.stringify({ dni: '10782034192' }) });
   const r = await dniLookupRoute(req, { DECOLECTA_API_TOKEN: FAKE }, { posRole: 'empleado', principalId: 'd' }, json, db, { fetch: async () => { fetched++; } });
   assert.deepEqual(await r.json(), { status: 'existing', customer_id: 'c-9', name: 'ANA' });
+  assert.equal(fetched, 0);
+  assert.ok(seen.every(sql => !/pos_settings/.test(sql)));
+});
+
+// ---- Revisión 2 PR #650 ----
+import { ruc10For } from '../../tools/cloudflare-lab/src/pos-dni-lookup.js';
+
+test('R2-1 cliente: «tarda», «sin conexión» y «límite» dicen razón social para RUC y nombre para DNI', async () => {
+  let h = await clientHarness({ online: false });
+  await h.type('10782034192');
+  assert.equal(h.hint(), 'Sin conexión: escriba la razón social a mano.');
+  await h.type('78203419');
+  assert.equal(h.hint(), 'Sin conexión: escriba el nombre a mano.');
+  h = await clientHarness({ reply: () => ({ status: 'manual', reason: 'daily_limit' }) });
+  await h.type('20123456786');
+  assert.equal(h.hint(), 'Límite de búsquedas alcanzado. Escriba la razón social a mano.');
+  let release;
+  h = await clientHarness({ reply: () => new Promise(r => { release = r; }) });
+  const pending = h.type('20123456786');
+  await new Promise(r => setImmediate(r));
+  h.timers.forEach(fn => fn());
+  assert.equal(h.hint(), 'La búsqueda tarda. Escriba la razón social a mano; si llega, se completa sola.');
+  release({ status: 'manual', reason: 'not_found' }); await pending;
+});
+
+test('R2-2 cliente: el RUC pegado con guiones/espacios queda solo con dígitos en el campo; lo incompleto no se toca', async () => {
+  const h = await clientHarness({ reply: () => ({ status: 'found', name: 'ANA PEREZ' }) });
+  await h.type('10-78203419-2');
+  assert.equal(h.els.cDni.value, '10782034192');
+  h.els.cNombre.value = '';
+  await h.type('7820 3419');
+  assert.equal(h.els.cDni.value, '78203419');
+  await h.type('10-7820');
+  assert.equal(h.els.cDni.value, '10-7820');
+});
+
+test('R2-2 guardado: alta canónica y alta clásica limpian guiones/espacios del DNI/RUC', () => {
+  const bridge = readFileSync(new URL('../../POS/js/sync/canonical-customer-bridge.js', import.meta.url), 'utf8');
+  const m = bridge.match(/function docDigits\(v\)\{[^\n]*\}/);
+  assert.ok(m);
+  const docDigits = new Function(m[0] + '; return docDigits;')();
+  assert.equal(docDigits('10-78203419-2'), '10782034192');
+  assert.equal(docDigits('7820 3419'), '78203419');
+  assert.equal(docDigits('ABC-1'), 'ABC-1');
+  assert.match(bridge, /documentId=docDigits\(clean\(value\('cDni'\)\)\)/);
+  const legacy = readFileSync(new URL('../../POS/js/legacy-inline/inline-02.js', import.meta.url), 'utf8');
+  const fn = legacy.match(/dni=(\(d=>[^\n]*?:d\))\(_naClean\(document\.getElementById\('cDni'\)\.value\)\)/);
+  assert.ok(fn, 'alta clásica normaliza el documento');
+  const norm = eval(fn[1]);
+  assert.equal(norm('10-78203419-2'), '10782034192');
+  assert.equal(norm('ABC-1'), 'ABC-1');
+});
+
+test('R2-3 servidor: un DNI encuentra al cliente guardado con su RUC 10, sin gastar cupo', async () => {
+  assert.equal(ruc10For('78203419'), '10782034192');
+  assert.equal(ruc10For('1234'), null);
+  const seen = [];
+  const db = { prepare: sql => ({ bind: (...args) => ({ first: async () => { seen.push(sql); return /canonical_live_customers/.test(sql) && args[2] === '10782034192' ? { customer_id: 'c-r', name: 'ANA' } : null; } }) }) };
+  let fetched = 0;
+  const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
+  const req = new Request('http://localhost/auth/dni-lookup', { method: 'POST', body: JSON.stringify({ dni: '78203419' }) });
+  const r = await dniLookupRoute(req, { DECOLECTA_API_TOKEN: FAKE }, { posRole: 'empleado', principalId: 'd' }, json, db, { fetch: async () => { fetched++; } });
+  assert.deepEqual(await r.json(), { status: 'existing', customer_id: 'c-r', name: 'ANA' });
   assert.equal(fetched, 0);
   assert.ok(seen.every(sql => !/pos_settings/.test(sql)));
 });

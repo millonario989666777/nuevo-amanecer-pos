@@ -747,7 +747,7 @@ guardarCli=async function(){
   if(btnOk?.disabled)return;
   if(btnOk){btnOk.disabled=true;btnOk.textContent='Procesando…';}
   try{
-    const name=_naClean(document.getElementById('cNombre').value),dni=_naClean(document.getElementById('cDni').value);
+    const name=_naClean(document.getElementById('cNombre').value),dni=(d=>/^(\d{8}|\d{11})$/.test(d.replace(/[\s.\-]/g,''))?d.replace(/[\s.\-]/g,''):d)(_naClean(document.getElementById('cDni').value));
     const lineRaw=_naClean(document.getElementById('cLinea')?.value||'').replace(',','.'),line=lineRaw===''?null:Number(lineRaw);
     if(!name){toast('El nombre es obligatorio','error');return;}
     if(line!==null&&!(Number.isFinite(line)&&line>=0&&line<=1e6)){toast('Línea de crédito inválida (0 a S/ 1,000,000)','error');return;}

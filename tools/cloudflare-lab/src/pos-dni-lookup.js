@@ -18,6 +18,12 @@ export function rucCheckOk(ruc) {
   const sum = w.reduce((a, k, i) => a + k * Number(ruc[i]), 0);
   return (11 - (sum % 11)) % 10 === Number(ruc[10]);
 }
+// RUC 10 de un DNI: «10» + DNI + el único dígito verificador válido.
+export function ruc10For(dni) {
+  if (!DNI.test(dni)) return null;
+  for (let d = 0; d < 10; d++) if (rucCheckOk(`10${dni}${d}`)) return `10${dni}${d}`;
+  return null;
+}
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 export const LIMITS = { employeePerMinute: 3, employeePerDay: 20, monthlyDefault: 95, timeoutMs: 2500 };
 const RECENT_FAIL = new Map();
@@ -33,8 +39,8 @@ async function existingCustomer(db, dni, promotionId) {
   // Las dos tablas a la vez: en el celular cada viaje a la base cuenta para los 3 s.
   const rows = await Promise.all(['canonical_live_customers', 'customers'].map(async (table) => {
     try {
-      // RUC 10 y su DNI incluido (dígitos 3-10) son el mismo titular.
-      const alt = dni.length === 11 && dni.startsWith('10') ? dni.slice(2, 10) : dni;
+      // RUC 10 y su DNI incluido (dígitos 3-10) son el mismo titular, en ambos sentidos.
+      const alt = dni.length === 11 && dni.startsWith('10') ? dni.slice(2, 10) : (ruc10For(dni) || dni);
       const stmt = db.prepare(`SELECT customer_id,name FROM ${table} WHERE ${where}trim(COALESCE(document,'')) IN (?1,?3) LIMIT 1`);
       return await (promotionId ? stmt.bind(dni, promotionId, alt) : stmt.bind(dni, null, alt)).first();
     } catch (e) { if (!missingTable(e)) throw e; return null; }
