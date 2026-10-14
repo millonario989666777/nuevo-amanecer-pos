@@ -1,4 +1,4 @@
-/* Color-only overrides: light mode and geometry remain owned by existing CSS. */
+/* Dark overrides; product-modal scroll fixes are scoped to body.dark. */
 body.dark {
   --na-dk-bg:#0f172a;
   --na-dk-surface:#1a2234;
@@ -23,7 +23,8 @@ body.dark {
   background-color:var(--na-dk-bg);
   color:var(--na-dk-text);
 }
-body.dark *, body.dark *::before, body.dark *::after {border-color:var(--na-dk-border)}
+/* Neutral borders only: semantic accents retain their original colors. */
+body.dark :where(.card, .fi, .fs, .fi-big, .modal, .mbtns, .tab, hr, th, td) {border-color:var(--na-dk-border)}
 body.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 body.dark select, body.dark option, body.dark textarea {
   background-color:var(--na-dk-surface-2);
@@ -61,7 +62,9 @@ body.dark [style*="background:rgba(255"], body.dark [style*="background: rgba(25
 }
 body.dark [style*="color:#64748b"], body.dark [style*="color:#94a3b8"],
 body.dark [style*="color:#475569"], body.dark [style*="color:#334155"] {color:var(--na-dk-muted)!important}
-body.dark [style*="border:"] {border-color:var(--na-dk-border)!important}
+body.dark [style*="border:"][style*="#e2e8f0"],
+body.dark [style*="border:"][style*="#cbd5e1"],
+body.dark [style*="border:"][style*="#edf1f5"] {border-color:var(--na-dk-border)!important}
 
 /* Existing hardcoded light surfaces and ink, scoped without changing geometry. */
 body.dark .g-status {color:var(--na-dk-text)}
@@ -114,7 +117,21 @@ body.dark .cr-item {background-color:var(--na-dk-surface-2)}
 body.dark .cra-p {color:var(--na-dk-text)}
 body.dark .cr-prog {background-color:var(--na-dk-surface-2)}
 body.dark .btn-cerrar-cj {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
-body.dark .cjsg.green .cjsg-val {color:var(--na-dk-text)}
+body.dark .cjsg.green .cjsg-val,
+body.dark #pageCaja .cjsg.red .cjsg-val,
+body.dark #pageCaja .cjsg.amber .cjsg-val,
+body.dark #pageCaja .mov-amt.neg {color:var(--na-dk-text)}
+body.dark #pageCaja .cjsg.red,
+body.dark #pageCaja .cjsg.amber,
+body.dark #pageCaja .btn-cjac.egr,
+body.dark #pageCaja .btn-cjac.gas {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageCaja .cjsg.red .cjsg-icon,
+body.dark #pageCaja .btn-cjac.egr .bci {color:#f87171}
+body.dark #pageCaja .cjsg.amber .cjsg-icon,
+body.dark #pageCaja .btn-cjac.gas .bci {color:#fbbf24}
+/* Closed actions remain inert, but readable instead of fading their contents. */
+body.dark #pageCaja .cj-acciones[style*="opacity"] {opacity:1!important}
+body.dark #pageCaja .btn-cjac:disabled {opacity:1;color:var(--na-dk-text)}
 body.dark .btn-cjac.ing {color:var(--na-dk-text)}
 body.dark .mov-amt.pos {color:var(--na-dk-text)}
 body.dark .vkpi.green .vkpi-val {color:var(--na-dk-text)}
@@ -157,7 +174,17 @@ body.dark .na-confirm-actions {background-color:var(--na-dk-surface-2)}
 body.dark .na-confirm-btn {background-color:var(--na-dk-surface-2)}
 body.dark .na-confirm-btn.cancel {color:var(--na-dk-text)}
 body.dark #mProd .mbody {background-color:var(--na-dk-surface-2)}
-body.dark #mProd .mbtns {background-color:var(--na-dk-surface-2)}
+/* Scroll the form body while reserving the footer's full height. */
+body.dark #mProd .modal {position:relative;display:flex;flex-direction:column;overflow:hidden}
+body.dark #mProd .mhead {flex-shrink:0}
+body.dark #mProd .mbody {min-height:0;overflow:hidden!important;padding-bottom:100px!important}
+body.dark #mProd .prod-unified {min-height:0;overflow-y:auto!important}
+body.dark #mProd .mbtns {background-color:var(--na-dk-surface-2);position:absolute!important;bottom:0!important;left:18px;right:18px;padding-bottom:14px}
+body.dark #mProd .prod-margin {background-color:#153b3d}
+body.dark #mProd .prod-margin strong {color:#5eead4}
+body.dark #mProd .field-help {color:var(--na-dk-muted)}
+body.dark #mProd .prod-image-btn {color:var(--na-dk-text)}
+body.dark #mProd .product-icon-actions:has(#pIconAutoBtn.active) #pIconMode {display:none}
 body.dark .prod-unified .fl {color:var(--na-dk-text)}
 body.dark .prod-new-cat-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
 body.dark .prod-image-btn {background-color:var(--na-dk-surface-2)}
