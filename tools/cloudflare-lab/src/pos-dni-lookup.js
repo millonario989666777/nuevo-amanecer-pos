@@ -114,7 +114,7 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   // El servidor tampoco insiste: tras un error/tiempo agotado del proveedor, ese DNI espera 30 s (por instancia).
   const nowMs = (deps.now || Date.now)();
   const failAt = RECENT_FAIL.get(dni);
-  if (failAt && nowMs - failAt < FAIL_COOLDOWN_MS) return json({ status: 'manual', reason: 'cooldown' });
+  if (failAt && nowMs - failAt < FAIL_COOLDOWN_MS) return json({ status: 'manual', reason: 'cooldown', retry_after: Math.max(1, Math.ceil((FAIL_COOLDOWN_MS - (nowMs - failAt)) / 1000)) });
   let denied;
   try { denied = await reserveLookup(db, auth, env, (deps.now || Date.now)()); }
   catch (e) { if (missingTable(e)) return json({ status: 'manual', reason: 'not_ready' }); throw e; }
@@ -122,5 +122,6 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   const out = await queryDecolecta(dni, token, deps.fetch || fetch, deps.timeoutMs);
   if (out.status === 'timeout' || out.status === 'provider_error' || out.status === 'provider_limit') { RECENT_FAIL.set(dni, nowMs); if (RECENT_FAIL.size > 500) RECENT_FAIL.clear(); }
   if (out.status === 'found') return json(out);
-  return json({ status: 'manual', reason: out.status });
+  const failed = out.status === 'timeout' || out.status === 'provider_error' || out.status === 'provider_limit';
+  return json(failed ? { status: 'manual', reason: out.status, retry_after: FAIL_COOLDOWN_MS / 1000 } : { status: 'manual', reason: out.status });
 }

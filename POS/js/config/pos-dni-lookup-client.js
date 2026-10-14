@@ -20,7 +20,7 @@
   function hint(text) {
     var input = doc.getElementById('cDni'); if (!input) return;
     var el = doc.getElementById('cDniHint');
-    if (!el) { el = doc.createElement('div'); el.id = 'cDniHint'; el.className = 'na-dni-hint'; el.setAttribute('aria-live', 'polite'); el.style.cssText = 'font-size:12px;margin-top:4px;opacity:.8'; input.insertAdjacentElement('afterend', el); }
+    if (!el) { el = doc.createElement('div'); el.id = 'cDniHint'; el.className = 'na-dni-hint'; el.setAttribute('aria-live', 'polite'); el.style.cssText = 'font-size:12px;margin-top:4px'; input.insertAdjacentElement('afterend', el); }
     el.textContent = text || ''; el.hidden = !text;
   }
   function call(name) { var a = [].slice.call(arguments, 1); var fn = root[name]; if (typeof fn === 'function') try { return fn.apply(root, a); } catch (_) {} }
@@ -65,9 +65,12 @@
     if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
     else if (/limit/.test(reason)) { failedAt[dni] = { at: Date.now(), limit: true }; hint(LIMIT_MSG); }
     else if (reason === 'not_found') hint(MANUAL);
-    else { failedAt[dni] = { at: Date.now(), limit: false }; retryHint(dni); }
+    else { var wait = Math.min(60, Math.max(0, Number(out.retry_after) || (reason === 'cooldown' ? 30 : 0))); failedAt[dni] = { at: Date.now(), limit: false, readyAt: Date.now() + wait * 1000 }; retryHint(dni); }
   }
   var LIMIT_MSG = 'Límite de búsquedas alcanzado. Escriba el nombre a mano.';
+  // «Reintentar»: mientras el Worker siga en espera para este DNI el botón queda desactivado con
+  // «disponible en N s» (ancho fijo, números tabulares) y se activa solo al terminar.
+  var retryTimer = null;
   function retryHint(dni) {
     var el = doc.getElementById('cDniHint');
     // Mismo DNI y el botón ya está: no se repinta (si no, el blur lo recrea y el clic se pierde).
@@ -75,11 +78,19 @@
     hint('No se pudo buscar ahora. Escriba el nombre a mano o ');
     el = doc.getElementById('cDniHint'); if (!el) return;
     el.dataset.naRetry = dni;
-    var btn = doc.createElement('button'); btn.type = 'button'; btn.textContent = 'Reintentar';
-    btn.style.cssText = 'border:0;background:none;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer';
-    var go = function (e) { if (e && e.preventDefault) e.preventDefault(); if (!failedAt[dni]) return; delete failedAt[dni]; check(); };
-    btn.addEventListener('pointerdown', go); btn.addEventListener('click', go);
+    var btn = doc.createElement('button'); btn.type = 'button'; btn.className = 'na-dni-retry';
     el.appendChild(btn);
+    var go = function (e) { if (e && e.preventDefault) e.preventDefault(); if (btn.disabled || !failedAt[dni]) return; delete failedAt[dni]; check(); };
+    btn.addEventListener('pointerdown', go); btn.addEventListener('click', go);
+    if (retryTimer) root.clearInterval(retryTimer);
+    var paint = function () {
+      var f = failedAt[dni], left = f && f.readyAt ? Math.ceil((f.readyAt - Date.now()) / 1000) : 0;
+      if (left > 0) { btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Reintentar · disponible en ' + left + ' s'; }
+      else { btn.disabled = false; btn.removeAttribute('aria-disabled'); btn.textContent = 'Reintentar'; if (retryTimer) { root.clearInterval(retryTimer); retryTimer = null; } }
+      if (!btn.isConnected && retryTimer) { root.clearInterval(retryTimer); retryTimer = null; }
+    };
+    paint();
+    if (btn.disabled) retryTimer = root.setInterval(paint, 1000);
   }
   async function check() {
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');

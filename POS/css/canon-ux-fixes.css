@@ -328,3 +328,9 @@ body.dark .na-ds-cancel{background:#334155;color:#f1f5f9}
 body.dark .na-review-close{background:#334155}
 .na-ds-ok{background:var(--teal,#15803d)}.na-ds-ok:disabled{opacity:1;background:#94a3b8;color:#0f172a}
 body.dark .na-ds-ok:disabled{background:#475569;color:#e2e8f0}
+/* DNI «Reintentar»: 44 px, ancho fijo, números tabulares y contraste >= 4.5:1 (claro y Nocturno) */
+.na-dni-retry{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:16.5em;margin-left:4px;padding:0 12px;border:0;border-radius:10px;background:#0f766e;color:#fff;font:700 13px 'Nunito',sans-serif;font-variant-numeric:tabular-nums;cursor:pointer}
+.na-dni-retry:disabled{background:#e2e8f0;color:#334155;cursor:not-allowed}
+body.dark .na-dni-retry{background:#14b8a6;color:#042f2e}
+body.dark .na-dni-retry:disabled{background:#334155;color:#f1f5f9}
+.na-dni-hint{color:#475569}body.dark .na-dni-hint{color:#cbd5e1}

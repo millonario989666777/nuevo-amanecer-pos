@@ -23,7 +23,7 @@ test('respuesta perdida: el borrador enviado guarda el lote exacto y el reenvío
 
 test('borrador enviado nunca se pisa ni se restaura con un lote pendiente; restaurar no guarda', () => {
   assert.match(v2, /var prev = naV2StoredRead\(\); if \(prev && prev\.submitted\) return;/);
-  assert.match(v2, /if \(naV2PendingBatch\(\)\) return;/);
+  assert.match(v2, /own\.submitted && naV2PendingBatch\(\)\) return;/);
   assert.match(v2, /naV2Restoring = true;/);
   assert.match(v2, /if \(naV2Restoring \|\| naV2DraftSkip/);
 });
@@ -59,7 +59,7 @@ test('DNI servidor: tras error del proveedor el mismo DNI no se vuelve a consult
   const before = reserves;
   const b = await (await dniLookupRoute(req(), { DECOLECTA_API_TOKEN: 'fake' }, auth, json, db, deps)).json();
   assert.equal(a.reason, 'provider_error');
-  assert.deepEqual(b, { status: 'manual', reason: 'cooldown' });
+  assert.equal(b.status, 'manual'); assert.equal(b.reason, 'cooldown');
   assert.equal(fetched, 1);
   assert.equal(reserves, before, 'no gasta cupo');
 });
