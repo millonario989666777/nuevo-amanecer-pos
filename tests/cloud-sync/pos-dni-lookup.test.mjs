@@ -180,7 +180,7 @@ test('DNI: tras rellenar no repite ni avisa; «La búsqueda tarda» no lo pisa k
 
 test('tablet/PC: Caja y Ventas se desplazan como página completa (KPIs no tapan Reportes); celular sin cambios', () => {
   const css = readFileSync(new URL('../../POS/css/canon-ux-fixes.css', import.meta.url), 'utf8');
-  const block = css.slice(css.lastIndexOf('@media (min-width:701px){'));
+  const block = css.slice(css.indexOf('/* Tablet y PC: en Caja del Día'));
   assert.match(block, /#pageCaja\.active,#pageVentas\.active\{overflow-y:auto!important/);
   assert.match(block, /#pageCaja #cajContent,#pageVentas #ventasContent\{flex:none!important;overflow-y:visible!important/);
 });
