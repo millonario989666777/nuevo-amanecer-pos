@@ -44,7 +44,7 @@
       try{
         var plan=core.plan(stock,rows,quantity,day,true);
         var title='Autorizar lotes vencidos',detail=(product.name||product.product_id)+': requiere '+plan.expired_quantity+' '+(product.unit||'unidad')+' de lotes VENCIDOS. Ingresa el PIN para autorizar esta venta.';
-        var consent=remote?remote.approve('expired_lot_sale',null,title,detail).then(function(id){return id?{approval_id:id}:null;}):root.NA_ROLES.askPin(title,detail,function(pin){return root._naPinValid(pin)?{ok:true,value:true}:{msg:'PIN incorrecto.'};});
+        var consent=remote?remote.approve('expired_lot_sale',null,title,detail).then(function(id){if(!id&&root.navigator&&root.navigator.onLine===false)notice('Sin internet: para usar lotes vencidos se necesita conexión para validar el PIN del dueño.');return id?{approval_id:id}:null;}):root.NA_ROLES.askPin(title,detail,function(pin){return root._naPinValid(pin)?{ok:true,value:true}:{msg:'PIN incorrecto.'};});
         return consent.catch(function(){notice('No se pudo autorizar la venta de lotes vencidos.');return null;});
       }catch(_){notice('No se pudo autorizar la venta de lotes vencidos.');return null;}
     }

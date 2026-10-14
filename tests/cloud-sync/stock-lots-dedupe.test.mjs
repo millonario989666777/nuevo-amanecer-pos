@@ -143,13 +143,22 @@ test('created_at retrasado no oculta un lote que ya venció según la fecha del 
   assert.equal(r.status,201,JSON.stringify(r));assert.equal(r.body.expired_lots_unconfirmed,true);
   assert.match(read('tools/cloudflare-lab/src/a6-commerce.js'),/lotsCore\.businessDate\(new Date\(\)\.toISOString\(\)\),true\)/);
 });
-test('created_at futuro: >5 min se rechaza; dentro de 5 min se trata como en línea (409 sin aprobación)',async t=>{
-  const f=await setup(t);
-  let r=await call(f,'/commands/sale.create',sale(f,'fut-1',new Date(Date.now()+10*60000).toISOString()));
-  assert.equal(r.status,400);assert.equal(r.body.error,'invalid_created_at');
-  r=await call(f,'/commands/sale.create',sale(f,'fut-2',new Date(Date.now()+2*60000).toISOString(),{allow_expired_lots:true}));
+test('created_at futuro (reloj adelantado) nunca se rechaza por la hora: normal 201; con vencidos sin aprobación 409 reintentable',async t=>{
+  const f=await activeCanon(t,{migrations});f.database.exec(read('infra/database/migrations/0030_canonical_stock_lots.sql'));f.addDevice('owner','writer','active','owner-token');
+  assert.equal((await call(f,'/auth/owner-pin',{new_pin:'4821'})).status,200);
+  assert.equal((await move(f,'clear','SALIDA',product(f).current_stock_quantity)).status,201);
+  assert.equal((await move(f,'in-ok','ENTRADA',1,{lots:[{lot_code:'bueno',expiry_date:day(200),quantity:1}]})).status,201);
+  const future=new Date(Date.now()+3*3600000).toISOString();
+  const futBody=sale(f,'fut-ok',future);let r=await call(f,'/commands/sale.create',futBody);assert.equal(r.status,201,JSON.stringify(r));
+  const again=await call(f,'/commands/sale.create',futBody);assert.equal(again.status,200,'reenvío idéntico: idempotente, sin conflicto');assert.equal(again.body.sale_id,'fut-ok');assert.notEqual(r.body.expired_lots_unconfirmed,true);
+  // Diferido: la hora efectiva no se reescribe (sale.created_at = reloj del aparato); la hora del servidor ya queda en sales.received_at.
+  const row=f.sql("SELECT created_at,received_at FROM sales WHERE sale_id='fut-ok'");
+  assert.equal(row.created_at,future);assert.ok(Math.abs(Date.parse(row.received_at)-Date.now())<60000,'received_at es hora del servidor');
+  assert.equal((await move(f,'in-exp','ENTRADA',2,{lots:[{lot_code:'viejo',expiry_date:day(-3),quantity:2}]})).status,201);
+  r=await call(f,'/commands/sale.create',sale(f,'fut-exp',future,{allow_expired_lots:true}));
   assert.equal(r.status,409);assert.equal(r.body.error,'expired_lots_not_allowed');
-  assert.equal(product(f).current_stock_quantity,2,'nada escrito');
+  assert.doesNotMatch(read('tools/cloudflare-lab/src/a6-commerce.js'),/invalid_created_at' \}, 400\)/);
+  assert.match(read('POS/js/sync/canonical-sale-outbox.js'),/RETRYABLE\.push\([^)]*'expired_lots_not_allowed'/);
 });
 test('más de 1 día de atraso se marca para revisión aunque traiga aprobación válida',async t=>{
   const f=await setup(t);assert.equal((await call(f,'/settings',{key:'pos.lots',value:{allowExpiredLots:true}})).status,200);
@@ -170,3 +179,4 @@ test('sin conexión la venta con lotes vencidos sigue bloqueada (el PIN necesita
   assert.match(ui,/var local=!canonical\(\)\?\.enabled\(\)&&/);
   assert.match(ui,/remote\.approve\('expired_lot_sale'/);
 });
+test('sin internet el diálogo de PIN dice que hace falta conexión',()=>{assert.match(read('POS/js/inventory/stock-lots-ui.js'),/onLine===false\)notice\('Sin internet/);});

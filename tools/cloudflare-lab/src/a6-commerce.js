@@ -56,7 +56,6 @@ function saleLotPlan(product, lots, item, body) {
 // - recent sale (|age| <= 5 min) without them: 409, nothing written.
 // - otherwise (late outbox sale, already charged): accepted, ALWAYS flagged for
 //   review, whatever age it claims; > 1 day late is flagged even with approval.
-// created_at more than 5 min in the future is rejected before this point.
 export const EXPIRED_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 export const LATE_REVIEW_MS = 24 * 60 * 60 * 1000;
 async function expiredLotsAllowed(db) {
@@ -66,7 +65,7 @@ async function expiredLotsAllowed(db) {
 async function expiredSaleGate(db, auth, body, plans) {
   const expired=plans.filter(entry=>entry.expired_quantity>0);
   if(!expired.length)return null;
-  const age=Date.now()-Date.parse(body.created_at),recent=Math.abs(age)<=EXPIRED_ONLINE_WINDOW_MS;
+  const age=Date.now()-Date.parse(body.created_at),recent=age<=EXPIRED_ONLINE_WINDOW_MS; // a fast till clock (future created_at) counts as online; never rejected for its time
   let approved=await expiredLotsAllowed(db);
   for(const entry of expired)
     if(approved&&!await consumeApproval(db,auth.principalId,entry.item.expired_lot_approval,'expired_lot_sale',body.operation_id))approved=false;
@@ -576,7 +575,6 @@ export async function createCanonicalSale(request, env, auth, json) {
   const checked = validateCanonicalSale(body);
   if (checked.error) return json({ error: checked.error }, 400);
   body = checked.value;
-  if (Date.parse(body.created_at) > Date.now() + EXPIRED_ONLINE_WINDOW_MS) return json({ error: 'invalid_created_at' }, 400);
   if (auth?.deferredSaleAuth && canUseCanonicalSaleFastPath(body,env)) {
     return createCanonicalSaleFast(body,env,auth,json);
   }
