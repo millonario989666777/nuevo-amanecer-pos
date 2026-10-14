@@ -40,3 +40,11 @@ export function manifest({ timestamp, databaseId, bookmark, sqlKey, size, sha256
     status,
   };
 }
+
+// Las miniaturas de producto (internal:img:*) y sus contadores (internal:imgrate:*) son
+// caché regenerable: igual que backup-select.mjs, no se incluyen en el respaldo SQL.
+// El export de D1 emite una sentencia INSERT por línea; solo se descartan esas filas.
+const INTERNAL_IMAGE_ROW = /^\s*INSERT\s+INTO\s+"?pos_settings"?\s*(?:\([^)]*\)\s*)?VALUES\s*\(\s*'internal:img(?::|rate:)/i;
+export function stripInternalImageRows(sql) {
+  return String(sql).split('\n').filter(line => !INTERNAL_IMAGE_ROW.test(line)).join('\n');
+}

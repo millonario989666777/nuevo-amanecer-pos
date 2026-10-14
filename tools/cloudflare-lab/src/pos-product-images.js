@@ -2,11 +2,14 @@
 export const PRODUCT_IMAGE_PATHS = new Set(['/auth/product-images', '/auth/product-images/item']);
 const hash = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 const validId = p => typeof p === 'string' && p.length > 0 && p.length <= 160 && !/[\x00-\x1f\x7f]/.test(p);
-async function productExists(db, id) {
+async function productExists(db, id, strict = false) {
+  let checked = 0;
   for (const table of ['products', 'canonical_live_products']) {
-    try { if (await db.prepare('SELECT product_id FROM ' + table + ' WHERE product_id=?1 LIMIT 1').bind(id).first()) return true; }
+    try { if (await db.prepare('SELECT product_id FROM ' + table + ' WHERE product_id=?1 LIMIT 1').bind(id).first()) return true; checked++; }
     catch (e) { if (!/no such table/i.test(e.message)) throw e; }
   }
+  // strict: sin ninguna tabla de catálogo legible no se puede afirmar que el producto no existe.
+  if (strict && checked === 0) throw new Error('product_catalog_unavailable');
   return false;
 }
 export async function deleteProductImages(db, productId) {
@@ -28,13 +31,24 @@ export async function productImagesRoute(request, url, env, auth, json, db) {
     const live = [], orphans = [];
     // Una sola lectura por tabla (no una por foto): límite de subrequests en Turso.
     const ids = new Set();
+    let catalogTrusted = true;
     if (direct) { for (const m of metas) if (await productExists(db, m.p)) ids.add(m.p); }
     else for (const table of ['products', 'canonical_live_products']) {
       try { for (const r of (await db.prepare('SELECT product_id FROM ' + table).all()).results || []) ids.add(String(r.product_id)); }
-      catch (e) { if (!/no such table/i.test(e.message)) throw e; }
+      catch (e) { catalogTrusted = false; if (!/no such table/i.test(e.message)) throw e; }
     }
-    for (const m of metas) (ids.has(m.p) ? live : orphans).push(m);
-    if (request.method !== 'GET') for (const m of orphans.slice(0, 50)) await deleteProductImages(db, m.p);
+    // Un catálogo vacío o una lectura fallida no prueba que las fotos sean huérfanas:
+    // en ese caso no se oculta ni se borra nada.
+    if (!direct && ids.size === 0) catalogTrusted = false;
+    for (const m of metas) (!catalogTrusted || ids.has(m.p) ? live : orphans).push(m);
+    if (request.method !== 'GET' && catalogTrusted) {
+      for (const m of orphans.slice(0, 50)) {
+        // Confirmación individual: solo se borra si ese product_id no existe en ninguna tabla.
+        let exists = true;
+        try { exists = await productExists(db, m.p, true); } catch { exists = true; }
+        if (!exists) await deleteProductImages(db, m.p);
+      }
+    }
     metas = live;
     let b;
     if (request.method === 'DELETE') b = { product_id: url.searchParams.get('product_id'), delete: true };
