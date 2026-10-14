@@ -417,6 +417,8 @@
       input = buildInput();
       if (!input) return false;
       if (!clean(value('pSku'))) input.sku = raw.sku || null;
+      // pVenc de solo lectura = calculado desde lotes: no se guarda en la ficha.
+      if (root.document.getElementById('pVenc')?.readOnly) input.expiry_date = raw.expiry_date || null;
       if (input.brand === 'Sin marca' && !clean(raw.brand)) input.brand = null;
       var locked = lockedChanges(input, legacy);
       if (locked.length) {

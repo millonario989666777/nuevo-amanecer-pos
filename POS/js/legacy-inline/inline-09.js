@@ -28,8 +28,8 @@ _baseInvRender=function(){
   const list=productos.filter(product=>{
     const matches=sinTildes((product.name||'').toLowerCase()).includes(search)||sinTildes(product.descripcion||'').includes(search)||sinTildes((product.marca||'').toLowerCase()).includes(search)||(product.sku||'').toLowerCase().includes(search)||(product.barcode||'').includes(search)||_naProductAltCodes(product).some(code=>code.toLowerCase().includes(search));
     const categoryMatches=!category||product.cat===category;
-    const days=diasHasta(product.venc);
-    const tabMatches=invTab==='critico'?_naTracksStock(product)&&product.stock<=product.stockMin:invTab==='vencimiento'?days!==null&&days>=0&&days<=30:invTab==='vencidos'?days!==null&&days<0:true;
+    const days=diasHasta(_naEffectiveExpiry(product));
+    const tabMatches=invTab==='critico'?_naTracksStock(product)&&product.stock<=product.stockMin:invTab==='vencimiento'?days!==null&&days>=0&&days<=NA_EXPIRY_SOON_DAYS:invTab==='vencidos'?days!==null&&days<0:true;
     return matches&&categoryMatches&&tabMatches;
   });
   const body=document.getElementById('invBody');if(!body)return;
@@ -37,7 +37,7 @@ _baseInvRender=function(){
   _naRenderInventoryRows(body,list,product=>{
     const tracked=_naTracksStock(product),stockClass=!tracked?'ok':product.stock<=0?'out':product.stock<=product.stockMin?'low':'ok';
     const stockLabel=!tracked?'∞ Sin control':(product._canonicalPendingStock&&Number.isFinite(product._canonicalRemoteStock)?`CANON ${product._canonicalRemoteStock} (−${Number(product._canonicalPendingDelta||Math.max(0,product._canonicalRemoteStock-product.stock))} pend.)`:product.stock<0?`✕ Faltan ${Math.abs(product.stock)}`:product.stock===0?'✕ Sin stock':product.stock<=product.stockMin?`⚠ ${product.stock}`:`✓ ${product.stock}`);
-    const days=diasHasta(product.venc),expiryClass=!product.venc?'na':days<0?'vencido':days<=30?'pronto':'ok',expiryLabel=!product.venc?'—':days<0?'Vencido':days===0?'Hoy':days<=30?`${days}d`:product.venc;
+    const expiry=_naEffectiveExpiry(product),days=diasHasta(expiry),expiryClass=!expiry?'na':days<0?'vencido':days<=NA_EXPIRY_SOON_DAYS?'pronto':'ok',expiryLabel=!expiry?'—':days<0?'Vencido':days===0?'Hoy':days<=NA_EXPIRY_SOON_DAYS?`${days}d`:expiry;
     const id=JSON.stringify(product.id),safeImage=typeof _naInventoryImageDisplay!=='undefined'?_naInventoryImageDisplay.source(product):_naProductImageSource(product),icon=safeImage?`<img src="${_naEsc(safeImage)}" alt="${_naEsc(product.name)}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`:_naEsc(product.icon||'📦');
     return `<tr><td><div class="prod-info"><div class="prod-icon-sm">${icon}</div><div><div class="prod-name-sm">${_naEsc(product.name)}</div><div class="prod-sku-sm">${_naEsc(product.sku)}${product.marca&&product.marca!=='Sin marca'?` · ${_naEsc(product.marca)}`:''} · ${_naEsc(_naCategoryTitle(product.unidad||'unidad'))}</div></div></div></td><td><span class="cat-pill">${_naEsc(_naCategoryLabel(product.cat))}</span></td><td><div style="font-size:12px;font-weight:800;color:var(--teal)">S/ ${_naNumber(product.precio).toFixed(2)}</div><div style="font-size:10px;color:var(--slate)">Costo: S/ ${_naNumber(product.costo).toFixed(2)}</div></td><td><span class="venc-pill ${expiryClass}">${_naEsc(expiryLabel)}</span></td><td><span class="stock-pill ${stockClass}">${_naEsc(stockLabel)}</span></td><td><div class="act-btns">${tracked?`<button class="btn-act btn-ent" onclick="abrirMovInv(${_naEsc(id)},&quot;entrada&quot;)"><i class="na-ic na-ic-in" aria-hidden="true"></i></button><button class="btn-act btn-sal" onclick="abrirMovInv(${_naEsc(id)},&quot;salida&quot;)"><i class="na-ic na-ic-out" aria-hidden="true"></i></button>`:'<button class="btn-act" title="Sin control de inventario">∞</button>'}<button class="btn-act btn-edt" onclick="editProd(${_naEsc(id)})"><i class="na-ic na-ic-pen" aria-hidden="true"></i></button></div></td></tr>`;
   });

@@ -432,6 +432,12 @@
             moved = ' Pasó de la ' + from + ' a la ' + to + '.';
             if (typeof root._naAudit === 'function') root._naAudit('Venta pasada a otra caja', clean(intent.sale_id) + ' · ' + from + ' → ' + to);
           }
+          if (entry.reason === 'expired_lots_not_allowed' || entry.reason === 'expired_lot_approval_required') {
+            if (!root.NA_ROLES || typeof root.NA_ROLES.approve !== 'function') return 'Se necesita conexión y el PIN del dueño para registrar ' + clean(intent.sale_id) + '.';
+            var expiredApproval = await root.NA_ROLES.approve('expired_lot_sale', null, 'Autorizar lotes vencidos', 'La venta ' + clean(intent.sale_id) + ' usa lotes vencidos. Ingresa el PIN del dueño.');
+            if (!expiredApproval) return 'Reintento cancelado: no se autorizó usar lotes vencidos.';
+            meta = Object.assign({}, meta || {}, { expiredLotApproval: expiredApproval });
+          }
           await outbox.resolveQuarantined(intent.operation_id, 'retry', meta);
           var outcome = await outbox.sync();
           return 'Venta ' + clean(intent.sale_id) + ' reenviada con el mismo identificador: ' + clean(outcome.status) + (outcome.reason ? ' · ' + clean(outcome.reason) : '') + '.' + moved;

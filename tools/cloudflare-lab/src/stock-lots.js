@@ -36,7 +36,7 @@ export async function saleLotReceipt(db,body){
     .bind(body.promotion_id,body.sale_id,body.operation_id).all()).results||[];
   return {
     ...(rows.some(r=>r.lot_id)?{lot_allocations:rows.map(({product_id,lot_id,quantity})=>({product_id,lot_id,quantity}))}:{}),
-    ...(rows.some(r=>r.expiry_date<lotsCore.businessDate(body.created_at)&&Number(r.expired_confirmed)===0)?{expired_lots_unconfirmed:true}:{})
+    ...(rows.some(r=>r.expiry_date<lotsCore.businessDate(new Date().toISOString())&&Number(r.expired_confirmed)===0)?{expired_lots_unconfirmed:true}:{})
   };
 }
 // All statements returned here execute in the caller's stock CAS batch. An

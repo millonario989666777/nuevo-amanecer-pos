@@ -133,7 +133,7 @@
       }
     });
   }
-  var LABELS = { 'inventory.adjust': 'Ajuste de stock', 'adjustment.create': 'Ajuste de dinero', 'compensation.create': 'Anulación',
+  var LABELS = { 'expired_lot_sale': 'Uso de lotes vencidos', 'inventory.adjust': 'Ajuste de stock', 'adjustment.create': 'Ajuste de dinero', 'compensation.create': 'Anulación',
     'product.update': 'Cambio de producto o precio', 'customer.credit-policy.set': 'Límite de crédito del cliente' };
   // Llamado por canonical-client ANTES de guardar la operación: si se cancela no queda nada pendiente.
   async function beforeCommand(command, operationId) {

@@ -53,6 +53,8 @@ Inicio manual:
 node tools/pos-local/server.mjs
 ```
 
+Las pruebas que usan SQLite (`node:sqlite`, p. ej. `tests/cloud-sync/*.test.mjs`) requieren Node >= 22.23: con 22.11 dan un falso 500 «column index out of range».
+
 Prueba focal del servidor local:
 
 ```powershell

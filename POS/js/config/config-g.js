@@ -190,6 +190,9 @@
       set: function (c, v) { Object.keys(v || {}).forEach(function (k) { c[k] = v[k]; }); } },
     // Línea de crédito inicial, reglas y días para pagar (30 por defecto): una sola política para todos los aparatos.
     'pos.credit': { get: function (c) { return Object.assign({}, c.creditPolicy || {}); }, set: function (c, v) { c.creditPolicy = Object.assign(c.creditPolicy || {}, v); } },
+    // Interruptor «Permitir vender lotes vencidos»: el servidor lo exige en ventas en línea.
+    'pos.lots': { get: function () { try { return { allowExpiredLots: root._naGetSecurityPath('rules.allowExpiredLots') === true }; } catch (_) { return { allowExpiredLots: false }; } },
+      set: function (c, v) { try { root._naSetSecurityPath('rules.allowExpiredLots', !!(v && v.allowExpiredLots)); root._naSaveSecurity(); } catch (_) {} } },
     'pos.ticket': { get: function (c) { return Object.assign({}, c.ticket || {}); }, set: function (c, v) { c.ticket = Object.assign(c.ticket || {}, v); } }
   };
   var CACHE_KEY = 'na_pos_settings_cache_v1';
