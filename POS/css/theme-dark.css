@@ -672,3 +672,12 @@ body.dark .report-card.red strong, body.dark .report-table .negative {color:var(
 body.dark .report-card.green strong, body.dark .report-table .positive {color:#86efac}
 body.dark .report-card.purple strong {color:#d8b4fe}
 body.dark .report-card.amber strong {color:#fde68a}
+
+/* Venta (teléfono): título y botón de menú legibles; solo color. */
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posPhoneTitle {color:var(--na-dk-text)}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle {background-color:var(--na-dk-surface-2)!important;color:var(--na-dk-text)!important}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle .na-ic {color:var(--na-dk-text)!important;background-color:currentColor}
+/* Formulario de producto: acciones de icono. */
+body.dark .product-icon-mini-btn, body.dark .product-icon-action, body.dark .prod-image-remove {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
+body.dark .product-icon-action.active {background-color:#153b3d;border-color:#2dd4bf;color:#5eead4}
+body.dark .product-icon-mode {background-color:var(--na-dk-surface-2);color:var(--na-dk-muted)}
