@@ -11,6 +11,8 @@ export const DECOLECTA_URL = 'https://api.decolecta.com/v1/reniec/dni';
 const DNI = /^\d{8}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 export const LIMITS = { employeePerMinute: 3, employeePerDay: 20, monthlyDefault: 95, timeoutMs: 2500 };
+const RECENT_FAIL = new Map();
+const FAIL_COOLDOWN_MS = 30000;
 export const USAGE_PREFIX = 'internal:dni:'; // pos_settings.key admite 60 caracteres
 
 function limaDate(nowMs) { return new Date(nowMs - 5 * 3600 * 1000).toISOString().slice(0, 10); }
@@ -109,11 +111,16 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   if (existing) return json({ status: 'existing', customer_id: existing.customer_id, name: cleanName(existing.name) });
   const token = env.DECOLECTA_API_TOKEN;
   if (!token) return json({ status: 'manual', reason: 'not_configured' }, 200);
+  // El servidor tampoco insiste: tras un error/tiempo agotado del proveedor, ese DNI espera 30 s (por instancia).
+  const nowMs = (deps.now || Date.now)();
+  const failAt = RECENT_FAIL.get(dni);
+  if (failAt && nowMs - failAt < FAIL_COOLDOWN_MS) return json({ status: 'manual', reason: 'cooldown' });
   let denied;
   try { denied = await reserveLookup(db, auth, env, (deps.now || Date.now)()); }
   catch (e) { if (missingTable(e)) return json({ status: 'manual', reason: 'not_ready' }); throw e; }
   if (denied) return json({ status: 'manual', reason: denied }, 429);
   const out = await queryDecolecta(dni, token, deps.fetch || fetch, deps.timeoutMs);
+  if (out.status === 'timeout' || out.status === 'provider_error' || out.status === 'provider_limit') { RECENT_FAIL.set(dni, nowMs); if (RECENT_FAIL.size > 500) RECENT_FAIL.clear(); }
   if (out.status === 'found') return json(out);
   return json({ status: 'manual', reason: out.status });
 }

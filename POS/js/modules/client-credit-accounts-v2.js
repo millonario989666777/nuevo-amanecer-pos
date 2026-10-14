@@ -793,8 +793,16 @@ function labCategorySummary(client, category) {
   var NA_V2_DRAFT_KEY = 'na_v2_abono_draft_v1', NA_V2_DRAFT_TTL = 24 * 3600 * 1000;
   function naV2StoredRead() { try { var d = JSON.parse(root.localStorage.getItem(NA_V2_DRAFT_KEY) || 'null'); return d && d.clientId && d.values ? d : null; } catch (_) { return null; } }
   function naV2StoredWrite(d) { try { if (d) root.localStorage.setItem(NA_V2_DRAFT_KEY, JSON.stringify(d)); else root.localStorage.removeItem(NA_V2_DRAFT_KEY); } catch (_) {} }
+  var naV2Restoring = false;
+  // Códigos del puente en los que NO salió nada al servidor: el borrador vuelve a ser editable.
+  var NA_V2_LOCAL_CODES = /^(CANONICAL_PAYMENT_DISABLED|CANONICAL_PAYMENT_BUSY|INVALID_BATCH_\w+|EMPTY_BATCH|CANONICAL_OFFLINE|BATCH_REFERENCE_ALREADY_USED|BATCH_CREDIT_BALANCE_CHANGED|BATCH_CASH_SESSION_REQUIRED)$/;
+  function naV2PendingBatch() {
+    try { var c = root.NuevoAmanecerCanonical, p = c && c.pendingSnapshot && c.pendingSnapshot(); return p && p.command === 'payment.batch' ? p : null; } catch (_) { return null; }
+  }
   function naV2DraftPersist() {
-    if (naV2DraftSkip || labBatchSubmitInFlight || !labClientScreenState.clientId) return;
+    if (naV2Restoring || naV2DraftSkip || labBatchSubmitInFlight || !labClientScreenState.clientId) return;
+    // Un abono ya enviado nunca se pisa (re-render, eventos sintéticos): solo se borra cuando el servidor confirma.
+    var prev = naV2StoredRead(); if (prev && prev.submitted) return;
     var screen = labScreen(); if (!screen || !screen.querySelector) return;
     var d = naV2DraftCapture(screen);
     if (!d) { var old = naV2StoredRead(); if (old && old.clientId === labClientScreenState.clientId && !old.submitted) naV2StoredWrite(null); return; }
@@ -812,6 +820,9 @@ function labCategorySummary(client, category) {
   function naV2DraftRestore(content, draft) {
     if (!draft) draft = naV2DraftFromStore();
     if (!content || !draft || draft.clientId !== labClientScreenState.clientId) return;
+    if (naV2PendingBatch()) return; // hay un lote de abonos sin confirmar: no se ofrece cobrarlo otra vez
+    naV2Restoring = true;
+    try {
     var touched = null;
     NA_V2_DRAFT_IDS.forEach(function (id) { var el = content.querySelector('#' + id); if (el && draft.values[id] != null && el.value !== draft.values[id]) { el.value = draft.values[id]; touched = touched || el; } });
     if (touched) { try { touched.dispatchEvent(new Event('input', { bubbles:true })); touched.dispatchEvent(new Event('change', { bubbles:true })); } catch (_) {} }
@@ -820,6 +831,7 @@ function labCategorySummary(client, category) {
       var want = new Set(draft.checks.map(String)), boxes = Array.from(content.querySelectorAll('.na-v2-batch-check'));
       if (boxes.length) { boxes.forEach(function (i) { i.checked = want.has(String(i.value || '')); }); try { labBatchUpdatePreview(); } catch (_) {} }
     }
+    } finally { root.setTimeout(function () { naV2Restoring = false; }, 0); }
   }
   if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('input', function (e) { var t = e && e.target; if (t && t.isTrusted !== false && t.id && NA_V2_DRAFT_IDS.indexOf(t.id) >= 0 && e.isTrusted) naV2DraftSkip = false; }, true);
   if (typeof document !== 'undefined' && document.addEventListener) ['input', 'change'].forEach(function (ev) { document.addEventListener(ev, function (e) { var t = e && e.target; if (t && ((t.id && NA_V2_DRAFT_IDS.indexOf(t.id) >= 0) || (t.classList && t.classList.contains('na-v2-batch-check')))) root.setTimeout(naV2DraftPersist, 0); }, true); });
@@ -1367,12 +1379,34 @@ function labCategorySummary(client, category) {
       if (typeof toast === 'function') toast('El cobro múltiple CANON no está disponible','error');
       return false;
     }
+    // Abono anterior enviado sin respuesta: se reenvía EL MISMO lote (mismos operation_id) y no uno nuevo.
+    var prior = naV2StoredRead(), canon = root.NuevoAmanecerCanonical;
+    if (prior && prior.submitted && prior.batch && prior.clientId === labClientScreenState.clientId && canon && typeof canon.resumePaymentBatch === 'function') {
+      labBatchSubmitInFlight = true;
+      try {
+        await canon.resumePaymentBatch(prior.batch);
+        naV2DraftSkip = true; naV2DraftClear();
+        try { if (typeof canon.refresh === 'function') await canon.refresh(); } catch (_) {}
+        if (typeof toast === 'function') toast('El abono anterior ya quedó registrado. No se cobró dos veces.','success');
+        return true;
+      } catch (error) {
+        var msg = String(error && error.message || error || '');
+        var network = root.navigator.onLine === false || /fetch|network|timeout|abort|OFFLINE|PENDING/i.test(msg) || (error && error.name === 'TypeError');
+        if (!network) {
+          // Rechazo definitivo del servidor (nada se registró): se libera para no bloquear la ficha.
+          naV2DraftClear();
+          try { if (typeof canon.releaseRejectedFinancial === 'function') await canon.releaseRejectedFinancial(prior.batch.payload && prior.batch.payload.operation_id); } catch (_) {}
+          if (typeof toast === 'function') toast('El abono anterior fue rechazado por el servidor. Revise la ficha antes de cobrar de nuevo.','error');
+        } else if (typeof toast === 'function') toast('Hay un abono anterior sin confirmar. Se reintentará el mismo cuando haya internet.','error');
+        return false;
+      } finally { labBatchSubmitInFlight = false; labBatchUpdatePreview(); }
+    }
     labBatchSubmitInFlight = true;
     naV2DraftMarkSubmitted();
     labBatchUpdatePreview();
-    var confirmedVisual = false;
+    var confirmedVisual = false, result = null;
     try {
-      var result = await bridge.confirmBatch({
+      result = await bridge.confirmBatch({
         allocations:state.plan.allocations,
         payment_method:state.method,
         reference:state.reference
@@ -1391,6 +1425,13 @@ function labCategorySummary(client, category) {
       if (typeof toast === 'function') toast('No se pudo completar el cobro múltiple','error');
       return false;
     } finally {
+      if (!confirmedVisual && !naV2DraftSkip) {
+        var sd = naV2StoredRead(), pend = naV2PendingBatch();
+        if (sd && sd.submitted) {
+          if (pend) { sd.batch = pend; naV2StoredWrite(sd); }                    // guarda el lote exacto para reusar sus ids
+          else if (result && NA_V2_LOCAL_CODES.test(String(result.code || ''))) { sd.submitted = false; delete sd.batch; naV2StoredWrite(sd); }
+        }
+      }
       labBatchSubmitInFlight = false;
       // Error o respuesta perdida: el borrador queda marcado como enviado (no se restaura tras recargar) porque el
       // abono puede estar en cola con su mismo id. Si el cajero vuelve a escribir, se guarda de nuevo.

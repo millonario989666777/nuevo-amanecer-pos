@@ -115,7 +115,8 @@ test('hosted PWA precaches the complete CANON Motion runtime as one shell genera
 });
 
 test('hosted PWA stages a complete build and applies it through the explicit updater', () => {
-  assert.match(serviceWorker, /cache\.addAll\(/);
+  assert.match(serviceWorker, /CRITICAL_SHELL\.has\(url\)\) throw error/);
+  assert.match(serviceWorker, /await cache\.put\(url, response\)/);
   assert.match(serviceWorker, /MANUAL_UPDATE_MARKER_CACHE/);
   assert.match(serviceWorker, /\.then\(\(\) => self\.skipWaiting\(\)\)/);
   assert.match(serviceWorker, /NA_ENABLE_MANUAL_UPDATES/);
