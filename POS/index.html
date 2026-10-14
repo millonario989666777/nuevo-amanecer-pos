@@ -259,7 +259,7 @@
         <div class="ss green"><div class="ss-num" id="invS5">S/0</div><div class="ss-lbl">Ganancia pot.</div></div>
     </div>
     </div>
-    <div class="table-wrap"><div class="table-card"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio / Costo</th><th>Vencimiento</th><th>Stock</th><th>Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>
+    <div class="table-wrap"><div class="table-card"><table><thead><tr><th>Producto</th><th>Cat.</th><th>Precio</th><th>Vencimiento</th><th>Stock</th><th>Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>
 </div>
 
 <!-- CLIENTES -->
@@ -594,8 +594,7 @@
             </div>
             <div class="fg">
                 <div class="fl">Icono o emoji</div>
-                <div class="product-icon-input-row"><input class="fi" id="pIcon" placeholder="📦" maxlength="12" oninput="_naF12ManualIconChanged()"><button type="button" class="product-icon-mini-btn" onclick="abrirSelectorEmoji()"><i class="na-ic na-ic-tag" aria-hidden="true"></i> Elegir</button></div>
-                <div class="product-icon-actions"><button type="button" class="product-icon-action active" id="pIconAutoBtn" onclick="_naF12EnableAutoEmoji()"><i class="na-ic na-ic-zap" aria-hidden="true"></i> Automático</button><button type="button" class="product-icon-action" onclick="abrirCreadorIcono()"><i class="na-ic na-ic-pen" aria-hidden="true"></i> Crear icono</button><span class="product-icon-mode" id="pIconMode">Automático</span></div>
+                <div class="product-icon-actions inv-icon-choices"><details id="pIconMenu"><summary>Elegir</summary><div class="inv-icon-menu"><button type="button" class="product-icon-action active" id="pIconAutoBtn" onclick="_naF12EnableAutoEmoji();document.getElementById('pIconMenu').open=false">Automático</button><button type="button" class="product-icon-action" onclick="abrirCreadorIcono();document.getElementById('pIconMenu').open=false">Crear icono</button><button type="button" class="product-icon-action" onclick="abrirSelectorEmoji();document.getElementById('pIconMenu').open=false">Emoji manual</button><label for="pIcon">Escribir emoji</label><input class="fi" id="pIcon" placeholder="📦" maxlength="12" oninput="_naF12ManualIconChanged()"><span class="product-icon-mode" id="pIconMode">Automático</span></div></details><button type="button" class="product-icon-action" onclick="document.getElementById('pImagen').click()">Subir imagen</button></div>
             </div>
         </div>
 
@@ -603,7 +602,7 @@
 
         <div class="fg">
             <div class="fl">Imagen del producto</div>
-            <div class="prod-image-line"><button type="button" class="prod-image-btn" onclick="document.getElementById('pImagen').click()"><i class="na-ic na-ic-upload" aria-hidden="true"></i> Subir imagen</button><button type="button" class="prod-image-remove" id="pRemoveImageBtn" onclick="_naF12RemoveProductImage()" hidden><i class="na-ic na-ic-trash" aria-hidden="true"></i> Quitar</button><div id="imgPreview" class="prod-image-preview">📦</div></div>
+            <div class="prod-image-line"><button type="button" class="prod-image-remove" id="pRemoveImageBtn" onclick="_naF12RemoveProductImage()" hidden><i class="na-ic na-ic-trash" aria-hidden="true"></i> Quitar</button><div id="imgPreview" class="prod-image-preview">📦</div></div>
             <input type="file" id="pImagen" accept="image/*" capture="environment" onchange="previewImagen()" style="display:none">
         </div>
 
@@ -634,7 +633,7 @@
             <div class="fg"><div class="fl">Unidades por presentación</div><input class="fi" id="pFactorCompra" type="number" inputmode="decimal" placeholder="1" min="0.001" step="0.001"><div class="field-help">Ejemplo: 1 caja = 24 unidades de venta.</div></div>
         </div>
 
-        <div class="fg"><div class="fl">Fecha vencimiento</div><input class="fi" id="pVenc" type="date" readonly><div class="field-help" id="pExpiryHelp">Sin lotes. El vencimiento se registra al ingresar lotes.</div><button type="button" class="inv-form-action" id="pManageLots" onclick="_naProductMovement(false)">Gestionar lotes / registrar ingreso</button></div>
+        <div class="fg"><div class="fl">Fecha vencimiento</div><input class="fi" id="pVenc" type="date" readonly hidden><div id="pExpiryDisplay"></div><div id="pLotList"></div><div class="field-help" id="pExpiryHelp">Sin lotes. El vencimiento se registra al ingresar lotes.</div><button type="button" class="inv-form-action" id="pManageLots" onclick="_naProductMovement(false)">Gestionar lotes / registrar ingreso</button></div>
 
         </div></details>
         <details class="prod-advanced inv-form-section">

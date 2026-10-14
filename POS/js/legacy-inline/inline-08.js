@@ -61,7 +61,19 @@ function _naProductFormState(product){
  document.getElementById('pVenc').readOnly=true;
  document.getElementById('pVenc').value=product?(_naEffectiveExpiry(product)||''):'';
  document.getElementById('pExpiryHelp').textContent=document.getElementById('pVenc').value?'Calculado desde los lotes disponibles. Gestiona el vencimiento al registrar un ingreso.':'Sin lotes. Guarda el producto y registra un ingreso con lote y vencimiento.';
- document.getElementById('mProdTitle').textContent=product?'Editar producto':'Nuevo producto';
+ document.getElementById('mProdTitle').textContent=product?`Editar · ${product.name}`:'Nuevo producto';
+ document.getElementById('pExpiryDisplay').innerHTML=_naInventoryExpiryMarkup(product?(_naEffectiveExpiry(product)||''):'');
+ const lotList=document.getElementById('pLotList');lotList.replaceChildren();
+ if(product&&typeof NA_STOCK_LOTS!=='undefined')NA_STOCK_LOTS.lots(product).filter(lot=>Number(lot.quantity)>0).forEach(lot=>{const row=document.createElement('div');row.className='inv-form-lot';row.innerHTML=`<strong>${_naEsc(lot.lot_code||'Lote')}</strong> · ${_naEsc(lot.quantity)} ${_naEsc(product.unidad||'unidad')} ${_naInventoryExpiryMarkup(lot.expiry_date)}`;lotList.appendChild(row);});
+ document.getElementById('pIconMenu').open=false;
  document.querySelectorAll('#mProd .inv-form-section').forEach((section,index)=>section.open=index===0);
 }
 function _naProductMovement(adjust){const id=invEditId;if(id==null)return;cerrarModal('mProd');abrirMovInv(id,'entrada');if(adjust){document.getElementById('mMovMotivo').value='Ajuste de inventario';document.getElementById('mMovMotivo').dispatchEvent(new Event('change'));}}
+
+// Inventory-only presentation; date inputs retain the existing ISO value for saving.
+function _naInventoryExpiryMarkup(expiry){
+ if(!expiry)return '';
+ const parts=expiry.slice(0,10).split('-'),date=parts.length===3?`${parts[2]}/${parts[1]}/${parts[0].slice(-2)}`:expiry,days=diasHasta(expiry);
+ const status=days<0?'Vencido':days<=NA_EXPIRY_SOON_DAYS?`vence en ${days} días`:'';
+ return `<span class="venc-pill">${_naEsc(date)}</span>${status?` <span class="inv-expiry-status ${days<0?'vencido':'pronto'}">${_naEsc(status)}</span>`:''}`;
+}
