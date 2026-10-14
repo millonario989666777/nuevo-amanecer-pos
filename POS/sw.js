@@ -44,6 +44,7 @@ const PRECACHE_URLS = [
   './css/experience-v2/pages/inventario.css',
   './css/experience-v2/pages/clientes.css',
   './css/experience-v2/pages/caja.css',
+  './css/canon-caja-responsive.css',
   './css/experience-v2/pages/ventas.css',
   './css/canon-pending-sales.css',
   './css/canon-ventas-tabs.css',
