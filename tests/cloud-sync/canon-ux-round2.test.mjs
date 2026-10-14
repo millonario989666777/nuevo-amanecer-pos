@@ -103,3 +103,17 @@ test('10: el menú lateral cerrado es inert', () => {
   assert.match(nav, /drawer\.inert = true;/);
   assert.match(nav, /drawer\.inert = false;/);
 });
+
+test('Caja: muestra quién abrió la sesión CANON (registro local) y conserva el fallback', () => {
+  const sb = createPosSandbox();
+  sb.run(`cajEstado=Object.assign({},cajEstado,{cajero:'',cajeroNombre:'',sessionId:'s-1'})`);
+  sb.run(`globalThis.NuevoAmanecerCashHistory={cashierMap:()=>({'s-1':{id:'c1',nombre:'Mery'}})}`);
+  assert.equal(sb.run('_naSecCashCashierText()'), 'Mery');
+  sb.run(`cajEstado.sessionId='s-viejo'`);
+  assert.equal(sb.run('_naSecCashCashierText()'), 'sin registrar');
+});
+
+test('Caja: un "@" suelto al final de la etiqueta del movimiento no se muestra', () => {
+  const src = read('js/legacy-inline/inline-11.js');
+  assert.match(src, /String\(movement\.desc\|\|'Movimiento'\)\.replace\(\/\\s\*@\+\\s\*\$\/,''\)/);
+});
