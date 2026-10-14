@@ -58,7 +58,7 @@ function _naSecCashStats(container,totals){
   [
     ['green','📈','Ventas',totals.ven],
     ['red','📉','Egresos',totals.egr],
-    ['teal','🤝','Cobros en efectivo',totals.cob],
+    ['teal','🤝','Cobros',totals.cob],
     ['amber','🧾','Gastos',totals.gas]
   ].forEach(([tone,icon,label,value])=>{
     const card=_naSecAppend(grid,'div',`cjsg ${tone}`);

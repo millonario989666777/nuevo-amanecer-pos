@@ -95,7 +95,7 @@ test('CSS CANON de la ronda 2 está enlazado y precacheado', () => {
   // P2-C (móvil): los cerrar llegan a 44 px.
   assert.match(css, /\.btn-close-m\{min-width:44px;min-height:44px/);
   assert.match(css, /\.mov-amt\.credito/);
-  assert.match(read('js/legacy-inline/inline-11.js'), /'Cobros en efectivo'/);
+  assert.match(read('js/legacy-inline/inline-11.js'), /['teal','🤝','Cobros',totals.cob]/);
 });
 
 test('10: el menú lateral cerrado es inert', () => {
