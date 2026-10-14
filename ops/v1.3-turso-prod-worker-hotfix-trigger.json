@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized deploy of lots + FEFO (#643) after #646 (visible secret-sync diagnostics). Migration 0030 already applied (run 38615111925). Code only: no schema changes, no live sale. Rollback to d0c189d.",
-  "target_commit": "57c536b3252d1cf3749776d475fc178ac81267b9",
-  "rollback_ref": "d0c189d683673e1a3cc2c7c31f29cf057af8cc53",
+  "authorization_context": "Owner authorized deploy of #649 (lotes dedupe/vencimiento) + #650 (RUC lookup). Code only: no schema changes, no migrations, no live sale. Rollback to 79e04d45.",
+  "target_commit": "71ade6d242468e47dd618857d396bef77e14632d",
+  "rollback_ref": "79e04d457e7c1b545797439bc3e77411ab0fd3ac",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 30,
-  "optimization": "STOCK_LOTS_FEFO"
+  "attempt": 31,
+  "optimization": "LOTES_DEDUPE_RUC_LOOKUP"
 }

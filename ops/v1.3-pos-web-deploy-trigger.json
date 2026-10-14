@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Lotes + vencimiento FEFO + reporte productos a vencer (#643); desplegar solo POS web.",
-  "retry_attempt": 114,
-  "retry_reason": "Backend 57c536b3 desplegado y verde (run 38616773957). Migración 0030 aplicada (run 38615111925). Sin migraciones en este run ni modificación de outbox.",
-  "requested_at_utc": "2026-10-14T18:40:00Z",
-  "approved_base": "57c536b3252d1cf3749776d475fc178ac81267b9"
+  "note": "Lotes dedupe + vencimiento (#649) y consulta RUC (#650); desplegar solo POS web.",
+  "retry_attempt": 115,
+  "retry_reason": "Deploy de base 71ade6d242468e47dd618857d396bef77e14632d[:8] junto con backend attempt 31. Sin migraciones.",
+  "requested_at_utc": "2026-10-14T20:50:00Z",
+  "approved_base": "71ade6d242468e47dd618857d396bef77e14632d"
 }
