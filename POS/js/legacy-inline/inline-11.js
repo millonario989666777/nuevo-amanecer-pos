@@ -7,7 +7,7 @@ function _naSecCashButton(className,text,action){
   return button;
 }
 // CANON no guarda quién abrió la caja (canonical_cash_sessions no tiene cajero): no se muestra "Cajero:" vacío.
-function _naSecCashCashierText(){const own=String(cajEstado?.cajeroNombre||cajEstado?.cajero||'').trim();if(own)return own;const sid=cajEstado?.sessionId||cajEstado?.session_id;const rec=sid&&window.NA_RECORD_CASHIER?window.NA_RECORD_CASHIER.get(['caja:'+sid]):null;return (rec&&rec.nombre)||'sin registrar';}
+function _naSecCashCashierText(){const own=String(cajEstado?.cajeroNombre||cajEstado?.cajero||'').trim();if(own)return own;const sid=cajEstado?.sessionId||cajEstado?.session_id;const rec=sid&&window.NA_RECORD_CASHIER?window.NA_RECORD_CASHIER.get(['caja:'+sid]):null;if(rec&&rec.nombre)return rec.nombre;let opened='';try{const map=sid&&window.NuevoAmanecerCashHistory?.cashierMap?.();opened=String(map?.[String(sid)]?.nombre||'').trim();}catch(_){}return opened||'sin registrar';}
 // Parte de una venta que quedó a crédito: no es dinero que entra a caja.
 function _naSecCashCreditPart(movement){
   if(!movement||movement.tipo!=='ing')return 0;
@@ -42,7 +42,7 @@ function _naSecCashMovement(parent,movement){
   _naSecAppend(row,'div',`mov-ic ${type}${creditOnly?' credito':''}`,creditOnly?'📝':(CAJ_IC[type]||'📋'));
   const info=_naSecAppend(row,'div');
   info.style.cssText='flex:1;min-width:0';
-  _naSecAppend(info,'div','mov-desc',movement.desc||'Movimiento');
+  _naSecAppend(info,'div','mov-desc',String(movement.desc||'Movimiento').replace(/\s*@+\s*$/,'')||'Movimiento');
   _naSecAppend(info,'div','mov-meta',`${movement.cat||''} · ${creditOnly?'a crédito (no entra a caja)':(movement.metodo||'')}${credit>0&&!creditOnly?` · ${fmt(credit)} a crédito`:''} · ${movement.hora24||movement.hora||''} · ${movement.cajeroNombre||movement.cajero||''}`);
   if(creditOnly)_naSecAppend(row,'div','mov-amt credito',`${fmt(movement.monto)} crédito`);
   else _naSecAppend(row,'div',`mov-amt ${positive?'pos':'neg'}`,`${positive?'+':'-'}${fmt(positive&&credit>0?amount-credit:movement.monto)}`);
@@ -58,7 +58,7 @@ function _naSecCashStats(container,totals){
   [
     ['green','📈','Ventas',totals.ven],
     ['red','📉','Egresos',totals.egr],
-    ['teal','🤝','Cobros en efectivo',totals.cob],
+    ['teal','🤝','Cobros',totals.cob],
     ['amber','🧾','Gastos',totals.gas]
   ].forEach(([tone,icon,label,value])=>{
     const card=_naSecAppend(grid,'div',`cjsg ${tone}`);

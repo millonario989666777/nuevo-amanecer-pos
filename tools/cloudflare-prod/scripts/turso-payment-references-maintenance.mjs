@@ -1,3 +1,4 @@
+import { backupSelectSql } from './backup-select.mjs';
 // Owner-run maintenance for migration 0021 (P1-1: one voucher number per promotion).
 // NOT run by CI or by any agent. Commands: preflight (read-only) | backup | migrate | verify.
 // The migration is additive: one new append-only table, two immutability triggers and an
@@ -53,7 +54,7 @@ export async function verify(db,source){
 export async function backup(db){
   await healthy(db);
   const names=['canonical_financial_events','canonical_financial_operations','canonical_control'];
-  const rows=await db.batch(names.map(n=>db.prepare('SELECT * FROM "'+n+'"')));
+  const rows=await db.batch(names.map(n=>db.prepare(backupSelectSql(n))));
   const bytes=Buffer.from(JSON.stringify({format:'nuevo-amanecer-turso-payment-references-backup-v1',created_at:new Date().toISOString(),tables:Object.fromEntries(names.map((n,i)=>[n,rows[i].results]))}));
   const encrypted=encryptBackup(bytes,process.env.TURSO_PROD_AUTH_TOKEN);
   writeFileSync('/tmp/turso-payment-references-backup.json',encrypted,{mode:0o600});

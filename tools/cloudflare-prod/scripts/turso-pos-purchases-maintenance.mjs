@@ -1,3 +1,4 @@
+import { backupSelectSql } from './backup-select.mjs';
 // Maintenance for migration 0028 (server purchases).
 // Run only by the owner-authorized ops workflow canon-migration-0028.yml.
 // Commands: preflight (read-only) | backup | migrate | verify.
@@ -65,7 +66,7 @@ export async function backup(db){
   await healthy(db);
   const schema=(await db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).results;
   const names=schema.filter(s=>s.type==='table').map(s=>s.name);
-  const rows=await db.batch(names.map(n=>db.prepare('SELECT * FROM "'+n.replaceAll('"','""')+'"')));
+  const rows=await db.batch(names.map(n=>db.prepare(backupSelectSql(n))));
   const tables=Object.fromEntries(names.map((n,i)=>[n,rows[i].results]));
   const bytes=Buffer.from(JSON.stringify({format:'nuevo-amanecer-turso-migration-0028-backup-v1',created_at:new Date().toISOString(),schema,tables}));
   const encrypted=encryptBackup(bytes,process.env.TURSO_PROD_AUTH_TOKEN);
