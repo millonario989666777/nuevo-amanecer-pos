@@ -174,7 +174,7 @@ test('lote abono: guardia frena con abono escrito, confirmación abierta y cola;
 test('DNI: tras rellenar no repite ni avisa; «La búsqueda tarda» no lo pisa keyup/blur', () => {
   const client = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
   assert.match(client, /if \(!done && inflight === dni\) hint\(SLOW\)/);
-  assert.ok(client.indexOf('if (inflight === dni) return;') < client.indexOf("hint('Ya hay un nombre escrito"));
+  assert.ok(client.indexOf('if (inflight === dni) return;') < client.indexOf("'Ya hay un nombre escrito"));
   assert.match(client, /clean\(nameEl\.value\) === clean\(asked\[dni\]\.name\)\) return;/);
 });
 
@@ -192,11 +192,11 @@ test('RUC 20: SUNAT devuelve razón social y dirección con el mismo endpoint', 
     f.calls.push({ url: String(url), auth: init?.headers?.authorization });
     return new Response(JSON.stringify({ razon_social: '  NEGOCIO\n NUEVO AMANECER  ', direccion: ' AV.\t LIMA 123 ' }), { status: 200 });
   };
-  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '20123456789' });
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '20123456786' });
   assert.equal(r.status, 200);
   assert.deepEqual(r.body, { status: 'found', name: 'NEGOCIO NUEVO AMANECER', address: 'AV. LIMA 123', doc_type: 'ruc' });
   assert.equal(DECOLECTA_RUC_URL, 'https://api.decolecta.com/v1/sunat/ruc');
-  assert.deepEqual(f.calls, [{ url: DECOLECTA_RUC_URL + '?numero=20123456789', auth: 'Bearer ' + FAKE }]);
+  assert.deepEqual(f.calls, [{ url: DECOLECTA_RUC_URL + '?numero=20123456786', auth: 'Bearer ' + FAKE }]);
   assert.equal(JSON.parse(f.sql("SELECT value_json FROM pos_settings WHERE key='internal:dni:month'").value_json).n, 1);
 });
 
@@ -245,8 +245,120 @@ test('cliente: RUC de 11 dígitos rellena razón social y dirección vacía; 9-1
   vm.runInNewContext(src, { window: win, globalThis: win, Date, String, Array, Object });
   els.cDni.value = '1234567890'; await win.NA_DNI_LOOKUP.check();
   assert.equal(posted.length, 0);
-  els.cDni.value = '20123456789'; await win.NA_DNI_LOOKUP.check();
-  assert.equal(JSON.stringify(posted), JSON.stringify([['/auth/dni-lookup', { dni: '20123456789' }]]));
+  els.cDni.value = '20123456786'; await win.NA_DNI_LOOKUP.check();
+  assert.equal(JSON.stringify(posted), JSON.stringify([['/auth/dni-lookup', { dni: '20123456786' }]]));
   assert.equal(els.cNombre.value, 'MI EMPRESA SAC');
   assert.equal(els.cDir.value, 'AV. LIMA 123');
+});
+
+// ---- Revisión PR #650 ----
+import { rucCheckOk } from '../../tools/cloudflare-lab/src/pos-dni-lookup.js';
+async function clientHarness({ clientes = [], reply } = {}) {
+  const vm = await import('node:vm');
+  const src = readFileSync(new URL('../../POS/js/config/pos-dni-lookup-client.js', import.meta.url), 'utf8');
+  const els = {};
+  const el = id => (els[id] ||= { id, value: '', dataset: {}, hidden: false, textContent: '', style: {}, classList: { contains: () => true, add() {}, remove() {} },
+    setAttribute() {}, addEventListener() {}, appendChild() {}, querySelector: () => null, insertAdjacentElement(_, n) { els[n.id] = n; } });
+  ['cDni', 'cNombre', 'cDir', 'mCli'].forEach(el);
+  const document = { readyState: 'complete', getElementById: id => els[id] || null, createElement: () => el('tmp' + Math.random()), addEventListener() {} };
+  const posted = [];
+  const win = { document, navigator: { onLine: true }, setTimeout: () => 0,
+    NA_ROLES: { api: async (path, body) => { posted.push(body.dni); return reply ? reply(body.dni) : { status: 'manual', reason: 'not_found' }; } } };
+  vm.runInNewContext(`var clientes = ${JSON.stringify(clientes)};\n` + src, { window: win, globalThis: win, Date, String, Array, Object, Number });
+  const type = async v => { els.cDni.value = v; await win.NA_DNI_LOOKUP.check(); };
+  return { els, posted, type, api: win.NA_DNI_LOOKUP, hint: () => els.cDniHint?.textContent || '' };
+}
+
+test('1 cliente: RUC 10 encuentra al cliente guardado con su DNI (y al revés), sin consultar', async () => {
+  let h = await clientHarness({ clientes: [{ id: 7, nombre: 'ANA', dni: '78203419' }] });
+  await h.type('10782034192');
+  assert.equal(h.posted.length, 0);
+  assert.deepEqual({ ...h.api.findLocal('10782034192') }, { id: 7, name: 'ANA' });
+  h = await clientHarness({ clientes: [{ id: 8, nombre: 'ANA', dni: '10782034192' }] });
+  await h.type('78203419');
+  assert.equal(h.posted.length, 0);
+  assert.equal(h.api.findLocal('78203419').id, 8);
+});
+
+test('2 cliente: textos de RUC hablan de razón social', async () => {
+  const h = await clientHarness();
+  h.els.cNombre.value = 'X';
+  await h.type('20123456786');
+  assert.match(h.hint(), /razón social escrita.*por RUC/);
+  h.els.cNombre.value = '';
+  await h.type('20123456786');
+  assert.equal(h.hint(), 'No se encontró la razón social. Escríbala a mano.');
+  await h.type('87654321');
+  assert.equal(h.hint(), 'No se encontró el nombre. Escríbalo a mano.');
+});
+
+test('3 cliente: la dirección puesta por la búsqueda se reemplaza en otra búsqueda; la editada se respeta', async () => {
+  const h = await clientHarness({ reply: n => ({ status: 'found', name: 'EMP ' + n, address: 'DIR ' + n }) });
+  await h.type('20123456786');
+  assert.equal(h.els.cDir.value, 'DIR 20123456786');
+  h.els.cNombre.value = '';
+  await h.type('10782034192');
+  assert.equal(h.els.cDir.value, 'DIR 10782034192');
+  h.els.cDir.value = 'MI DIRECCION'; h.els.cNombre.value = '';
+  await h.type('20123456786');
+  assert.equal(h.els.cDir.value, 'MI DIRECCION');
+});
+
+test('4 cliente: RUC pegado con guiones se consulta como 11 dígitos', async () => {
+  const h = await clientHarness({ reply: () => ({ status: 'found', name: 'ANA PEREZ' }) });
+  await h.type('10-78203419-2');
+  assert.deepEqual([...h.posted], ['10782034192']);
+  assert.equal(h.els.cNombre.value, 'ANA PEREZ');
+});
+
+test('5 servidor: respaldo RENIEC solo ante not_found/provider_auth, no ante 429 ni tiempo agotado', async () => {
+  const { DECOLECTA_RUC_URL } = await import('../../tools/cloudflare-lab/src/pos-dni-lookup.js');
+  let i = 0;
+  for (const [sunat, fallback] of [[404, true], [401, true], [429, false], ['timeout', false]]) {
+    i++; // cada caso, fuera del enfriamiento de 30 s del anterior
+    const urls = [];
+    const db = { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({ meta: { changes: 1 } }) }) }) };
+    const fetchImpl = async (url, init) => {
+      urls.push(String(url));
+      if (String(url).startsWith(DECOLECTA_RUC_URL)) {
+        if (sunat === 'timeout') return new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' }))));
+        return new Response('{}', { status: sunat });
+      }
+      return new Response(JSON.stringify({ first_name: 'ANA', first_last_name: 'PEREZ' }), { status: 200 });
+    };
+    const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
+    const req = new Request('http://localhost/auth/dni-lookup', { method: 'POST', body: JSON.stringify({ dni: '10782034192' }) });
+    const r = await dniLookupRoute(req, { DECOLECTA_API_TOKEN: FAKE }, { posRole: 'dueno', principalId: 'o' }, json, db, { fetch: fetchImpl, timeoutMs: 20, now: () => 2e12 + i * 60000 });
+    const body = await r.json();
+    assert.equal(urls.length, fallback ? 2 : 1, String(sunat) + ' ' + JSON.stringify(body));
+    assert.equal(body.status, fallback ? 'found' : 'manual', String(sunat));
+  }
+});
+
+test('6 RUC con dígito verificador incorrecto: 400 sin consulta ni cupo; cliente avisa al instante', async t => {
+  assert.equal(rucCheckOk('10782034192'), true);
+  assert.equal(rucCheckOk('20123456786'), true);
+  assert.equal(rucCheckOk('10782034193'), false);
+  const f = await setup(t);
+  const r = await call(f, '/auth/dni-lookup', 'owner-token', { dni: '10782034193' });
+  assert.equal(r.status, 400);
+  assert.deepEqual(r.body, { error: 'invalid_dni' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.sql("SELECT COUNT(*) n FROM pos_settings WHERE key='internal:dni:month'").n, 0);
+  const h = await clientHarness();
+  await h.type('10782034193');
+  assert.equal(h.posted.length, 0);
+  assert.match(h.hint(), /^RUC inválido/);
+});
+
+test('7 servidor: RUC 10 encuentra al cliente guardado con el DNI incluido, sin gastar cupo', async () => {
+  const seen = [];
+  const db = { prepare: sql => ({ bind: (...args) => ({ first: async () => { seen.push(sql); return /canonical_live_customers/.test(sql) && args[2] === '78203419' ? { customer_id: 'c-9', name: 'ANA' } : null; } }) }) };
+  let fetched = 0;
+  const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
+  const req = new Request('http://localhost/auth/dni-lookup', { method: 'POST', body: JSON.stringify({ dni: '10782034192' }) });
+  const r = await dniLookupRoute(req, { DECOLECTA_API_TOKEN: FAKE }, { posRole: 'empleado', principalId: 'd' }, json, db, { fetch: async () => { fetched++; } });
+  assert.deepEqual(await r.json(), { status: 'existing', customer_id: 'c-9', name: 'ANA' });
+  assert.equal(fetched, 0);
+  assert.ok(seen.every(sql => !/pos_settings/.test(sql)));
 });

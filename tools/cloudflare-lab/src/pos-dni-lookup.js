@@ -11,6 +11,13 @@ export const DECOLECTA_URL = 'https://api.decolecta.com/v1/reniec/dni';
 export const DECOLECTA_RUC_URL = 'https://api.decolecta.com/v1/sunat/ruc';
 const DNI = /^\d{8}$/;
 const RUC = /^(?:10|15|17|20)\d{9}$/;
+// Dígito verificador del RUC (módulo 11, pesos 5432765432): un RUC mal escrito no gasta cupo.
+export function rucCheckOk(ruc) {
+  if (!RUC.test(ruc)) return false;
+  const w = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = w.reduce((a, k, i) => a + k * Number(ruc[i]), 0);
+  return (11 - (sum % 11)) % 10 === Number(ruc[10]);
+}
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 export const LIMITS = { employeePerMinute: 3, employeePerDay: 20, monthlyDefault: 95, timeoutMs: 2500 };
 const RECENT_FAIL = new Map();
@@ -26,8 +33,10 @@ async function existingCustomer(db, dni, promotionId) {
   // Las dos tablas a la vez: en el celular cada viaje a la base cuenta para los 3 s.
   const rows = await Promise.all(['canonical_live_customers', 'customers'].map(async (table) => {
     try {
-      const stmt = db.prepare(`SELECT customer_id,name FROM ${table} WHERE ${where}trim(COALESCE(document,''))=?1 LIMIT 1`);
-      return await (promotionId ? stmt.bind(dni, promotionId) : stmt.bind(dni)).first();
+      // RUC 10 y su DNI incluido (dígitos 3-10) son el mismo titular.
+      const alt = dni.length === 11 && dni.startsWith('10') ? dni.slice(2, 10) : dni;
+      const stmt = db.prepare(`SELECT customer_id,name FROM ${table} WHERE ${where}trim(COALESCE(document,'')) IN (?1,?3) LIMIT 1`);
+      return await (promotionId ? stmt.bind(dni, promotionId, alt) : stmt.bind(dni, null, alt)).first();
     } catch (e) { if (!missingTable(e)) throw e; return null; }
   }));
   return rows[0] || rows[1] || null;
@@ -131,7 +140,7 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
   let body = {}; try { body = await request.json(); } catch { body = {}; }
   const dni = String(body?.dni ?? '').trim();
-  const isRuc = RUC.test(dni);
+  const isRuc = rucCheckOk(dni);
   if (!DNI.test(dni) && !isRuc) return json({ error: 'invalid_dni' }, 400);
   const promotionId = SAFE_ID.test(String(body?.promotion_id || '')) ? String(body.promotion_id) : null;
   const existing = await existingCustomer(db, dni, promotionId);
@@ -147,7 +156,8 @@ export async function dniLookupRoute(request, env, auth, json, db, deps = {}) {
   catch (e) { if (missingTable(e)) return json({ status: 'manual', reason: 'not_ready' }); throw e; }
   if (denied) return json({ status: 'manual', reason: denied }, 429);
   let out = await (isRuc ? queryDecolectaRuc : queryDecolecta)(dni, token, deps.fetch || fetch, deps.timeoutMs);
-  if (isRuc && dni.startsWith('10') && out.status !== 'found') {
+  // Solo si SUNAT no lo tiene o el plan no incluye SUNAT; ante 429/tiempo agotado no se insiste.
+  if (isRuc && dni.startsWith('10') && (out.status === 'not_found' || out.status === 'provider_auth')) {
     const fallback = await queryDecolecta(dni.slice(2, 10), token, deps.fetch || fetch, deps.timeoutMs);
     if (fallback.status === 'found') out = { status: 'found', name: fallback.name, doc_type: 'ruc', source: 'reniec' };
   }
