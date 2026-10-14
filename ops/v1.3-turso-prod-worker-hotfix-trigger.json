@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of #632 (DNI lookup reads in parallel). No schema changes, no live sale. Rollback to a913412.",
-  "target_commit": "a786a6ba17981c297b367ee5baa8aa5ca9a78902",
-  "rollback_ref": "a913412e8025044de7bb568cdc0086552a356d88",
+  "authorization_context": "Owner standing authorization for deploys. Turso-only Worker redeploy of #638 (DNI per-DNI cooldown after provider error). No schema changes, no live sale. Rollback to a786a6b.",
+  "target_commit": "d0c189d683673e1a3cc2c7c31f29cf057af8cc53",
+  "rollback_ref": "a786a6ba17981c297b367ee5baa8aa5ca9a78902",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 27,
-  "optimization": "DNI_MOBILE"
+  "attempt": 28,
+  "optimization": "DNI_COOLDOWN"
 }
