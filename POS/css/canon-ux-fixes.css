@@ -301,3 +301,30 @@ body.dark .na-pin-detail{color:#cbd5e1}
   #pageCaja.active>.page-chrome,#pageVentas.active>.page-chrome{position:relative!important;top:auto!important}
   #pageCaja #cajContent,#pageVentas #ventasContent{flex:none!important;overflow-y:visible!important;height:auto!important;max-height:none!important;min-height:0!important}
 }
+/* PR B (tablet y PC, el celular no cambia) */
+@media (min-width:701px){
+  /* Pestañas fijas arriba al desplazar Caja del Día y Ventas: la cabecera deja de ser una caja propia
+     y .tabs-wrap queda pegada al borde superior de la página que se desplaza. */
+  #pageCaja.active>.page-chrome,#pageVentas.active>.page-chrome{display:contents!important}
+  #pageCaja.active .tabs-wrap,#pageVentas.active .tabs-wrap{position:sticky!important;top:0;z-index:20}
+  /* Reportes: se reserva el alto de KPIs y controles para que no salte al cargar. */
+  #pageVentas #ventasKPI{min-height:var(--na-kpi-h,86px);contain:layout}
+  #pageVentas #ventasContent{min-height:60vh}
+  /* Inventario en Nocturno: el módulo fijaba --dark oscuro y los nombres casi no se veían. */
+  body.dark #pageInventario{--dark:#f1f5f9;--border:#334155}
+  /* Controles de al menos 44 px */
+  #mCli .fi,#mCli select,#mCli .mbtn,#mCli .btn-close-m,.na-pur-head input,.na-pur-line input,.na-pur-box button,.na-review-actions button,.na-review-close,.na-sale-note input,.na-ds-actions button{min-height:44px}
+  #mCli .btn-close-m{min-width:44px}
+}
+/* Nocturno: Nueva compra y Descuento ya no salen blancas (todas las pantallas). */
+body.dark .na-review-box,body.dark .na-ds-sheet{background:#0f172a;color:#e2e8f0;border:1px solid #334155}
+body.dark .na-review-row{border-top-color:#334155}
+body.dark .na-review-row small,body.dark .na-ds-head span,body.dark .na-ds-preview{color:#cbd5e1}
+body.dark .na-review-box input,body.dark .na-review-box select,body.dark .na-review-box textarea,body.dark #naDsInput{background:#1e293b;color:#f1f5f9;border-color:#475569}
+body.dark .na-review-box input::placeholder,body.dark #naDsInput::placeholder{color:#94a3b8}
+body.dark .na-ds-chips button,body.dark .na-ds-mode button{background:#1e293b;color:#f1f5f9;border-color:#475569}
+body.dark .na-ds-chips button.active,body.dark .na-ds-mode button.active{background:#0f766e;border-color:#14b8a6;color:#fff}
+body.dark .na-ds-cancel{background:#334155;color:#f1f5f9}
+body.dark .na-review-close{background:#334155}
+.na-ds-ok{background:var(--teal,#15803d)}.na-ds-ok:disabled{opacity:1;background:#94a3b8;color:#0f172a}
+body.dark .na-ds-ok:disabled{background:#475569;color:#e2e8f0}
