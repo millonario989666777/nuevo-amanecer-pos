@@ -186,8 +186,7 @@ function isExcluded(request, url) {
 
 // Un deploy cambia pocos archivos: cada recurso que ya está en una generación anterior se revalida con
 // su ETag (304 = mismo contenido) y se copia; solo se descarga lo que cambió. Sin ETag o ante cualquier
-// duda se descarga completo como antes (cache: 'reload'). La generación se escribe solo cuando TODOS
-// los recursos llegaron (todo o nada, como addAll); si alguno falla la versión actual sigue intacta.
+// duda se descarga completo como antes (cache: 'reload'). Ver stageShell: solo index.html es obligatorio.
 async function previousShellCaches() {
   const names = (await caches.keys()).filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
   return Promise.all(names.reverse().map((name) => caches.open(name)));
@@ -211,14 +210,30 @@ async function stagedShellEntry(previousCaches, url) {
   return [url, response];
 }
 
+// Solo index.html es crítico (sin él no hay versión nueva). El resto se guarda de a uno, con tiempo
+// máximo: un archivo que falla o tarda ya no deja la instalación colgada (celulares viejos quedaban en
+// «installing» en 106/125). Lo que falte se pide a la red con la misma versión publicada.
+const CRITICAL_SHELL = new Set([new URL('./index.html', self.registration.scope).href]);
+const PRECACHE_ITEM_TIMEOUT_MS = 20000;
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new TypeError('PRECACHE_TIMEOUT')), ms); })])
+    .finally(() => clearTimeout(timer));
+}
 async function stageShell(cache) {
   const requests = [...PRECACHE_URLS_ABSOLUTE];
   const previousCaches = await previousShellCaches().catch(() => []);
-  if (!previousCaches.length) {
-    return cache.addAll(requests.map((url) => new Request(url, { cache: 'reload' })));
-  }
-  const entries = await Promise.all(requests.map((url) => stagedShellEntry(previousCaches, url)));
-  await Promise.all(entries.map(([url, response]) => cache.put(url, response)));
+  const results = await Promise.all(requests.map(async (url) => {
+    try {
+      const [, response] = await withTimeout(stagedShellEntry(previousCaches, url), PRECACHE_ITEM_TIMEOUT_MS);
+      await cache.put(url, response);
+      return true;
+    } catch (error) {
+      if (CRITICAL_SHELL.has(url)) throw error;
+      return false;
+    }
+  }));
+  return results;
 }
 
 self.addEventListener('install', (event) => {

@@ -1310,7 +1310,11 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
             var ready = await waitUntilInstalled(pwaRegistration, worker);
             if (!ready) throw new Error('UPDATE_INSTALL_TIMEOUT');
           } else {
-            throw new Error('NO_UPDATE_WORKER_AVAILABLE');
+            // No hay versión esperando (p. ej. ya se activó y la recarga automática esperaba la cola):
+            // el botón simplemente recarga; lo guardado en el aparato sobrevive con sus mismos ids.
+            setUpdateUi('Recargando…', 'success', 'Recargando…', false);
+            window.setTimeout(function () { window.location.reload(); }, 80);
+            return;
           }
 
           updateFallbackTimer = window.setTimeout(scheduleReload, 3500);

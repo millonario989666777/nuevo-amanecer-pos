@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   var doc = root.document; if (!doc) return;
-  var TIMEOUT_MS = 3000, seq = 0, asked = {}, inflight = null;
+  var TIMEOUT_MS = 3000, COOLDOWN_MS = 45000, seq = 0, asked = {}, inflight = null, failedAt = {};
   function clean(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' '); }
   function legacyList() { try { return Array.isArray(clientes) ? clientes : []; } catch (_) { return []; } } // eslint-disable-line no-undef
   function canonList() {
@@ -63,9 +63,17 @@
     // Solo se recuerda «sin nombre» cuando el servicio respondió de verdad; un fallo de red se puede reintentar.
     if (reason === 'not_found') asked[dni] = { name: null };
     if (reason === 'no_session') hint('Sesión vencida o aparato desconectado: vuelva a vincular. Escriba el nombre a mano.');
-    else if (/limit/.test(reason)) hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.');
+    else if (/limit/.test(reason)) { failedAt[dni] = Date.now(); hint('Límite de búsquedas alcanzado. Escriba el nombre a mano.'); }
     else if (reason === 'not_found') hint(MANUAL);
-    else hint('No se pudo buscar ahora. Escriba el nombre a mano.');
+    else { failedAt[dni] = Date.now(); retryHint(dni); }
+  }
+  function retryHint(dni) {
+    hint('No se pudo buscar ahora. Escriba el nombre a mano o ');
+    var el = doc.getElementById('cDniHint'); if (!el) return;
+    var btn = doc.createElement('button'); btn.type = 'button'; btn.textContent = 'Reintentar';
+    btn.style.cssText = 'border:0;background:none;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer';
+    btn.addEventListener('click', function () { delete failedAt[dni]; check(); });
+    el.appendChild(btn);
   }
   async function check() {
     var input = doc.getElementById('cDni'), nameEl = doc.getElementById('cNombre');
@@ -83,6 +91,8 @@
     // Igual que pos-roles-client: basta la sesión guardada; no exige que la nube canónica esté marcada.
     if (!root.NA_ROLES || typeof root.NA_ROLES.api !== 'function' || root.navigator.onLine === false) { hint('Sin conexión: escriba el nombre a mano.'); return; }
     if (asked[dni]) { if (asked[dni].name) { nameEl.value = asked[dni].name; hint(''); } else hint(MANUAL); return; }
+    // Tras un error del servicio o de red no se vuelve a consultar en cada tecla: espera 45 s o «Reintentar».
+    if (failedAt[dni] && Date.now() - failedAt[dni] < COOLDOWN_MS) { retryHint(dni); return; }
     hint('Buscando DNI…');
     var done = false; inflight = dni;
     // A los 3 s el cajero ya puede seguir a mano; si la respuesta llega después, igual se completa el nombre vacío.

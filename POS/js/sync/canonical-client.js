@@ -1904,6 +1904,22 @@
   function createAdjustment(input) { return createCommand('adjustment.create', input); }
   function createExpense(input) { return createCommand('expense.create', input); }
   function createCompensation(input) { return createCommand('compensation.create', input); }
+  // Reenvía EXACTAMENTE el mismo lote de abonos (mismos operation_id y payload) guardado por la ficha cuando la
+  // respuesta se perdió: el Worker contesta already_processed y nunca crea un segundo abono.
+  async function resumePaymentBatch(saved) {
+    return withWriterLock(async function () {
+      var current = journal();
+      if (current && current.state === 'PENDING') {
+        if (!saved || !saved.payload || current.payload.operation_id !== saved.payload.operation_id) fail('CANONICAL_FINANCIAL_PENDING');
+        return sendPending(current);
+      }
+      if (!saved || saved.command !== 'payment.batch' || !validBinding(saved.binding) || !validPayload('payment.batch', saved.payload)) fail('INVALID_CANONICAL_PAYLOAD');
+      var record = { state: 'PENDING', binding: copy(saved.binding), command: 'payment.batch', route: '/commands/payment.batch',
+        payload: copy(saved.payload), receipt_ids: {}, batch_credit_provenance: copy(saved.batch_credit_provenance || []) };
+      durableJournal(record);
+      return sendPending(record);
+    });
+  }
   async function retryPending() {
     return withWriterLock(async function () {
       var record = journal();
@@ -2258,7 +2274,7 @@
   root.addEventListener('storage', function (event) { if (event.key === KEY || event.key === CREDENTIALS_KEY || event.key === null) { changed = true; ready = false; saleOnlyReady = false; closeOnlyReady = false; } });
   root.addEventListener('offline', function () { ready = false; saleOnlyReady = false; closeOnlyReady = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
-    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, releaseRejectedCashClose: releaseRejectedCashClose, releaseUncommittedCashClose: releaseUncommittedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
+    pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, resumePaymentBatch: resumePaymentBatch, releaseRejectedCashClose: releaseRejectedCashClose, releaseUncommittedCashClose: releaseUncommittedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
     createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
     renderCredits: renderCredits, startPOS: startPOS, commandContext: function () { return commonPayload(); }, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState, ping: ping, readProgress: function () { return copy(readProgress); } });
 })(globalThis);
