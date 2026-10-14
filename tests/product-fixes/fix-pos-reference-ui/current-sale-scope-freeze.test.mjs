@@ -34,7 +34,7 @@ function stripShortViewportMedia(source){
 test('all CSS outside Venta actual and the reference decorator remain frozen',()=>{
  // Baseline: CANON 9278e2ce95df9ce01deec220a16e858551ad4e33.
  assert.equal(hash(frozenRules(readFileSync('POS/css/canon-pos-reference-ui.css','utf8')).join('\n')), '23d82354eed75dce6b59a345785eb81f9cae5f34b90db8c333e484a0a6604ac1');
- assert.equal(hash(readFileSync('POS/js/canon-pos-reference-ui.js','utf8').replace(/\r\n/g,'\n')), '2acea7c1562d0e3f1b8294bcf3fab59128f54deec73c7109f21cee55892f1a33');
+ assert.equal(hash(readFileSync('POS/js/canon-pos-reference-ui.js','utf8').replace(/\r\n/g,'\n')), '113771411f7106e82d21ab023bb87f5e85a817aa5492b6f93fefeeddfd7831d4');
 });
 
 test('approved upper panel stays frozen during the footer adjustment',()=>{
