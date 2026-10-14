@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Comprobante monocromo CANON y editor unificado sin etiquetas técnicas; desplegar solo POS web.",
-  "retry_attempt": 113,
-  "retry_reason": "PR #545 integrado; CANON Critical CI y E2E Smoke CI PASS en SHA 976f790a7fad799a3185da05d2540a58950e16f7. Sin migraciones ni modificación de outbox.",
-  "requested_at_utc": "2026-10-12T11:50:48Z",
-  "approved_base": "3c86baae0c1f2456c1f87d66f6e4cb0b6df21315"
+  "note": "Lotes + vencimiento FEFO + reporte productos a vencer (#643); desplegar solo POS web.",
+  "retry_attempt": 114,
+  "retry_reason": "Backend 57c536b3 desplegado y verde (run 38616773957). Migración 0030 aplicada (run 38615111925). Sin migraciones en este run ni modificación de outbox.",
+  "requested_at_utc": "2026-10-14T18:40:00Z",
+  "approved_base": "57c536b3252d1cf3749776d475fc178ac81267b9"
 }
