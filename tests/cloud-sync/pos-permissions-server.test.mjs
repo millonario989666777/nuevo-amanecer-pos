@@ -13,7 +13,7 @@ test('paired employees cannot invoke owner actions; owner expense and settings r
   await f.freeze(); await f.promote();
   f.database.exec('DROP TRIGGER canonical_control_no_legacy');
   f.exec("UPDATE canonical_control SET mode='ACTIVE',revision=revision+1,authority_epoch=authority_epoch+1,minimum_client_contract='a6-gate-c-v1' WHERE id=1");
-  for (const name of ['0008_canonical_commerce.sql', '0009_canonical_financial.sql', '0010_session_auth.sql', '0011_canonical_session_runtime.sql', '0012_credit_accounts_v2.sql', '0013_canonical_expenses.sql', '0024_pos_roles_owner_pin.sql']) f.database.exec(read(name).replace(/DROP INDEX[^;]*;/, ''));
+  for (const name of ['0008_canonical_commerce.sql', '0009_canonical_financial.sql', '0010_session_auth.sql', '0011_canonical_session_runtime.sql', '0012_credit_accounts_v2.sql', '0013_canonical_expenses.sql', '0033_canonical_expense_server_received_at.sql', '0024_pos_roles_owner_pin.sql']) f.database.exec(read(name).replace(/DROP INDEX[^;]*;/, ''));
   f.addDevice('owner-phone', 'writer', 'active', 'owner-token');
   const code = await (await call(f, '/auth/pairing-code', 'owner-token', { label: 'Employee' })).json();
   const paired = await (await call(f, '/auth/pair', '', { code: code.code })).json();

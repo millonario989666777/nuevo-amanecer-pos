@@ -13,7 +13,7 @@ function serverClock(t, instant){
 }
 async function setup(t, migrated=true){
  const clock=serverClock(t,'2026-10-15T14:00:00.000Z');
- const f=await activeCanon(t,{migrations:migrated?[migration,'0033_canonical_expense_server_received_at.sql']:[]});f.addDevice('expense-owner','writer','active','expense-owner-token');
+ const f=await activeCanon(t,{migrations:migrated?[migration,'0033_canonical_expense_server_received_at.sql']:['0033_canonical_expense_server_received_at.sql']});f.addDevice('expense-owner','writer','active','expense-owner-token');
  const call=async(command,body)=>f.fetch('http://localhost/commands/'+command,{method:'POST',headers:{authorization:'Bearer expense-owner-token','content-type':'application/json'},body:JSON.stringify(body)});
  assert.equal((await call('expense.create',{...common(f,'fixture-create'),amount_cents:1000,concept:'Original',category:'Otro',payment_method:'yape',expense_date:'2026-10-15',note:'Original note'})).status,201);
  return {f,call,clock};
@@ -187,7 +187,12 @@ test('legacy NULL server receipt falls back to base created_at',async t=>{
  assert.equal((await create('legacy-before','2026-10-15T14:00:00Z')).status,201);
  assert.equal((await create('legacy-after','2026-10-15T16:00:00Z')).status,201);
  f.database.exec(readFileSync('infra/database/migrations/'+migration,'utf8'));
- f.database.exec(readFileSync('infra/database/migrations/0033_canonical_expense_server_received_at.sql','utf8'));
+ // Filas legadas (anteriores a 0033) quedan con server_received_at NULL.
+ // Solo en la prueba: se suspenden los triggers de inmutabilidad para simular filas previas a 0033.
+ const triggers=f.database.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='canonical_expenses'").all();
+ for(const tr of triggers)f.database.exec('DROP TRIGGER "'+tr.name+'"');
+ f.database.exec("UPDATE canonical_expenses SET server_received_at=NULL WHERE expense_id IN ('legacy-before','legacy-after')");
+ for(const tr of triggers)f.database.exec(tr.sql);
  assert.equal(f.sql("SELECT server_received_at FROM canonical_expenses WHERE expense_id='legacy-before'").server_received_at,null);
  const base=common(f,'legacy-open');delete base.expense_id;
  assert.equal((await call('cash.open',{...base,session_id:'legacy-shift',opening_cents:10000})).status,201);

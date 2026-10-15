@@ -22,10 +22,13 @@ test('Inicio sums outstanding active credits only without mutating records', () 
   assert.equal(run('_naInicioCredits(records).active.length'),1);
   assert.equal(JSON.stringify(fixtures),JSON.stringify(ctx.records));
 });
-test('critical stock requires a positive minimum and tracked physical stock', () => {
+test('critical stock: tracked products out of stock or below a positive minimum (owner rule)', () => {
   const fixtures=[{stock:1,stockMin:2},{stock:2,stockMin:2},{stock:3,stockMin:2},{stock:0},{stock:0,stockMin:null},{stock:0,stockMin:0},{stock:0,stockMin:2,trackStock:false},{stock:0,stockMin:2,controlInventario:false},{stock:0,stockMin:2,unidad:'service'},{stock:0,stockMin:2,tipo:'servicio'}];
   ctx.products=fixtures;
-  assert.equal(run('products.filter(_naCriticalStock).length'),2);
+  assert.equal(run('products.filter(_naCriticalStock).length'),5);
+  // Agotados sin mínimo cuentan; no controlados o servicios nunca.
+  ctx.products=[{stock:0},{stock:-2,stockMin:0},{stock:5},{stock:5,stockMin:0},{stock:0,trackStock:false},{stock:0,controlInventario:false},{stock:0,unidad:'servicio'},{stock:4,stockMin:4}];
+  assert.equal(run('products.filter(_naCriticalStock).length'),3);
 });
 test('Inicio money and opening time use grouping and Lima HH:MM', () => {
   assert.equal(run('_naInicioMoney(22270.15)'),'S/ 22,270.15');

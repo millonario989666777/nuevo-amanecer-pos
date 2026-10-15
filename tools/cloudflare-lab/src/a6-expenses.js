@@ -88,7 +88,6 @@ export async function createCanonicalExpense(request,env,auth,json) {
   if (await namespaceCollision(db,body.operation_id)) return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
 
   const serverNow = new Date().toISOString();
-  const hasReceivedAt = await expenseServerReceivedAvailable(db);
   const dateError = await expenseDateError(db, body, body.expense_date, true, serverNow);
   if (dateError) return json({error:dateError},409);
   const hasSession = body.session_id !== undefined;
@@ -142,10 +141,10 @@ export async function createCanonicalExpense(request,env,auth,json) {
       body.client_contract,auth.principalId,auth.credentialHash,expectedSessionRevision,body.created_at),'operation');
 
   pushChecked(db.prepare(`INSERT INTO canonical_expenses(expense_id,operation_id,promotion_id,session_id,amount_cents,cash_delta_cents,
-    concept,category,payment_method,expense_date,note,created_at${hasReceivedAt?',server_received_at':''})
-    VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12${hasReceivedAt?',?13':''})`).bind(
+    concept,category,payment_method,expense_date,note,created_at,server_received_at)
+    VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`).bind(
       body.expense_id,body.operation_id,body.promotion_id,hasSession?body.session_id:null,body.amount_cents,cashDelta,
-      body.concept.trim(),body.category.trim(),body.payment_method,body.expense_date,note,body.created_at,...(hasReceivedAt?[serverNow]:[])),'expense');
+      body.concept.trim(),body.category.trim(),body.payment_method,body.expense_date,note,body.created_at,serverNow),'expense');
 
   pushChecked(db.prepare(`UPDATE canonical_control SET first_live_operation_id=COALESCE(first_live_operation_id,?1)
     WHERE id=1 AND mode='ACTIVE' AND active_promotion_id=?2 AND authority_epoch=?3 AND revision=?4
@@ -193,11 +192,6 @@ export async function expenseDateError(db, expense, date, checkDate = true, serv
     if (currentDate !== null && await db.prepare("SELECT 1 FROM canonical_cash_closures WHERE date(closed_at,'-5 hours')=?1 AND julianday(closed_at)>=julianday(?2)").bind(currentDate,expense.server_received_at ?? expense.created_at).first()) return 'expense_date_locked_closed_day';
   }
   return null;
-}
-
-async function expenseServerReceivedAvailable(db) {
-  const columns = await db.prepare('PRAGMA table_info(canonical_expenses)').all();
-  return columns.results.some(column => column.name === 'server_received_at');
 }
 
 export async function expenseRevisionsAvailable(db) {

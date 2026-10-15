@@ -19,6 +19,8 @@ const ACTIVE_MIGRATIONS = [
   '0011_canonical_session_runtime.sql',
   '0012_credit_accounts_v2.sql',
   '0013_canonical_expenses.sql',
+  // Producción ya tiene 0033 (server_received_at); el servidor siempre lo escribe.
+  '0033_canonical_expense_server_received_at.sql',
 ];
 
 export async function activeCanon(t, { migrations = [] } = {}) {
@@ -28,7 +30,7 @@ export async function activeCanon(t, { migrations = [] } = {}) {
   // Test-only transition; production activation remains separately gated.
   f.database.exec('DROP TRIGGER canonical_control_no_legacy');
   f.exec("UPDATE canonical_control SET mode='ACTIVE',revision=revision+1,authority_epoch=authority_epoch+1,minimum_client_contract='a6-gate-c-v1' WHERE id=1");
-  for (const name of [...ACTIVE_MIGRATIONS, ...migrations]) f.database.exec(read('infra/database/migrations/' + name));
+  for (const name of [...new Set([...ACTIVE_MIGRATIONS, ...migrations])]) f.database.exec(read('infra/database/migrations/' + name));
   return f;
 }
 
