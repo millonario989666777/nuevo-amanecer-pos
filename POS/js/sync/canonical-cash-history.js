@@ -102,6 +102,8 @@
       var t = totals[s.session_id], opened = lima(s.opened_at), closed = lima(s.closed_at), who = map[s.session_id];
       delete t.sales;
       return Object.assign({
+        openedByName: s.opened_by_name || null,
+        closedByName: s.closed_by_name || null,
         sessionId: s.session_id,
         status: s.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
         fecha: opened.date,
@@ -182,6 +184,8 @@
       card.setAttribute('data-session-id', r.sessionId);
       card.append(el('div', 'na-cash-hist-title', '📅 ' + r.fechaLabel + ' · ' + r.apertura + ' → ' + (r.cierreFecha && r.cierreFecha !== r.fecha ? r.cierreFecha.split('-').reverse().join('/') + ' ' : '') + r.cierre, 'font-size:13px;font-weight:800;margin-bottom:4px'));
       line(card, 'Cajero', r.cajero || 'No registrado');
+      line(card, 'Abrió', r.openedByName || 'No registrado');
+      line(card, 'Cerró', r.closedByName || 'No registrado');
       line(card, 'Fondo inicial', money(r.fondo));
       line(card, 'Ventas (' + r.ventasCount + ')', money(r.ventas));
       if (r.ventasCredito) line(card, '   · al crédito', money(r.ventasCredito));
