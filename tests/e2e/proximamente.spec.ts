@@ -70,6 +70,13 @@ test('every registry entry: server lock exists; locked ones show the lock and pr
     await expect(page.locator(`.na-prox-section[data-module="${module}"] > .na-prox-summary`)).toHaveText(`${module} (${n})`);
   }
   for (const e of unlocked) await expect(page.locator(`[data-feature-id="${e.id}"] .na-prox-available`)).toHaveText('Disponible');
+  for (const id of ['reparto-abono-multiples-deudas', 'transferencias-cajas']) await expect(page.locator(`[data-feature-id="${id}"] .na-prox-note`)).toBeVisible();
+  for (const id of ['reparto-abono-multiples-deudas', 'transferencias-cajas']) await expect(page.locator(`[data-feature-id="${id}"] .na-prox-note`)).toHaveText('Requiere CANON + migración');
+  if (unlocked.length) {
+    const iconOffset = (id: string) => page.locator(`[data-feature-id="${id}"]`).evaluate(c => c.querySelector('.na-prox-icon')!.getBoundingClientRect().top - c.getBoundingClientRect().top);
+    const lockedId = entries.find(e => !e.unlocked)!.id;
+    expect(Math.abs(await iconOffset(unlocked[0].id) - await iconOffset(lockedId)), 'no extra top strip on Disponible cards').toBeLessThan(1);
+  }
   for (const e of entries) {
     const card = page.locator(`[data-feature-id="${e.id}"]`);
     if (e.unlocked) { await expect(card).toHaveClass(/is-enabled/); await expect(card.locator('.na-prox-badge')).toHaveCount(0); continue; }

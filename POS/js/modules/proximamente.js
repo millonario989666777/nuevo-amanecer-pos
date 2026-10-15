@@ -107,6 +107,7 @@
     var icon = element('span', 'na-prox-icon', feature.icon); icon.setAttribute('aria-hidden', 'true'); node.appendChild(icon);
     node.appendChild(element('span', 'na-prox-name', feature.name));
     node.appendChild(element('span', 'na-prox-description', feature.description));
+    if (feature.note) node.appendChild(element('span', 'na-prox-note', feature.note));
     node.addEventListener('click', function () { openFeature(feature); });
     return node;
   }
