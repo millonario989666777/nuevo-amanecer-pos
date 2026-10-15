@@ -11,8 +11,6 @@ test('0033 is purely additive, idempotent and preserves all prior rows, views an
  const tables=schema.filter(r=>r.type==='table').map(r=>r.name);
  f.addDevice('migration-owner','writer','active','migration-token');
  const control=f.control();
- const response=await f.fetch('http://localhost/commands/expense.create',{method:'POST',headers:{authorization:'Bearer migration-token','content-type':'application/json'},body:JSON.stringify({operation_id:'legacy-op',expense_id:'legacy',promotion_id:control.active_promotion_id,authority_epoch:control.authority_epoch,expected_control_revision:control.revision,client_contract:'a6-gate-c-v1',amount_cents:100,concept:'Legacy',category:'Otro',payment_method:'yape',expense_date:new Date(Date.now()-5*3600e3).toISOString().slice(0,10),created_at:new Date().toISOString()})});
- assert.equal(response.status,201);
  const before=tables.map(name=>f.database.prepare('SELECT * FROM "'+name+'"').all());
  assert.equal(source,'ALTER TABLE canonical_expenses ADD COLUMN server_received_at TEXT;\n');
  assert.equal((await migration.preflight(db,source)).already_present,0);

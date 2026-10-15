@@ -54,8 +54,9 @@ function _naInicioCredits(records) {
   return { active, debt: Number(active.reduce((sum, cr) => sum + _naInicioBalance(cr), 0).toFixed(2)) };
 }
 function _naInicioBalance(cr) { const computed = _naNumber(cr.monto) - _naNumber(cr.pagado); return Math.max(0, Number((cr.saldo != null && cr.saldo !== '' ? _naNumber(cr.saldo) : computed).toFixed(2))); }
+// Crítico (decisión del owner): producto que controla stock y está agotado (stock <= 0) o por debajo de un mínimo > 0.
 function _naCriticalStock(p) {
-  return p?.controlInventario !== false && p?.trackStock !== false && p?.track_stock !== false && ![p?.tipo,p?.type,p?.unidad,p?.cat].some(v => /^(servicio|service)$/i.test(String(v || ''))) && _naNumber(p?.stockMin) > 0 && _naNumber(p?.stock) <= _naNumber(p?.stockMin);
+  return p?.controlInventario !== false && p?.trackStock !== false && p?.track_stock !== false && ![p?.tipo,p?.type,p?.unidad,p?.cat].some(v => /^(servicio|service)$/i.test(String(v || ''))) && (_naNumber(p?.stock) <= 0 || (_naNumber(p?.stockMin) > 0 && _naNumber(p?.stock) <= _naNumber(p?.stockMin)));
 }
 function _naInicioCashText(state) {
   const name = String(state?.cajeroNombre || state?.cajero || '').trim();
