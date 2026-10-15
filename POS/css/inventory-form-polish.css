@@ -21,3 +21,13 @@ html.na-role-empleado #invPhotosBtn{display:none!important}
 /* Precio de Venta: nunca sobresale de la tarjeta (columna izquierda en 390 y 1024). */
 #pagePOS .product-card .p-price-badge{max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}
 @media(max-width:700px){#pagePOS .product-card .p-price-badge{transform:none}}
+
+/* Inventario «Más opciones»: panel desplegable sobre los controles fijos (z-index 20), sin cambiar el diseño. */
+#pageInventario .inv-secondary{position:relative;z-index:50}
+#pageInventario .inv-secondary-menu{position:absolute;right:0;top:calc(100% + 4px);display:flex;flex-direction:column;gap:4px;min-width:180px;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 24px rgba(15,23,42,.18)}
+#pageInventario .inv-secondary-menu>button{margin:0!important;width:100%!important;white-space:nowrap}
+body.dark #pageInventario .inv-secondary-menu{background:#1e293b;border-color:#334155}
+/* Fotos múltiples: los botones de acción quedan visibles en pantallas bajas. */
+#productImageBatchModal .mbtns{position:sticky;bottom:0;background:inherit;padding-top:10px!important;z-index:1}
+#productImageBatchModal .modal{background:#fff}
+body.dark #productImageBatchModal .modal{background:#1e293b}
