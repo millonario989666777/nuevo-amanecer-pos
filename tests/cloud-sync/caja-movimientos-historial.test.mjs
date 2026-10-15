@@ -63,6 +63,24 @@ test('open shift summary keeps pre-midnight sales after midnight and falls back 
   const closed = h.shiftMoves(moves, { abierta: false, cerrada: true, sessionId: 'S1' }, '2026-10-14T05:45:00Z');
   assert.equal(closed.label, 'Ventas del día'); assert.equal(closed.moves.length, 2);
 });
+test('lima() reads zone-less timestamps as Lima time', () => {
+  assert.deepEqual(plain(h.lima('2026-10-14T23:30:00')), { date: '2026-10-14', time: '23:30' });
+  assert.deepEqual(plain(h.lima('2026-10-14 00:10')), { date: '2026-10-14', time: '00:10' });
+  assert.deepEqual(plain(h.lima('2026-10-14')), { date: '2026-10-14', time: '00:00' });
+  assert.deepEqual(plain(h.lima('2026-10-14T04:30:00Z')), { date: '2026-10-13', time: '23:30' });
+  assert.deepEqual(plain(h.lima('2026-10-14T04:30:00-05:00')), { date: '2026-10-14', time: '04:30' });
+  assert.deepEqual(plain(h.lima('basura')), { date: '', time: '' });
+});
+test('open shift with sessionId ignores same-day rows from other or unknown shifts', () => {
+  const moves = [
+    { sessionId: 'S1', fecha: '2026-10-14', tipo: 'ing', ventaId: 1, metodo: 'efectivo', monto: 10 },
+    { fecha: '2026-10-14', tipo: 'ing', ventaId: 2, metodo: 'efectivo', monto: 40 },
+    { sessionId: 'S0', fecha: '2026-10-14', tipo: 'ing', ventaId: 3, metodo: 'efectivo', monto: 99 }
+  ];
+  const state = { abierta: true, cerrada: false, sessionId: 'S1', fechaApertura: '2026-10-14' };
+  assert.equal(h.movementTotals(h.shiftMoves(moves, state).moves).ventas, 1000);
+  assert.equal(h.movementTotals(h.shiftMoves(moves.slice(1), state).moves).ventas, 4000, 'legacy rows without sessionId fall back to the opening date');
+});
 test('preset range recomputes past midnight', () => {
   assert.deepEqual(plain(h.presetRange('7', '2026-10-14T04:59:00Z')), { desde: '2026-10-07', hasta: '2026-10-13' });
   assert.deepEqual(plain(h.presetRange('7', '2026-10-14T05:01:00Z')), { desde: '2026-10-08', hasta: '2026-10-14' });

@@ -6,8 +6,16 @@
   const num = v => Number.isFinite(Number(v)) ? Number(v) : 0;
   const cents = v => Math.round(num(v) * 100);
   const money = v => 'S/ ' + (num(v) / 100).toFixed(2);
+  // Timestamps without an explicit zone are Lima wall-clock time, never UTC or the device zone.
+  function zoned(value) {
+    if (typeof value !== 'string') return value;
+    const text = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text + 'T00:00:00-05:00';
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(text)) return text.replace(' ', 'T') + '-05:00';
+    return text;
+  }
   function lima(value) {
-    const d = new Date(new Date(value).getTime() - 18000000);
+    const d = new Date(new Date(zoned(value)).getTime() - 18000000);
     return Number.isFinite(d.getTime()) ? { date: d.toISOString().slice(0, 10), time: d.toISOString().slice(11, 16) } : { date: '', time: '' };
   }
   const limaToday = (now = new Date()) => lima(now).date;
@@ -68,7 +76,12 @@
   // Movimientos del turno abierto (por sessionId o fecha de apertura); sin turno abierto, los de hoy.
   function shiftMoves(moves, state, now) {
     const open = state && state.abierta && !state.cerrada;
-    if (open && state.sessionId != null) return { label: 'Ventas del turno', moves: moves.filter(m => m.sessionId != null ? String(m.sessionId) === String(state.sessionId) : !!state.fechaApertura && (m.timestamp ? lima(m.timestamp).date : m.fecha) >= state.fechaApertura) };
+    if (open && state.sessionId != null) {
+      // Prefer the shift's own movements; the opening date is only a fallback for legacy rows without sessionId.
+      const own = moves.filter(m => m.sessionId != null && String(m.sessionId) === String(state.sessionId));
+      if (own.length) return { label: 'Ventas del turno', moves: own };
+      return { label: 'Ventas del turno', moves: moves.filter(m => m.sessionId == null && !!state.fechaApertura && (m.timestamp ? lima(m.timestamp).date : m.fecha) >= state.fechaApertura) };
+    }
     if (open && state.fechaApertura) return { label: 'Ventas del turno', moves: moves.filter(m => (m.timestamp ? lima(m.timestamp).date : m.fecha) >= state.fechaApertura) };
     const today = limaToday(now);
     return { label: 'Ventas del día', moves: moves.filter(m => (m.timestamp ? lima(m.timestamp).date : m.fecha) === today) };
