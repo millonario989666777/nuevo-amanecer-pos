@@ -1,5 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
-import {mkdtemp,readdir,copyFile,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {deflateRawSync} from 'node:zlib';
@@ -14,8 +14,10 @@ for(const kind of ['folder','zip'] as const)test(`${kind} import synchronizes th
  const dir=await mkdtemp(join(tmpdir(),'na-image-folder-')),zipPath=dir+'.zip';
  const contexts=[];const store=new Map<string,any>();let version=0;
  try{
-  const names=(await readdir('/workspace/imagenes')).filter(n=>/^sample_\d+_\d+\.jpg$/.test(n)).slice(0,4);expect(names.length).toBeGreaterThan(0);
-  const files=[];for(const name of names){const code=name.match(/^sample_\d+_(\d+)\.jpg$/)![1],fixture=code+'.jpg';await copyFile(join('/workspace/imagenes',name),join(dir,fixture));files.push({name:fixture,data:await readFile(join(dir,fixture))});}await writeFile(zipPath,zip(files));const codes=files.map(f=>f.name.slice(0,-4));
+  // Synthetic JPEG fixtures (no third-party photos in the repo); codes exist in the seed catalog.
+  const gen=await browser.newPage();const codes0=['1747524793003','1732403971746','7751271032667','798190256177'];
+  const datas:string[]=await gen.evaluate(list=>list.map((_,i)=>{const c=document.createElement('canvas');c.width=900;c.height=700;const x=c.getContext('2d')!;x.fillStyle=['#e11d48','#2563eb','#16a34a','#f59e0b'][i];x.fillRect(0,0,900,700);x.fillStyle='#fff';x.fillRect(200,150,500,400);return c.toDataURL('image/jpeg',.9);}),codes0);await gen.close();
+  const files=[];for(let i=0;i<codes0.length;i++){const fixture=codes0[i]+'.jpg',data=Buffer.from(datas[i].split(',')[1],'base64');await writeFile(join(dir,fixture),data);files.push({name:fixture,data});}await writeFile(zipPath,zip(files));const codes=files.map(f=>f.name.slice(0,-4));
   async function device(){const context=await browser.newContext({baseURL,serviceWorkers:'block'});contexts.push(context);const page=await context.newPage();await page.route('**/*',async route=>{
    const url=new URL(route.request().url());if(url.hostname==='127.0.0.1')return route.continue();if(url.hostname!=='permissions.test')return route.abort();
    let result:any={};if(url.pathname==='/auth/me')result={pos_role:'owner',owner_pin_set:true,roles_ready:true,device_id:'synthetic-images'};
