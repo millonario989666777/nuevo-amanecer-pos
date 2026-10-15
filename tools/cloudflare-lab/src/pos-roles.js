@@ -226,7 +226,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
         FROM pos_review_flags ${all ? '' : "WHERE status='pendiente'"} ORDER BY created_at DESC LIMIT 200`).all()).results || [];
       return json({ reviews: rows.map(r => ({ ...r, detail: JSON.parse(r.detail_json), detail_json: undefined })) });
     }
-    const route = PERMISSIONS.API_ROUTES.find(r => r.path === path && r.action);
+    const route = PERMISSIONS.API_ROUTES.find(r => r.path === path && r.action && r.methods.includes(request.method));
     if (route && !canDo(role, route.action)) return json({ error: 'owner_only' }, 403);
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     const b = await body(request);
@@ -243,7 +243,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
         .bind(approvalId, auth.principalId, action, operationId, now(), expires).run();
       return json({ status: 'approved', approval_id: approvalId, action, expires_at: expires }, 201);
     }
-    if (!canDo(role, route?.action || path)) return json({ error: 'owner_only' }, 403);
+    if (!PERMISSIONS.routeRoles(path, request.method).includes(role)) return json({ error: 'owner_only' }, 403);
     if (path === '/auth/owner-pin') {
       const next = String(b.new_pin ?? '');
       if (!PIN_RE.test(next)) return json({ error: 'pin_format', detail: 'PIN de 4 a 8 dígitos' }, 400);

@@ -1737,7 +1737,10 @@
       });
       var owner = conflictOwner(result);
       if (owner) rejected.last_conflict = owner; else delete rejected.last_conflict;
-      durableJournal(rejected);
+      if (response.status === 403 && result && result.error === 'forbidden_role') {
+        root.localStorage.removeItem(JOURNAL);
+        if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      } else durableJournal(rejected);
       fail('CANONICAL_FINANCIAL_REJECTED_' + response.status);
     }
     if (!result || !(response.status === 201 && result.status === 'created' && result.idempotent === false || response.status === 200 && result.status === 'already_processed' && result.idempotent === true) ||

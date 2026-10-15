@@ -6,7 +6,7 @@ test('role policy is deeply frozen and fails closed for unknown identities', () 
   for (const id of Object.keys(p.SCREENS)) assert.equal(p.canAccessScreen('owner', id), true);
   for (const action of Object.keys(p.ACTIONS)) {
     assert.equal(p.canDo('owner', action), true);
-    assert.equal(p.canDo('empleado', action), false);
+    assert.equal(p.canDo('empleado', action), p.ACTIONS[action].includes('empleado'));
     assert.equal(p.canDo('unknown', action), false);
   }
   for (const id of ['pageGastos', 'pageConfig', 'ventas:reportes', 'unknown', 'toString']) assert.equal(p.canAccessScreen('empleado', id), false);
@@ -23,4 +23,11 @@ test('role policy is deeply frozen and fails closed for unknown identities', () 
   assert.deepEqual(p.routeRoles('/settings', 'GET'), ['owner', 'empleado']);
   assert.deepEqual(p.routeRoles('/settings', 'POST'), ['owner']);
   assert.deepEqual(p.routeRoles('/unknown', 'GET'), ['owner']);
+});
+
+test('sync entities and read routes distinguish operations from reports', () => {
+  assert.equal(p.canDo('empleado', p.SYNC_ENTITIES.expenses), true);
+  assert.equal(p.canDo('empleado', p.SYNC_ENTITIES.unknown), false);
+  for (const path of ['/read/status','/read/sales','/read/sales/s1/items','/read/inventory-movements']) assert.deepEqual(p.routeRoles(path,'GET'),['owner']);
+  for (const path of p.API_ROUTES.filter(r=>r.path.startsWith('/read/canonical/')).map(r=>r.path)) assert.deepEqual(p.routeRoles(path,'GET'),['owner','empleado']);
 });

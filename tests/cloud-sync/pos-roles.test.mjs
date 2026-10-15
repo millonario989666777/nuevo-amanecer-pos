@@ -65,8 +65,8 @@ test('employee device: paired by code, cannot use owner endpoints or owner comma
   assert.equal(me.body.pos_role, 'empleado');
   assert.equal(me.body.label, 'Caja 2');
   for (const p of ['/auth/owner-pin', '/auth/pairing-code', '/auth/devices/revoke', '/settings'])
-    assert.equal((await call(f, p, emp, { new_pin: '1111', key: 'x', value: 1 })).body.error, 'owner_only', p);
-  assert.equal((await call(f, '/auth/devices', emp, {})).body.error, 'owner_only');
+    assert.equal((await call(f, p, emp, { new_pin: '1111', key: 'x', value: 1 })).body.error, 'forbidden_role', p);
+  assert.equal((await call(f, '/auth/devices', emp, {})).body.error, 'forbidden_role');
   for (const c of ['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set']) {
     const r = await call(f, '/commands/' + c, emp, { operation_id: 'op-' + c });
     assert.deepEqual([r.status, r.body.error], [403, 'owner_approval_required'], c);

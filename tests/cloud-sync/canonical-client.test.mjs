@@ -167,6 +167,17 @@ test('expense bridge attaches only todays open CANON session and redirects Caja 
   await context.guardarGasto();
   const backdated=calls.find(x=>x[0]==='expense')[1];
   assert.equal(Object.prototype.hasOwnProperty.call(backdated,'session_id'),false);
+  context.NA_ROLES={role:'empleado',deviceId:'employee'};
+  context.NuevoAmanecerCanonical.legacySnapshot=()=>({cashState:{abierta:true,sessionId:'own',openedByDeviceId:'employee'}});
+  fields.gasMetodo.value='efectivo';
+  calls.length=0;
+  assert.equal(await context.guardarGasto(),true);
+  assert.equal(calls.find(x=>x[0]==='expense')[1].session_id,'own');
+  context.NuevoAmanecerCanonical.legacySnapshot=()=>({cashState:{abierta:true,sessionId:'other',openedByDeviceId:'owner'}});
+  calls.length=0;
+  assert.equal(await context.guardarGasto(),false);
+  assert.equal(calls.some(x=>x[0]==='expense'),false);
+
 });
 
 test('adapter projects canonical expenses to Gastos and only session expenses to Caja',()=>{

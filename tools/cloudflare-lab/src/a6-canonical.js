@@ -38,7 +38,7 @@ export function canonicalRuntimeDenied(url, env, json) {
 async function authorizeCanonicalRead(request, env, helpers) {
   if (request.headers.get('authorization') || request.headers.get('x-session-token')) {
     const auth = await helpers.authorizeSession(request, env);
-    return auth instanceof Response ? auth : null;
+    return auth instanceof Response ? auth : helpers.authorizeRead(request, env);
   }
   return helpers.authorizeRead(request, env);
 }
@@ -602,6 +602,7 @@ async function loadCollectionRows(db,type,before,page,schema=null){
       : {results:[]};
   } else if(sqlName==='cash_sessions'){
     rows=await db.prepare(`SELECT session_id AS read_key,session_id,promotion_id,open_operation_id,opening_cents,cash_movement_watermark,opened_at,status,
+      (SELECT o.device_id FROM canonical_financial_operations o WHERE o.operation_id=open_operation_id) AS opened_by_device_id,
       close_operation_id,expected_cents,counted_cents,difference_cents,closing_watermark,closed_at,revision FROM canonical_cash_state
       WHERE promotion_id=?1 AND session_id>?2 ORDER BY session_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='financial_events'){
