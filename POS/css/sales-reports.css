@@ -23,3 +23,4 @@ body.dark #pageVentas .report-wrap { --sr-bg:#182735; --sr-border:#344654; --sr-
 body.dark #pageVentas .report-table th, body.dark #pageVentas .report-table td, body.dark #pageVentas .report-card { color:var(--sr-text); background:var(--sr-bg); }
 @media(min-width:600px) { #pageVentas .report-grid, #pageVentas .report-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(min-width:1100px) { #pageVentas .report-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+.vkpi.slate{background:#f1f5f9}.vkpi.slate .vkpi-val{color:#475569}body.dark .vkpi.slate{background:rgba(148,163,184,.12)}body.dark .vkpi.slate .vkpi-val{color:inherit}

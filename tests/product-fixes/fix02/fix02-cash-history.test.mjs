@@ -63,7 +63,7 @@ test('T1 — abrir → vender/operar → cerrar crea EXACTAMENTE 1 cierre histó
   const closures = json(sb, 'cashClosures');
   assert.equal(closures.length, 1, 'exactamente un cierre histórico');
   const c = closures[0];
-  assert.equal(c.id, `C-${sessionId}`, 'id estable derivado del sessionId del turno');
+  assert.match(c.id, new RegExp(`^C-${sessionId}-[A-Za-z0-9]+$`), 'id estable derivado del sessionId del turno + etiqueta del aparato');
   assert.equal(c.sessionId, sessionId);
   assert.equal(c.cajeroId, 'CAJ-001');
   assert.equal(c.fechaApertura, openedAt, 'fecha de apertura congelada');
@@ -99,7 +99,7 @@ test('T3 — cerrar la segunda caja produce 2 cierres distintos', async () => {
   const closures = json(sb, 'cashClosures');
   assert.equal(closures.length, 2, 'existen 2 cierres');
   assert.notEqual(closures[0].id, closures[1].id, 'ids distintos');
-  assert.equal(closures[1].id, `C-${sessionId2}`);
+  assert.match(closures[1].id, new RegExp(`^C-${sessionId2}-[A-Za-z0-9]+$`));
   assert.equal(closures[1].fondo, 50);
   assert.equal(closures[1].esperado, 50);
   assert.equal(closures[1].diferencia, 0);

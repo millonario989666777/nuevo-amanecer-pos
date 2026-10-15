@@ -136,8 +136,9 @@
       busy=true;
       try {
         var input=Object.assign(revisionInput(editing),{concept:clean(root.document.getElementById('gasDesc')?.value),category:clean(root.document.getElementById('gasCat')?.value),note:clean(root.document.getElementById('gasNota')?.value),expense_date:clean(root.document.getElementById('gasFecha')?.value)});
+        if(input.expense_date>today()){notify('La fecha del gasto no puede ser futura.');return false;}
         await revise('expense.update',input);editing=null;closeModal();await refreshCanonical();renderExpenseViews();notify('Gasto editado','success');return true;
-      }catch(error){notify('No se pudo editar el gasto: '+error.message);return false;}finally{busy=false;}
+      }catch(error){var m=String(error&&error.message||'');notify(m.includes('expense_date_locked_closed_shift')?'El turno de este gasto ya está cerrado: no se puede cambiar su fecha.':m.includes('expense_date_in_future')?'La fecha del gasto no puede ser futura.':'No se pudo editar el gasto: '+m);return false;}finally{busy=false;}
     }
     if (!authorized()) return false;
 
