@@ -48,7 +48,7 @@
       : new Date().toLocaleDateString('en-CA');
   }
   function modalMode(edit) {
-    var modal=root.document.getElementById('mGasto');if(!modal)return;
+    var modal=root.document.getElementById('mGasto');if(!modal||typeof modal.querySelector!=='function')return;
     var title=modal.querySelector('.mhead-title'),ok=modal.querySelector('.mbtn-ok');
     if(title&&title.lastChild)title.lastChild.textContent=edit?' Editar gasto':' Registrar gasto';
     if(ok&&ok.lastChild)ok.lastChild.textContent=edit?' Guardar cambios':' Registrar';
