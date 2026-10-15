@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-14 19:51 Lima) deploy of #670 (cash session cashier). Migration 0031 applied separately by canon-migration-0031.yml; worker code is schema-guarded. No live sale. Rollback to 9a3d6174.",
-  "target_commit": "00cf3050499fbc8b340114e54eb42ded09f93db9",
-  "rollback_ref": "9a3d617469081884f0e528594f58c3c3740b112a",
+  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base b9df81ad (#668 role permissions: import.stage and /read/canonical/expenses owner-only, employee role check before expense replay, import auth before fence, expenses omitted from employee snapshot; plus #672/#675/#678 web-only). No schema changes. No live sale. Rollback to 00cf3050.",
+  "target_commit": "b9df81adad7063cded0e072782b99ece8fb68aae",
+  "rollback_ref": "00cf3050499fbc8b340114e54eb42ded09f93db9",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 33,
-  "optimization": "CASH_SESSION_CASHIER"
+  "attempt": 34,
+  "optimization": "ROLE_PERMISSIONS"
 }
