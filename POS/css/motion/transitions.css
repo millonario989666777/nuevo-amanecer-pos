@@ -22,6 +22,9 @@
     clip-path:inset(0 0 var(--na-scroll-collapse-y,0px) 0);
     -webkit-clip-path:inset(0 0 var(--na-scroll-collapse-y,0px) 0);
     will-change:clip-path;
+    /* Colapso real: el área recortada deja de ocupar espacio, la lista sube y
+       ningún rectángulo invisible queda encima de las tarjetas. */
+    margin-bottom:calc(-1 * var(--na-scroll-collapse-y,0px));
   }
 
   body.na-module-scroll-linked .page.na-scroll-linked .na-scroll-secondary{
