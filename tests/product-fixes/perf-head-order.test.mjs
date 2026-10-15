@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import vm from 'node:vm';
 
 const app = readFileSync('POS/index.html', 'utf8');
-const { stdout: original } = await promisify(execFile)('git', ['show', 'HEAD:POS/index.html'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+const { stdout: original } = await promisify(execFile)('git', ['show', '514de90ad663d9003bccdefd9a70c58a925f1aad:POS/index.html'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
 const launcher = readFileSync('tools/cloudflare-pos-web/public/index.html', 'utf8');
 const guard = readFileSync('POS/js/sync/hosted-canonical-guard.js', 'utf8');
 const early = ['/runtime-config.js', 'js/sync/hosted-canonical-guard.js'];
