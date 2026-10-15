@@ -64,7 +64,22 @@
       return { sessionId: r.sessionId || r.id, fecha: date, apertura: r.hora24 || o.time, cierre: r.horaCierre24 || c.time, cierreFecha: r.fechaCierre || c.date, cajero: r.cajeroNombre || r.cajero || '', ventas: selected.length ? t.ventas : null, cobros: selected.length ? t.cobros : null, gastos: selected.length ? t.gastos : null, metodos: t.metodos, salesMethods: t.salesMethods, fondo: cents(r.fondo), esperado: cents(r.esperado), contado: r.contado == null ? null : cents(r.contado), diferencia: r.diferencia == null ? null : cents(r.diferencia), localMissing: !selected.length };
     });
   }
-  root.NuevoAmanecerCajaViews = { classifyMove, lima, limaToday, presetRange, openingDate, inRangeByOpening, filterClosesByOpening, salesPerDay, movementTotals, paymentParts, sortMoves, localRows };
+  const fmtDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.split('-').reverse().join('/') : d || '';
+  // Movimientos del turno abierto (por sessionId o fecha de apertura); sin turno abierto, los de hoy.
+  function shiftMoves(moves, state, now) {
+    const open = state && state.abierta && !state.cerrada;
+    if (open && state.sessionId != null) return { label: 'Ventas del turno', moves: moves.filter(m => m.sessionId != null ? String(m.sessionId) === String(state.sessionId) : !!state.fechaApertura && (m.timestamp ? lima(m.timestamp).date : m.fecha) >= state.fechaApertura) };
+    if (open && state.fechaApertura) return { label: 'Ventas del turno', moves: moves.filter(m => (m.timestamp ? lima(m.timestamp).date : m.fecha) >= state.fechaApertura) };
+    const today = limaToday(now);
+    return { label: 'Ventas del día', moves: moves.filter(m => (m.timestamp ? lima(m.timestamp).date : m.fecha) === today) };
+  }
+  // Distribución de ventas desde la réplica del servidor: solo filas de venta (sale_id), nunca cobros.
+  function canonicalSalesMethods(cashMovements, sessionId) {
+    const r = Object.fromEntries(methods.map(k => [k, 0]));
+    (cashMovements || []).filter(m => m && m.session_id === sessionId && m.sale_id != null && m.event_type == null).forEach(m => { r.efectivo += num(m.cash_cents); r.credito += num(m.credit_cents); r[['yape', 'plin', 'transferencia'].includes(m.digital_method) ? m.digital_method : 'transferencia'] += num(m.digital_cents); });
+    return r;
+  }
+  root.NuevoAmanecerCajaViews = { fmtDate, shiftMoves, canonicalSalesMethods, classifyMove, lima, limaToday, presetRange, openingDate, inRangeByOpening, filterClosesByOpening, salesPerDay, movementTotals, paymentParts, sortMoves, localRows };
   if (!root.document) return;
   const doc = root.document;
   function el(tag, cls, text) { const n = doc.createElement(tag); n.className = cls || ''; if (text != null) n.textContent = text; return n; }
@@ -82,8 +97,8 @@
   let filter = 'todos', activePreset = '7', range = presetRange('7'), rangeMode = true;
   function movesNow() { return typeof cajMovs !== 'undefined' ? cajMovs : []; }
   function renderMoves(host) {
-    const moves = movesNow(), wrap = el('div', 'cv-view'), summary = el('section', 'cv-card'), t = movementTotals(moves.filter(m => (m.timestamp ? lima(m.timestamp).date : m.fecha) === limaToday()));
-    summary.append(el('h3', '', 'Ventas del día')); donut(summary, t.salesMethods);
+    const moves = movesNow(), wrap = el('div', 'cv-view'), summary = el('section', 'cv-card'), shift = shiftMoves(moves, typeof cajEstado !== 'undefined' ? cajEstado : null), t = movementTotals(shift.moves);
+    summary.append(el('h3', '', shift.label)); donut(summary, t.salesMethods);
     const totals = el('div', 'cv-summary-kpis');
     [['Total vendido', t.ventas], ['Entró a caja', t.entrada], ['Salidas', t.salidas], ['Neto en caja', t.neto]].forEach(([l, v]) => line(totals, l, money(v))); summary.append(totals);
     wrap.append(summary); const chips = el('div', 'cv-chips');
@@ -99,19 +114,21 @@
   }
   function canonicalEnabled() { try { return !!root.NuevoAmanecerCanonical?.enabled(); } catch (_) { return false; } }
   function historyRows() {
-    if (canonicalEnabled()) { try { const h = root.NuevoAmanecerCashHistory; const snapshot = root.NuevoAmanecerCanonical.snapshot(); return h.summarize(snapshot, h.cashierMap()).filter(r => r.status === 'CLOSED').map(r => { r.salesMethods = Object.fromEntries(methods.map(k => [k, 0])); (snapshot.cashMovements || []).filter(m => m.session_id === r.sessionId).forEach(m => { r.salesMethods.efectivo += num(m.cash_cents); r.salesMethods.credito += num(m.credit_cents); r.salesMethods[['yape', 'plin', 'transferencia'].includes(m.digital_method) ? m.digital_method : 'transferencia'] += num(m.digital_cents); }); return r; }); } catch (_) { return []; } }
+    if (canonicalEnabled()) { try { const h = root.NuevoAmanecerCashHistory; const snapshot = root.NuevoAmanecerCanonical.snapshot(); return h.summarize(snapshot, h.cashierMap()).filter(r => r.status === 'CLOSED').map(r => { r.salesMethods = canonicalSalesMethods(snapshot.cashMovements, r.sessionId); return r; }); } catch (_) { return []; } }
     return localRows(typeof cashClosures !== 'undefined' ? cashClosures : [], movesNow());
   }
   function renderHistory(host) {
+    if (activePreset) range = presetRange(activePreset);
+    const allRows = historyRows();
     const wrap = el('div', 'cv-view na-cash-history'); wrap.dataset.naCashHistory = 'true';
-    wrap.append(el('h3', '', 'Historial de cierres'), el('p', 'cv-note', canonicalEnabled() ? 'Datos del servidor (última sincronización)' : 'Datos locales de este dispositivo'), el('p', 'cv-note', 'Cada turno cuenta en la fecha en que se abrió.'));
+    wrap.append(el('h3', '', 'Historial de cierres'), el('p', 'cv-note', canonicalEnabled() ? 'Datos del servidor (última sincronización · ' + allRows.length + ' turnos cerrados sincronizados)' : 'Datos locales de este dispositivo'), el('p', 'cv-note', 'Cada turno cuenta en la fecha en que se abrió.'));
     const controls = el('div', 'cv-card cv-date-controls');
     const modes = el('div', 'cv-chips cv-modes');
     [['Fecha', false], ['Rango', true]].forEach(([label, mode]) => { const b = button(label, () => { rangeMode = mode; activePreset = null; if (!mode) range.hasta = range.desde; renderHistory(host); }); b.setAttribute('aria-pressed', String(rangeMode === mode)); modes.append(b); }); controls.append(modes);
     function input(label, key) { const l = el('label', '', label), i = el('input'); i.type = 'date'; i.value = range[key]; i.dataset.range = key; i.addEventListener('change', () => { activePreset = null; range[key] = i.value; if (!rangeMode) range.hasta = range.desde; renderHistory(host); }); l.append(i); controls.append(l); }
     input(rangeMode ? 'Desde' : 'Fecha', 'desde'); if (rangeMode) input('Hasta', 'hasta');
     const presets = el('div', 'cv-chips'); [['Hoy', 'hoy'], ['Ayer', 'ayer'], ['7 días', '7'], ['Mes', 'mes']].forEach(([l, k]) => { const b = button(l, () => { activePreset = k; range = presetRange(k); rangeMode = range.desde !== range.hasta; renderHistory(host); }); b.setAttribute('aria-pressed', String(activePreset === k)); presets.append(b); }); controls.append(presets); wrap.append(controls);
-    const rows = filterClosesByOpening(historyRows(), range.desde, range.hasta).sort((a, b) => (b.fecha + b.apertura).localeCompare(a.fecha + a.apertura));
+    const rows = filterClosesByOpening(allRows, range.desde, range.hasta).sort((a, b) => (b.fecha + b.apertura).localeCompare(a.fecha + a.apertura));
     const kpi = el('div', 'cv-card cv-kpis'); [['Turnos', rows.length], ['Total vendido', rows.some(r => r.localMissing) ? '—' : money(rows.reduce((s, r) => s + num(r.ventas), 0))], ['Total diferencia', money(rows.reduce((s, r) => s + num(r.diferencia), 0))]].forEach(([l, v]) => line(kpi, l, v)); wrap.append(kpi);
     const charts = el('section', 'cv-card'); charts.append(el('h4', '', 'Ventas por fecha de apertura'));
     const days = salesPerDay(rows, range.desde, range.hasta), chart = svg('svg', { viewBox: '0 0 600 180', class: 'cv-sales-chart', role: 'img', 'aria-label': 'Ventas por día de apertura' }), max = Math.max(1, ...days.map(d => d.total));
@@ -127,7 +144,7 @@
     rows.forEach(r => {
       const card = el('article', 'cv-card na-cash-hist-card'); card.dataset.sessionId = r.sessionId;
       const toggle = button('', () => { const expanded = toggle.getAttribute('aria-expanded') === 'true'; toggle.setAttribute('aria-expanded', String(!expanded)); detail.hidden = expanded; }, 'cv-close-toggle'); toggle.setAttribute('aria-expanded', 'false');
-      toggle.append(el('strong', '', r.fecha.split('-').reverse().join('/') + ' · ' + r.apertura + ' → ' + (r.cierreFecha !== r.fecha ? r.cierreFecha + ' ' : '') + r.cierre)); line(toggle, 'Abrió', r.openedByName || r.cajero || 'No registrado'); line(toggle, 'Cerró', r.closedByName || 'No registrado'); line(toggle, 'Total vendido', r.localMissing ? '—' : money(r.ventas));
+      toggle.append(el('strong', '', fmtDate(r.fecha) + ' · ' + r.apertura + ' → ' + (r.cierreFecha && r.cierreFecha !== r.fecha ? fmtDate(r.cierreFecha) + ' ' : '') + r.cierre)); line(toggle, 'Abrió', r.openedByName || r.cajero || 'No registrado'); line(toggle, 'Cerró', r.closedByName || 'No registrado'); line(toggle, 'Total vendido', r.localMissing ? '—' : money(r.ventas));
       toggle.append(el('span', 'cv-pill ' + (r.diferencia == null ? '' : r.diferencia === 0 ? 'cv-ok' : 'cv-bad'), 'Diferencia: ' + (r.diferencia == null ? 'No registrada' : money(r.diferencia) + (r.diferencia === 0 ? ' · Cuadrado' : r.diferencia > 0 ? ' · sobrante' : ' · faltante'))));
       const detail = el('div', 'cv-close-detail'); detail.hidden = true;
       const received = el('section', 'cv-detail-block'), credit = el('section', 'cv-detail-block cv-credit-block');

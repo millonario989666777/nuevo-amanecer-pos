@@ -267,3 +267,22 @@ test('CANON shell still loads and precaches menu navigation', () => {
   assert.ok(motion > nav);
   assert.match(sw, /'\.\/js\/navigation\/menu-navigation\.js'/);
 });
+
+test('drawer permissions use the shared screen table and preserve owner overrides', () => {
+  const h = harness();
+  const canShow = h.context.NA_MENU_NAVIGATION.canShowDrawerPage;
+  assert.equal(canShow('pageConfig'), true, 'local mode defaults to owner');
+  h.context.NA_ROLES = { role: 'empleado', canConfigure: () => false };
+  assert.equal(canShow('pageConfig'), false);
+  assert.equal(canShow('pageClientes'), true);
+  const calls = [];
+  h.context.NA_PERMISSIONS = { canAccessScreen(role, page) { calls.push([role, page]); return page === 'pagePOS'; } };
+  assert.equal(canShow('pageMenu'), true);
+  assert.deepEqual(calls, [], 'Inicio bypasses the table');
+  assert.equal(canShow('pageClientes'), false);
+  assert.equal(canShow('pagePOS'), true);
+  assert.deepEqual(calls, [['empleado', 'pageClientes'], ['empleado', 'pagePOS']]);
+  h.context.NA_ROLES.isOwner = () => true;
+  canShow('pageConfig');
+  assert.deepEqual(calls.at(-1), ['owner', 'pageConfig']);
+});
