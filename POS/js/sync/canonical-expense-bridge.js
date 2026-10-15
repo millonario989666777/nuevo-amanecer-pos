@@ -47,8 +47,14 @@
       ? root.obtenerHoy()
       : new Date().toLocaleDateString('en-CA');
   }
+  function modalMode(edit) {
+    var modal=root.document.getElementById('mGasto');if(!modal)return;
+    var title=modal.querySelector('.mhead-title'),ok=modal.querySelector('.mbtn-ok');
+    if(title&&title.lastChild)title.lastChild.textContent=edit?' Editar gasto':' Registrar gasto';
+    if(ok&&ok.lastChild)ok.lastChild.textContent=edit?' Guardar cambios':' Registrar';
+  }
   function resetAndOpen() {
-    editing=null;
+    editing=null;modalMode(false);
     ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.disabled=false;field.readOnly=false;}});
     ['gasDesc','gasNota'].forEach(function (id) {
       var field = root.document.getElementById(id);
@@ -107,7 +113,7 @@
   root.NA_EXPENSES = {
     edit: function(expense) {
       if(!owner()||!enabled()||busy||expense.voided)return;
-      resetAndOpen();editing=expense;
+      resetAndOpen();editing=expense;modalMode(true);
       [['gasDesc',expense.desc],['gasCat',expense.cat],['gasNota',expense.nota],['gasFecha',expense.fecha],['gasMonto',expense.monto],['gasMetodo',expense.metodo]].forEach(function(pair){var field=root.document.getElementById(pair[0]);if(field)field.value=pair[1]||'';});
       ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.readOnly=true;field.disabled=true;}});
     },

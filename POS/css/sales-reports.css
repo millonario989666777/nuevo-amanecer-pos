@@ -24,3 +24,10 @@ body.dark #pageVentas .report-table th, body.dark #pageVentas .report-table td, 
 @media(min-width:600px) { #pageVentas .report-grid, #pageVentas .report-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(min-width:1100px) { #pageVentas .report-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 .vkpi.slate{background:#f1f5f9}.vkpi.slate .vkpi-val{color:#475569}body.dark .vkpi.slate{background:rgba(148,163,184,.12)}body.dark .vkpi.slate .vkpi-val{color:inherit}
+/* Acciones de gasto (dueño): Editar / Eliminar */
+.gasto-actions{gap:8px;margin-top:6px}
+.gasto-action{min-height:44px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;color:var(--teal-dark,#115e59);background:#fff;border:1px solid #cbd5e1;border-radius:10px;cursor:pointer}
+.gasto-action.is-danger{color:#b91c1c}
+.gasto-action:focus-visible{outline:3px solid var(--teal,#0f766e);outline-offset:2px}
+body.dark .gasto-action{background:#1e293b;color:#e2e8f0;border-color:#475569}
+body.dark .gasto-action.is-danger{color:#fca5a5}
