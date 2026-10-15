@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base 616fb754 (#684 gastos: owner-only /commands/expense.update and /commands/expense.void over additive table canonical_expense_revisions, already applied by migration 0032 run 38743859423 with R2 backup; #682/#683/#685 web-only). Worker deploy makes no schema changes. No live sale. Rollback to b9df81ad.",
-  "target_commit": "616fb7548883e1aebe70c15f786a1729fac12ac2",
-  "rollback_ref": "b9df81adad7063cded0e072782b99ece8fb68aae",
+  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base f66e2d5d: #689/#690 review fixes (expense.update rejects future/outside-shift dates with 409, MAX(revision) scoped by promotion_id) and #691 /features/<id> 403 lock. No schema changes (0032 already applied). No live sale. Rollback to 616fb754.",
+  "target_commit": "f66e2d5d56602df956736f6ccf311f8d331ff691",
+  "rollback_ref": "616fb7548883e1aebe70c15f786a1729fac12ac2",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 35,
-  "optimization": "EXPENSE_REVISIONS"
+  "attempt": 36,
+  "optimization": "REVIEW_FIXES"
 }
