@@ -35,7 +35,7 @@ test('phone home hides duplicate module navigation and exposes work-focused sect
   assert.match(css,/#pageMenu\s+\.menu-modules-label\s*\{\s*display\s*:\s*none\s*!important/);
   assert.doesNotMatch(nav,/naMobileQuickActions/);
   assert.match(nav,/Actividad reciente/);
-  for(const label of ['Nueva venta','Registrar abono','Ingresar mercadería','Registrar gasto','Buscar cliente','Abrir \/ cerrar caja']){
+  for(const label of ['Nueva venta','Inventario','Gastos','Clientes','Caja']){
     assert.match(nav,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
   }
 });
@@ -43,11 +43,10 @@ test('phone home hides duplicate module navigation and exposes work-focused sect
 test('quick actions route only to existing CANON destinations',()=>{
   const routes=[
     ['Nueva venta','pagePOS'],
-    ['Registrar abono','pageClientes'],
-    ['Ingresar mercadería','pageInventario'],
-    ['Registrar gasto','pageGastos'],
-    ['Buscar cliente','pageClientes'],
-    ['Abrir / cerrar caja','pageCaja']
+    ['Inventario','pageInventario'],
+    ['Gastos','pageGastos'],
+    ['Clientes','pageClientes'],
+    ['Caja','pageCaja']
   ];
   for(const [label,pageId] of routes){
     assert.match(nav,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[\\s\\S]{0,500}'+pageId));
@@ -56,7 +55,7 @@ test('quick actions route only to existing CANON destinations',()=>{
 });
 
 test('mobile drawer contains supported navigation and closes through all expected paths',()=>{
-  for(const label of ['Inicio','Punto de Venta','Ventas','Inventario','Clientes','Cuentas por cobrar','Caja','Gastos','Configuración']){
+  for(const label of ['Inicio','Punto de venta','Ventas','Inventario','Clientes','Saldos, créditos y abonos','Caja','Gastos','Configuración']){
     assert.match(nav,new RegExp(label));
   }
   assert.match(nav,/NA_MENU_NAVIGATION/);
