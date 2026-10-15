@@ -70,6 +70,8 @@ export default {
       }
       // Próximamente: server lock keyed by the stable feature id (PERMISSIONS.FEATURE_LOCKS). Locked => 403 for everyone.
       if (url.pathname.startsWith('/features/')) {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
         const id = url.pathname.split('/')[2] || '';
         if (PERMISSIONS.featureLocked(id)) return json({ error: 'feature_locked', feature: id }, 403);
         return json({ error: 'not_found' }, 404);

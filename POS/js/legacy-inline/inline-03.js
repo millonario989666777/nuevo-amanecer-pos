@@ -469,8 +469,9 @@ function _naSanitizeCashState(raw,warnings){
 // FIX02: cada cierre histórico se restaura byte-fiel; exige contado y esperado (núcleo del registro).
 function _naSanitizeCashClosure(raw,index,warnings){
   if(!_naIsPlainObject(raw))throw new Error(`cashClosures[${index}]: objeto inválido`);
-  const allowed=new Set(['id','sessionId','cajero','cajeroNombre','cajeroId','fechaApertura','hora','hora24','timestampApertura','fondo','fechaCierre','horaCierre','horaCierre24','timestampCierre','contado','esperado','diferencia']),p=_naBackupPick(raw,allowed,`cashClosures[${index}]`,warnings),out={};
+  const allowed=new Set(['id','sessionId','deviceId','cajero','cajeroNombre','cajeroId','fechaApertura','hora','hora24','timestampApertura','fondo','fechaCierre','horaCierre','horaCierre24','timestampCierre','contado','esperado','diferencia']),p=_naBackupPick(raw,allowed,`cashClosures[${index}]`,warnings),out={};
   out.id=_naBackupString(p.id??`C-import-${index+1}`,`cashClosures[${index}].id`,60);
+  if(p.deviceId!=null)out.deviceId=_naBackupString(p.deviceId,`cashClosures[${index}].deviceId`,160);
   if(p.sessionId!==undefined&&p.sessionId!==null)out.sessionId=_naBackupId(p.sessionId,`cashClosures[${index}].sessionId`);
   for(const key of ['cajero','cajeroNombre'])if(p[key]!==undefined)out[key]=_naBackupString(p[key],`cashClosures[${index}].${key}`,80);
   if(p.cajeroId!==undefined&&p.cajeroId!==null)out.cajeroId=_naBackupId(p.cajeroId,`cashClosures[${index}].cajeroId`);
@@ -514,15 +515,19 @@ function _naValidateInventoryMovementLedger(movements){
   return movements;
 }
 function _naValidateCashClosureIdentity(closures){
-  const ids=new Set(),sessions=new Set();
-  for(let index=0;index<closures.length;index++){
-    const closure=closures[index],id=String(closure.id);
-    if(ids.has(id))throw new Error(`cashClosures[${index}].id: identificador duplicado`);ids.add(id);
-    if(closure.sessionId===undefined||closure.sessionId===null)continue;
-    const sessionId=String(closure.sessionId);
-    if(sessions.has(sessionId))throw new Error(`cashClosures[${index}].sessionId: identificador duplicado`);sessions.add(sessionId);
-  }
-  return closures;
+  const ids=new Map(),sessions=new Map();
+  return closures.filter(closure=>{
+    const id=String(closure.id);
+    const key=JSON.stringify([String(closure.deviceId|| (id.endsWith('-'+closure.sessionId)&&id!== 'C-'+closure.sessionId?id.slice(2,-String(closure.sessionId).length-1):'')),String(closure.sessionId)]);
+    // Solo se omiten duplicados idénticos. Mismo id o mismo (aparato,sesión) con datos distintos → error.
+    const signature=JSON.stringify(Object.fromEntries(Object.keys(closure).filter(k=>k!=='id').sort().map(k=>[k,closure[k]])));
+    if(ids.has(id)&&ids.get(id)!==signature)throw new Error(`cashClosures: mismo id con datos distintos (id ${id})`);
+    if(closure.sessionId!=null&&sessions.has(key)&&sessions.get(key)!==signature)
+      throw new Error(`cashClosures: mismo aparato y sesión con datos distintos (id ${id}, sesión ${closure.sessionId})`);
+    if(ids.has(id)||(closure.sessionId!=null&&sessions.has(key)))return false;
+    ids.set(id,signature);if(closure.sessionId!=null)sessions.set(key,signature);
+    return true;
+  });
 }
 function _naSanitizeAppConfig(raw,warnings){
   if(raw===null||raw===undefined)return _naClone(_naDefaults);

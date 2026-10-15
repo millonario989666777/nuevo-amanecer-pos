@@ -36,3 +36,8 @@ body.dark .na-prox-search,body.dark .na-prox-chip{background:#1e293b;color:#f8fa
 body.dark .na-prox-chip.is-active{background:var(--teal,#0f766e);color:#fff}
 body.dark .na-prox-summary{color:#f8fafc}
 body.dark .na-prox-tag{background:#78350f;color:#fef3c7}
+
+.na-prox-available{color:#166534;background:#dcfce7;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700}
+#mGasto .mhead{background:var(--slate-light,#f1f5f9);color:var(--text,#334155)}
+#mGasto .mbtn-ok{background:#0f766e;color:white}
+.na-date-help{display:block;font-size:11px;color:var(--slate,#64748b);margin-top:3px}

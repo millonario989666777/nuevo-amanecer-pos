@@ -34,7 +34,7 @@ test('staging templates cannot resolve to known production or LAB resources', ()
     { binding: 'CANON_BACKEND', service: 'nuevo-amanecer-pos-staging' }
   ]);
   assert.deepEqual(parsedWeb.assets.run_worker_first, [
-    '/', '/app', '/app/', '/runtime-config.js', '/health', '/auth/*', '/read/*',
+    '/', '/app', '/app/', '/runtime-config.js', '/health', '/auth/*', '/read/*', '/features/*',
     '/commands/*', '/imports/*', '/sync/operations*', '/settings'
   ]);
   assert.doesNotMatch(all, /CLOUDFLARE_API_TOKEN|POS_ACTIVATION_SECRET|LAB_IMPORT_HMAC_SECRET/);

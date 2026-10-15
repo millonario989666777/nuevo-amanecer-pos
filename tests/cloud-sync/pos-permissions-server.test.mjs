@@ -31,7 +31,7 @@ test('paired employees cannot invoke owner actions; owner expense and settings r
   assert.equal((await call(f,'/read/canonical/status',paired.session_token,null,'GET')).status,200);
   const open = { operation_id:'employee-open', session_id:'employee-shift', promotion_id:c.active_promotion_id, client_contract:'a6-gate-c-v1', authority_epoch:c.authority_epoch, expected_control_revision:c.revision, created_at:expense.created_at, opening_cents:10000 };
   assert.equal((await call(f,'/commands/cash.open',paired.session_token,open)).status,201);
-  const own = { ...expense, operation_id:'employee-expense-op', expense_id:'employee-expense', session_id:open.session_id, expected_session_revision:0 };
+  const own = { ...expense, expense_date:'2026-09-27', operation_id:'employee-expense-op', expense_id:'employee-expense', session_id:open.session_id, expected_session_revision:0 };
   for (const changes of [{session_id:'someone-else'}, {payment_method:'yape'}]) assert.equal((await call(f,'/commands/expense.create',paired.session_token,{...own,...changes})).status,403);
   assert.equal((await call(f,'/commands/expense.create','owner-token',own)).status,201);
   const next = {...own,operation_id:'employee-own-op',expense_id:'employee-own',expected_session_revision:1};

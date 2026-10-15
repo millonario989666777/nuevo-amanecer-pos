@@ -11,6 +11,7 @@
   var busy = false;
   var editing = null;
 
+  function expenseMessage(error){var code=String(error&&error.message||error||'');var messages={expense_locked_closed_shift:'El turno de este gasto ya está cerrado. No se puede editar ni anular.',expense_date_locked_closed_day:'Esa fecha tiene un cierre de caja. Elige otro día.',expense_date_outside_shift:'La fecha no puede ser anterior a la apertura del turno.',expense_date_out_of_range:'La fecha debe estar dentro de los últimos 31 días.',expense_date_in_future:'La fecha del gasto no puede ser futura.'};for(var key in messages)if(code.includes(key))return messages[key];return 'No se pudo guardar el gasto.';}
   function api() { return root.NuevoAmanecerCanonical; }
   function enabled() {
     var client = api();
@@ -64,6 +65,7 @@
     var date = root.document.getElementById('gasFecha');
     if (amount) amount.value = '';
     if (date) date.value = today();
+    if(typeof root._naDateDisplayHelp==='function')root._naDateDisplayHelp();
     root.document.getElementById('mGasto')?.classList.add('open');
   }
   function closeModal() {
@@ -115,6 +117,7 @@
       if(!owner()||!enabled()||busy||expense.voided)return;
       resetAndOpen();editing=expense;modalMode(true);
       [['gasDesc',expense.desc],['gasCat',expense.cat],['gasNota',expense.nota],['gasFecha',expense.fecha],['gasMonto',expense.monto],['gasMetodo',expense.metodo]].forEach(function(pair){var field=root.document.getElementById(pair[0]);if(field)field.value=pair[1]||'';});
+      if(typeof root._naDateDisplayHelp==='function')root._naDateDisplayHelp();
       ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.readOnly=true;field.disabled=true;}});
     },
     void: async function(expense) {
@@ -122,7 +125,7 @@
       if(!root.confirm('¿Eliminar este gasto? Se conservará su historial financiero.'))return false;
       busy=true;
       try { await revise('expense.void',revisionInput(expense));await refreshCanonical();renderExpenseViews();notify('Gasto eliminado','success');return true; }
-      catch(error){notify(String(error.message).includes('cash_expense_void_requires_adjustment')?'Este gasto afectó la caja. Registra un ajuste de ingreso en caja para compensarlo.':'No se pudo eliminar el gasto: '+error.message);return false;}
+      catch(error){notify(String(error.message).includes('cash_expense_void_requires_adjustment')?'Este gasto afectó la caja. Registra un ajuste de ingreso en caja para compensarlo.':expenseMessage(error));return false;}
       finally{busy=false;}
     }
   };
@@ -144,7 +147,7 @@
         var input=Object.assign(revisionInput(editing),{concept:clean(root.document.getElementById('gasDesc')?.value),category:clean(root.document.getElementById('gasCat')?.value),note:clean(root.document.getElementById('gasNota')?.value),expense_date:clean(root.document.getElementById('gasFecha')?.value)});
         if(input.expense_date>today()){notify('La fecha del gasto no puede ser futura.');return false;}
         await revise('expense.update',input);editing=null;closeModal();await refreshCanonical();renderExpenseViews();notify('Gasto editado','success');return true;
-      }catch(error){var m=String(error&&error.message||'');notify(m.includes('expense_date_locked_closed_shift')?'El turno de este gasto ya está cerrado: no se puede cambiar su fecha.':m.includes('expense_date_in_future')?'La fecha del gasto no puede ser futura.':'No se pudo editar el gasto: '+m);return false;}finally{busy=false;}
+      }catch(error){var m=String(error&&error.message||'');notify(expenseMessage(error));return false;}finally{busy=false;}
     }
     if (!authorized()) return false;
 
@@ -205,7 +208,7 @@
         : 'Gasto CANON guardado fuera de la caja', 'success');
       return true;
     } catch (error) {
-      notify('No se pudo guardar el gasto CANON: ' + clean(error && error.message), 'error');
+      notify(expenseMessage(error), 'error');
       return false;
     } finally {
       busy = false;

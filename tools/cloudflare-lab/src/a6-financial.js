@@ -156,7 +156,7 @@ export async function createCanonicalFinancial(command, request, env, auth, json
   } else if (command === 'cash.close') {
     Object.assign(result,{counted_cents:body.counted_cents,difference_cents:body.counted_cents-session.expected_cents});
     effects.push(db.prepare(`INSERT INTO canonical_cash_closures(session_id,close_operation_id,expected_cents,counted_cents,difference_cents,cash_movement_watermark,closed_at${cashierReady ? ',closed_by_user_id,closed_by_name' : ''})
-      VALUES(?1,?2,?3,?4,?5,?6,?7${cashierReady ? ',?8,?9' : ''})`).bind(body.session_id,body.operation_id,session.expected_cents,body.counted_cents,result.difference_cents,session.closing_watermark,body.created_at,...(cashierReady ? [cashier.userId,cashier.name] : [])));
+      VALUES(?1,?2,?3,?4,?5,?6,?7${cashierReady ? ',?8,?9' : ''})`).bind(body.session_id,body.operation_id,session.expected_cents,body.counted_cents,result.difference_cents,session.closing_watermark,new Date().toISOString(),...(cashierReady ? [cashier.userId,cashier.name] : [])));
   } else {
     result.event_id = body.operation_id;
     result.cash_delta_cents = cashDelta;
