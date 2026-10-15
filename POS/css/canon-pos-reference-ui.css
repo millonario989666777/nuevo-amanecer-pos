@@ -182,7 +182,7 @@ body.na-pos-phone-device.na-pos-reference-active #backBtn::before{font-size:19px
 #pagePOS .products-area{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:7px}
 #pagePOS .product-card{min-height:154px;padding:8px 5px 9px}
 #pagePOS .p-img{width:56px;height:56px;margin:20px 0 7px;font-size:28px}
-#pagePOS .p-price-badge{top:6px;left:6px;padding:4px 6px;font-size:8px}
+#pagePOS .p-price-badge{top:6px;left:6px;transform:none;padding:4px 6px;font-size:8px}
 #pagePOS .p-stock-badge{font-size:8px}
 #pagePOS .p-name{font-size:9.5px}
 #pagePOS .cart-drawer{right:-100%!important;width:100%}

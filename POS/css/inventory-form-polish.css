@@ -15,3 +15,8 @@
 #pagePOS .p-img:has(>img),#pageInventario .prod-icon-sm:has(>img),.cart-item>div:first-child:has(>img){overflow:hidden;background:#fff!important}
 #pagePOS .p-img>img,#pageInventario .prod-icon-sm>img,.cart-item>div:first-child>img,img[data-na-prod-img]{display:block;object-fit:contain!important;object-position:center!important;background:#fff!important;border-radius:inherit!important;box-sizing:border-box;padding:2px!important;image-rendering:auto}
 body.dark #pagePOS .p-img:has(>img),body.dark #pageInventario .prod-icon-sm:has(>img),body.dark .cart-item>div:first-child:has(>img),body.dark #pagePOS .p-img>img,body.dark #pageInventario .prod-icon-sm>img,body.dark .cart-item>div:first-child>img,body.dark img[data-na-prod-img]{background:#e2e8f0!important}
+
+html.na-role-empleado #invPhotosBtn{display:none!important}
+
+/* Precio de Venta: nunca sobresale de la tarjeta (columna izquierda en 390 y 1024). */
+#pagePOS .product-card .p-price-badge{max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}

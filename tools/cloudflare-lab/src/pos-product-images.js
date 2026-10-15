@@ -1,6 +1,7 @@
 import { canDo } from './pos-permissions.js';
 // Miniaturas internas: los fragmentos se publican antes de cambiar el manifiesto.
 export { PRODUCT_IMAGE_PATHS } from './pos-permissions.js';
+export const IMAGE_STORAGE_CAP = 40000000;
 const hash = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 const validId = p => typeof p === 'string' && p.length > 0 && p.length <= 160 && !/[\x00-\x1f\x7f]/.test(p);
 async function productExists(db, id, strict = false) {
@@ -56,8 +57,10 @@ export async function productImagesRoute(request, url, env, auth, json, db) {
     if (request.method === 'GET') {
       if (url.pathname === '/auth/product-images') {
         const version = await hash(JSON.stringify(metas.map(m => m.p + '|' + m.e + '|' + m.c.join(','))));
-        if (url.searchParams.get('since') === version) return json({ status: 'unchanged', version });
-        return json({ status: 'ok', version, images: metas.map(m => ({ product_id: m.p, codes: m.c, etag: m.e, updated_at: m.u })) });
+        // Solo el dueño recibe el uso de almacenamiento (aviso al 80 %).
+        const storage = canDo(auth.posRole, 'product-images.write') ? { used: Number((await db.prepare("SELECT COALESCE(SUM(length(value_json)),0) AS n FROM pos_settings WHERE key LIKE 'internal:img:c:%'").first()).n), cap: IMAGE_STORAGE_CAP } : undefined;
+        if (url.searchParams.get('since') === version) return json({ status: 'unchanged', version, ...(storage ? { storage } : {}) });
+        return json({ status: 'ok', version, images: metas.map(m => ({ product_id: m.p, codes: m.c, etag: m.e, updated_at: m.u })), ...(storage ? { storage } : {}) });
       }
       const id = url.searchParams.get('product_id'), code = url.searchParams.get('code');
       const found = metas.filter(m => id !== null ? m.p === id : code !== null && m.c.includes(code));
@@ -98,7 +101,7 @@ export async function productImagesRoute(request, url, env, auth, json, db) {
     if (rate.n >= (Number(env.PRODUCT_IMAGE_RATE_LIMIT) || 600)) return limited();
     const h = await hash(b.product_id), n = Math.ceil(image.length / 7000);
     const stored = await db.prepare("SELECT COALESCE(SUM(length(value_json)),0) AS n FROM pos_settings WHERE key LIKE 'internal:img:c:%' AND key NOT LIKE ?1").bind('internal:img:c:' + h + ':%').first();
-    if (Number(stored.n) + image.length + n * 2 > 40000000) return json({ error: 'image_storage_full' }, 409);
+    if (Number(stored.n) + image.length + n * 2 > IMAGE_STORAGE_CAP) return json({ error: 'image_storage_full' }, 409);
     const chunks = Array.from({ length: n }, (_, i) => put(`internal:img:c:${h}:${etag.slice(0, 8)}:${i}`, image.slice(i * 7000, (i + 1) * 7000)));
     if (typeof db.batch === 'function') await db.batch(chunks); else for (const chunk of chunks) await chunk.run();
     await put('internal:img:m:' + h, { p: b.product_id, c: codes, e: etag, n, u: now }).run();

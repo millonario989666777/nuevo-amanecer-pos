@@ -72,3 +72,9 @@ test('missing catalog tables count as no products',async t=>{
  const r=await call(f,'/auth/product-images',payload);
  assert.equal(r.status,404);assert.equal(r.body.error,'product_not_found');
 });
+test('manifest reports storage usage to the owner only',async t=>{
+ const f=await setup(t);await call(f,'/auth/product-images',payload);
+ const owner=await call(f,'/auth/product-images');assert.equal(owner.status,200);assert.equal(owner.body.storage.cap,40000000);assert.ok(owner.body.storage.used>=payload.image.length);
+ const unchanged=await call(f,'/auth/product-images?since='+owner.body.version);assert.equal(unchanged.body.status,'unchanged');assert.ok(unchanged.body.storage.used>0);
+ const emp=await call(f,'/auth/product-images',null,'emp-token');assert.equal(emp.status,200);assert.equal(emp.body.storage,undefined);
+});
