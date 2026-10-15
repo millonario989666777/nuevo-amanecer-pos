@@ -20,3 +20,4 @@ html.na-role-empleado #invPhotosBtn{display:none!important}
 
 /* Precio de Venta: nunca sobresale de la tarjeta (columna izquierda en 390 y 1024). */
 #pagePOS .product-card .p-price-badge{max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}
+@media(max-width:700px){#pagePOS .product-card .p-price-badge{transform:none}}
