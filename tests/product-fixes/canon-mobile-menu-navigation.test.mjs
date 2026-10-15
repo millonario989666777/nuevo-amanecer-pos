@@ -275,6 +275,7 @@ test('drawer permissions hide owner screens until the role is confirmed', () => 
     h.context.NA_ROLES = roles;
     assert.equal(canShow('pageConfig'), false);
     assert.equal(canShow('pageGastos'), false);
+    assert.equal(canShow('pageProximamente'), false);
     assert.equal(canShow('pageClientes'), true);
   }
   const calls = [];
@@ -288,9 +289,11 @@ test('drawer permissions hide owner screens until the role is confirmed', () => 
   assert.deepEqual(calls, [['empleado','pageConfig'],['empleado','pageGastos']]);
   owner = true; // isOwner() is true only once the cloud role is confirmed (or in local mode)
   assert.equal(canShow('pageConfig'), true);
-  assert.deepEqual(calls.at(-1), ['owner','pageConfig']);
+  assert.equal(canShow('pageProximamente'), true);
+  assert.deepEqual(calls.at(-1), ['owner','pageProximamente']);
   delete h.context.NA_PERMISSIONS;
   assert.equal(canShow('pageGastos'), true);
+  assert.equal(canShow('pageProximamente'), true);
 });
 
 function isolatedFunction(name, context) {
