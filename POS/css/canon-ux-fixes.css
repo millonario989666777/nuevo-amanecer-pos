@@ -297,6 +297,7 @@ body.dark .na-pin-detail{color:#cbd5e1}
    fija y el contenido se desplazaba por debajo; en pantallas bajas tapaba los datos y en Reportes los KPIs
    cortaban «Resultado del período». Ahora toda la página se desplaza junta, como ya ocurre en celular. */
 @media (min-width:701px){
+  #pageInventario.active{overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain}
   #pageCaja.active,#pageVentas.active{overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain}
   #pageCaja.active>.page-chrome,#pageVentas.active>.page-chrome{position:relative!important;top:auto!important}
   #pageCaja #cajContent,#pageVentas #ventasContent{flex:none!important;overflow-y:visible!important;height:auto!important;max-height:none!important;min-height:0!important}

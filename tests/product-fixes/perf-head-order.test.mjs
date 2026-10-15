@@ -44,6 +44,29 @@ test('fast launcher redirect is the first script, hosted /app/ only, and only wh
 
 test('deferred styles have an adjacent blocking noscript fallback and preserve cascade order', () => {
   assert.deepEqual(sheets(app), sheets(original));
+  const deferred = [...withoutFallbacks(app).matchAll(/<link\b[^>]*media="print"[^>]*onload="this.media='all'"[^>]*>/g)]
+    .map(m => /href="([^"]+)"/.exec(m[0])[1]);
+  assert.deepEqual(deferred.slice().sort(), [
+    'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap',
+    'css/print.css', 'css/motion/modals.css', 'css/motion/notifications.css',
+    'css/experience-v2/components/modals.css',
+    ...['menu', 'pos', 'modals', 'notifications'].map(name => `css/experience-v2/animations/${name}.css`),
+  ].sort());
+  const critical = [
+    'responsive.css', 'experience-v2/layout.css', 'experience-v2/responsive.css',
+    ...['menu', 'pos', 'inventario', 'clientes', 'caja', 'ventas', 'gastos', 'configuracion'].map(name => `experience-v2/pages/${name}.css`),
+    ...['cards', 'tables', 'forms', 'navigation', 'buttons'].map(name => `experience-v2/components/${name}.css`),
+    'inventario-redesign.css', 'canon-caja-responsive.css', 'mobile-inventory.css', 'stock-lots.css',
+    'canon-pending-sales.css', 'canon-ventas-tabs.css', 'sales-reports.css', 'inventory-form-polish.css',
+    'client-credit-accounts-v2.css', 'receipt-share.css',
+  ];
+  for (const href of critical) {
+    const tags = [...withoutFallbacks(app).matchAll(/<link\b[^>]*>/g)].map(m => m[0])
+      .filter(tag => tag.includes(`href="css/${href}"`));
+    assert.equal(tags.length, 1, href);
+    assert.doesNotMatch(tags[0], /\b(?:media|onload)=/, href);
+    assert.ok(!app.includes(`<noscript><link rel="stylesheet" href="css/${href}">`), href);
+  }
   for (const match of app.matchAll(/<link\b[^>]*media="print"[^>]*onload="this.media='all'"[^>]*>/g)) {
     const href = /href="([^"]+)"/.exec(match[0])[1];
     const fallback = /^\s*<noscript>(<link\b[^>]*>)<\/noscript>/.exec(app.slice(match.index + match[0].length));
