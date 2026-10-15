@@ -174,12 +174,7 @@ body.dark .na-confirm-actions {background-color:var(--na-dk-surface-2)}
 body.dark .na-confirm-btn {background-color:var(--na-dk-surface-2)}
 body.dark .na-confirm-btn.cancel {color:var(--na-dk-text)}
 body.dark #mProd .mbody {background-color:var(--na-dk-surface-2)}
-/* Scroll the form body while reserving the footer's full height. */
-body.dark #mProd .modal {position:relative;display:flex;flex-direction:column;overflow:hidden}
-body.dark #mProd .mhead {flex-shrink:0}
-body.dark #mProd .mbody {min-height:0;overflow:hidden!important;padding-bottom:100px!important}
-body.dark #mProd .prod-unified {min-height:0;overflow-y:auto!important}
-body.dark #mProd .mbtns {background-color:var(--na-dk-surface-2);position:absolute!important;bottom:0!important;left:18px;right:18px;padding-bottom:14px}
+body.dark #mProd .mbtns {background-color:var(--na-dk-surface-2)}
 body.dark #mProd .prod-margin {background-color:#153b3d}
 body.dark #mProd .prod-margin strong {color:#5eead4}
 body.dark #mProd .field-help {color:var(--na-dk-muted)}
