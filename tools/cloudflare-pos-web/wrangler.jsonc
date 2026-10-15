@@ -14,6 +14,7 @@
       "/health",
       "/auth/*",
       "/read/*",
+      "/features/*",
       "/commands/*",
       "/imports/*",
       "/sync/operations*",

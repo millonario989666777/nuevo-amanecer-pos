@@ -58,6 +58,19 @@
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
   var FEATURE_LOCKS = {
+    'nota-credito-devolucion-parcial': true,
+    'ordenes-compra': true,
+    'sesion-unica-usuario': true,
+    'firma-digital': true,
+    'cierres-sucursal-moneda': true,
+    'impresion-directa-xprinter': true,
+    'clientes-direcciones-multiples': true,
+    'clientes-descuento': true,
+    'clientes-frecuencia': true,
+    'listas-precios-asignacion-masiva': true,
+    'historial-compras-producto': true,
+    'inventario-padre-hijo': true,
+    'inventario-ubicacion-responsables': true,
     'creditos-vencimiento': false,
     'gastos': false,
     'reportes': false,
@@ -142,7 +155,7 @@
   }
   root.NA_PERMISSIONS = freeze({ SCREENS: SCREENS, ACTIONS: ACTIONS, SYNC_ENTITIES: SYNC_ENTITIES, API_ROUTES: API_ROUTES,
     ROLE_PATHS: ROLE_PATHS, PRODUCT_IMAGE_PATHS: PRODUCT_IMAGE_PATHS,
-    PROXY_PREFIXES: ['/health', '/auth/*', '/read/*', '/commands/*', '/imports/*', '/sync/operations*', '/settings'],
+    PROXY_PREFIXES: ['/health', '/auth/*', '/read/*', '/features/*', '/commands/*', '/imports/*', '/sync/operations*', '/settings'],
     canAccessScreen: function (role, id) { return allowed(role, Object.prototype.hasOwnProperty.call(SCREENS, id) ? SCREENS[id] : owner); },
     canDo: function (role, action) { return allowed(role, Object.prototype.hasOwnProperty.call(ACTIONS, action) ? ACTIONS[action] : owner); },
     routeRoles: routeRoles, FEATURE_LOCKS: FEATURE_LOCKS, featureLocked: featureLocked

@@ -44,7 +44,7 @@ test('cash expenses cannot be voided even after their session closes',async t=>{
  assert.equal((await call('expense.create',{...common(f,'cash-expense'),expense_id:'cash',amount_cents:1000,concept:'Cash',category:'Otro',payment_method:'efectivo',expense_date:'2026-10-15',session_id:'shift',expected_session_revision:0})).status,201);
  for(const closed of [false,true]){
   if(closed)assert.equal((await call('cash.close',{...base,operation_id:'close',session_id:'shift',expected_session_revision:1,counted_cents:9000})).status,201);
-  const res=await call('expense.void',{...common(f,'void-'+closed),expense_id:'cash',expected_revision:0});assert.equal(res.status,409);assert.equal((await res.json()).error,'cash_expense_void_requires_adjustment');
+  const res=await call('expense.void',{...common(f,'void-'+closed),expense_id:'cash',expected_revision:0});assert.equal(res.status,409);assert.equal((await res.json()).error,closed?'expense_locked_closed_shift':'cash_expense_void_requires_adjustment');
  }
 });
 test('real canonical client sends edit and void through durable command path',async t=>{
@@ -99,12 +99,48 @@ test('expense_date edits: future (Lima) and outside-shift dates are rejected wit
  res=await upd('future-shift','cash2',0,'2099-01-01');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_in_future');
  res=await upd('same-open','cash2',0,'2026-10-15','Renamed');assert.equal(res.status,201);
  assert.equal((await call('cash.close',{...base,operation_id:'close2',session_id:'shift2',expected_session_revision:1,counted_cents:9500})).status,201);
- res=await upd('closed-move','cash2',1,'2026-10-13');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_shift');
- res=await upd('closed-same','cash2',1,'2026-10-15','Renamed again');assert.equal(res.status,201,'closed shift still allows non-date edits');
+ res=await upd('closed-move','cash2',1,'2026-10-13');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_locked_closed_shift');
+ res=await upd('closed-same','cash2',1,'2026-10-15','Renamed again');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_locked_closed_shift');
 });
 test('revision lookups are scoped by promotion_id',()=>{
  for(const file of ['tools/cloudflare-lab/src/a6-expenses.js','tools/cloudflare-lab/src/a6-canonical.js']){
   const src=readFileSync(file,'utf8');const subs=src.match(/SELECT MAX\(revision\) FROM canonical_expense_revisions WHERE [^)]*/g)||[];
   assert.ok(subs.length>=2,file);for(const q of subs)assert.match(q,/promotion_id=/,file+': '+q);
+ }
+});
+
+test('create shares server Lima date limits, closed shift/day locks, and revisions audit prior dates',async t=>{
+ const {f,call}=await setup(t);
+ const create=(op,date,extra={})=>call('expense.create',{...common(f,op),expense_id:op,amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:date,...extra});
+ for(const [date,error] of [['2099-01-01','expense_date_in_future'],['2020-01-01','expense_date_out_of_range']]){
+  const res=await create('create-'+date,date);assert.equal(res.status,409);assert.equal((await res.json()).error,error);
+ }
+ // Client timestamps cannot widen or narrow the server's date window.
+ assert.equal((await create('old-client','2026-10-14',{created_at:'2020-01-01T12:00:00Z'})).status,201);
+ const edit={...common(f,'audit-edit'),expected_revision:0,concept:'Audit',category:'Otro',note:null,expense_date:'2026-10-14'};
+ let res=await call('expense.update',edit);assert.equal(res.status,201);assert.equal((await res.json()).previous_expense_date,'2026-10-15');
+ res=await call('expense.update',edit);assert.equal((await res.json()).previous_expense_date,'2026-10-15');
+ const second={...edit,operation_id:'audit-edit2',expected_revision:1,expense_date:'2026-10-13'};
+ res=await call('expense.update',second);assert.equal((await res.json()).previous_expense_date,'2026-10-14');
+ const base=common(f,'policy-open');delete base.expense_id;
+ assert.equal((await call('cash.open',{...base,session_id:'policy-shift',opening_cents:10000})).status,201);
+ res=await create('before-opening','2026-10-14',{session_id:'policy-shift',expected_session_revision:0});assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_outside_shift');
+ assert.equal((await create('linked','2026-10-15',{session_id:'policy-shift',expected_session_revision:0})).status,201);
+ assert.equal((await call('cash.close',{...base,operation_id:'policy-close',session_id:'policy-shift',expected_session_revision:1,counted_cents:10000})).status,201);
+ for(const command of ['expense.update','expense.void']){
+  const body={...common(f,command+'-closed'),expense_id:'linked',expected_revision:0};
+  if(command==='expense.update')Object.assign(body,{concept:'Rename',category:'Otro',note:null,expense_date:'2026-10-15'});
+  res=await call(command,body);assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_locked_closed_shift');
+ }
+ res=await create('closed-create','2026-10-15',{session_id:'policy-shift',expected_session_revision:1});assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_locked_closed_shift');
+ res=await create('closed-day','2026-10-15');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
+ res=await call('expense.update',{...second,operation_id:'closed-day-edit',expected_revision:2,expense_date:'2026-10-15'});assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
+});
+test('feature routes authenticate before disclosing lock state',async t=>{
+ const {f}=await setup(t);
+ for(const path of ['/features/kardex','/features/gastos','/features/unknown']){
+  for(const headers of [{},{authorization:'Bearer invalid'}])assert.equal((await f.fetch('http://localhost'+path,{headers})).status,401);
+  const res=await f.fetch('http://localhost'+path,{headers:{authorization:'Bearer expense-owner-token'}});
+  assert.equal(res.status,path.endsWith('/gastos')?404:403);
  }
 });

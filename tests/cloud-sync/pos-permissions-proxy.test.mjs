@@ -8,7 +8,7 @@ const patterns = config.assets.run_worker_first;
 
 test('all permission routes are proxied by assets and the web Worker', async () => {
   assert.deepEqual(p.PROXY_PREFIXES, patterns.filter(x => !['/', '/app', '/app/'].includes(x)));
-  for (const path of new Set([...p.ROLE_PATHS, ...p.PRODUCT_IMAGE_PATHS, ...p.API_ROUTES.map(r => r.path)])) {
+  for (const path of new Set(['/features/kardex', ...p.ROLE_PATHS, ...p.PRODUCT_IMAGE_PATHS, ...p.API_ROUTES.map(r => r.path)])) {
     assert.ok(patterns.some(pattern => pattern.endsWith('*') ? path.startsWith(pattern.slice(0, -1)) : pattern === path), path);
     let called = false;
     const response = await worker.fetch(new Request('https://pos.test' + path), {

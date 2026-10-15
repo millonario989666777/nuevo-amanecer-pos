@@ -100,6 +100,7 @@
   function card(feature) {
     var unlocked = isUnlocked(feature);
     var node = element('button', 'na-prox-card' + (unlocked ? ' is-enabled' : '')); node.type = 'button'; node.dataset.featureId = feature.id;
+    if (unlocked) node.appendChild(element('span','na-prox-available','Disponible'));
     if (!unlocked) node.appendChild(element('span', 'na-prox-badge', '🔒 Próximamente' + (PRIORITY_LABELS[feature.priority] ? ' · ' + PRIORITY_LABELS[feature.priority] : '')));
     if (feature.uncertain) node.appendChild(element('span', 'na-prox-tag', 'por confirmar'));
     var icon = element('span', 'na-prox-icon', feature.icon); icon.setAttribute('aria-hidden', 'true'); node.appendChild(icon);
@@ -111,8 +112,8 @@
   function renderSections(host) {
     host.replaceChildren();
     var shown = 0;
-    MODULES.forEach(function (module) {
-      var items = list().filter(function (f) { return f.module === module && matches(f); });
+    ['Disponible'].concat(MODULES).forEach(function (module) {
+      var items = list().filter(function (f) { return matches(f) && (module==='Disponible'?isUnlocked(f):f.module===module&&!isUnlocked(f)); });
       var rank = { alta: 0, media: 1, baja: 2 };
       items = items.slice().sort(function (a, b) { return (isUnlocked(b) - isUnlocked(a)) || ((a.priority ? rank[a.priority] : 3) - (b.priority ? rank[b.priority] : 3)); });
       if (!items.length) return;

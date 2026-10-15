@@ -25,6 +25,7 @@ function isCanonicalApiPath(pathname) {
     pathname === '/settings' ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/read/') ||
+    pathname.startsWith('/features/') ||
     pathname.startsWith('/commands/') ||
     pathname.startsWith('/imports/') ||
     pathname === '/sync/operations' ||

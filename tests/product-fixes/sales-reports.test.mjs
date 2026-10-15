@@ -27,3 +27,12 @@ test('custom range reverses inputs and daily/monthly missing costs remain unknow
  const daily=c._naF8DailyRows([{id:'missing',timestamp:'2026-10-16T04:00:00Z',total:7,items:[{id:99,name:'No cost',qty:1,precio:7}]}],[]);
  assert.equal(daily[0].date,'2026-10-15');assert.equal(daily[0].gross,null);assert.equal(c._naF8MonthlyRows(daily)[0].gross,null);assert.equal(c._naF8MonthlyRows(daily)[0].net,null);
 });
+
+test('CSV retains plain signed numbers while escaping formula prefixes',()=>{
+ const c=context();for(const value of [-12.5,'-12.50',12,'105.00'])assert.equal(c._naF8CsvCell(value),String(value));
+ for(const value of ['=1+1','+12','-SUM(A1)','@cmd','\tcmd','\rcmd'])assert.ok(c._naF8CsvCell(value).includes("'"),JSON.stringify(value));
+});
+test('missing-cost profit displays a neutral estimate using known costs',()=>{
+ const c=context();const report={products:[{name:'Unknown',icon:'',units:1,transactions:1,revenue:105,cost:5,profit:null,margin:null}]};
+ const html=c._naF8ProductsTable(report);assert.ok(html.includes('S/ 100 (estimado)'));assert.ok(!html.includes('num positive'));assert.ok(!html.includes('num negative'));assert.equal(c._naF8Tone(null),'');
+});

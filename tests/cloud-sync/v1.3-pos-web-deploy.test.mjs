@@ -18,7 +18,7 @@ test('hosted POS uses explicit Worker routing with a stable workers.dev name', (
   assert.equal(parsedConfig.assets.directory, './_site');
   assert.equal(parsedConfig.assets.binding, 'ASSETS');
   assert.deepEqual(parsedConfig.assets.run_worker_first, [
-    '/', '/app', '/app/', '/health', '/auth/*', '/read/*',
+    '/', '/app', '/app/', '/health', '/auth/*', '/read/*', '/features/*',
     '/commands/*', '/imports/*', '/sync/operations*', '/settings'
   ]);
   assert.equal(parsedConfig.assets.html_handling, 'none');
@@ -166,7 +166,7 @@ test('deploy versions the launcher activation script with the exact hosted build
 
 
 test('canonical API proxy routes invoke the Worker before static assets', () => {
-  for (const route of ['/health','/auth/*','/read/*','/commands/*','/imports/*','/sync/operations*','/settings']) {
+  for (const route of ['/health','/auth/*','/read/*', '/features/*','/commands/*','/imports/*','/sync/operations*','/settings']) {
     assert.ok(parsedConfig.assets.run_worker_first.includes(route), route + ' must run Worker first');
   }
 });

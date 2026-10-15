@@ -24,7 +24,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
   assert.equal(api.list().length, 0, 'nothing built until load()');
   await api.load();
   const ids = api.list().map(f => f.id);
-  assert.equal(ids.length, 76);
+  assert.equal(ids.length, 89);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(api.list().map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.equal(JSON.stringify(Object.keys(P.FEATURE_LOCKS).sort()), JSON.stringify(ids.slice().sort()), 'every registry id has exactly one server lock entry');
@@ -44,8 +44,8 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
     }
   }
   const prioritized = api.list().filter(f => f.priority);
-  assert.equal(prioritized.length, 20);
-  assert.equal(JSON.stringify(api.list().filter(f => f.uncertain).map(f => f.id).sort()), JSON.stringify(['gasto-a-cuenta', 'tipo-cierre']));
+  assert.equal(prioritized.length, 37);
+  assert.deepEqual(Array.from(api.list().filter(f=>f.uncertain).map(f=>f.id)).sort(), 'app-android-nativa cpe-sin-internet venta-granel gaveta-dinero comprobante-por-correo app-almaceneros equipos-pos shopify-woocommerce bandeja-multicanal plan-distribuidor multi-ruc balanza calendario-gastos gasto-a-cuenta tipo-cierre firma-digital'.split(' ').sort());
   for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito', 'compras', 'stock-lotes-fefo']) assert.equal(api.get(id), undefined, id + ' already exists in the POS');
 });
 
@@ -59,7 +59,7 @@ test('server lock is keyed by feature id, default-deny, and unlocking is a one-l
   assert.deepEqual(Array.from(P.routeRoles('/features/gastos', 'GET')), ['owner']);
   for (const id of Object.keys(P.FEATURE_LOCKS)) assert.match(permissionsSource, new RegExp(`^    '${id}': (true|false),?$`, 'm'), id + ' lock is one line');
   const worker = readFileSync('tools/cloudflare-lab/src/worker.js', 'utf8');
-  assert.match(worker, /startsWith\('\/features\/'\)[\s\S]{0,200}PERMISSIONS\.featureLocked\(id\)\) return json\(\{ error: 'feature_locked'/);
+  assert.match(worker, /startsWith\('\/features\/'\)[\s\S]{0,400}PERMISSIONS\.featureLocked\(id\)\) return json\(\{ error: 'feature_locked'/);
 });
 
 test('Próximamente is explicitly owner-only and the module has no network APIs besides loading its own registry', () => {
@@ -178,7 +178,7 @@ test('unlock needs lock=false AND a page; sections group by module with counters
   assert.equal(h.api.isEnabled('reportes'), true);
   assert.equal(h.api.isEnabled('cotizaciones'), false, 'locked even with a page');
   const summaries = []; const walk = n => { if (n.className === 'na-prox-summary') summaries.push(n.textContent); n.children.forEach(walk); }; walk(container);
-  assert.deepEqual(summaries, ['Ventas (2)', 'Caja (2)']);
+  assert.deepEqual(summaries, ['Disponible (1)', 'Ventas (1)', 'Caja (2)']);
   const cards = cardsOf(container);
   assert.deepEqual(cards.map(c => c.dataset.featureId), ['reportes', 'cotizaciones', 'gaveta', 'gastos'], 'unlocked first, then alta/media/baja');
   const badge = n => n.children.find(x => x.className === 'na-prox-badge');
@@ -186,6 +186,7 @@ test('unlock needs lock=false AND a page; sections group by module with counters
   assert.ok(cards[2].children.some(x => x.className === 'na-prox-tag' && x.textContent === 'por confirmar'));
   cards[1].events.click(); assert.equal(h.navigated.length, 0); assert.ok(h.doc.getElementById('naProxPreview'));
   h.doc.getElementById('naProxPreview').close();
+  assert.equal(cards[0].children.find(x=>x.className==='na-prox-available').textContent,'Disponible');
   cards[0].events.click(); assert.deepEqual(h.navigated, ['pageVentas']);
   const chips = []; const walk2 = n => { if ((n.className || '').startsWith('na-prox-chip')) chips.push(n); n.children.forEach(walk2); }; walk2(container);
   chips.find(c => c.dataset.priority === 'media').events.click();
