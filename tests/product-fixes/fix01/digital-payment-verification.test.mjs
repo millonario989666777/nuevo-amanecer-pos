@@ -5,6 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createPosSandbox, json } from '../../release-invariants/lib/sandbox.mjs';
+import { docHelpers } from '../../helpers/doc-helpers.mjs';
 
 const PRODUCT = {
   id: 'P1', name: 'Arroz', sku: 'ARR-1', stock: 10, stockMin: 2,
@@ -147,7 +148,7 @@ test('T8 — un intento bloqueado no abre ni imprime comprobante', async () => {
 test('T9 — el ticket no presenta un ID interno como operación bancaria', () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const moduleSource = name => readFileSync(path.join(root, 'POS', 'js', 'modules', 'ticket', name), 'utf8');
-  const context = vm.createContext({
+  const context = vm.createContext({ ...docHelpers,
     appConfig: {
       igvActive: false,
       ticket: {

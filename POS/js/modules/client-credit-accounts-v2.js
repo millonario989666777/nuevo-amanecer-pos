@@ -1043,13 +1043,13 @@ function labCategorySummary(client, category) {
     var paymentCount = s.all.reduce(function (n, cr) { return n + labEffectivePayments(cr).length; }, 0);
     var line = Number.isFinite(Number(e.assignedLine)) ? Number(e.assignedLine) : null;
     var available = Number.isFinite(Number(e.available)) ? Number(e.available) : null;
-    return '<div class="na-v2-screen">' +
+    return '<div class="na-v2-screen na-v2-client-detail">' +
       labBackButton('Clientes') +
       '<header class="na-v2-client-head na-v2-tone-' + c.tone + '">' +
         '<div class="na-v2-client-identity"><span class="na-v2-eyebrow">Ficha financiera</span>' +
           '<div class="na-v2-name-line"><h2>' + labEsc(labClientDisplayName(client)) + '</h2>' +
           '<button type="button" class="na-v2-risk na-v2-risk-' + c.tone + '" onclick="naCanonOpenClientBehavior()">● ' + labEsc(c.label) + '</button></div>' +
-          '<p>' + (client.dni ? 'DNI ' + labEsc(client.dni) : 'Sin DNI') + (client.tel ? ' · ' + labEsc(client.tel) : '') + '</p>' +
+          '<p>' + (_naDocumentValue(client.dni) ? 'DNI ' + labEsc(window.NA_DOC.displayDoc(client.dni)) : window.NA_DOC.displayDoc(client.dni)) + (client.tel ? ' · ' + labEsc(client.tel) : '') + '</p>' +
         '</div>' +
         '<div class="na-v2-head-money"><span>Deuda total</span><strong>' + labMoney(s.debt) + '</strong>' +
           '<small>Línea ' + labMoney(line) + (available !== null ? ' · ' + labMoney(available) + ' disponible' : '') + '</small></div>' +
@@ -1898,11 +1898,11 @@ function labCreditDisplayMoment(cr, fallbackDate) {
     meta.className = 'c-meta';
     var metaParts = [];
     var lineIcons = typeof window.NA_ICON === 'function';
-    if (client && client.dni) metaParts.push(lineIcons ? String(client.dni) : '📋 ' + client.dni);
+    if (client && _naDocumentValue(client.dni)) metaParts.push(lineIcons ? String(client.dni) : '📋 ' + client.dni);
     metaParts.push(credits.length + (credits.length === 1 ? ' crédito' : ' créditos'));
     if (status) metaParts.push(status.toUpperCase());
     meta.textContent = metaParts.join(' · ');
-    if (lineIcons && client && client.dni) meta.insertAdjacentHTML('afterbegin', window.NA_ICON('clip'));
+    if (lineIcons && client && _naDocumentValue(client.dni)) meta.insertAdjacentHTML('afterbegin', window.NA_ICON('clip'));
     info.append(name, meta);
 
     var right = document.createElement('span');

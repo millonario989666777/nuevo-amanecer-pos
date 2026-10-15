@@ -17,6 +17,8 @@ function ticket(width='80mm'){
     creditos:[{id:'C-1',cliId:'CLIENT-1',ventaId:'V-1',monto:15,saldo:10}]
   };
   const ctx=vm.createContext(state);
+  ctx.window=ctx;
+  vm.runInContext(fs.readFileSync("POS/js/core/utils.js","utf8"),ctx);
   for(const file of ['legacy.js','zones.js','share-receipt.js']){
     vm.runInContext(fs.readFileSync('POS/js/modules/ticket/'+file,'utf8'),ctx,{filename:file});
   }
@@ -49,4 +51,12 @@ test('receipt editor keeps the eight zones aligned, removes VARIOS, and never ex
     }
     assert.equal(JSON.stringify(sale),before);
   }
+});
+
+test('thermal receipt never prints placeholder document identities', () => {
+  const ctx=ticket();
+  const sale={id:'V-doc',clienteNombre:'Ana',clienteDni:'SIN-DOC-x',items:[]};
+  assert.doesNotMatch(ctx._naBuildThermalTicket(sale,false).text,/SIN-DOC/);
+  sale.clienteDni='12345678';
+  assert.match(ctx._naBuildThermalTicket(sale,false).text,/12345678/);
 });

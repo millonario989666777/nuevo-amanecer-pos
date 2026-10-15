@@ -76,6 +76,8 @@ test('PDF serializer embeds JPEG bytes with correct offsets and multiple pages',
 
 function realTicketApi(){
   const ctx=vm.createContext({console,Blob,TextEncoder,Uint8Array,atob,navigator:{},document:{addEventListener(){}},_naDefaults:{ticket:{}},appConfig:{ticket:{}},_naGetBusiness:()=>({nombre:'Negocio',cajero:'Cajero actual'}),totalV:s=>(s.items||[]).reduce((sum,i)=>sum+i.qty*i.precio,0),desglosarIGV:total=>({subtotal:total,igv:0,total}),obtenerHoy:()=> '2099-12-31',nowT:()=> '23:59',_naHydrateTicket(){},_naSaveTicketSettings(){}});
+  ctx.window=ctx;
+  vm.runInContext(readFileSync('POS/js/core/utils.js','utf8'),ctx);
   for(const p of ['POS/js/modules/ticket/legacy.js','POS/js/modules/ticket/zones.js',path])vm.runInContext(readFileSync(p,'utf8'),ctx);
   return ctx.NAReceiptShare;
 }

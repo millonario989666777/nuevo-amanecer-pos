@@ -315,3 +315,7 @@ body.dark #pageCaja .cv-line span,body.dark #pageCaja .cv-note,body.dark #pageCa
 #pageCaja #cajContent > .cv-view { max-width:760px !important; margin-inline:auto !important; }
 #pageCaja #cajContent > .cv-view > * { grid-column:1; }
 #pageCaja .cv-view > .cv-note { margin-bottom:0; }
+
+@media (min-width:1024px){
+  #pageCaja #cajContent{max-width:1400px}
+}

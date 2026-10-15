@@ -90,7 +90,7 @@ function _naF11ZoneInfo(ctx,s){
   const out=[],push=(label,value)=>{if(value!==''&&value!==null&&value!==undefined)out.push(..._naF11FieldLines(label,value,ctx.width,s.align));};
   if(ctx.v?._naReceiptContext?.kind!=='payment'&&(ctx.v?.metodo==='credito'||ctx.v?.metodoPago==='credito'))out.push(..._naTkWrap('COMPROBANTE DE VENTA A CREDITO',ctx.width).map(line=>_naTkAlignLine(line,ctx.width,'center')));
   if(ctx.showNum)push(ctx.labels.ticket,ctx.v?.id||'');if(ctx.showOperation){const op=_naTkOperation(ctx.v);if(op)push(ctx.labels.operation,op);}push(ctx.labels.date,_naTkFormatDate(ctx.v?.fecha||obtenerHoy()));push(ctx.labels.time,ctx.v?.hora24||ctx.v?.hora||nowT());push(ctx.labels.cashier,ctx.v?.cajeroNombre||ctx.v?.cajero||ctx.business.cajero||'');
-  const client=ctx.v?.clienteNombre||ctx.v?.cliente?.nombre||'',dni=ctx.v?.clienteDni||ctx.v?.cliente?.dni||'';if(client)push('Cliente',client);if(dni)push('DNI',dni);if(ctx.v?.anulada)push('Estado','ANULADA');return out;
+  const client=ctx.v?.clienteNombre||ctx.v?.cliente?.nombre||'',dni=_naDocumentValue(ctx.v?.clienteDni||ctx.v?.cliente?.dni);if(client)push('Cliente',client);if(dni)push('DNI',dni);if(ctx.v?.anulada)push('Estado','ANULADA');return out;
 }
 function _naF11ZoneProducts(ctx,s){
   const out=[],items=ctx.items;if(!items.length)return[_naTkAlignLine('Sin productos',ctx.width,s.align==='split'?'left':s.align)];out.push(..._naTkWrap('DETALLE DE PRODUCTOS',ctx.width));

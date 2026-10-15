@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { docHelpers } from '../helpers/doc-helpers.mjs';
 function context(){
- const c=vm.createContext({console,productos:[{id:1,cat:'farmacia',costo:3}],ventas:[],clientes:[],creditos:[],gastos:[],cajMovs:[],ventasRender(){},document:{addEventListener(){},getElementById(){return null;}},_naNumber:(n,d=0)=>Number.isFinite(Number(n))?Number(n):d,_naClean:n=>String(n??'').trim(),_naEsc:n=>String(n??''),_naUnitsSold:i=>i.unidadesFisicas??i.qty??i.cantidad??0,_naCategoryLabel:c=>c==='farmacia'?'Farmacia':c,totalV:v=>v.total,fmt:n=>`S/ ${n}`, _naIsSaleIncomeMove:()=>false,_naIsSaleReversalMove:()=>false});
+ const c=vm.createContext({...docHelpers,console,productos:[{id:1,cat:'farmacia',costo:3}],ventas:[],clientes:[],creditos:[],gastos:[],cajMovs:[],ventasRender(){},document:{addEventListener(){},getElementById(){return null;}},_naNumber:(n,d=0)=>Number.isFinite(Number(n))?Number(n):d,_naClean:n=>String(n??'').trim(),_naEsc:n=>String(n??''),_naUnitsSold:i=>i.unidadesFisicas??i.qty??i.cantidad??0,_naCategoryLabel:c=>c==='farmacia'?'Farmacia':c,totalV:v=>v.total,fmt:n=>`S/ ${n}`, _naIsSaleIncomeMove:()=>false,_naIsSaleReversalMove:()=>false});
  c.window=c;vm.runInContext(readFileSync('POS/js/core/lima-time.js','utf8'),c);vm.runInContext(readFileSync('POS/js/legacy-inline/inline-05.js','utf8'),c);return c;
 }
 test('categories, cashier identities, physical units, missing costs and all CSV sections',()=>{

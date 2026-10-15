@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { docHelpers } from '../helpers/doc-helpers.mjs';
 const in05 = readFileSync('POS/js/legacy-inline/inline-05.js', 'utf8');
 const in02 = readFileSync('POS/js/legacy-inline/inline-02.js', 'utf8');
 const fn = (src, name) => { const i = src.indexOf(`function ${name}(`); assert.ok(i >= 0, name); return src.slice(i, src.indexOf('\n', i)); };
-const ctx = extra => { const c = vm.createContext({ _naNumber: (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; }, productos: [{ id: 'A', name: 'A', costo: 9 }], ...extra }); return c; };
+const ctx = extra => { const c = vm.createContext({ ...docHelpers, _naNumber: (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; }, productos: [{ id: 'A', name: 'A', costo: 9 }], ...extra }); return c; };
 
 test('CSV cells neutralise formula injection but keep plain numbers', () => {
   const c = ctx(); vm.runInContext(fn(in05, '_naF8CsvCell'), c);

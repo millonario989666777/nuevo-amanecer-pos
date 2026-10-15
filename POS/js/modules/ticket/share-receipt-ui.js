@@ -9,7 +9,7 @@
   // so they are a canonical customer UI and must not hit the legacy-write guard. User/master/read-only locks still apply.
   function authorized(){if(typeof root.isModuleLocked==='function'&&root.isModuleLocked('clientes',{canonicalCustomerUi:canonicalContactUi()})){notice('Clientes está protegido');return false;}if(typeof root._naF10AuthorizePermission==='function'&&!root._naF10AuthorizePermission('clients','Editar datos del cliente'))return false;return true;}
   function contactInfoText(){return canonicalContactUi()?'Estos datos se guardan en CANON. DNI (8 dígitos) o RUC (11 dígitos); déjalo vacío si no tiene.':'Estos datos se guardan en la ficha del cliente para futuras operaciones.';}
-  function clientDocument(c){return String(c?.dni||c?.document||'').trim();}
+  function clientDocument(c){return _naDocumentValue(c?.dni||c?.document);}
   function clientAddress(c){return String(c?.dir||c?.address||'').trim();}
   function docLabel(doc){return doc.length===11?'RUC':'DNI';}
   function contactModal(){

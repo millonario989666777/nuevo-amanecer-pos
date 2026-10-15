@@ -75,7 +75,7 @@ function _naSecClientCard(parent,client){
 
   const info=_naSecAppend(header,'div','c-info');
   _naSecAppend(info,'div','c-name',client.nombre);
-  _naSecAppend(info,'div','c-meta',`${client.dni?`\u{1F4CB} ${client.dni}`:''} ${client.tel?`\u{1F4F1} ${client.tel}`:''} ${credits.length?`\u00b7 ${credits.length} cr\u00e9dito(s)`:''}`.trim());
+  _naSecAppend(info,'div','c-meta',`${_naDocumentValue(client.dni)?`\u{1F4CB} ${client.dni}`:''} ${client.tel?`\u{1F4F1} ${client.tel}`:''} ${credits.length?`\u00b7 ${credits.length} cr\u00e9dito(s)`:''}`.trim());
 
   const right=_naSecAppend(header,'div','c-right');
   _naSecAppend(right,'div',`c-deuda ${debtClass}`,fmt(debt));
@@ -120,7 +120,7 @@ _baseCliRender=function(){
   [['cliB0',clientes.length],['cliB1',expired],['cliB2',soon],['cliB3',current],['cliS0',clientes.length],['cliS1',`S/${clientes.reduce((sum,client)=>sum+_naClientDebtFast(client),0).toFixed(0)}`],['cliS2',expired],['cliS3',`S/${cobradoHoy.toFixed(2)}`]].forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.textContent=String(value);});{const _naPaidLbl=document.getElementById('cliS3')?.parentElement?.querySelector('.ss-lbl');if(_naPaidLbl)_naPaidLbl.textContent='Cobrado hoy (todos los medios)';}
   const search=sinTildes((document.getElementById('cliSearch')?.value||'').toLowerCase()),sort=document.getElementById('cliSort')?.value||'';
   let rows=clientes.filter(client=>{
-    const matches=sinTildes((client.nombre||'').toLowerCase()).includes(search)||(client.dni||'').includes(search),status=statusCli(client);
+    const matches=sinTildes((client.nombre||'').toLowerCase()).includes(search)||_naDocumentValue(client.dni).includes(search),status=statusCli(client);
     return cliTab==='vencidos'?matches&&status==='vencido':cliTab==='proximos'?matches&&status==='proximo':cliTab==='vigentes'?matches&&status==='vigente':matches;
   });
   if(sort==='deuda')rows.sort((a,b)=>_naClientDebtFast(b)-_naClientDebtFast(a));else rows.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
