@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base f66e2d5d: #689/#690 review fixes (expense.update rejects future/outside-shift dates with 409, MAX(revision) scoped by promotion_id) and #691 /features/<id> 403 lock. No schema changes (0032 already applied). No live sale. Rollback to 616fb754.",
-  "target_commit": "f66e2d5d56602df956736f6ccf311f8d331ff691",
-  "rollback_ref": "616fb7548883e1aebe70c15f786a1729fac12ac2",
+  "authorization_context": "Owner authorized (2026-10-15 Lima, 'arregla') deploy of #697 review fixes: expense create/update/void closed-day checks use server time and server_received_at (migration 0033 already applied with R2 backup), /features/<id> session-first 401/403/404, CSV and closure dedupe fixes. Rollback to f66e2d5d (worker 36).",
+  "target_commit": "4c7200b2cc82f0c2c7eac538f8592fa862ddabf6",
+  "rollback_ref": "f66e2d5d56602df956736f6ccf311f8d331ff691",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 36,
-  "optimization": "REVIEW_FIXES"
+  "attempt": 37,
+  "optimization": "REVIEW_FIXES_514DE90"
 }
