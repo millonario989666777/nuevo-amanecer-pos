@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Historial de Caja (#667); desplegar solo POS web.",
-  "retry_attempt": 125,
-  "retry_reason": "Deploy de base 19bcbc82 (#667 historial Caja). Sin cambios de backend. Rollback: 85c28cb4ac8dbb6ee3321100527f77f596fed3d9.",
-  "requested_at_utc": "2026-10-15T11:31:00Z",
-  "approved_base": "19bcbc82e5a2c3c02aefbd13e3c1565fbaacd723"
+  "note": "Permisos por rol (#668), Próximamente (#675), formulario oscuro (#672), historial de Caja (#678); desplegar POS web (backend ya desplegado en worker hotfix 34).",
+  "retry_attempt": 126,
+  "retry_reason": "Deploy de base 020eda0b (#672, #668, #675, #678). Backend desplegado antes (worker hotfix 34, run 38733457734). Rollback: 19bcbc82e5a2c3c02aefbd13e3c1565fbaacd723.",
+  "requested_at_utc": "2026-10-15T12:17:48Z",
+  "approved_base": "020eda0b1935013de87ef8e8a85764425d6f468a"
 }
