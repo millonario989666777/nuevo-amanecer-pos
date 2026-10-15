@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Review fixes #697 (gastos fechas dd/mm/aaaa, montos S/, Próximamente Disponible, CSV, cierres). Worker 37 ya desplegado.",
-  "retry_attempt": 131,
-  "retry_reason": "Deploy de base e21bf8de (#697). Rollback: b280dd6d51b77fbff3c88846c2c24fb2832cfefc (build de 130).",
-  "requested_at_utc": "2026-10-15T18:24:08Z",
-  "approved_base": "e21bf8de725af0574d6d1f91718997267960d3c5"
+  "note": "Review fixes #697 + paridad LAB Ventas (#705). Worker 37 ya desplegado.",
+  "retry_attempt": 132,
+  "retry_reason": "Reintento de 131 (falló verificación LAB↔CANON antes de desplegar). Base 462163b5. Rollback: b280dd6d51b77fbff3c88846c2c24fb2832cfefc (build de 130).",
+  "requested_at_utc": "2026-10-15T18:26:26Z",
+  "approved_base": "462163b58f4768a97f707f9ee1c7828d60c7bbcb"
 }
