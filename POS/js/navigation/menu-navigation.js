@@ -209,14 +209,22 @@
 
   function ensureMobileStylesheet() {
     if (!isMobile() || typeof document.createElement !== 'function') return false;
-    if (document.getElementById('naMobileHomeBaseStyles') || document.getElementById('naMobileHomeStyles')) return true;
     var head = document.head || (document.querySelector && document.querySelector('head'));
     if (!head || typeof head.appendChild !== 'function') return false;
-    var link = node('link');
-    link.id = 'naMobileHomeStyles';
-    link.rel = 'stylesheet';
-    link.href = 'css/canon-mobile-home.css';
-    head.appendChild(link);
+    if (!document.getElementById('naMobileHomeBaseStyles') && !document.getElementById('naMobileHomeStyles')) {
+      var link = node('link');
+      link.id = 'naMobileHomeStyles';
+      link.rel = 'stylesheet';
+      link.href = 'css/canon-mobile-home.css';
+      head.appendChild(link);
+    }
+    if (!document.getElementById('naMobileDrawerStyles')) {
+      var drawerLink = node('link');
+      drawerLink.id = 'naMobileDrawerStyles';
+      drawerLink.rel = 'stylesheet';
+      drawerLink.href = 'css/mobile-drawer.css';
+      head.appendChild(drawerLink);
+    }
     return true;
   }
 
@@ -251,7 +259,7 @@
     var toggle = document.getElementById('naMobileMenuToggle');
     if (!drawer || !overlay) return;
     refreshMobileProfile();
-    updateDrawerSelection();
+    renderDrawerItems();
     drawer.inert = false;
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
@@ -295,7 +303,7 @@
     button.appendChild(iconNode);
     var copy = node('span', 'na-mobile-drawer-label');
     copy.appendChild(node('strong', '', label));
-    if (description) copy.appendChild(node('small', '', description));
+    copy.appendChild(node('small', '', description));
     button.appendChild(copy);
     var chevron = node('span', 'na-mobile-drawer-chevron', '›');
     chevron.setAttribute('aria-hidden', 'true');
@@ -307,12 +315,45 @@
     return button;
   }
 
+  function canShowDrawerPage(pageId) {
+    var roles = root.NA_ROLES;
+    var role = roles ? roles.role : 'owner';
+    if (pageId === 'pageMenu') return true;
+    // The shared table (POS/js/config/pos-permissions.js, PR #668) plugs in here automatically.
+    if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
+      var effectiveRole = roles && roles.isOwner && roles.isOwner() ? 'owner' : role;
+      return root.NA_PERMISSIONS.canAccessScreen(effectiveRole, pageId);
+    }
+    return pageId !== 'pageConfig' || !roles || (typeof roles.canConfigure === 'function' && roles.canConfigure());
+  }
+
+  function renderDrawerItems() {
+    var drawer = document.getElementById('naMobileDrawer');
+    var navigation = drawer && drawer.querySelector('.na-mobile-drawer-nav');
+    if (!navigation || !isMobile()) return;
+    while (navigation.firstChild) navigation.removeChild(navigation.firstChild);
+    [
+      ['Inicio', 'home', 'pageMenu', 'Resumen del día'],
+      ['Nueva venta', 'sale', 'pagePOS', 'Punto de venta'],
+      ['Ventas', 'sales', 'pageVentas', 'Historial y comprobantes'],
+      ['Inventario', 'stock', 'pageInventario', 'Productos, stock e ingresos'],
+      ['Clientes', 'search', 'pageClientes', 'Saldos, créditos y abonos'],
+      ['Caja', 'cash', 'pageCaja', 'Abrir, cerrar y movimientos'],
+      ['Gastos', 'expense', 'pageGastos', 'Registrar y consultar gastos'],
+      ['Configuración', 'settings', 'pageConfig', 'Negocio, usuarios y equipos']
+    ].forEach(function (item) {
+      if (document.getElementById(item[2]) && canShowDrawerPage(item[2])) {
+        navigation.appendChild(drawerItem(item[0], item[1], item[2], item[3]));
+      }
+    });
+    updateDrawerSelection();
+  }
+
   function updateDrawerSelection() {
     var active = document.querySelector('.page.active');
     var current = active ? active.id : 'pageMenu';
     document.querySelectorAll('.na-mobile-drawer-link').forEach(function (button) {
-      // Clients and credits share a destination; highlight just its client row.
-      if (button.getAttribute('data-page') === current && button.getAttribute('aria-label') !== 'Registrar abono') {
+      if (button.getAttribute('data-page') === current) {
         button.setAttribute('aria-current', 'page');
       } else button.removeAttribute('aria-current');
     });
@@ -331,9 +372,13 @@
     var heading = document.getElementById('naMobileGreeting');
     if (heading) heading.textContent = name ? 'Hola, ' + name.trim().split(/\s+/)[0] : 'Hola';
     var profile = document.getElementById('naMobileProfileName');
-    if (profile) profile.textContent = name || 'Cajero actual';
+    var roles = root.NA_ROLES;
+    var profileName = roles && roles.label ? String(roles.label) : name || 'Usuario';
+    if (profile) profile.textContent = profileName;
+    var avatar = document.getElementById('naMobileProfileAvatar');
+    if (avatar) avatar.textContent = profileName.trim().split(/\s+/).filter(Boolean).map(function (part) { return part.charAt(0); }).slice(0, 2).join('').toUpperCase();
     var role = document.getElementById('naMobileProfileRole');
-    if (role) role.textContent = actor ? ({ admin:'Administrador', supervisor:'Supervisor', cajero:'Cajero', personalizado:'Personalizado' }[actor.role] || 'Cajero') : 'Nuevo Amanecer POS';
+    if (role) role.textContent = roles ? ({ owner:'Dueño', empleado:'Empleado' }[roles.role] || 'Verificando permisos…') : actor ? ({ admin:'Administrador', supervisor:'Supervisor', cajero:'Cajero', personalizado:'Personalizado' }[actor.role] || 'Cajero') : 'Dueño';
   }
 
   function createMobileLandscape() {
@@ -604,7 +649,7 @@
     }
 
     if (!document.getElementById('naMobileDrawer')) {
-      var drawer = node('aside', 'na-mobile-drawer');
+      var drawer = node('aside', 'na-mobile-drawer na-drawer-v2');
       drawer.id = 'naMobileDrawer';
       drawer.setAttribute('aria-label', 'Navegación principal');
       drawer.setAttribute('role', 'dialog');
@@ -613,10 +658,15 @@
       drawer.inert = true;
 
       var drawerHead = node('div', 'na-mobile-drawer-head');
-      drawerHead.appendChild(node('div', 'na-mobile-drawer-brand-icon'));
+      var logo = node('img', 'na-mobile-drawer-logo');
+      logo.src = 'assets/icons/icon-192.png';
+      logo.alt = '';
+      drawerHead.appendChild(logo);
       var brand = node('div', 'na-mobile-drawer-brand');
-      brand.appendChild(node('strong', '', 'Nuevo Amanecer'));
-      brand.appendChild(node('span', '', 'Sistema de gestión comercial'));
+      var businessName = document.getElementById('topBusinessName');
+      var businessSub = document.getElementById('topBusinessSub');
+      brand.appendChild(node('strong', '', businessName && businessName.textContent.trim() || 'Nuevo Amanecer'));
+      brand.appendChild(node('span', '', businessSub && businessSub.textContent.trim() || 'Sistema de gestión comercial'));
       drawerHead.appendChild(brand);
       var close = node('button', 'na-mobile-drawer-close', '✕');
       close.type = 'button';
@@ -627,6 +677,7 @@
 
       var profile = node('div', 'na-mobile-profile');
       var avatar = node('span', 'na-mobile-profile-avatar');
+      avatar.id = 'naMobileProfileAvatar';
       avatar.setAttribute('aria-hidden', 'true');
       profile.appendChild(avatar);
       var profileCopy = node('div');
@@ -636,17 +687,9 @@
       profile.appendChild(profileCopy);
       drawer.appendChild(profile);
       var navigation = node('nav', 'na-mobile-drawer-nav');
-      navigation.appendChild(drawerItem('Inicio', 'home', 'pageMenu'));
-      navigation.appendChild(drawerItem('Nueva venta', 'sale', 'pagePOS', 'Punto de Venta'));
-      navigation.appendChild(drawerItem('Ventas', 'sales', 'pageVentas', 'Historial de ventas'));
-      navigation.appendChild(drawerItem('Ingresar mercadería', 'stock', 'pageInventario', 'Inventario · consultar stock'));
-      navigation.appendChild(drawerItem('Buscar cliente', 'search', 'pageClientes', 'Clientes · saldos y créditos'));
-      navigation.appendChild(drawerItem('Registrar abono', 'payment', 'pageClientes', 'Cuentas por cobrar'));
-      navigation.appendChild(drawerItem('Abrir / cerrar caja', 'cash', 'pageCaja', 'Caja · controlar turno'));
-      navigation.appendChild(drawerItem('Registrar gasto', 'expense', 'pageGastos', 'Gastos · registrar y consultar'));
-      navigation.appendChild(drawerItem('Configuración', 'settings', 'pageConfig'));
       drawer.appendChild(navigation);
       document.body.appendChild(drawer);
+      renderDrawerItems();
     }
 
     refreshMobileActivity();
@@ -680,6 +723,9 @@
     }
     document.addEventListener('visibilitychange', syncMobileLandscape);
     if (typeof root.addEventListener === 'function') {
+      root.addEventListener('na:role', function () {
+        if (isMobile()) { renderDrawerItems(); refreshMobileProfile(); }
+      });
       root.addEventListener('resize', function () {
         if (!isMobile()) { closeMobileDrawer(); syncMobileMoney(); }
         else ensureMobileHome();
@@ -793,6 +839,7 @@
     mobileSafeNavigate: mobileSafeNavigate,
     openMobileDrawer: openMobileDrawer,
     closeMobileDrawer: closeMobileDrawer,
+    canShowDrawerPage: canShowDrawerPage,
     refreshMobileHome: refreshMobileActivity,
     pages: ALLOWED_PAGES.slice()
   });
