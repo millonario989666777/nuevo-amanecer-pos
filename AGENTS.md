@@ -109,3 +109,21 @@ En shadow mode:
 - `PRODUCT_WRITE = DENIED`;
 - solo puede escribir infraestructura/evidence según su contrato;
 - no gobierna automáticamente tareas normales del POS.
+
+## Contexto para Codex (resumen; detalle en `docs/codex/`)
+
+- Negocio, reglas de farmacia/caja/roles y reglas de diseño: `docs/codex/BUSINESS_CONTEXT.md`
+- Mapa de arquitectura (módulos, CSS, backend, sync, migraciones, deploy, workflows prohibidos): `docs/codex/ARCHITECTURE.md`
+- Pruebas (Node 22, unit, e2e en puerto libre, archivos que la suite sobrescribe): `docs/codex/TESTING.md`
+- Skills del repo para tareas recurrentes: `.agents/skills/` (add-screen, add-permission, add-migration, unlock-proximamente-feature, write-e2e-test, pre-publish-verification)
+
+Reglas duras (no negociables):
+
+1. **Nunca** cambiar el layout de la pantalla Venta ni de la página Inicio (sus funciones internas sí pueden mejorar).
+2. Toda pantalla debe funcionar en 1366, 768 y 390 px; diseñar primero para teléfono.
+3. Permisos: tabla única `POS/js/config/pos-permissions.js`, denegación por defecto en servidor; todo cambio de permiso lleva prueba cliente + servidor.
+4. Migraciones de BD/CANON: solo aditivas, con respaldo previo y aprobación del owner.
+5. Nunca alterar ventas ni abonos pendientes (outbox/sin confirmar).
+6. No editar `POS/css/experience-v2/pages/*.css` (copias de laboratorio).
+7. No commitear `POS/index.html`, `POS/css/base.css`, `POS/css/components.css`, `POS/css/layout.css` ni `evidence/**` sobrescritos por la suite de pruebas (restaurar con `git checkout`); los cambios intencionales a esos archivos se hacen y commitean antes de correr la suite.
+8. Nunca escribir secretos, tokens, datos de clientes ni identificadores sensibles de producción en código, docs, logs o prompts.
