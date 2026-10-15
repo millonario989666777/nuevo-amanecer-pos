@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Fotos follow-up (#717): aviso 80% almacenamiento (dueño), escape en inventario, UI de fotos oculta a empleados, precio de Venta dentro de la tarjeta.",
-  "retry_attempt": 138,
-  "retry_reason": "Deploy de base 408ed443 (#717). Rollback: 95a152e443fbfceccb55bec1e85642ed60a6c261 (build de 137).",
-  "requested_at_utc": "2026-10-15T21:59:17Z",
-  "approved_base": "408ed443da3720b8af8fdcf8a2cbbe4de4e69e16"
+  "note": "Fotos de producto (#715): miniaturas WebP ≤40KB, carga por carpeta/ZIP, miniaturas contenidas. Worker sin cambios.",
+  "retry_attempt": 137,
+  "retry_reason": "Deploy de base ccaf7082 (#715). Rollback: 5710f4623498cb7517300c5dbabe50ee635fe1f3 (build de 136).",
+  "requested_at_utc": "2026-10-15T21:23:43Z",
+  "approved_base": "ccaf708238314d46b1d4124918e167d650f38005"
 }
