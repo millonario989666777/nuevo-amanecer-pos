@@ -17,9 +17,12 @@
     // barcode shared by 2+ catalog products never lends one product's photo to another.
     const catalog=typeof productos!=='undefined'&&Array.isArray(productos)?productos:[];
     const codeOf=p=>[p.sku,p.barcode,...(Array.isArray(p.codigosAlternativos)?p.codigosAlternativos:[]),p.codigoAlternativo].filter(c=>typeof c==='string').map(c=>c.trim());
-    if(codes.some(c=>catalog.filter(p=>codeOf(p).includes(c)).length>1))return null;
     const found=manifest.images.filter(e=>e.codes.some(c=>codes.includes(c)));
-    return found.length===1?found[0]:null;
+    if(found.length!==1)return null;
+    // Solo en el caso raro de préstamo por código se revisa el catálogo (evita O(n²) al pintar).
+    const shared=found[0].codes.filter(c=>codes.includes(c));
+    if(shared.some(c=>catalog.filter(p=>codeOf(p).includes(c)).length>1))return null;
+    return found[0];
   }
   function source(product){const m=imageRecord(product);if(!m)return null;const item=memory.get(m.product_id);if(item?.etag===m.etag)return item.image;if(!queued.has(m.product_id)){queued.add(m.product_id);queue.push(m);pump();}return null;}
   const THUMBNAIL_SIZES=Object.freeze([384,320,256]),THUMBNAIL_QUALITIES=Object.freeze([.8,.7,.6,.5]),MAX_THUMBNAIL_BYTES=40000,MAX_THUMBNAIL_CHARS=60000;
