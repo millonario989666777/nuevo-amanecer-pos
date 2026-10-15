@@ -37,3 +37,5 @@ test('imports and canonical expense reports are owner-only', () => {
   assert.deepEqual(p.routeRoles('/read/canonical/expenses','GET'), ['owner']);
   assert.equal(p.API_ROUTES.find(r => r.path === '/read/canonical/expenses').action, 'reports.view');
 });
+
+test('expense revisions are owner-only on client actions and command routes',()=>{for(const action of ['expense.update','expense.void']){assert.equal(p.canDo('owner',action),true);assert.equal(p.canDo('empleado',action),false);assert.deepEqual(p.routeRoles('/commands/'+action,'POST'),['owner']);}});

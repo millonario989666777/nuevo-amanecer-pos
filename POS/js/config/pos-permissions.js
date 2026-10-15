@@ -6,7 +6,7 @@
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
   ['pageGastos', 'pageConfig', 'pageProximamente', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
-  ['expense.create', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
+  ['expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
   var SYNC_ENTITIES = {};
   ['products','sales','sale_items','customers','credits','credit_payments','cash_closures','inventory_movements'].forEach(function (id) { SYNC_ENTITIES[id] = 'sync.write'; });
@@ -41,6 +41,7 @@
   API_ROUTES.push({ path: '/imports/:id', methods: ['GET'], roles: both });
   ['status','sales','inventory-movements','sales/:id/items'].forEach(function (name) { API_ROUTES.push({ path: '/read/' + name, methods: ['GET'], roles: owner, action: 'reports.view' }); });
   ['status','snapshot','products','customers','credits','credit-payments','credit-accounts','sales','sale-items','inventory-movements','cash-movements','cash-sessions','financial-events'].forEach(function (name) { API_ROUTES.push({ path: '/read/canonical/' + name, methods: ['GET'], roles: both }); });
+  ['expense.update', 'expense.void'].forEach(function (action) { API_ROUTES.push({ path: '/commands/' + action, methods: ['POST'], roles: owner, action: action }); });
   API_ROUTES.push({ path: '/read/canonical/expenses', methods: ['GET'], roles: owner, action: 'reports.view' });
   var PRODUCT_IMAGE_PATHS = Array.from(new Set(API_ROUTES.filter(function (r) { return r.path.indexOf('/auth/product-images') === 0; }).map(function (r) { return r.path; })));
   var ROLE_PATHS = ['/auth/reviews','/auth/reviews/resolve','/auth/me','/auth/owner-pin','/auth/owner-approval','/auth/pairing-code','/auth/pair','/auth/devices','/auth/devices/revoke','/settings'];

@@ -156,3 +156,65 @@ export async function createCanonicalExpense(request,env,auth,json) {
   }
   return json(result,201);
 }
+
+export async function expenseRevisionsAvailable(db) {
+  return !!await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_expense_revisions'").first();
+}
+
+export async function reviseCanonicalExpense(command, request, env, auth, json) {
+  // Deny before parsing, replay or any financial state read.
+  if (auth.posRole !== 'owner') return json({error:'forbidden_role',action:command},403);
+  let body;
+  try { body=await request.json(); } catch { return json({error:'invalid_json'},400); }
+  const editing=command==='expense.update';
+  const fields=['operation_id','expense_id','promotion_id','client_contract','authority_epoch','expected_control_revision','created_at','expected_revision'];
+  if(editing) fields.push('concept','category','note','expense_date');
+  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!fields.includes(k)) ||
+      !id(body.operation_id)||!id(body.expense_id)||!id(body.promotion_id)||!uint(body.expected_revision)||
+      body.client_contract!==CONTRACT||!uint(body.authority_epoch)||!uint(body.expected_control_revision)||!validTimestamp(body.created_at)||
+      editing&&(!text(body.concept,500)||!text(body.category,120)||!optionalText(body.note,500)||!validDate(body.expense_date)))
+    return json({error:'invalid_expense_revision'},400);
+  const db=getDatabase(env);
+  if(!await expenseRevisionsAvailable(db)) return json({error:'expense_revisions_unavailable'},503);
+  const hash=await sha256Hex(stableStringify({command,body}));
+  const result=row=>({status:'created',command,operation_id:body.operation_id,expense_id:row.expense_id,
+    promotion_id:body.promotion_id,authority_epoch:body.authority_epoch,revision:Number(row.revision),voided:row.action==='void',idempotent:false});
+  async function replayRevision() {
+    const denied=await authorityError(db,body,auth);
+    if(denied) return json({error:denied},409);
+    const row=await db.prepare('SELECT * FROM canonical_expense_revisions WHERE operation_id=?1').bind(body.operation_id).first();
+    if(!row)return null;
+    if(row.request_hash!==hash)return json({error:'operation_id_conflict'},409);
+    return json({...result(row),status:'already_processed',idempotent:true});
+  }
+  const existing=await replayRevision();if(existing)return existing;
+  const expense=await db.prepare(`SELECT e.*,COALESCE(r.revision,0) AS revision,r.action FROM canonical_expenses e
+    LEFT JOIN canonical_expense_revisions r ON r.expense_id=e.expense_id AND r.promotion_id=e.promotion_id
+      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id)
+    WHERE e.expense_id=?1 AND e.promotion_id=?2`).bind(body.expense_id,body.promotion_id).first();
+  if(!expense)return json({error:'expense_not_found'},404);
+  if(Number(expense.revision)!==body.expected_revision)return json({error:'stale_expense_revision'},409);
+  if(expense.action==='void')return json({error:'expense_voided'},409);
+  if(!editing&&Number(expense.cash_delta_cents)!==0)return json({error:'cash_expense_void_requires_adjustment'},409);
+  if(await namespaceCollision(db,body.operation_id)||await db.prepare('SELECT 1 FROM canonical_expense_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict'},409);
+  // CAS and authority are checked again in the same atomic INSERT; unique revision
+  // rejects concurrent contenders. Nothing touches the base ledger or cash state.
+  const action=editing?'edit':'void';
+  try {
+    const inserted=await db.prepare(`INSERT INTO canonical_expense_revisions
+      (operation_id,expense_id,promotion_id,revision,action,concept,category,note,expense_date,request_hash,device_id,created_at)
+      SELECT ?1,?2,?3,?4+1,?5,?6,?7,?8,?9,?10,?11,?12
+      WHERE COALESCE((SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=?2),0)=?4
+        AND EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?11
+          WHERE c.id=1 AND c.mode='ACTIVE' AND c.active_promotion_id=?3 AND c.authority_epoch=?13
+          AND c.revision=?14 AND c.minimum_client_contract=?15 AND d.role='writer' AND d.status='active' AND d.credential_hash=?16)
+      RETURNING *`).bind(body.operation_id,body.expense_id,body.promotion_id,body.expected_revision,action,
+        editing?body.concept.trim():null,editing?body.category.trim():null,editing?(body.note||null):null,
+        editing?body.expense_date:null,hash,auth.principalId,body.created_at,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.credentialHash).first();
+    if(!inserted){const denied=await authorityError(db,body,auth);return json({error:denied||'stale_expense_revision'},409);}
+    return json(result(inserted),201);
+  } catch(error) {
+    const recovered=await replayRevision();if(recovered)return recovered;
+    return json({error:/constraint|unique/i.test(String(error?.message))?'stale_expense_revision':'expense_storage_error'},/constraint|unique/i.test(String(error?.message))?409:503);
+  }
+}

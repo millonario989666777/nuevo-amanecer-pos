@@ -31,6 +31,14 @@ gasRender=function(){
       _naSecAppend(meta,'span','gasto-cat',expense.cat||'Otro');
       _naSecAppend(meta,'span','',` ${expense.metodo||''}`).insertAdjacentHTML('afterbegin','<i class="na-ic na-ic-card" aria-hidden="true"></i>');
       if(expense.nota)_naSecAppend(meta,'span','',expense.nota);
+      if(window.NA_ROLES?.isOwner() && window.NA_EXPENSES && expense.expenseId) {
+        const actions=_naSecAppend(info,'div','gasto-meta');
+        [['Editar','edit'],['Eliminar','void']].forEach(([label,action])=>{
+          const button=_naSecAppend(actions,'button','btn',label);
+          button.type='button';button.style.minHeight='44px';
+          button.addEventListener('click',()=>window.NA_EXPENSES[action](expense));
+        });
+      }
       _naSecAppend(card,'div','gasto-monto',`-${fmt(expense.monto)}`);
     });
   });
