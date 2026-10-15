@@ -412,3 +412,10 @@ test('T18 — import inválido no altera memoria, durable ni cashClosures actual
   assert.deepEqual(sb.memoryState().cashClosures, memoryBefore.cashClosures, 'historial intacto');
   assert.match(sb.toastText(), /cashClosures: se esperaba una lista/i, 'error explícito');
 });
+
+test('T11 — sessionId de caja estrictamente creciente aunque coincida el milisegundo', () => {
+  const sb = freshTab();
+  const ids = sb.run('(()=>{const realNow=Date.now;Date.now=()=>1700000000000;try{return [_naNextCashSessionId(),_naNextCashSessionId(),_naNextCashSessionId()];}finally{Date.now=realNow;}})()');
+  assert.equal(new Set(Array.from(ids)).size, 3);
+  assert.ok(ids[0] < ids[1] && ids[1] < ids[2]);
+});
