@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base b9df81ad (#668 role permissions: import.stage and /read/canonical/expenses owner-only, employee role check before expense replay, import auth before fence, expenses omitted from employee snapshot; plus #672/#675/#678 web-only). No schema changes. No live sale. Rollback to 00cf3050.",
-  "target_commit": "b9df81adad7063cded0e072782b99ece8fb68aae",
-  "rollback_ref": "00cf3050499fbc8b340114e54eb42ded09f93db9",
+  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of base 616fb754 (#684 gastos: owner-only /commands/expense.update and /commands/expense.void over additive table canonical_expense_revisions, already applied by migration 0032 run 38743859423 with R2 backup; #682/#683/#685 web-only). Worker deploy makes no schema changes. No live sale. Rollback to b9df81ad.",
+  "target_commit": "616fb7548883e1aebe70c15f786a1729fac12ac2",
+  "rollback_ref": "b9df81adad7063cded0e072782b99ece8fb68aae",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 34,
-  "optimization": "ROLE_PERMISSIONS"
+  "attempt": 35,
+  "optimization": "EXPENSE_REVISIONS"
 }
