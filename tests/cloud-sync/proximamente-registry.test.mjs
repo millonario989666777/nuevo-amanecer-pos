@@ -42,7 +42,7 @@ test('Próximamente is explicitly owner-only and registry has no network APIs', 
   assert.doesNotMatch(source, /fetch|XMLHttpRequest|sendBeacon/);
 });
 
-function renderHarness(featuresJson) {
+function renderHarness(featuresJson, config = false) {
   class Node {
     constructor(tag) {
       this.tagName = String(tag).toUpperCase();
@@ -64,10 +64,18 @@ function renderHarness(featuresJson) {
     setAttribute(k, v) { this.attrs[k] = String(v); if (k === 'id') this.id = String(v); }
     getAttribute(k) { return this.attrs[k] ?? null; }
     appendChild(n) { n.parent = this; this.children.push(n); return n; }
+    insertBefore(n, before) {
+      n.parent = this;
+      const index = this.children.indexOf(before);
+      if (index < 0) this.children.push(n); else this.children.splice(index, 0, n);
+      return n;
+    }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(n => n !== this); }
     replaceChildren(...nodes) { this.children = []; for (const n of nodes) this.appendChild(n); }
     addEventListener(k, f) { this.events[k] = f; }
     querySelector(s) {
+      const category = s.match(/^\[data-cfgcat="([^"]+)"\]$/);
+      if (category) return this.children.find(n => n.dataset.cfgcat === category[1]) || null;
       if (s === '.na-prox-grid') return this.children.find(n => (n.className || '').includes('na-prox-grid')) || null;
       if (s.startsWith('.')) {
         const cls = s.slice(1);
@@ -108,6 +116,13 @@ function renderHarness(featuresJson) {
     },
     addEventListener() {}
   };
+  const observations = [];
+  if (config) {
+    const page = new Node('div'); page.id = 'pageConfig';
+    const sidebar = new Node('div'); sidebar.id = 'cfgSidebar';
+    const info = new Node('button'); info.dataset.cfgcat = 'info';
+    sidebar.appendChild(info); page.appendChild(sidebar); doc.body.appendChild(page);
+  }
   const patched = source.replace(
     /var FEATURES = freeze\(\[[\s\S]*?\]\);/,
     `var FEATURES = freeze(${featuresJson});`
@@ -115,7 +130,7 @@ function renderHarness(featuresJson) {
   const ctx = vm.createContext({
     module: { exports: {} },
     document: doc,
-    MutationObserver: function () { this.observe = function () {}; },
+    MutationObserver: function (callback) { this.observe = function (node) { observations.push({ node, callback }); }; },
     goPage: id => navigated.push(id),
     NA_ROLES: { canConfigure: () => true }
   });
@@ -123,15 +138,18 @@ function renderHarness(featuresJson) {
   const container = new Node('div');
   container.className = 'na-prox-grid';
   ctx.NA_PROXIMAMENTE.render(container);
-  return { container, navigated, api: ctx.NA_PROXIMAMENTE, doc };
+  return { container, navigated, api: ctx.NA_PROXIMAMENTE, doc, ctx, observations };
 }
 
 test('enabled card without page stays locked; enabled with page unlocks and navigates', () => {
   const locked = renderHarness(JSON.stringify([
-    { id: 'gastos', name: 'Gastos', description: 'Desc', icon: '🧾', enabled: true, page: null, preview: { type: 'form', fields: ['Categoría'] } },
+    { id: 'gastos', name: 'Gastos', description: 'Desc', icon: '🧾', enabled: true, preview: { type: 'form', fields: ['Categoría'] } },
     { id: 'reportes', name: 'Reportes', description: 'Desc', icon: '📊', enabled: true, page: 'pageVentas', preview: { type: 'table', columns: ['Día'] } },
     { id: 'cotizaciones', name: 'Cotizaciones', description: 'Desc', icon: '📋', enabled: false, page: 'pagePOS', preview: { type: 'form', fields: ['Cliente'] } }
   ]));
+  assert.equal(locked.api.isEnabled('gastos'), false);
+  assert.equal(locked.api.isEnabled('reportes'), true);
+  assert.equal(locked.api.isEnabled('cotizaciones'), false);
   const cards = locked.container.children;
   assert.equal(cards.length, 3);
 
@@ -155,4 +173,28 @@ test('enabled card without page stays locked; enabled with page unlocks and navi
   cards[2].events.click();
   assert.deepEqual(locked.navigated, ['pageVentas']);
   assert.ok(locked.doc.getElementById('naProxPreview'));
+});
+
+test('configuration shortcut precedes info and rechecks owner permission on page activation', () => {
+  const h = renderHarness('[]', true);
+  const sidebar = h.doc.getElementById('cfgSidebar');
+  const button = sidebar.querySelector('[data-cfgcat="proximamente"]');
+  assert.equal(sidebar.children.length, 2);
+  assert.equal(sidebar.children[0], button);
+  assert.equal(button.type, 'button');
+  assert.equal(button.textContent, '🔒PróximamenteFunciones en preparación');
+  assert.equal(button.hidden, false);
+  button.events.click();
+  assert.deepEqual(h.navigated, ['pageProximamente']);
+  const observer = h.observations.find(o => o.node.id === 'pageConfig');
+  for (const roles of [undefined, { canConfigure: () => false }]) {
+    h.ctx.NA_ROLES = roles;
+    observer.callback();
+    assert.equal(button.hidden, true);
+    button.events.click();
+    assert.deepEqual(h.navigated, ['pageProximamente']);
+  }
+  h.ctx.NA_ROLES = { canConfigure: () => true };
+  observer.callback();
+  assert.equal(button.hidden, false);
 });

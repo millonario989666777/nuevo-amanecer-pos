@@ -14,6 +14,7 @@
     'pageClientes',
     'pageCaja',
     'pageGastos',
+    'pageProximamente',
     'pageConfig'
   ]);
   var MOBILE_SCROLL_PAGES = Object.freeze({
@@ -324,7 +325,7 @@
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
       return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return (pageId !== 'pageConfig' && pageId !== 'pageGastos') || role === 'owner';
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente') || role === 'owner';
   }
 
   function renderDrawerItems() {
@@ -340,6 +341,7 @@
       ['Clientes', 'search', 'pageClientes', 'Saldos, créditos y abonos'],
       ['Caja', 'cash', 'pageCaja', 'Abrir, cerrar y movimientos'],
       ['Gastos', 'expense', 'pageGastos', 'Registrar y consultar gastos'],
+      ['Próximamente', 'soon', 'pageProximamente', 'Funciones en preparación'],
       ['Configuración', 'settings', 'pageConfig', 'Negocio, usuarios y equipos']
     ].forEach(function (item) {
       if (document.getElementById(item[2]) && canShowDrawerPage(item[2])) {

@@ -22,9 +22,7 @@ test('LAB approved page sections are the CANON shell with only explicit producti
     if (name === 'menu') {
       assert.ok(section.includes(labConfigMenuCard),'LAB menu must retain its protected Configuración card');
       const normalized=section.replace(labConfigMenuCard + '\n','');
-      // Owner-approved CANON-only sidebar entry (Próximamente, owner-only). LAB is retired.
-      const canonMenu=posIndex.replace(/<button class="menu-side-link" type="button" onclick="goPage\('pageProximamente'\)"[\s\S]*?<\/button>/,'');
-      assert.ok(canonMenu.includes(normalized),'menu differs beyond the approved CANON settings shortcut');
+      assert.ok(posIndex.includes(normalized),'menu differs beyond the approved CANON settings shortcut');
       assert.match(posIndex,/id="topSettingsBtn"/);
       assert.equal(posIndex.includes(labConfigMenuCard),false,'CANON must not retain the menu Configuración card');
     } else if (name === 'clientes') {

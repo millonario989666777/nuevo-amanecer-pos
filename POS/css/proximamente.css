@@ -7,7 +7,7 @@ html.na-role-locked [data-menu-target="pageProximamente"]{display:none!important
 .na-prox-card.is-enabled{opacity:1}
 .na-prox-badge{position:absolute;right:12px;top:12px;border-radius:8px;padding:4px 8px;background:#e2e8f0;color:#334155;font-size:12px}
 .na-prox-icon{font-size:28px}.na-prox-name{font-weight:800;font-size:17px}
-.na-prox-description{max-width:100%;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.na-prox-description{max-width:100%;font-size:14px;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .na-prox-preview{margin:auto;width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;background:#fff;color:#0f172a;border:1px solid #94a3b8;border-radius:16px;font:inherit}
 .na-prox-preview::backdrop{background:rgb(15 23 42 / .55)}
 .na-prox-banner{background:#e2e8f0;color:#334155;padding:12px;border-radius:8px;margin:0 0 16px}

@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 
-const pages = ['pageMenu', 'pagePOS', 'pageVentas', 'pageInventario', 'pageClientes', 'pageCaja', 'pageGastos', 'pageConfig'];
+const pages = ['pageMenu', 'pagePOS', 'pageVentas', 'pageInventario', 'pageClientes', 'pageCaja', 'pageGastos', 'pageProximamente', 'pageConfig'];
 
 async function openDrawer(page: Page) {
   await page.locator('#naMobileMenuToggle').click();
@@ -33,7 +33,7 @@ for (const employee of [false, true]) {
       await expect(page.locator('#naMobileProfileRole')).toHaveText('Verificando permisos…');
       await expect(page.locator('#naMobileProfileAvatar')).toHaveText('MT');
     } else {
-      await expect(drawer.locator('button')).toHaveCount(9);
+      await expect(drawer.locator('button')).toHaveCount(10);
       await expect(drawer.locator('#naMobileDrawerVersion')).toHaveText('Versión local');
       await expect(drawer.locator('.na-mobile-drawer-head .na-mobile-drawer-logo')).toHaveCSS('background-image', /svg/);
       await expect(drawer.locator('.na-mobile-drawer-head img')).toHaveCount(0);

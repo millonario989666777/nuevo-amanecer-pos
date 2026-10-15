@@ -18,12 +18,16 @@ async function rolePage(page, role) {
 const ids = ['creditos-vencimiento', 'gastos', 'reportes', 'cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp', 'filtro-fechas-export'];
 
 test('employee cannot enter Próximamente', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado');
+  await page.locator('#naMobileMenuToggle').click();
+  await expect(page.locator('#naMobileDrawer [data-page="pageProximamente"]')).toHaveCount(0);
+  await expect(page.locator('#cfgSidebar [data-cfgcat="proximamente"]')).toHaveAttribute('hidden', '');
   await page.evaluate(() => window.goPage('pageProximamente'));
   await expect(page.locator('#naNoPermission')).toBeVisible();
   await expect(page.locator('#naNoPermission')).toContainText('Sin permiso');
   await expect(page.locator('#pageProximamente')).not.toHaveClass(/\bactive\b/);
-  await expect(page.locator('.menu-desktop-sidebar [data-menu-target="pageProximamente"]')).toBeHidden();
+  await expect(page.locator('.menu-desktop-sidebar [data-menu-target="pageProximamente"]')).toHaveCount(0);
 });
 
 test('owner sees ordered previews without writes', async ({ page }) => {
@@ -32,7 +36,12 @@ test('owner sees ordered previews without writes', async ({ page }) => {
   page.on('request', request => {
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url());
   });
-  await page.evaluate(() => window.goPage('pageProximamente'));
+  await page.evaluate(() => window.goPage('pageConfig'));
+  const configButton = page.locator('#cfgSidebar [data-cfgcat="proximamente"]');
+  await expect(configButton).toBeVisible();
+  expect(await configButton.evaluate(button => button.nextElementSibling?.getAttribute('data-cfgcat'))).toBe('info');
+  await configButton.click();
+  await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
   const cards = page.locator('#pageProximamente .na-prox-card');
   await expect(cards).toHaveCount(7);
   expect(await cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-feature-id')))).toEqual(ids);
@@ -59,5 +68,37 @@ for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {
     await expect(page.locator('.na-prox-card')).toHaveCount(7);
     const count = await page.locator('.na-prox-grid').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
     expect(count).toBe(columns);
+    if (width === 390) {
+      const size = await page.locator('[data-feature-id="reportes"] .na-prox-description').evaluate(node => {
+        const height = node.getBoundingClientRect().height;
+        const probe = node.cloneNode(true) as HTMLElement;
+        probe.textContent = 'Ventas';
+        node.parentElement!.appendChild(probe);
+        const lineHeight = probe.getBoundingClientRect().height;
+        probe.remove();
+        return { height, lineHeight };
+      });
+      expect(size.height).toBeGreaterThan(size.lineHeight);
+      expect(size.height).toBeLessThanOrEqual(2 * size.lineHeight + 1);
+    }
   });
 }
+
+test('local owner opens Próximamente from the drawer and configuration', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.NA_ROLES?.isOwner());
+  await page.locator('#naMobileMenuToggle').click();
+  const row = page.locator('#naMobileDrawer [data-page="pageProximamente"]');
+  await expect(row).toBeVisible();
+  await expect(row.locator('small')).toHaveText('Funciones en preparación');
+  await expect(row.locator('[data-icon="soon"]')).toHaveCSS('background-image', /svg/);
+  await row.click();
+  await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
+  await page.evaluate(() => window.goPage('pageConfig'));
+  const button = page.locator('#cfgSidebar [data-cfgcat="proximamente"]');
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
+});
