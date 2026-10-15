@@ -240,23 +240,11 @@
     try { root.localStorage.setItem('na_appearance_v1', JSON.stringify(all)); } catch (_) {}
     e.apply(all);
   }
-  var darkMQ = root.matchMedia ? root.matchMedia('(prefers-color-scheme: dark)') : null;
-  var appliedDark = null;
   function applyAppearance() {
-    var html = doc.documentElement, d = ap();
+    var d = ap(), dark = root.NA_THEME.apply();
+    doc.documentElement.setAttribute('data-na-theme', d.theme);
     var box = doc.getElementById('naCfgV9');
-    // Celular, tablet y PC: el tema y el día/noche se aplican a toda la app (solo colores).
-    // PC/tablet: Configuración usa el mismo tema y el día/noche de la app (estilo del prototipo).
-    if (box) { var wd = !!(doc.body && doc.body.classList.contains('dark')); var wdm = d.mode ? (d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches))) : wd; box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', wdm); box.classList.toggle('na9-lt', !wdm); }
-    html.setAttribute('data-na-theme', d.theme);
-    if (!d.mode) return; // sin elección guardada: se respeta el día/noche de siempre
-    var dark = d.mode === 'noche' || (d.mode === 'auto' && !!(darkMQ && darkMQ.matches));
-    if (doc.body && (appliedDark !== null || d.mode !== 'claro' || doc.body.classList.contains('dark') !== dark)) {
-      doc.body.classList.toggle('dark', dark); appliedDark = dark;
-      try { root.isDark = dark; } catch (_) {}
-      try { isDark = dark; } catch (_) {} // eslint-disable-line no-undef
-      var b = doc.getElementById('btnDarkMode'); if (b) { if (root.NA_ICON) b.innerHTML = root.NA_ICON(dark ? 'sun' : 'moon'); else b.textContent = dark ? '☀️' : '🌙'; }
-    }
+    if (box) { box.setAttribute('data-na9-theme', d.theme); box.classList.toggle('na9-dk', dark); box.classList.toggle('na9-lt', !dark); }
   }
 
   // ---------- pantallas ----------
@@ -362,7 +350,7 @@
   function aparBody() {
     var d = ap(), z = zoom(), zn = 'Personalizado';
     ZP.forEach(function (x) { if (x[1] === z) zn = x[0]; });
-    return '<div class="na9-lbl">Modo de la pantalla</div><div class="na9-seg">' + [['claro', 'Claro'], ['noche', 'Nocturno'], ['auto', 'Automático']].map(function (x) { return '<button type="button" class="' + ((d.mode || (doc.body && doc.body.classList.contains('dark') ? 'noche' : 'claro')) === x[0] ? 'on' : '') + '" data-act="mode" data-t="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>'
+    return '<div class="na9-lbl">Modo de la pantalla</div><div class="na9-seg">' + [['claro', 'Claro'], ['noche', 'Nocturno'], ['auto', 'Automático']].map(function (x) { return '<button type="button" class="' + (root.NA_THEME.mode() === x[0] ? 'on' : '') + '" data-act="mode" data-t="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>'
       + '<div class="na9-lbl">Color y estilo</div><div class="na9-themes">' + THEMES.map(function (t) { return '<button type="button" class="na9-th na9-th-' + t[0] + (d.theme === t[0] ? ' on' : '') + '" data-act="theme" data-t="' + t[0] + '"><i></i>' + esc(t[1]) + '<small>' + esc(t[2]) + '</small></button>'; }).join('') + '</div>'
       + '<div class="na9-lbl">Tamaño de letra y botones: <b id="na9Zv">' + zn + ' (' + z + '%)</b></div>'
       + '<div class="na9-zbtns"><button type="button" class="na9-btn sec na9-zb" data-act="zdn" aria-label="Más chico">A−</button>' + ZP.map(function (x) { return '<button type="button" class="na9-btn sec na9-zp' + (z === x[1] ? ' on' : '') + '" data-act="zset" data-z="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '<button type="button" class="na9-btn sec na9-zb" data-act="zup" aria-label="Más grande">A+</button></div>'
@@ -508,7 +496,7 @@
     if (act === 'tkty') { st.tkType = a.dataset.t; render(); return; }
     if (act === 'tksub') { st.tkSub = a.dataset.t; render(); return; }
     if (act === 'imp') { st.imp = !st.imp; render(); return; }
-    if (act === 'theme' || act === 'mode') { setAp(act, a.dataset.t); render(); badge('Guardado ✓ (este aparato)'); return; }
+    if (act === 'theme' || act === 'mode') { if (act === 'mode') root.NA_THEME.setMode(a.dataset.t); else setAp(act, a.dataset.t); render(); badge('Guardado ✓ (este aparato)'); return; }
     if (act === 'zup' || act === 'zdn' || act === 'zset') { var z = act === 'zset' ? Number(a.dataset.z) : zoom() + (act === 'zup' ? 5 : -5); setZoom(z); render(); badge('Guardado ✓ (este aparato)'); return; }
     if (!guard()) return;
     if (act === 'stockAll') { await call('aplicarStockMinATodos'); return; }
@@ -555,18 +543,12 @@
       var p = doc.getElementById('pageConfig'); shell(); if (p && p.classList.contains('active')) render();
     };
     if (MQ.addEventListener) MQ.addEventListener('change', onWidth); else if (MQ.addListener) MQ.addListener(onWidth);
-    if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', applyAppearance);
     root.addEventListener('na:role', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
     root.addEventListener('online', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
     root.addEventListener('offline', function () { var p = doc.getElementById('pageConfig'); if (p && p.classList.contains('active')) render(); });
   }
   // La barra superior de día/noche sigue funcionando: en PC/tablet recuerda la elección.
-  function wrapDark() {
-    if (typeof root.toggleDark !== 'function' || root.toggleDark.__na9) return;
-    var base = root.toggleDark;
-    root.toggleDark = function () { var r = base.apply(this, arguments); { var d = ap(); d.mode = doc.body.classList.contains('dark') ? 'noche' : 'claro'; try { root.localStorage.setItem(AP_KEY, JSON.stringify(d)); } catch (_) {} appliedDark = d.mode === 'noche'; } applyAppearance(); return r; };
-    root.toggleDark.__na9 = true;
-  }
+  function wrapDark() { /* toggleDark already persists through NA_THEME. */ }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { install(); wrapDark(); }); else { install(); wrapDark(); }
   root.addEventListener('load', function () { install(); wrapDark(); applyAppearance(); });
   root.NA_CONFIG_V9 = { render: render, wide: wide, canEdit: canEdit, previewText: previewText, setPrintFormat: function (f) { printFormat = f; }, appearance: ap, applyAppearance: applyAppearance };
