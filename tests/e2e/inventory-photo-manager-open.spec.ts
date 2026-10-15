@@ -26,7 +26,7 @@ async function ownerInventory(page:Page){
  await page.evaluate(()=>{const w=window as any;w.NuevoAmanecerCanonical={enabled:()=>true,sourceState:()=>({cache:{promotion_id:'photo-manager'}}),snapshot:()=>{throw Error('no snapshot')}};w.NA_MENU_NAVIGATION?.navigate?w.NA_MENU_NAVIGATION.navigate('pageInventario'):w.goPage('pageInventario');});
 }
 const topmost=(page:Page,sel:string)=>page.locator(sel).evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(hit===el||el.contains(hit));});
-for(const vp of [{width:1024,height:463},{width:1024,height:768},{width:1366,height:768}])test(`owner opens Fotos from Más opciones and imports a ZIP at ${vp.width}x${vp.height}`,async({page})=>{
+for(const vp of [{width:390,height:844},{width:1024,height:463},{width:1024,height:768},{width:1366,height:768}])test(`owner opens Fotos from Más opciones and imports a ZIP at ${vp.width}x${vp.height}`,async({page})=>{
  await page.setViewportSize(vp);await ownerInventory(page);
  const dir=await mkdtemp(join(tmpdir(),'na-photo-manager-'));
  try{
@@ -36,6 +36,9 @@ for(const vp of [{width:1024,height:463},{width:1024,height:768},{width:1366,hei
   await summary.click();
   const photos=page.locator('#invPhotosBtn');await expect(photos).toBeVisible();await expect(photos).toBeInViewport();
   expect(await topmost(page,'#invPhotosBtn'),'Cargar fotos is not covered by the sticky controls').toBe(true);
+  // No ancestor clips the open menu.
+  expect(await page.locator('#pageInventario .inv-secondary-menu').evaluate(menu=>{const r=menu.getBoundingClientRect();const clipped:string[]=[];for(let a=menu.parentElement;a&&a!==document.body;a=a.parentElement){const s=getComputedStyle(a);if(/(hidden|auto|scroll|clip)/.test(s.overflowX+s.overflowY)){const b=a.getBoundingClientRect();if(r.left<b.left-0.5||r.right>b.right+0.5||r.top<b.top-0.5||r.bottom>b.bottom+0.5)clipped.push(a.tagName+'.'+a.className);}}return clipped;})).toEqual([]);
+  const m=await page.locator('#pageInventario .inv-secondary-menu').boundingBox();expect(m!.x).toBeGreaterThanOrEqual(0);expect(m!.x+m!.width).toBeLessThanOrEqual(vp.width);
   expect(await page.locator('#pageInventario .top-mod-title').boundingBox(),'opening the menu does not move the header').toEqual(titleBefore);
   await photos.click();
   const modal=page.locator('#productImageBatchModal'),dialog=modal.locator('.modal');
@@ -55,6 +58,7 @@ for(const vp of [{width:1024,height:463},{width:1024,height:768},{width:1366,hei
   // ✕ fully closes (no leftover .open), Escape too.
   await modal.locator('.btn-close-m').click();
   await expect(modal).not.toHaveClass(/\bopen\b/);await expect(modal).toBeHidden();
+  expect(await page.evaluate(()=>{const e=document.elementFromPoint(innerWidth/2,innerHeight/2);return !!e&&!e.closest('.modal-overlay');}),'no dark overlay left after ✕').toBe(true);
   await summary.click();await photos.click();await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');await expect(modal).not.toHaveClass(/\bopen\b/);await expect(modal).toBeHidden();
   // Page is not left dimmed: the topmost element at the center is page content.
