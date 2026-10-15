@@ -73,7 +73,7 @@ test('expense modal prefills metadata, locks money, excludes voids in reports an
  const vm=await import('node:vm');
  const reportSource=readFileSync('POS/js/legacy-inline/inline-05.js','utf8');
  const start=reportSource.indexOf('function _naF8UnifiedExpenses('),end=reportSource.indexOf('\n',start);
- const context=vm.createContext({gastos:[{expenseId:'void',voided:true,fecha:'2026-10-15',monto:10},{expenseId:'edit',fecha:'2026-10-14',monto:20,desc:'New'}],cajMovs:[{expenseId:'void',tipo:'gas',fecha:'2026-10-15',monto:10},{expenseId:'edit',tipo:'gas',fecha:'2026-10-15',monto:20,desc:'Old'}],_naF8DateInRange:()=>true,_naNumber:Number,_naF8ExpenseSignature:r=>r.desc});
+ const context=vm.createContext({_naF8Day:v=>String(v||'').slice(0,10),gastos:[{expenseId:'void',voided:true,fecha:'2026-10-15',monto:10},{expenseId:'edit',fecha:'2026-10-14',monto:20,desc:'New'}],cajMovs:[{expenseId:'void',tipo:'gas',fecha:'2026-10-15',monto:10},{expenseId:'edit',tipo:'gas',fecha:'2026-10-15',monto:20,desc:'Old'}],_naF8DateInRange:()=>true,_naNumber:Number,_naF8ExpenseSignature:r=>r.desc});
  vm.runInContext(reportSource.slice(start,end),context);
  assert.equal(vm.runInContext('_naF8UnifiedExpenses({}).length',context),1);
 });
