@@ -1,16 +1,32 @@
 import { test, expect } from '@playwright/test';
 
+async function rolePage(page, role) {
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === 'permissions.test') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(url.pathname === '/auth/me' ? { pos_role: role, owner_pin_set: true, roles_ready: true, device_id: 'employee-device' } : {}) });
+    return url.hostname === '127.0.0.1' ? route.continue() : route.abort();
+  });
+  await page.goto('/index.html');
+  await page.evaluate(role => {
+    localStorage.setItem('na_cloud_sync_credentials', JSON.stringify({ endpoint: 'https://permissions.test', token: 'synthetic' }));
+    localStorage.setItem('na_pos_role_v1', JSON.stringify({ role }));
+  }, role);
+  await page.reload();
+  await page.waitForFunction(role => window.NA_ROLES?.role === role && window.NA_ROLES.confirmed, role);
+}
+
+
 for (const width of [390, 768, 1366]) {
   test(`owner edits and voids expenses at ${width}px without changing cash fields`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
-    await page.goto('/index.html');
-    await page.waitForFunction(() => typeof window.gasRender === 'function' && !!window.NA_ROLES);
+    await rolePage(page, 'owner');
+    await page.waitForFunction(() => typeof window.gasRender === 'function' && !!window.NA_ROLES?.isOwner());
+    expect(await page.evaluate(() => (window as any).goPage('pageGastos'))).not.toBe(false);
+    await expect(page.locator('#pageGastos')).toHaveClass(/\bactive\b/);
     await page.evaluate(() => {
       const w = window as any;
       w.__expense = { id: 'fixture-expense', expenseId: 'fixture-expense', revision: 0, voided: false, desc: 'Servicio sintético', cat: 'Otro', monto: 25, metodo: 'yape', fecha: w.obtenerHoy(), nota: '' };
       w.__commands = [];
-      w.NA_ROLES = { role: 'owner', confirmed: true, isOwner: () => true };
       w.NuevoAmanecerCanonical = {
         enabled: () => true,
         refresh: async () => { gastos = [{ ...w.__expense }]; },
@@ -27,7 +43,7 @@ for (const width of [390, 768, 1366]) {
         }
       };
       gastos = [{ ...w.__expense }];
-      w.goPage('pageGastos');
+      w.gasRender();
     });
     await page.getByRole('button', { name: 'Editar', exact: true }).click();
     await expect(page.locator('#mGasto')).toHaveClass(/open/);
