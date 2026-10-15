@@ -74,6 +74,8 @@ export default {
         if (auth instanceof Response) return auth;
         const id = url.pathname.split('/')[2] || '';
         if (PERMISSIONS.featureLocked(id)) return json({ error: 'feature_locked', feature: id }, 403);
+        const roles = PERMISSIONS.FEATURE_ROLES[id];
+        if (roles && !roles.includes(auth.posRole)) return json({ error: 'forbidden_role' }, 403);
         return json({ error: 'not_found' }, 404);
       }
       if (url.pathname === '/auth/activate') {

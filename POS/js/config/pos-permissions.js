@@ -13,6 +13,7 @@
   SYNC_ENTITIES.expenses = 'cash.expense';
   SYNC_ENTITIES.cash_movements = 'cash.expense';
   var API_ROUTES = [
+    { path: '/features/:id', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], roles: both },
     { path: '/auth/reviews', methods: ['GET'], roles: both },
     { path: '/auth/reviews/resolve', methods: ['POST'], roles: owner, action: 'reviews.resolve' },
     { path: '/auth/me', methods: ['GET'], roles: both },
@@ -47,7 +48,7 @@
   var ROLE_PATHS = ['/auth/reviews','/auth/reviews/resolve','/auth/me','/auth/owner-pin','/auth/owner-approval','/auth/pairing-code','/auth/pair','/auth/devices','/auth/devices/revoke','/settings'];
   function allowed(role, roles) { return (role === 'owner' || role === 'empleado') && roles.indexOf(role) >= 0; }
   function routeRoles(path, method) {
-    var feature = /^\/features\/([a-z0-9-]+)(\/|$)/.exec(path); if (feature) return featureLocked(feature[1]) ? [] : owner;
+    var feature = /^\/features\/([a-z0-9-]+)(\/|$)/.exec(path); if (feature) return FEATURE_ROLES[feature[1]] || (featureLocked(feature[1]) ? both : owner);
     if (/^\/read\/sales\/[^/]+\/items$/.test(path)) path = '/read/sales/:id/items';
     if (/^\/sync\/operations\/[^/]+$/.test(path)) path = '/sync/operations/:id';
     if (/^\/imports\/[^/]+$/.test(path)) path = '/imports/:id';
@@ -57,7 +58,13 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
+  var FEATURE_ROLES = { 'asistencia-empleados': owner };
   var FEATURE_LOCKS = {
+    'venta-exitosa-comprobante': true,
+    'clonar-venta': true,
+    'nota-credito-parcial-compras': true,
+    'clientes-filtro-deuda': true,
+    'clientes-dias-credito': true,
     'nota-credito-devolucion-parcial': true,
     'ordenes-compra': true,
     'sesion-unica-usuario': true,
@@ -158,6 +165,6 @@
     PROXY_PREFIXES: ['/health', '/auth/*', '/read/*', '/features/*', '/commands/*', '/imports/*', '/sync/operations*', '/settings'],
     canAccessScreen: function (role, id) { return allowed(role, Object.prototype.hasOwnProperty.call(SCREENS, id) ? SCREENS[id] : owner); },
     canDo: function (role, action) { return allowed(role, Object.prototype.hasOwnProperty.call(ACTIONS, action) ? ACTIONS[action] : owner); },
-    routeRoles: routeRoles, FEATURE_LOCKS: FEATURE_LOCKS, featureLocked: featureLocked
+    routeRoles: routeRoles, FEATURE_ROLES: FEATURE_ROLES, FEATURE_LOCKS: FEATURE_LOCKS, featureLocked: featureLocked
   });
 })(globalThis);
