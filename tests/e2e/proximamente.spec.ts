@@ -62,10 +62,14 @@ test('every registry entry: server lock exists; locked ones show the lock and pr
     expect(e.locked, e.id).toBe(!(e.id in unlockedPages));
   }
   await expect(page.locator('#pageProximamente .na-prox-card')).toHaveCount(entries.length);
+  const unlocked = entries.filter(e => e.unlocked);
+  if (unlocked.length) await expect(page.locator('.na-prox-section[data-module="Disponible"] > .na-prox-summary')).toHaveText(`Disponible (${unlocked.length})`);
   for (const module of ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras']) {
-    const n = entries.filter(e => e.module === module).length;
+    const n = entries.filter(e => e.module === module && !e.unlocked).length;
+    if (!n) { await expect(page.locator(`.na-prox-section[data-module="${module}"]`)).toHaveCount(0); continue; }
     await expect(page.locator(`.na-prox-section[data-module="${module}"] > .na-prox-summary`)).toHaveText(`${module} (${n})`);
   }
+  for (const e of unlocked) await expect(page.locator(`[data-feature-id="${e.id}"] .na-prox-available`)).toHaveText('Disponible');
   for (const e of entries) {
     const card = page.locator(`[data-feature-id="${e.id}"]`);
     if (e.unlocked) { await expect(card).toHaveClass(/is-enabled/); await expect(card.locator('.na-prox-badge')).toHaveCount(0); continue; }

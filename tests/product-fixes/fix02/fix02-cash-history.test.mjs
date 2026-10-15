@@ -362,7 +362,7 @@ test('T15 — contado, esperado o diferencia null/no-numérico rechazan el cierr
   }
 });
 
-test('T16 — id duplicado rechaza todo el backup', async () => {
+test('T16 — id duplicado se omite al preparar el backup (dedupe)', async () => {
   const sb = freshTab();
   await openCash(sb, 100);
   await closeCash(sb, 100);
@@ -370,26 +370,28 @@ test('T16 — id duplicado rechaza todo el backup', async () => {
   await closeCash(sb, 50);
   const invalid = sb.durableSnapshot();
   invalid.data.cashClosures[1].id = invalid.data.cashClosures[0].id;
-
-  assert.throws(
-    () => sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(invalid)})`),
-    /id: identificador duplicado/i
-  );
+  const prepared = sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(invalid)})`);
+  assert.equal(prepared.snapshot.data.cashClosures.length, 1);
 });
 
-test('T17 — sessionId duplicado rechaza todo el backup', async () => {
+test('T17 — mismo sessionId + mismo aparato se omite; distinto aparato se conserva', async () => {
   const sb = freshTab();
   await openCash(sb, 100);
   await closeCash(sb, 100);
   await openCash(sb, 50);
   await closeCash(sb, 50);
-  const invalid = sb.durableSnapshot();
-  invalid.data.cashClosures[1].sessionId = invalid.data.cashClosures[0].sessionId;
-
-  assert.throws(
-    () => sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(invalid)})`),
-    /sessionId: identificador duplicado/i
-  );
+  const sameDevice = sb.durableSnapshot();
+  sameDevice.data.cashClosures[1].sessionId = sameDevice.data.cashClosures[0].sessionId;
+  sameDevice.data.cashClosures[0].deviceId = 'devA';
+  sameDevice.data.cashClosures[1].deviceId = 'devA';
+  const preparedSame = sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(sameDevice)})`);
+  assert.equal(preparedSame.snapshot.data.cashClosures.length, 1, 'mismo aparato + sessionId');
+  const cross = sb.durableSnapshot();
+  cross.data.cashClosures[1].sessionId = cross.data.cashClosures[0].sessionId;
+  cross.data.cashClosures[0].deviceId = 'devA';
+  cross.data.cashClosures[1].deviceId = 'devB';
+  const preparedCross = sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(cross)})`);
+  assert.equal(preparedCross.snapshot.data.cashClosures.length, 2, 'distinto aparato, mismo sessionId');
 });
 
 test('T18 — import inválido no altera memoria, durable ni cashClosures actuales', async () => {
