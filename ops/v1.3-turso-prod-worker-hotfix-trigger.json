@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized deploy of #652 (product images sync). Code only: no schema changes, no migrations, no live sale. Rollback to 7e5df996.",
-  "target_commit": "0d1a65413f1b56bca1202200cfb8eb6dc2b5c078",
-  "rollback_ref": "7e5df996d75ca2c955c97d60034b54d311ba8db8",
+  "authorization_context": "Owner authorized (2026-10-14 19:51 Lima) deploy of #670 (cash session cashier). Migration 0031 applied separately by canon-migration-0031.yml; worker code is schema-guarded. No live sale. Rollback to 9a3d6174.",
+  "target_commit": "00cf3050499fbc8b340114e54eb42ded09f93db9",
+  "rollback_ref": "9a3d617469081884f0e528594f58c3c3740b112a",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 32,
-  "optimization": "PRODUCT_IMAGES_SYNC"
+  "attempt": 33,
+  "optimization": "CASH_SESSION_CASHIER"
 }
