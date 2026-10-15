@@ -12,6 +12,7 @@ const PRECACHE_URLS = [
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './css/base.css',
+  './css/dark-polish.css',
   './css/proximamente.css',
   './css/sales-reports.css',
   './js/modules/proximamente.js',

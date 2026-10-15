@@ -1,0 +1,31 @@
+/* Color-only dark refinements; existing Inicio/Venta geometry is preserved. */
+body.dark #pageMenu .qs-card,
+body.dark #pageMenu .menu-data-panel,
+body.dark #pageMenu .menu-activity-row,
+body.dark #pageMenu .menu-pending-row,
+body.dark #pageMenu .qs-prev {
+  border-color: rgba(148, 163, 184, .25);
+}
+
+body.dark #pageMenu #menuActivityTitle,
+body.dark #pageMenu #menuPendingTitle,
+body.dark #posPhoneCatalog #posPhoneCatalogTitle {
+  color: #e5e7eb;
+}
+
+body.dark #pageMenu .menu-pending-mark.amber { background-color: #fbbf24; }
+body.dark #pageMenu .menu-pending-mark.red { background-color: #f87171; }
+body.dark #pageMenu .menu-pending-mark.teal { background-color: #2dd4bf; }
+
+body.dark #pagePOS .cart-head-clear {
+  background-color: #1e293b;
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, .25);
+}
+
+/* The drawer already renders hash.slice(0, 7); avoid clipping its version line. */
+#naMobileDrawerVersion {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}

@@ -43,7 +43,9 @@ test('fast launcher redirect is the first script, hosted /app/ only, and only wh
 });
 
 test('deferred styles have an adjacent blocking noscript fallback and preserve cascade order', () => {
-  assert.deepEqual(sheets(app), sheets(original));
+  // dark-polish.css (bloqueante, mínima) se añade al final a propósito; el resto mantiene el orden original.
+  assert.deepEqual(sheets(app).filter(h => h !== 'css/dark-polish.css'), sheets(original));
+  assert.equal(sheets(app).at(-1), 'css/dark-polish.css');
   for (const match of app.matchAll(/<link\b[^>]*media="print"[^>]*onload="this.media='all'"[^>]*>/g)) {
     const href = /href="([^"]+)"/.exec(match[0])[1];
     const fallback = /^\s*<noscript>(<link\b[^>]*>)<\/noscript>/.exec(app.slice(match.index + match[0].length));
