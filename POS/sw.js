@@ -24,6 +24,7 @@ const PRECACHE_URLS = [
   './css/canon-desktop-dashboard.css',
   './css/canon-mobile-home.css',
   './css/mobile-inventory.css',
+  './css/inventario-redesign.css',
   './js/inventory/mobile-inventory.js',
   './js/inventory/stock-lots.js',
   './js/inventory/stock-lots-ui.js',

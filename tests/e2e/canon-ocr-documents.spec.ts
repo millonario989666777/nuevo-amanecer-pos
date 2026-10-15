@@ -7,7 +7,7 @@ for(const file of ['purchase.pdf','purchase.docx','purchase.png','scan.pdf','hyb
  await page.waitForFunction(()=>_naFreeSaleShortcutState.ready);
  await page.evaluate(()=>{productos=[{id:987654,name:'PRODUCTO PRUEBA',sku:'7751234567890',barcode:'7751234567890',cat:'snacks',precio:5,costo:3.5,stock:8,stockMin:3,unidad:'unidad',icon:'📦'}];window.NA_MENU_NAVIGATION.navigate('pageInventario');invRender();});
  const before=await page.evaluate(()=>JSON.stringify(productos));
- await page.getByRole('button',{name:'OCR compras',exact:true}).click();
+ await page.locator('#pageInventario .inv-secondary>summary').click();await page.getByRole('button',{name:'OCR compras',exact:true}).click();
  await expect(page.getByRole('button',{name:'Tomar foto',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Subir PDF o documento',exact:true})).toBeVisible();
  await page.locator(file.endsWith('.png')?'#ocrPurchaseFile':'#ocrPurchaseDocument').setInputFiles(path.resolve('tests/ocr/fixtures',file));

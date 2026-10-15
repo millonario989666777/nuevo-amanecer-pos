@@ -44,11 +44,37 @@ function _naF12OptimizedCanvasData(canvas){let data='';try{data=canvas.toDataURL
 function _naF12SaveCustomIcon(){const canvas=_naF12Canvas();if(!canvas)return;const data=_naF12OptimizedCanvasData(canvas);if(!data||data.length>240000){toast('El icono es demasiado pesado; simplifica el dibujo','error');return;}imagenProducto=data;const icon=document.getElementById('pIcon');if(icon&&!icon.value)icon.value='🖼️';_naF12SetMode('custom');_naF12RenderVisual();cerrarModal('mIconDesigner');toast('Icono personalizado aplicado','success');}
 function _naF12InferMode(product){if(product?.imagen)return'image';const predicted=asignarEmojiAutomatico(product?.name||'');return(product?.icon||'📦')===predicted?'auto':'manual';}
 const _naF12BaseAbrirModalProd=abrirModalProd;
-abrirModalProd=function(...args){const result=_naF12BaseAbrirModalProd.apply(this,args);const expiryField=document.getElementById('pVenc');if(expiryField){expiryField.readOnly=false;expiryField.title='';}_naF12SetMode('auto');_naF12ProductNameChanged();_naF12RenderVisual();return result;};
+abrirModalProd=function(...args){const result=_naF12BaseAbrirModalProd.apply(this,args);const expiryField=document.getElementById('pVenc');if(expiryField){expiryField.readOnly=false;expiryField.title='';}_naProductFormState(null);_naF12SetMode('auto');_naF12ProductNameChanged();_naF12RenderVisual();return result;};
 const _naF12BaseEditProd=editProd;
-editProd=function(id,...args){const product=productos.find(p=>String(p.id)===String(id)),storedImage=product?.imagen||null;if(product)product.imagen=null;let result;try{result=_naF12BaseEditProd.call(this,id,...args);}finally{if(product)product.imagen=storedImage;}const expiryField=document.getElementById('pVenc');if(expiryField){let lotStock=false;try{lotStock=!!product&&typeof NA_STOCK_LOTS!=='undefined'&&NA_STOCK_LOTS.lots(product).some(lot=>Number(lot.quantity)>0);}catch(_){}expiryField.readOnly=lotStock;expiryField.title=expiryField.readOnly?'Calculado desde lotes':'';if(expiryField.readOnly)expiryField.value=_naEffectiveExpiry(product)||'';}imagenProducto=storedImage;_naF12SetMode(_naF12InferMode(product));_naF12RenderVisual();return result;};
+editProd=function(id,...args){const product=productos.find(p=>String(p.id)===String(id)),storedImage=product?.imagen||null,hadImage=!!product&&Object.hasOwn(product,'imagen');if(product)product.imagen=null;let result;try{result=_naF12BaseEditProd.call(this,id,...args);}finally{if(product){if(hadImage)product.imagen=storedImage;else delete product.imagen;}}const expiryField=document.getElementById('pVenc');if(expiryField){let lotStock=false;try{lotStock=!!product&&typeof NA_STOCK_LOTS!=='undefined'&&NA_STOCK_LOTS.lots(product).some(lot=>Number(lot.quantity)>0);}catch(_){}expiryField.readOnly=true;expiryField.title=expiryField.readOnly?'Calculado desde lotes':'';if(expiryField.readOnly)expiryField.value=_naEffectiveExpiry(product)||'';}_naProductFormState(product);imagenProducto=storedImage;_naF12SetMode(_naF12InferMode(product));_naF12RenderVisual();return result;};
 const _naF12BasePreviewImagen=previewImagen;
 previewImagen=function(...args){_naF12SetMode('image');const result=_naF12BasePreviewImagen.apply(this,args);setTimeout(_naF12RenderVisual,80);setTimeout(_naF12RenderVisual,350);setTimeout(_naF12RenderVisual,1000);return result;};
 const _naF12BaseGuardarProd=guardarProd;
 guardarProd=async function(...args){const icon=document.getElementById('pIcon');if(icon&&!icon.value.trim())icon.value=asignarEmojiAutomatico(document.getElementById('pNombre')?.value);return await _naF12BaseGuardarProd.apply(this,args);};
 document.addEventListener('DOMContentLoaded',()=>{const canvas=_naF12Canvas();canvas?.addEventListener('pointerdown',_naF12DesignerDown);canvas?.addEventListener('pointermove',_naF12DesignerMove);canvas?.addEventListener('pointerup',_naF12DesignerUp);canvas?.addEventListener('pointercancel',_naF12DesignerUp);canvas?.addEventListener('pointerleave',_naF12DesignerUp);_naF12RenderVisual();});
+
+function _naProductFormState(product){
+ const stock=document.getElementById('pStock');stock.readOnly=!!product;
+ document.getElementById('pStockLabel').textContent=product?'Stock actual':'Stock inicial';
+ document.getElementById('pAdjustStock').hidden=!product;
+ document.getElementById('pManageLots').hidden=!product;
+ document.getElementById('pVenc').readOnly=!!product;
+ document.getElementById('pVenc').hidden=!!product;
+ document.getElementById('pVenc').value=product?(_naEffectiveExpiry(product)||''):'';
+ document.getElementById('pExpiryHelp').textContent=!product?'Fecha del lote inicial (opcional).':document.getElementById('pVenc').value?'Calculado desde los lotes disponibles. Gestiona el vencimiento al registrar un ingreso.':'Sin lotes. Guarda el producto y registra un ingreso con lote y vencimiento.';
+ document.getElementById('mProdTitle').textContent=product?`Editar · ${product.name}`:'Nuevo producto';
+ document.getElementById('pExpiryDisplay').innerHTML=_naInventoryExpiryMarkup(product?(_naEffectiveExpiry(product)||''):'');
+ const lotList=document.getElementById('pLotList');lotList.replaceChildren();
+ if(product&&typeof NA_STOCK_LOTS!=='undefined')NA_STOCK_LOTS.lots(product).filter(lot=>Number(lot.quantity)>0).forEach(lot=>{const row=document.createElement('div');row.className='inv-form-lot';row.innerHTML=`<strong>${_naEsc(lot.lot_code||'Lote')}</strong> · ${_naEsc(lot.quantity)} ${_naEsc(product.unidad||'unidad')} ${_naInventoryExpiryMarkup(lot.expiry_date)}`;lotList.appendChild(row);});
+ document.getElementById('pIconMenu').open=false;
+ document.querySelectorAll('#mProd .inv-form-section').forEach((section,index)=>section.open=index===0);
+}
+function _naProductMovement(adjust){const id=invEditId;if(id==null)return;cerrarModal('mProd');abrirMovInv(id,'entrada');if(adjust){document.getElementById('mMovMotivo').value='Ajuste de inventario';document.getElementById('mMovMotivo').dispatchEvent(new Event('change'));}}
+
+// Inventory-only presentation; date inputs retain the existing ISO value for saving.
+function _naInventoryExpiryMarkup(expiry){
+ if(!expiry)return '';
+ const parts=expiry.slice(0,10).split('-'),date=parts.length===3?`${parts[2]}/${parts[1]}/${parts[0].slice(-2)}`:expiry,days=diasHasta(expiry);
+ const status=days<0?'Vencido':days<=NA_EXPIRY_SOON_DAYS?`vence en ${days} días`:'';
+ return `<span class="venc-pill">${_naEsc(date)}</span>${status?` <span class="inv-expiry-status ${days<0?'vencido':'pronto'}">${_naEsc(status)}</span>`:''}`;
+}
