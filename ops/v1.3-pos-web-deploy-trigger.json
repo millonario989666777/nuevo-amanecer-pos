@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Stock crítico incluye agotados (#709).",
-  "retry_attempt": 134,
-  "retry_reason": "Deploy de base a6a220ab (#709). Rollback: 0411402fac1db5a032e114f49f9fb64873185698 (build de 133).",
-  "requested_at_utc": "2026-10-15T20:11:44Z",
-  "approved_base": "a6a220ab98a03b8e8a0d13244de6204d456d182d"
+  "note": "Próximamente (#711): nuevos ítems bloqueados (credito-cuotas, reparto-abono, venta-exitosa, etc.), asistencia solo dueño.",
+  "retry_attempt": 135,
+  "retry_reason": "Deploy de base 83bea74d (#711). Rollback: 141eb7fb (build de 134).",
+  "requested_at_utc": "2026-10-15T20:24:58Z",
+  "approved_base": "83bea74dc366b8775eaea121e36106c70875592f"
 }
