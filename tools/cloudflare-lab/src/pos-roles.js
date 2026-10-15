@@ -1,3 +1,4 @@
+import { canDo, PERMISSIONS } from './pos-permissions.js';
 // Etapa 2 (G): roles por aparato y PIN del dueño validado solo en el servidor.
 // - Un aparato sin fila en pos_device_roles es del dueño (compatibilidad con el teléfono actual).
 // - El PIN nunca se registra ni se devuelve; solo se guarda PBKDF2-SHA256 con sal por fila.
@@ -14,7 +15,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const OWNER_COMMANDS = new Set(['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set']);
 const APPROVAL_ACTIONS = new Set([...OWNER_COMMANDS, 'settings.set', 'reset', 'discount', 'sale.annul', 'expired_lot_sale']);
 const SETTING_KEY = /^[a-z][a-z0-9_.-]{0,59}$/;
-export const ROLE_PATHS = new Set(['/auth/reviews', '/auth/reviews/resolve', '/auth/me', '/auth/owner-pin', '/auth/owner-approval', '/auth/pairing-code', '/auth/pair', '/auth/devices', '/auth/devices/revoke', '/settings']);
+export { ROLE_PATHS } from './pos-permissions.js';
 
 const now = () => new Date().toISOString();
 const later = ms => new Date(Date.now() + ms).toISOString();
@@ -225,6 +226,8 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
         FROM pos_review_flags ${all ? '' : "WHERE status='pendiente'"} ORDER BY created_at DESC LIMIT 200`).all()).results || [];
       return json({ reviews: rows.map(r => ({ ...r, detail: JSON.parse(r.detail_json), detail_json: undefined })) });
     }
+    const route = PERMISSIONS.API_ROUTES.find(r => r.path === path && r.action);
+    if (route && !canDo(role, route.action)) return json({ error: 'owner_only' }, 403);
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     const b = await body(request);
     if (path === '/auth/owner-approval') {
@@ -240,7 +243,7 @@ export async function handleRoles(request, url, env, { json, authorizeSession, g
         .bind(approvalId, auth.principalId, action, operationId, now(), expires).run();
       return json({ status: 'approved', approval_id: approvalId, action, expires_at: expires }, 201);
     }
-    if (role !== 'owner') return json({ error: 'owner_only' }, 403);
+    if (!canDo(role, route?.action || path)) return json({ error: 'owner_only' }, 403);
     if (path === '/auth/owner-pin') {
       const next = String(b.new_pin ?? '');
       if (!PIN_RE.test(next)) return json({ error: 'pin_format', detail: 'PIN de 4 a 8 dígitos' }, 400);

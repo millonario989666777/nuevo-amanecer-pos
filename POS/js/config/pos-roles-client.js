@@ -150,13 +150,41 @@
   };
 
   // Configuración solo para el dueño, por cualquier camino de navegación.
-  function guardConfig() {
-    var page = doc.getElementById('pageConfig');
-    if (!page || !page.classList.contains('active') || canConfigure()) return;
-    page.classList.remove('active');
+  function forbidden(id) {
+    return state.role === 'empleado' && !root.NA_PERMISSIONS.canAccessScreen(state.role, id);
+  }
+  function backToSale() {
     try { if (root.NA_MENU_NAVIGATION) root.NA_MENU_NAVIGATION.navigate('pagePOS'); else root.goPage('pagePOS'); } catch (_) {}
-    if (state.role === 'empleado') toast('Configuración es solo para el dueño.', 'error');
-    else offlineNotice();
+  }
+  function noPermission() {
+    if (doc.getElementById('naNoPermission') || !doc.body) return;
+    var o = doc.createElement('div'); o.id = 'naNoPermission'; o.className = 'na-pin-overlay';
+    o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true');
+    o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">Sin permiso</div><div class="na-pin-detail">Esta pantalla es solo para el dueño.</div><div class="na-pin-actions"><button type="button" class="na-pin-ok">Volver a la venta</button></div></div>';
+    o.querySelector('button').onclick = function () { o.remove(); backToSale(); };
+    doc.body.appendChild(o);
+  }
+  function guardConfig() {
+    doc.querySelectorAll('.page.active').forEach(function (page) {
+      if (forbidden(page.id)) { page.classList.remove('active'); backToSale(); noPermission(); }
+      else if (page.id === 'pageConfig' && !canConfigure()) { page.classList.remove('active'); backToSale(); offlineNotice(); }
+    });
+    if (state.role === 'empleado') {
+      var tab = doc.querySelector('#pageVentas [onclick*="reportes"].active');
+      if (tab && typeof root.ventasSetTab === 'function') root.ventasSetTab(doc.querySelector('#pageVentas .tab'), 'hoy');
+    }
+  }
+  function wrapNavigation() {
+    if (typeof root.goPage === 'function' && !root.goPage.__naPermissions) {
+      var go = root.goPage;
+      root.goPage = function (id) { if (forbidden(id)) { noPermission(); return false; } return go.apply(this, arguments); };
+      root.goPage.__naPermissions = true;
+    }
+    if (typeof root.ventasSetTab === 'function' && !root.ventasSetTab.__naPermissions) {
+      var setTab = root.ventasSetTab;
+      root.ventasSetTab = function (btn, tab) { if (tab === 'reportes' && forbidden('ventas:reportes')) { noPermission(); return false; } return setTab.apply(this, arguments); };
+      root.ventasSetTab.__naPermissions = true;
+    }
   }
   // Solo Configuración y pantallas del dueño fallan cerrado; vender, cobrar y la cola siguen igual.
   function offlineNotice() {
@@ -175,14 +203,17 @@
     if (online) refresh();
   }
   function install() {
-    var page = doc.getElementById('pageConfig');
-    if (page && !install.done && typeof root.MutationObserver === 'function') {
+    wrapNavigation();
+    if (!install.done && typeof root.MutationObserver === 'function') {
       install.done = true;
-      new root.MutationObserver(guardConfig).observe(page, { attributes: true, attributeFilter: ['class'] });
+      var observer = new root.MutationObserver(guardConfig);
+      doc.querySelectorAll('.page').forEach(function (page) { observer.observe(page, { attributes: true, attributeFilter: ['class'] }); });
     }
     guardConfig();
     refresh().then(guardConfig);
   }
+  root.addEventListener('load', wrapNavigation);
+  root.addEventListener('hashchange', guardConfig);
   root.addEventListener('na:role', guardConfig);
   root.addEventListener('online', function () { refresh(); });
   root.addEventListener('offline', function () { state.confirmed = false; paint(); guardConfig(); });

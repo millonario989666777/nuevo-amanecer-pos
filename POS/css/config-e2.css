@@ -94,3 +94,9 @@ html.na-ap-custom #posTotal,html.na-ap-custom #mQuickPaymentTotal,html.na-ap-cus
 @media(min-width:701px){html.na-ap-custom #mCobroTotal{font-size:calc(28px * var(--na-ap-text,1))!important}}
 html.na-ap-custom .ci-price,html.na-ap-custom .p-price,html.na-ap-custom .cli-meta,html.na-ap-custom .mov-amt,html.na-ap-custom label,html.na-ap-custom .toast{font-size:calc(13px * var(--na-ap-text,1))!important}
 html.na-ap-custom #pagePOS #btnPagar,html.na-ap-custom body.na-pos-phone-device #pagePOS #btnPagar{height:auto!important;min-height:max(44px,calc(48px * var(--na-ap-buttons,1)))!important}
+
+/* Employee permissions: owner menu remains unchanged. */
+html.na-role-empleado [data-page="pageGastos"],
+html.na-role-empleado [data-menu-target="pageGastos"],
+html.na-role-empleado [onclick*="pageGastos"],
+html.na-role-empleado #pageVentas [onclick*="reportes"] { display:none!important; }

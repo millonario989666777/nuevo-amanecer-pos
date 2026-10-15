@@ -1,3 +1,4 @@
+import { canDo } from './pos-permissions.js';
 import { setCanonicalCustomerContact } from './a6-customer-contacts.js';
 import { getDatabase } from './database-binding.js';
 // Gateway mínimo: POS OUTBOX -> Worker -> D1 sync_operations.
@@ -18,7 +19,7 @@ import { purchasesRoute, closePartialRoute } from './pos-purchases.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { dniLookupRoute, DNI_LOOKUP_PATH } from './pos-dni-lookup.js';
-import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
+import { handleRoles, ownerGate, posRoleFor, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -229,6 +230,8 @@ export default {
         if (denied) return denied;
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
+        const role = auth.posRole || await posRoleFor(getDatabase(env), auth.principalId);
+        if (!canDo(role, 'expense.create')) return json({ error: 'forbidden_role', action: 'expense.create' }, 403);
         return await createCanonicalExpense(request, env, auth, json);
       }
       if (financialCommand === 'payment.batch') {
