@@ -50,3 +50,35 @@ test('local breakdown prefers session identity, falls back to unassigned opening
   assert.equal(rows[2].ventas, null);
   assert.equal(rows[2].localMissing, true);
 });
+test('open shift summary keeps pre-midnight sales after midnight and falls back to today', () => {
+  const moves = [
+    { sessionId: 'S1', timestamp: '2026-10-14T04:30:00Z', tipo: 'ing', ventaId: 1, metodo: 'efectivo', monto: 10 },
+    { sessionId: 'S1', timestamp: '2026-10-14T05:30:00Z', tipo: 'ing', ventaId: 2, metodo: 'yape', monto: 5 },
+    { sessionId: 'S0', timestamp: '2026-10-14T05:20:00Z', tipo: 'ing', ventaId: 3, metodo: 'efectivo', monto: 99 }
+  ];
+  const s = h.shiftMoves(moves, { abierta: true, cerrada: false, sessionId: 'S1', fechaApertura: '2026-10-13' }, '2026-10-14T05:45:00Z');
+  assert.equal(s.label, 'Ventas del turno'); assert.equal(h.movementTotals(s.moves).ventas, 1500);
+  const byDate = h.shiftMoves([{ fecha: '2026-10-13', tipo: 'ing', ventaId: 1, monto: 10 }, { fecha: '2026-10-14', tipo: 'ing', ventaId: 2, monto: 5 }, { fecha: '2026-10-12', tipo: 'ing', ventaId: 3, monto: 7 }], { abierta: true, cerrada: false, fechaApertura: '2026-10-13' }, '2026-10-14T05:45:00Z');
+  assert.equal(h.movementTotals(byDate.moves).ventas, 1500);
+  const closed = h.shiftMoves(moves, { abierta: false, cerrada: true, sessionId: 'S1' }, '2026-10-14T05:45:00Z');
+  assert.equal(closed.label, 'Ventas del día'); assert.equal(closed.moves.length, 2);
+});
+test('preset range recomputes past midnight', () => {
+  assert.deepEqual(plain(h.presetRange('7', '2026-10-14T04:59:00Z')), { desde: '2026-10-07', hasta: '2026-10-13' });
+  assert.deepEqual(plain(h.presetRange('7', '2026-10-14T05:01:00Z')), { desde: '2026-10-08', hasta: '2026-10-14' });
+  assert.match(readFileSync('POS/js/modules/caja-movimientos-historial.js', 'utf8'), /function renderHistory\(host\) \{\s*if \(activePreset\) range = presetRange\(activePreset\);/);
+});
+test('server distribution counts sales only, excluding cobros', () => {
+  const r = h.canonicalSalesMethods([
+    { session_id: 'S', sale_id: 'V1', cash_cents: 1000, digital_cents: 500, digital_method: 'yape', credit_cents: 0 },
+    { session_id: 'S', sale_id: 'V2', cash_cents: 0, digital_cents: 0, credit_cents: 700 },
+    { session_id: 'S', sale_id: null, cash_cents: 300, digital_cents: 0, credit_cents: 0 },
+    { session_id: 'S', event_type: 'PAYMENT', cash_cents: 200 },
+    { session_id: 'X', sale_id: 'V3', cash_cents: 999 }
+  ], 'S');
+  assert.deepEqual(plain(r), { efectivo: 1000, yape: 500, plin: 0, transferencia: 0, credito: 700 });
+});
+test('close date is formatted dd/mm/aaaa', () => {
+  assert.equal(h.fmtDate('2026-10-14'), '14/10/2026'); assert.equal(h.fmtDate(''), '');
+  assert.match(readFileSync('POS/js/modules/caja-movimientos-historial.js', 'utf8'), /fmtDate\(r\.cierreFecha\)/);
+});
