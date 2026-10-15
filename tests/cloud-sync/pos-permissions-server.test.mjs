@@ -20,7 +20,7 @@ test('paired employees cannot invoke owner actions; owner expense and settings r
   assert.ok(paired.session_token);
   const c = f.control();
   const expense = { operation_id: 'permission-expense-op', expense_id: 'permission-expense', promotion_id: c.active_promotion_id, client_contract: 'a6-gate-c-v1', authority_epoch: c.authority_epoch, expected_control_revision: c.revision, created_at: '2026-09-27T17:00:00.000Z', amount_cents: 2500, concept: 'Útiles', category: 'Limpieza', payment_method: 'efectivo', expense_date: '2026-09-26', note: 'Synthetic' };
-  for (const [path, body, method] of [['/commands/expense.create', expense], ['/settings', { key: 'test', value: 1 }], ['/auth/product-images', {}], ['/auth/devices', {}], ['/auth/pairing-code', {}], ['/commands/import.stage', {}]]) {
+  for (const [path, body, method] of [['/commands/expense.update', expense], ['/commands/expense.void', expense], ['/commands/expense.create', expense], ['/settings', { key: 'test', value: 1 }], ['/auth/product-images', {}], ['/auth/devices', {}], ['/auth/pairing-code', {}], ['/commands/import.stage', {}]]) {
     const response = await call(f, path, paired.session_token, body, method);
     assert.equal(response.status, 403, path);
     if (path === '/commands/expense.create') assert.deepEqual(await response.json(), { error: 'forbidden_role', action: 'expense.create' });

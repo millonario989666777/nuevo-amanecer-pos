@@ -493,6 +493,8 @@
     return {
       id: row.expense_id,
       expenseId: row.expense_id,
+      revision: Number(row.revision)||0,
+      voided: !!row.voided,
       operationId: row.operation_id,
       desc: text(row.concept),
       monto: cents(row.amount_cents),
@@ -527,6 +529,8 @@
       fecha: text(row.expense_date),
       sessionId: row.session_id,
       expenseId: row.expense_id,
+      revision: Number(row.revision)||0,
+      voided: !!row.voided,
       canonical: true
     };
   }

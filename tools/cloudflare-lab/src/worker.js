@@ -8,7 +8,7 @@ import { A5_A4_QUARANTINE_TRANSFORM_VERSION, A5_TRANSFORM_VERSION, buildManifest
 import { handleA6, isA6Path, canonicalRuntimeDenied } from './a6-canonical.js';
 import { createCanonicalSale, createCanonicalCreditAccount, canUseCanonicalSaleFastPath, CANONICAL_CLIENT_CONTRACT } from './a6-commerce.js';
 import { createCanonicalFinancial, createCanonicalPaymentBatch, FINANCIAL_COMMANDS } from './a6-financial.js';
-import { createCanonicalExpense, employeeCashExpenseAllowed, EXPENSE_COMMAND } from './a6-expenses.js';
+import { createCanonicalExpense, reviseCanonicalExpense, employeeCashExpenseAllowed, EXPENSE_COMMAND } from './a6-expenses.js';
 import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from './a6-products.js';
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
@@ -223,6 +223,15 @@ export default {
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return auth;
         return await createCanonicalCreditAccount(request, env, auth, json);
+      }
+      if (['expense.update','expense.void'].includes(financialCommand)) {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
+        const denied = canonicalRuntimeDenied(url, env, json);
+        if (denied) return denied;
+        const role = auth.posRole || await posRoleFor(getDatabase(env), auth.principalId);
+        return await reviseCanonicalExpense(financialCommand, request, env, { ...auth, posRole: role }, json);
       }
       if (financialCommand === EXPENSE_COMMAND) {
         const auth = await authorizeSession(request, env);

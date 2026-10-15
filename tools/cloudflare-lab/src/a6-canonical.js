@@ -1,3 +1,4 @@
+import { expenseRevisionsAvailable } from './a6-expenses.js';
 import { cashSessionCashierAvailable } from './cash-session-cashier.js';
 import { getDatabase } from './database-binding.js';
 import { rememberLotSchema, lotsReady } from './stock-lots.js';
@@ -597,12 +598,19 @@ async function loadCollectionRows(db,type,before,page,schema=null){
       WHERE read_key>?2 ORDER BY read_key LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='expenses'){
     const expenseReady=await expenseLedgerAvailable(db,schema);
+    const revisionsReady=expenseReady&&(schema?schema.has('canonical_expense_revisions'):await expenseRevisionsAvailable(db));
+    const overlay=revisionsReady?`LEFT JOIN canonical_expense_revisions r ON r.expense_id=e.expense_id AND r.promotion_id=e.promotion_id
+      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id)
+      LEFT JOIN canonical_expense_revisions m ON m.expense_id=e.expense_id AND m.promotion_id=e.promotion_id AND m.action='edit'
+      AND m.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id AND action='edit')`:'';
+    const metadata=['concept','category','expense_date','note'].map(k=>revisionsReady?`CASE WHEN m.expense_id IS NULL THEN e.${k} ELSE m.${k} END AS ${k}`:`e.${k}`).join(',');
     rows=before.mode==='ACTIVE'&&expenseReady
-      ? await db.prepare(`SELECT expense_id AS read_key,expense_id,operation_id,promotion_id,session_id,amount_cents,cash_delta_cents,
-          concept,category,payment_method,expense_date,note,created_at
-          FROM canonical_expenses WHERE promotion_id=?1 AND expense_id>?2 ORDER BY expense_id LIMIT ?3`)
+      ? await db.prepare(`SELECT e.expense_id AS read_key,e.expense_id,e.operation_id,e.promotion_id,e.session_id,e.amount_cents,e.cash_delta_cents,
+          ${metadata},e.payment_method,e.created_at,${revisionsReady?"COALESCE(r.revision,0) AS revision,COALESCE(r.action='void',0) AS voided":"0 AS revision,0 AS voided"}
+          FROM canonical_expenses e ${overlay} WHERE e.promotion_id=?1 AND e.expense_id>?2 ORDER BY e.expense_id LIMIT ?3`)
           .bind(before.active_promotion_id,page.key,page.limit+1).all()
       : {results:[]};
+    rows.results=(rows.results||[]).map(row=>({...row,revision:Number(row.revision),voided:!!row.voided}));
   } else if(sqlName==='cash_sessions'){
     const openedReady=await cashSessionCashierAvailable(db,'canonical_cash_sessions');
     const closedReady=await cashSessionCashierAvailable(db,'canonical_cash_closures');
@@ -806,6 +814,11 @@ async function expenseLedgerCount(db,promotionId){
   const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_expense_operations WHERE promotion_id=?1').bind(promotionId).first();
   return Number(row?.count)||0;
 }
+async function expenseRevisionLedgerCount(db,promotionId){
+  if(!promotionId||!await expenseRevisionsAvailable(db))return 0;
+  const row=await db.prepare('SELECT COUNT(*) AS count FROM canonical_expense_revisions WHERE promotion_id=?1').bind(promotionId).first();
+  return Number(row?.count)||0;
+}
 async function productLedgerAvailable(db){
   const row=await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_product_operations'").first();
   return row?.ok===1;
@@ -899,7 +912,7 @@ async function readControl(db){
     (SELECT COUNT(*) FROM canonical_sale_context WHERE promotion_id=c.active_promotion_id)+
     (SELECT COUNT(*) FROM canonical_financial_operations WHERE promotion_id=c.active_promotion_id)
     ELSE NULL END AS financial_revision FROM canonical_control c WHERE c.id=1`).first();
-  if(row?.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+await expenseLedgerCount(db,row.active_promotion_id)+await productLedgerCount(db,row.active_promotion_id)+await inventoryLedgerCount(db,row.active_promotion_id)+await customerLedgerCount(db,row.active_promotion_id)+await customerCreditPolicyLedgerCount(db,row.active_promotion_id)+await debtReconciliationLedgerCount(db,row.active_promotion_id)+await customerContactLedgerCount(db,row.active_promotion_id)+await productRevisionLedgerCount(db,row.active_promotion_id);
+  if(row?.mode==='ACTIVE')row.financial_revision=Number(row.financial_revision)+await expenseLedgerCount(db,row.active_promotion_id)+await expenseRevisionLedgerCount(db,row.active_promotion_id)+await productLedgerCount(db,row.active_promotion_id)+await inventoryLedgerCount(db,row.active_promotion_id)+await customerLedgerCount(db,row.active_promotion_id)+await customerCreditPolicyLedgerCount(db,row.active_promotion_id)+await debtReconciliationLedgerCount(db,row.active_promotion_id)+await customerContactLedgerCount(db,row.active_promotion_id)+await productRevisionLedgerCount(db,row.active_promotion_id);
   return row;
 }
 // ---------------------------------------------------------------------------
@@ -925,10 +938,11 @@ const CUSTOMER_CONTACT_SCHEMA_TABLES=['canonical_customer_contacts'];
 // Identity rows share the contact operation/revision, so the contact ledger term already counts them.
 const CUSTOMER_IDENTITY_SCHEMA_TABLES=['canonical_customer_identities'];
 const PRODUCT_REVISION_SCHEMA_TABLES=['canonical_product_revisions'];
-const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...CUSTOMER_IDENTITY_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES,'canonical_stock_lots','canonical_stock_lot_effects'])];
+const READ_PLAN_SCHEMA_TABLES=[...new Set([...CONTROL_SCHEMA_TABLES,...EXPENSE_SCHEMA_TABLES,...PRODUCT_LEDGER_SCHEMA_TABLES,...LIVE_PRODUCT_SCHEMA_TABLES,...INVENTORY_SCHEMA_TABLES,...GENERIC_SALE_SCHEMA_TABLES,...CUSTOMER_SCHEMA_TABLES,...CREDIT_POLICY_SCHEMA_TABLES,...DEBT_RECONCILIATION_SCHEMA_TABLES,...CUSTOMER_CONTACT_SCHEMA_TABLES,...CUSTOMER_IDENTITY_SCHEMA_TABLES,...PRODUCT_REVISION_SCHEMA_TABLES,'canonical_expense_revisions','canonical_stock_lots','canonical_stock_lot_effects'])];
 // Same order and conditions as the legacy readControl ledger additions.
 const LEDGER_REVISION_TERMS=[
   [EXPENSE_SCHEMA_TABLES,['canonical_expense_operations']],
+  [['canonical_expense_revisions'],['canonical_expense_revisions']],
   [PRODUCT_LEDGER_SCHEMA_TABLES,['canonical_product_operations']],
   [INVENTORY_SCHEMA_TABLES,['canonical_inventory_operations']],
   [CUSTOMER_SCHEMA_TABLES,['canonical_customer_operations']],

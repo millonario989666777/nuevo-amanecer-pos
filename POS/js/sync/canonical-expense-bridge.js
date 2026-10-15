@@ -9,6 +9,7 @@
     abrirMovCaja: root.abrirMovCaja
   };
   var busy = false;
+  var editing = null;
 
   function api() { return root.NuevoAmanecerCanonical; }
   function enabled() {
@@ -47,6 +48,8 @@
       : new Date().toLocaleDateString('en-CA');
   }
   function resetAndOpen() {
+    editing=null;
+    ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.disabled=false;field.readOnly=false;}});
     ['gasDesc','gasNota'].forEach(function (id) {
       var field = root.document.getElementById(id);
       if (field) field.value = '';
@@ -83,6 +86,41 @@
     if (employee()) { var method = root.document.getElementById('gasMetodo'); if (method) method.value = 'efectivo'; }
   };
 
+  async function revise(command, input) {
+    var client=api();
+    if(typeof client.prepareCommand==='function')await client.prepareCommand(command);
+    try { return await (command==='expense.update'?client.updateExpense(input):client.voidExpense(input)); }
+    catch(error) {
+      // Release only definitive rejections of this revision intent.
+      // Timeouts/5xx remain durable for replay; other financial intents stay intact.
+      var pending=typeof client.pendingSnapshot==='function'&&client.pendingSnapshot();
+      if(pending&&pending.command===command&&pending.payload.expense_id===input.expense_id&&
+        pending.last_status>=400&&pending.last_status<500&&pending.last_status!==429&&typeof client.releaseRejectedFinancial==='function') {
+        await client.releaseRejectedFinancial(pending.payload.operation_id);
+        await refreshCanonical();renderExpenseViews();
+      }
+      throw error;
+    }
+  }
+  function owner() { return !!(root.NA_ROLES && root.NA_ROLES.isOwner()); }
+  function revisionInput(expense) { return {expense_id:expense.expenseId,expected_revision:Number(expense.revision)||0}; }
+  root.NA_EXPENSES = {
+    edit: function(expense) {
+      if(!owner()||!enabled()||busy||expense.voided)return;
+      resetAndOpen();editing=expense;
+      [['gasDesc',expense.desc],['gasCat',expense.cat],['gasNota',expense.nota],['gasFecha',expense.fecha],['gasMonto',expense.monto],['gasMetodo',expense.metodo]].forEach(function(pair){var field=root.document.getElementById(pair[0]);if(field)field.value=pair[1]||'';});
+      ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.readOnly=true;field.disabled=true;}});
+    },
+    void: async function(expense) {
+      if(!owner()||!enabled()||busy||expense.voided)return false;
+      if(!root.confirm('¿Eliminar este gasto? Se conservará su historial financiero.'))return false;
+      busy=true;
+      try { await revise('expense.void',revisionInput(expense));await refreshCanonical();renderExpenseViews();notify('Gasto eliminado','success');return true; }
+      catch(error){notify(String(error.message).includes('cash_expense_void_requires_adjustment')?'Este gasto afectó la caja. Registra un ajuste de ingreso en caja para compensarlo.':'No se pudo eliminar el gasto: '+error.message);return false;}
+      finally{busy=false;}
+    }
+  };
+
   root.abrirMovCaja = function (type) {
     if (!enabled() || type !== 'gas') {
       return typeof original.abrirMovCaja === 'function' ? original.abrirMovCaja.apply(this, arguments) : undefined;
@@ -93,6 +131,14 @@
   root.guardarGasto = async function () {
     if (!enabled()) return typeof original.guardarGasto === 'function' ? original.guardarGasto.apply(this, arguments) : false;
     if (busy) return false;
+    if (editing) {
+      if(!owner())return false;
+      busy=true;
+      try {
+        var input=Object.assign(revisionInput(editing),{concept:clean(root.document.getElementById('gasDesc')?.value),category:clean(root.document.getElementById('gasCat')?.value),note:clean(root.document.getElementById('gasNota')?.value),expense_date:clean(root.document.getElementById('gasFecha')?.value)});
+        await revise('expense.update',input);editing=null;closeModal();await refreshCanonical();renderExpenseViews();notify('Gasto editado','success');return true;
+      }catch(error){notify('No se pudo editar el gasto: '+error.message);return false;}finally{busy=false;}
+    }
     if (!authorized()) return false;
 
     var description = clean(root.document.getElementById('gasDesc')?.value);

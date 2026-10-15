@@ -7,7 +7,7 @@
   var LOCK = 'na-canonical-financial-writer';
   var CREDENTIALS_KEY = 'na_cloud_sync_credentials';
   var METHODS = ['efectivo', 'yape', 'plin', 'transferencia', 'credito', 'mixto'];
-  var COMMANDS = ['sale.create', 'product.create', 'product.update', 'customer.create', 'customer.contact.set', 'customer.credit-policy.set', 'inventory.adjust', 'credit-account.create', 'payment.create', 'payment.batch', 'cash.open', 'cash.close', 'adjustment.create', 'compensation.create', 'expense.create'];
+  var COMMANDS = ['sale.create', 'product.create', 'product.update', 'customer.create', 'customer.contact.set', 'customer.credit-policy.set', 'inventory.adjust', 'credit-account.create', 'payment.create', 'payment.batch', 'cash.open', 'cash.close', 'adjustment.create', 'compensation.create', 'expense.create', 'expense.update', 'expense.void'];
   var FINANCIAL_METHODS = ['efectivo', 'yape', 'plin', 'transferencia'];
   // Deadline of a command POST whose response is the receipt (payments, cash).
   var READ_TIMEOUT_MS = 8000;
@@ -1216,6 +1216,17 @@
         (requestedId !== undefined && requestedId !== sessions[0].session_id)) fail('INVALID_CANONICAL_CASH_SESSION');
     return sessions[0];
   }
+  function makeExpenseRevisionPayload(command, input) {
+    if (!input || !validId(input.expense_id) || !uint(input.expected_revision)) fail('INVALID_CANONICAL_EXPENSE_REVISION');
+    var payload=Object.assign(commonPayload(), {expense_id:input.expense_id,expected_revision:input.expected_revision});
+    if(command==='expense.update') {
+      if(typeof input.concept!=='string'||!input.concept.trim()||input.concept.length>500||
+        typeof input.category!=='string'||!input.category.trim()||input.category.length>120||!validDate(input.expense_date)||
+        input.note!=null&&(typeof input.note!=='string'||input.note.length>500)) fail('INVALID_CANONICAL_EXPENSE_REVISION');
+      Object.assign(payload,{concept:input.concept,category:input.category,note:input.note||null,expense_date:input.expense_date});
+    }
+    return payload;
+  }
   function makeExpensePayload(input) {
     input = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
     var amount = input.amount_cents;
@@ -1394,6 +1405,7 @@
     }
     if (payload.session_id !== undefined && !validId(payload.session_id) || payload.expected_session_revision !== undefined && !uint(payload.expected_session_revision) ||
         payload.expected_credit_revision !== undefined && !uint(payload.expected_credit_revision) || payload.reference !== undefined && !validId(payload.reference)) return false;
+    if (command === 'expense.update' || command === 'expense.void') return validId(payload.expense_id) && uint(payload.expected_revision) && (command==='expense.void' || typeof payload.concept==='string' && payload.concept.trim().length>0 && payload.concept.length<=500 && typeof payload.category==='string' && payload.category.trim().length>0 && payload.category.length<=120 && validDate(payload.expense_date) && (payload.note===null || typeof payload.note==='string' && payload.note.length<=500));
     if (command === 'expense.create') return validId(payload.expense_id) && uint(payload.amount_cents) && payload.amount_cents > 0 &&
       typeof payload.concept === 'string' && payload.concept.trim().length > 0 && payload.concept.length <= 500 &&
       typeof payload.category === 'string' && payload.category.trim().length > 0 && payload.category.length <= 120 &&
@@ -1438,6 +1450,7 @@
       result.promotion_id===record.binding.promotion_id && result.authority_epoch===record.binding.authority_epoch;
     // The shipped backend's sale receipt has no command, including on replay.
     if (record.command === 'sale.create') return result.sale_id === record.payload.sale_id && (result.command === undefined || result.command === record.command);
+    if (record.command === 'expense.update' || record.command === 'expense.void') return result.command===record.command && result.expense_id===record.payload.expense_id && result.promotion_id===record.binding.promotion_id && result.authority_epoch===record.binding.authority_epoch && result.revision===record.payload.expected_revision+1 && result.voided===(record.command==='expense.void');
     if (record.command === 'expense.create') return result.command === record.command && result.expense_id === record.payload.expense_id &&
       result.promotion_id === record.binding.promotion_id && result.authority_epoch === record.binding.authority_epoch &&
       result.session_id === (record.payload.session_id === undefined ? null : record.payload.session_id) && Number.isSafeInteger(result.cash_delta_cents);
@@ -1796,7 +1809,7 @@
       assertAction(command);
       if (!sessionCredentials(binding)) fail('CANONICAL_COMMERCE_CLOSED');
       var record = { state: 'PENDING', binding: copy(binding), command: command, route: '/commands/' + command,
-        payload: command === 'sale.create' ? (input && input.version === 1 ? makeIntentPayload(input) : makePayload(input)) : command === 'product.create' ? makeProductPayload(input) : command === 'product.update' ? makeProductUpdatePayload(input) : command === 'customer.create' ? makeCustomerPayload(input) : command === 'customer.contact.set' ? makeCustomerContactPayload(input) : command === 'customer.credit-policy.set' ? makeCustomerCreditPolicyPayload(input) : command === 'inventory.adjust' ? makeInventoryPayload(input) : command === 'credit-account.create' ? makeCreditAccountPayload(input) : command === 'expense.create' ? makeExpensePayload(input) : makeFinancialPayload(command, input) };
+        payload: command === 'sale.create' ? (input && input.version === 1 ? makeIntentPayload(input) : makePayload(input)) : command === 'product.create' ? makeProductPayload(input) : command === 'product.update' ? makeProductUpdatePayload(input) : command === 'customer.create' ? makeCustomerPayload(input) : command === 'customer.contact.set' ? makeCustomerContactPayload(input) : command === 'customer.credit-policy.set' ? makeCustomerCreditPolicyPayload(input) : command === 'inventory.adjust' ? makeInventoryPayload(input) : command === 'credit-account.create' ? makeCreditAccountPayload(input) : ['expense.update','expense.void'].includes(command) ? makeExpenseRevisionPayload(command,input) : command === 'expense.create' ? makeExpensePayload(input) : makeFinancialPayload(command, input) };
       record.receipt_ids = {};
       if (command === 'product.create' || command === 'product.update') record.receipt_ids.product_id = record.payload.product_id;
       if (command === 'customer.create') record.receipt_ids.customer_id = record.payload.customer_id;
@@ -1967,7 +1980,7 @@
   // (4xx except 429: nothing was committed). The full record is archived and
   // the single journal slot is freed, so a failed cash.open, egreso, gasto,
   // abono or inventory movement never freezes sales or the cash close.
-  var COMMAND_LABELS = { 'cash.open': 'abrir caja', 'cash.close': 'cerrar caja', 'adjustment.create': 'movimiento de caja', 'expense.create': 'gasto',
+  var COMMAND_LABELS = { 'cash.open': 'abrir caja', 'cash.close': 'cerrar caja', 'adjustment.create': 'movimiento de caja', 'expense.create': 'gasto', 'expense.update': 'editar gasto', 'expense.void': 'eliminar gasto',
     'payment.create': 'abono', 'payment.batch': 'abonos', 'compensation.create': 'compensación', 'inventory.adjust': 'movimiento de inventario',
     'product.create': 'producto nuevo', 'customer.create': 'cliente nuevo', 'customer.contact.set': 'datos del cliente',
     'customer.credit-policy.set': 'línea de crédito', 'credit-account.create': 'cuenta de crédito' };
@@ -2311,6 +2324,6 @@
   root.addEventListener('offline', function () { ready = false; saleOnlyReady = false; closeOnlyReady = false; });
   root.NuevoAmanecerCanonical = Object.freeze({ CONTRACT: CONTRACT, enabled: enabled, configure: configure, refresh: refresh, prepareCommand: prepareCommand, snapshot: snapshot,
     pendingSnapshot: pendingSnapshot, receiptSnapshot: receiptSnapshot, assertAction: assertAction, createSale: createSale, retryPending: retryPending, resumePaymentBatch: resumePaymentBatch, releaseRejectedCashClose: releaseRejectedCashClose, releaseUncommittedCashClose: releaseUncommittedCashClose, discardRejectedPayment: discardRejectedPayment, discardRejectedProduct: discardRejectedProduct, discardRejectedCustomer: discardRejectedCustomer, discardRejectedCustomerContact: discardRejectedCustomerContact, discardRejectedCustomerCreditPolicy: discardRejectedCustomerCreditPolicy, discardRejectedInventory: discardRejectedInventory, discardRejectedSale: discardRejectedSale, releaseRejectedSaleJournal: releaseRejectedSaleJournal, releaseRejectedFinancial: releaseRejectedFinancial, settleStrandedFinancial: settleStrandedFinancial,
-    createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense,
+    createProduct: createProduct, updateProduct: updateProduct, createCustomer: createCustomer, setCustomerContact: setCustomerContact, setCustomerCreditPolicy: setCustomerCreditPolicy, adjustInventory: adjustInventory, createCreditAccount: createCreditAccount, createPayment: createPayment, createPaymentBatch: createPaymentBatch, openCash: openCash, closeCash: closeCash, createAdjustment: createAdjustment, createCompensation: createCompensation, createExpense: createExpense, updateExpense: function(input){return createCommand('expense.update',input);}, voidExpense: function(input){return createCommand('expense.void',input);},
     renderCredits: renderCredits, startPOS: startPOS, commandContext: function () { return commonPayload(); }, warm: warm, legacySnapshot: legacySnapshot, sourceState: sourceState, ping: ping, readProgress: function () { return copy(readProgress); } });
 })(globalThis);
