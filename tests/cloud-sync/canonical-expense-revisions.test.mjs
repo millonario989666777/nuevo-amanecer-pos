@@ -5,11 +5,18 @@ import { activeCanon, device } from './canon-browser-harness.mjs';
 import { reviseCanonicalExpense } from '../../tools/cloudflare-lab/src/a6-expenses.js';
 const migration='0032_canonical_expense_revisions.sql';
 function common(f,operation_id){const c=f.control();return {operation_id,expense_id:'fixture-expense',promotion_id:c.active_promotion_id,authority_epoch:c.authority_epoch,expected_control_revision:c.revision,client_contract:'a6-gate-c-v1',created_at:'2026-10-15T15:00:00Z'};}
+function serverClock(t, instant){
+ const NativeDate=Date;
+ let now=instant;
+ t.mock.method(globalThis,'Date',class extends NativeDate { constructor(...args){super(...(args.length?args:[now]));} static now(){return NativeDate.parse(now);} });
+ return value=>{now=value;};
+}
 async function setup(t, migrated=true){
- const f=await activeCanon(t,{migrations:migrated?[migration]:[]});f.addDevice('expense-owner','writer','active','expense-owner-token');
+ const clock=serverClock(t,'2026-10-15T14:00:00.000Z');
+ const f=await activeCanon(t,{migrations:migrated?[migration,'0033_canonical_expense_server_received_at.sql']:[]});f.addDevice('expense-owner','writer','active','expense-owner-token');
  const call=async(command,body)=>f.fetch('http://localhost/commands/'+command,{method:'POST',headers:{authorization:'Bearer expense-owner-token','content-type':'application/json'},body:JSON.stringify(body)});
  assert.equal((await call('expense.create',{...common(f,'fixture-create'),amount_cents:1000,concept:'Original',category:'Otro',payment_method:'yape',expense_date:'2026-10-15',note:'Original note'})).status,201);
- return {f,call};
+ return {f,call,clock};
 }
 test('owner edit/void are append-only, CAS protected, effective and idempotent',async t=>{
  const {f,call}=await setup(t);const before=f.database.prepare('SELECT * FROM canonical_expenses').all();
@@ -145,44 +152,57 @@ test('feature routes authenticate before disclosing lock state',async t=>{
  }
 });
 
-test('cash.close uses server time and shiftless locks compare instants on the expense Lima day',async t=>{
- const {f,call}=await setup(t);
+test('shiftless locks use server receipt and server now regardless of forged client timestamps',async t=>{
+ const {f,call,clock}=await setup(t);
+ const create=(op,created_at,date='2026-10-15')=>call('expense.create',{...common(f,op),expense_id:op,amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:date,created_at});
+ assert.equal((await create('forged-before-close','2099-01-01T00:00:00Z')).status,201);
+ const row=f.sql("SELECT * FROM canonical_expenses WHERE expense_id='forged-before-close'");
+ assert.equal(row.server_received_at,'2026-10-15T14:00:00.000Z');
+ assert.equal(row.created_at,'2099-01-01T00:00:00Z');
  const base=common(f,'time-open');delete base.expense_id;
  assert.equal((await call('cash.open',{...base,session_id:'time-shift',opening_cents:10000})).status,201);
- const NativeServerDate=Date;
- const serverNow=Date.parse('2026-10-14T15:00:00Z');
- t.mock.method(globalThis,'Date',class extends NativeServerDate { constructor(...args){super(...(args.length?args:[serverNow]));} static now(){return serverNow;} });
+ clock('2026-10-15T15:00:00.000Z');
  assert.equal((await call('cash.close',{...base,operation_id:'time-close',session_id:'time-shift',expected_session_revision:0,counted_cents:10000,created_at:'2020-01-01T00:00:00Z'})).status,201);
- const closure=f.sql("SELECT closed_at FROM canonical_cash_closures WHERE session_id='time-shift'");
- assert.equal(Date.parse(closure.closed_at),serverNow);
- t.mock.restoreAll();
- assert.equal(f.sql("SELECT created_at FROM canonical_financial_operations WHERE operation_id='time-close'").created_at,'2020-01-01T00:00:00Z');
- // A second real close under a controlled server clock fixes the exact boundary.
- assert.equal((await call('cash.open',{...base,operation_id:'boundary-open',session_id:'boundary-shift',opening_cents:10000})).status,201);
- const NativeDate=Date;
- t.mock.method(globalThis,'Date',class extends NativeDate { constructor(...args){super(...(args.length?args:['2026-10-15T15:00:00.000Z']));} });
- try { assert.equal((await call('cash.close',{...base,operation_id:'boundary-close',session_id:'boundary-shift',expected_session_revision:0,counted_cents:10000})).status,201); }
- finally { t.mock.restoreAll(); }
-
- const create=(op,created_at,date='2026-10-15')=>call('expense.create',{...common(f,op),expense_id:op,amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:date,created_at});
- for(const [op,time] of [['earlier','2026-10-15T14:59:59.999Z'],['equal','2026-10-15T10:00:00-05:00']]){
+ assert.equal(f.sql("SELECT closed_at FROM canonical_cash_closures WHERE session_id='time-shift'").closed_at,'2026-10-15T15:00:00.000Z');
+ clock('2026-10-15T16:00:00.000Z');
+ for(const [op,time] of [['earlier','2026-10-15T14:59:59.999Z'],['equal','2026-10-15T10:00:00-05:00'],['later','2026-10-15T15:00:00.001Z']]){
   const res=await create(op,time);assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
  }
- assert.equal((await create('later','2026-10-15T15:00:00.001Z')).status,201);
- assert.equal((await create('other-day','2026-10-15T14:00:00Z','2026-10-13')).status,201);
- const update=(op,time)=>call('expense.update',{...common(f,op),expected_revision:0,concept:'Changed',category:'Otro',note:null,expense_date:'2026-10-15',created_at:time});
- let res=await update('edit-before','2026-10-15T14:00:00Z');assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
- assert.equal((await update('edit-after','2026-10-15T15:00:00.001Z')).status,201);
- // Void uses the original expense timestamp, even if the request arrives later.
- res=await call('expense.void',{...common(f,'void-before'),expected_revision:1,created_at:'2026-10-15T16:00:00Z'});
+ for(const command of ['expense.update','expense.void']){
+  const body={...common(f,command+'-forged'),expense_id:'forged-before-close',expected_revision:0,created_at:'2099-01-01T00:00:00Z'};
+  if(command==='expense.update')Object.assign(body,{concept:'Changed',category:'Otro',note:null,expense_date:'2026-10-14'});
+  const res=await call(command,body);assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
+ }
+ assert.equal((await create('other-day','2020-01-01T00:00:00Z','2026-10-14')).status,201);
+ // Changing into a closed target is blocked even when receipt followed its closure.
+ const edit={...common(f,'closed-target'),expense_id:'other-day',expected_revision:0,concept:'Changed',category:'Otro',note:null,expense_date:'2026-10-15',created_at:'2099-01-01T00:00:00Z'};
+ let res=await call('expense.update',edit);assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
+ assert.equal((await call('expense.void',{...common(f,'void-other'),expense_id:'other-day',expected_revision:0})).status,201);
+
+});
+
+test('legacy NULL server receipt falls back to base created_at',async t=>{
+ const {f,call,clock}=await setup(t,false);
+ const create=(op,created_at)=>call('expense.create',{...common(f,op),expense_id:op,amount_cents:100,concept:'Legacy',category:'Otro',payment_method:'yape',expense_date:'2026-10-15',created_at});
+ assert.equal((await create('legacy-before','2026-10-15T14:00:00Z')).status,201);
+ assert.equal((await create('legacy-after','2026-10-15T16:00:00Z')).status,201);
+ f.database.exec(readFileSync('infra/database/migrations/'+migration,'utf8'));
+ f.database.exec(readFileSync('infra/database/migrations/0033_canonical_expense_server_received_at.sql','utf8'));
+ assert.equal(f.sql("SELECT server_received_at FROM canonical_expenses WHERE expense_id='legacy-before'").server_received_at,null);
+ const base=common(f,'legacy-open');delete base.expense_id;
+ assert.equal((await call('cash.open',{...base,session_id:'legacy-shift',opening_cents:10000})).status,201);
+ clock('2026-10-15T15:00:00.000Z');
+ assert.equal((await call('cash.close',{...base,operation_id:'legacy-close',session_id:'legacy-shift',expected_session_revision:0,counted_cents:10000})).status,201);
+ clock('2026-10-15T17:00:00.000Z');
+ let res=await call('expense.void',{...common(f,'legacy-void-before'),expense_id:'legacy-before',expected_revision:0,created_at:'2099-01-01T00:00:00Z'});
  assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_day');
- assert.equal((await call('expense.void',{...common(f,'void-after'),expense_id:'later',expected_revision:0})).status,201);
- assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expenses').n,3);
+ assert.equal((await call('expense.void',{...common(f,'legacy-void-after'),expense_id:'legacy-after',expected_revision:0,created_at:'2020-01-01T00:00:00Z'})).status,201);
 });
 
 test('shiftless void locks the latest revised date, while other days stay voidable',async t=>{
- const {f,call}=await setup(t);
- assert.equal((await call('expense.create',{...common(f,'old-base'),expense_id:'old-base',amount_cents:100,concept:'Old',category:'Otro',payment_method:'yape',expense_date:'2026-10-15',created_at:'2026-10-14T15:00:00Z'})).status,201);
+ const {f,call,clock}=await setup(t);
+ clock('2026-10-14T15:00:00Z');
+ assert.equal((await call('expense.create',{...common(f,'old-base'),expense_id:'old-base',amount_cents:100,concept:'Old',category:'Otro',payment_method:'yape',expense_date:'2026-10-14',created_at:'2026-10-14T15:00:00Z'})).status,201);
  assert.equal((await call('expense.update',{...common(f,'move-day'),expense_id:'old-base',expected_revision:0,concept:'Moved',category:'Otro',note:null,expense_date:'2026-10-14'})).status,201);
  const base=common(f,'void-day-open');delete base.expense_id;
  assert.equal((await call('cash.open',{...base,session_id:'void-day-shift',opening_cents:10000})).status,201);
@@ -199,10 +219,12 @@ test('atomic create, update and void guards reject a closure missed by the preli
  const {f,call}=await setup(t);
  const base=common(f,'atomic-open');delete base.expense_id;
  assert.equal((await call('cash.open',{...base,session_id:'atomic-shift',opening_cents:10000})).status,201);
+ assert.equal((await call('expense.create',{...common(f,'atomic-open-day'),expense_id:'atomic-open-day',amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:'2026-10-14'})).status,201);
  const NativeDate=Date;
  t.mock.method(globalThis,'Date',class extends NativeDate { constructor(...args){super(...(args.length?args:['2026-10-15T15:00:00Z']));} });
  try { assert.equal((await call('cash.close',{...base,operation_id:'atomic-close',session_id:'atomic-shift',expected_session_revision:0,counted_cents:10000})).status,201); }
  finally { t.mock.restoreAll(); }
+ serverClock(t,'2026-10-15T16:00:00.000Z');
  const prepare=f.binding.prepare.bind(f.binding);
  // Simulate a close invisible to the preflight read; SQL write guards still see it.
  t.mock.method(f.binding,'prepare',sql=>{
@@ -210,12 +232,12 @@ test('atomic create, update and void guards reject a closure missed by the preli
   if(sql.startsWith('SELECT 1 FROM canonical_cash_closures'))statement.first=async()=>null;
   return statement;
  });
- const create={...common(f,'atomic-create'),expense_id:'atomic-create',amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:'2026-10-15'};
- const edit={...common(f,'atomic-edit'),expected_revision:0,concept:'X',category:'Otro',note:null,expense_date:'2026-10-15'};
- for(const [command,body] of [['expense.create',create],['expense.update',edit],['expense.void',{...common(f,'atomic-void'),expected_revision:0}]]){
+ const create={...common(f,'atomic-create'),expense_id:'atomic-create',amount_cents:100,concept:'X',category:'Otro',payment_method:'yape',expense_date:'2026-10-15',created_at:'2099-01-01T00:00:00Z'};
+ const edit={...common(f,'atomic-edit'),expected_revision:0,concept:'X',category:'Otro',note:null,expense_date:'2026-10-15',created_at:'2099-01-01T00:00:00Z'};
+ for(const [command,body] of [['expense.create',create],['expense.update',edit],['expense.update',{...edit,operation_id:'atomic-target-edit',expense_id:'atomic-open-day'}],['expense.void',{...common(f,'atomic-void'),expected_revision:0,created_at:'2099-01-01T00:00:00Z'}]]){
   assert.equal((await call(command,body)).status,409,command);
  }
- assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expenses').n,1);
- assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expense_operations').n,1);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expenses').n,2);
+ assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expense_operations').n,2);
  assert.equal(f.sql('SELECT COUNT(*) n FROM canonical_expense_revisions').n,0);
 });

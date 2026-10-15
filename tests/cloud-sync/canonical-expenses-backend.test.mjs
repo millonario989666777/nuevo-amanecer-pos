@@ -9,6 +9,7 @@ const migrations = [
   '0011_canonical_session_runtime.sql',
   '0012_credit_accounts_v2.sql',
   '0013_canonical_expenses.sql',
+  '0033_canonical_expense_server_received_at.sql',
 ].map(name => readFileSync(new URL('../../infra/database/migrations/' + name, import.meta.url), 'utf8'));
 
 const auth = token => ({ authorization:'Bearer '+token, 'content-type':'application/json' });

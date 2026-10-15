@@ -19,7 +19,12 @@ test('same device/session with conflicting financial or identity fields is rejec
  for(const field of ['contado','esperado','diferencia','timestampCierre','cajero']){
   for(const id of [row.id,'alternate'])assert.throws(()=>validate([row,{...row,id,[field]:field==='cajero'?'Other':999}]),/mismo (?:id|aparato y sesión) con datos distintos/);
  }
- assert.throws(()=>validate([row,{...row,contado:1}]),/mismo id con datos distintos/);
+ assert.throws(()=>validate([row,{...row,contado:1}]),/mismo id con datos distintos \(id C-A-123\)/);
  const reordered=Object.fromEntries(Object.entries({...row,id:'alternate'}).reverse());
  assert.deepEqual(validate([row,reordered]),[row]);
+});
+
+test('restore session conflict identifies the conflicting id and session',()=>{
+ const row={id:'C-A-123',deviceId:'A',sessionId:123,contado:100};
+ assert.throws(()=>validate([row,{...row,id:'conflicting',contado:99}]),/datos distintos \(id conflicting, sesión 123\)/);
 });

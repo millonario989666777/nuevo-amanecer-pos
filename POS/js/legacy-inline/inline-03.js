@@ -521,9 +521,9 @@ function _naValidateCashClosureIdentity(closures){
     const key=JSON.stringify([String(closure.deviceId|| (id.endsWith('-'+closure.sessionId)&&id!== 'C-'+closure.sessionId?id.slice(2,-String(closure.sessionId).length-1):'')),String(closure.sessionId)]);
     // Solo se omiten duplicados idénticos. Mismo id o mismo (aparato,sesión) con datos distintos → error.
     const signature=JSON.stringify(Object.fromEntries(Object.keys(closure).filter(k=>k!=='id').sort().map(k=>[k,closure[k]])));
-    if(ids.has(id)&&ids.get(id)!==signature)throw new Error('cashClosures: mismo id con datos distintos');
+    if(ids.has(id)&&ids.get(id)!==signature)throw new Error(`cashClosures: mismo id con datos distintos (id ${id})`);
     if(closure.sessionId!=null&&sessions.has(key)&&sessions.get(key)!==signature)
-      throw new Error('cashClosures: mismo aparato y sesión con datos distintos');
+      throw new Error(`cashClosures: mismo aparato y sesión con datos distintos (id ${id}, sesión ${closure.sessionId})`);
     if(ids.has(id)||(closure.sessionId!=null&&sessions.has(key)))return false;
     ids.set(id,signature);if(closure.sessionId!=null)sessions.set(key,signature);
     return true;
