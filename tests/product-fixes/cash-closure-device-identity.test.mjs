@@ -13,3 +13,13 @@ test('device tags work without deviceId and historical closure ids remain valid'
  const rows=[{id:'C-A-123',sessionId:123},{id:'C-B-123',sessionId:123},{id:'C-123',sessionId:123}];
  assert.deepEqual(validate([...rows,{...rows[0]}]),rows);
 });
+
+test('same device/session with conflicting financial or identity fields is rejected',()=>{
+ const row={id:'C-A-123',deviceId:'A',sessionId:123,contado:100,esperado:90,diferencia:10,timestampCierre:1234,cajero:'Owner'};
+ for(const field of ['contado','esperado','diferencia','timestampCierre','cajero']){
+  for(const id of [row.id,'alternate'])assert.throws(()=>validate([row,{...row,id,[field]:field==='cajero'?'Other':999}]),/mismo (?:id|aparato y sesión) con datos distintos/);
+ }
+ assert.throws(()=>validate([row,{...row,contado:1}]),/mismo id con datos distintos/);
+ const reordered=Object.fromEntries(Object.entries({...row,id:'alternate'}).reverse());
+ assert.deepEqual(validate([row,reordered]),[row]);
+});

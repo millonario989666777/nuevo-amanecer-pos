@@ -362,19 +362,19 @@ test('T15 — contado, esperado o diferencia null/no-numérico rechazan el cierr
   }
 });
 
-test('T16 — id duplicado se omite al preparar el backup (dedupe)', async () => {
+test('T16 — cierre idéntico se omite al preparar el backup (dedupe)', async () => {
   const sb = freshTab();
   await openCash(sb, 100);
   await closeCash(sb, 100);
   await openCash(sb, 50);
   await closeCash(sb, 50);
   const invalid = sb.durableSnapshot();
-  invalid.data.cashClosures[1].id = invalid.data.cashClosures[0].id;
+  invalid.data.cashClosures[1] = {...invalid.data.cashClosures[0]};
   const prepared = sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(invalid)})`);
   assert.equal(prepared.snapshot.data.cashClosures.length, 1);
 });
 
-test('T17 — mismo sessionId + mismo aparato se omite; distinto aparato se conserva', async () => {
+test('T17 — mismo aparato y sesión con datos distintos se rechaza; distinto aparato se conserva', async () => {
   const sb = freshTab();
   await openCash(sb, 100);
   await closeCash(sb, 100);
@@ -384,8 +384,7 @@ test('T17 — mismo sessionId + mismo aparato se omite; distinto aparato se cons
   sameDevice.data.cashClosures[1].sessionId = sameDevice.data.cashClosures[0].sessionId;
   sameDevice.data.cashClosures[0].deviceId = 'devA';
   sameDevice.data.cashClosures[1].deviceId = 'devA';
-  const preparedSame = sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(sameDevice)})`);
-  assert.equal(preparedSame.snapshot.data.cashClosures.length, 1, 'mismo aparato + sessionId');
+  assert.throws(()=>sb.run(`_naPrepareBackupSnapshot(${JSON.stringify(sameDevice)})`),/mismo aparato y sesión con datos distintos/);
   const cross = sb.durableSnapshot();
   cross.data.cashClosures[1].sessionId = cross.data.cashClosures[0].sessionId;
   cross.data.cashClosures[0].deviceId = 'devA';

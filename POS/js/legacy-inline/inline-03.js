@@ -500,7 +500,6 @@ function _naSanitizeInventoryMovement(raw,index,warnings){
   if(p.referenceId!==undefined)out.referenceId=p.referenceId===null?null:_naBackupString(p.referenceId,`inventoryMovements[${index}].referenceId`,160);
   if(p.timestamp!==undefined)out.timestamp=_naBackupDate(p.timestamp,`inventoryMovements[${index}].timestamp`);
   if(p.fecha!==undefined)out.fecha=_naBackupDate(p.fecha,`inventoryMovements[${index}].fecha`);
-  if(p.deviceId!=null)out.deviceId=_naBackupString(p.deviceId,`cashClosures[${index}].deviceId`,160);
   if(p.sessionId!==undefined)out.sessionId=p.sessionId===null?null:_naBackupId(p.sessionId,`inventoryMovements[${index}].sessionId`);
   return out;
 }
@@ -516,12 +515,17 @@ function _naValidateInventoryMovementLedger(movements){
   return movements;
 }
 function _naValidateCashClosureIdentity(closures){
-  const ids=new Set(),sessions=new Set();
+  const ids=new Map(),sessions=new Map();
   return closures.filter(closure=>{
     const id=String(closure.id);
     const key=JSON.stringify([String(closure.deviceId|| (id.endsWith('-'+closure.sessionId)&&id!== 'C-'+closure.sessionId?id.slice(2,-String(closure.sessionId).length-1):'')),String(closure.sessionId)]);
+    // Solo se omiten duplicados idénticos. Mismo id o mismo (aparato,sesión) con datos distintos → error.
+    const signature=JSON.stringify(Object.fromEntries(Object.keys(closure).filter(k=>k!=='id').sort().map(k=>[k,closure[k]])));
+    if(ids.has(id)&&ids.get(id)!==signature)throw new Error('cashClosures: mismo id con datos distintos');
+    if(closure.sessionId!=null&&sessions.has(key)&&sessions.get(key)!==signature)
+      throw new Error('cashClosures: mismo aparato y sesión con datos distintos');
     if(ids.has(id)||(closure.sessionId!=null&&sessions.has(key)))return false;
-    ids.add(id);if(closure.sessionId!=null)sessions.add(key);
+    ids.set(id,signature);if(closure.sessionId!=null)sessions.set(key,signature);
     return true;
   });
 }

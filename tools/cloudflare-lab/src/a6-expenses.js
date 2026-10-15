@@ -127,8 +127,8 @@ export async function createCanonicalExpense(request,env,auth,json) {
   // Recheck date locks inside the batch so a concurrent close cannot slip through.
   statements.push(db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok)
     SELECT ?1,CASE WHEN NOT EXISTS(SELECT 1 FROM canonical_cash_closures
-      WHERE (?2 IS NOT NULL AND session_id=?2) OR (?2 IS NULL AND date(closed_at,'-5 hours')=?3)) THEN 1 ELSE 0 END`)
-    .bind(token + ':expense-date-lock',body.session_id||null,body.expense_date));
+      WHERE (?2 IS NOT NULL AND session_id=?2) OR (?2 IS NULL AND date(closed_at,'-5 hours')=?3 AND julianday(closed_at)>=julianday(?4))) THEN 1 ELSE 0 END`)
+    .bind(token + ':expense-date-lock',body.session_id||null,body.expense_date,body.created_at));
 
   pushChecked(db.prepare(`INSERT INTO canonical_write_guards(operation_id,commit_token,promotion_id,authority_epoch,control_revision,client_contract,principal_id,credential_hash)
     VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`).bind(body.operation_id,token,body.promotion_id,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.principalId,auth.credentialHash),'guard');
@@ -179,11 +179,13 @@ export async function expenseDateError(db, expense, date, checkDate = true) {
     const shift = await db.prepare('SELECT opened_at FROM canonical_cash_sessions WHERE session_id=?1').bind(expense.session_id).first();
     if (date > limaToday()) return 'expense_date_in_future';
     if (shift?.opened_at && date < limaDate(shift.opened_at)) return 'expense_date_outside_shift';
-  } else if (checkDate) {
-    const today = limaToday();
-    if (date > today) return 'expense_date_in_future';
-    if (date < limaDate(Date.parse(today + 'T12:00:00Z') - 31 * 86400e3)) return 'expense_date_out_of_range';
-    if (await db.prepare("SELECT 1 FROM canonical_cash_closures WHERE date(closed_at,'-5 hours')=?1").bind(date).first()) return 'expense_date_locked_closed_day';
+  } else {
+    if (checkDate) {
+      const today = limaToday();
+      if (date > today) return 'expense_date_in_future';
+      if (date < limaDate(Date.parse(today + 'T12:00:00Z') - 31 * 86400e3)) return 'expense_date_out_of_range';
+    }
+    if (await db.prepare("SELECT 1 FROM canonical_cash_closures WHERE date(closed_at,'-5 hours')=?1 AND julianday(closed_at)>=julianday(?2)").bind(date,expense.created_at).first()) return 'expense_date_locked_closed_day';
   }
   return null;
 }
@@ -231,7 +233,9 @@ export async function reviseCanonicalExpense(command, request, env, auth, json) 
   if(!expense)return json({error:'expense_not_found'},404);
   if(Number(expense.revision)!==body.expected_revision)return json({error:'stale_expense_revision'},409);
   if(expense.action==='void')return json({error:'expense_voided'},409);
-  const dateError=await expenseDateError(db,expense,body.expense_date,editing);
+  const effectiveDate=editing?body.expense_date:(expense.revised_expense_date||expense.expense_date);
+  const datedExpense=editing?{...expense,created_at:body.created_at}:expense;
+  const dateError=await expenseDateError(db,datedExpense,effectiveDate,editing);
   if(dateError)return json({error:dateError},409);
   if(!editing&&Number(expense.cash_delta_cents)!==0)return json({error:'cash_expense_void_requires_adjustment'},409);
   if(await namespaceCollision(db,body.operation_id)||await db.prepare('SELECT 1 FROM canonical_expense_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict'},409);
@@ -244,14 +248,14 @@ export async function reviseCanonicalExpense(command, request, env, auth, json) 
       SELECT ?1,?2,?3,?4+1,?5,?6,?7,?8,?9,?10,?11,?12
       WHERE COALESCE((SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=?2 AND promotion_id=?3),0)=?4
         AND (?18 IS NULL OR NOT EXISTS(SELECT 1 FROM canonical_cash_closures WHERE session_id=?18))
-        AND (?17=0 OR ?18 IS NOT NULL OR NOT EXISTS(SELECT 1 FROM canonical_cash_closures WHERE date(closed_at,'-5 hours')=?9))
+        AND (?18 IS NOT NULL OR NOT EXISTS(SELECT 1 FROM canonical_cash_closures WHERE date(closed_at,'-5 hours')=?17 AND julianday(closed_at)>=julianday(?19)))
         AND EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?11
           WHERE c.id=1 AND c.mode='ACTIVE' AND c.active_promotion_id=?3 AND c.authority_epoch=?13
           AND c.revision=?14 AND c.minimum_client_contract=?15 AND d.role='writer' AND d.status='active' AND d.credential_hash=?16)
       RETURNING *`).bind(body.operation_id,body.expense_id,body.promotion_id,body.expected_revision,action,
         editing?body.concept.trim():null,editing?body.category.trim():null,editing?(body.note||null):null,
-        editing?body.expense_date:null,hash,auth.principalId,body.created_at,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.credentialHash,editing?1:0,expense.session_id||null).first();
-    if(!inserted){const denied=await authorityError(db,body,auth);const dateError=denied?null:await expenseDateError(db,expense,body.expense_date,editing);return json({error:denied||dateError||'stale_expense_revision'},409);}
+        editing?body.expense_date:null,hash,auth.principalId,body.created_at,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.credentialHash,effectiveDate,expense.session_id||null,datedExpense.created_at).first();
+    if(!inserted){const denied=await authorityError(db,body,auth);const dateError=denied?null:await expenseDateError(db,datedExpense,effectiveDate,editing);return json({error:denied||dateError||'stale_expense_revision'},409);}
     return json(await result(inserted),201);
   } catch(error) {
     const recovered=await replayRevision();if(recovered)return recovered;
