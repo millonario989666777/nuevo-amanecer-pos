@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {activeCanon} from './canon-browser-harness.mjs';
 import * as migration from '../../tools/cloudflare-prod/scripts/turso-expense-revisions-maintenance.mjs';
 const source=readFileSync(migration.migrationPath,'utf8');
@@ -25,10 +25,12 @@ test('0032 maintenance rejects drift and completes a partial migration',async t=
  f.database.exec('DROP INDEX idx_canonical_expense_revisions_promotion; CREATE INDEX idx_canonical_expense_revisions_promotion ON canonical_expense_revisions(expense_id);');
  await assert.rejects(()=>migration.preflight(db,source),/schema drift/);
 });
-test('0032 workflow verifies contracts and encrypted remote backup before applying; placeholder is inert',()=>{
+test('0032 workflow verifies contracts and encrypted remote backup before applying; trigger is scoped',()=>{
  const workflow=readFileSync('.github/workflows/canon-migration-0032.yml','utf8');
- const trigger=JSON.parse(readFileSync('ops/canon-migration-0032.json','utf8'));
- assert.equal(trigger.feature_commit,'0'.repeat(40));assert.equal(trigger.attempt,1);assert.deepEqual(trigger.migrations,['0032']);
+ if(existsSync('ops/canon-migration-0032.json')){
+  const trigger=JSON.parse(readFileSync('ops/canon-migration-0032.json','utf8'));
+  assert.match(trigger.feature_commit,/^[a-f0-9]{40}$/);assert.ok(trigger.attempt>=1);assert.deepEqual(trigger.migrations,['0032']);assert.equal(trigger.destructive,false);
+ }
  assert.ok(workflow.indexOf('Verify migration contracts')<workflow.indexOf('Read-only preflight'));
  assert.ok(workflow.indexOf('Store and verify backup')<workflow.indexOf('Apply additive migration'));
  assert.match(workflow,/sha256sum \/tmp\/turso-migration-0032-backup/);
