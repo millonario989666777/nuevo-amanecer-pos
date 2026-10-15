@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { employeeCashExpenseAllowed } from '../../tools/cloudflare-lab/src/a6-expenses.js';
+import { createCanonicalExpense, employeeCashExpenseAllowed } from '../../tools/cloudflare-lab/src/a6-expenses.js';
 import { a6Fixture } from './a6-fixture.mjs';
 const read = name => readFileSync(new URL('../../infra/database/migrations/' + name, import.meta.url), 'utf8');
 async function call(f, path, token, body, method = 'POST') {
@@ -20,12 +20,12 @@ test('paired employees cannot invoke owner actions; owner expense and settings r
   assert.ok(paired.session_token);
   const c = f.control();
   const expense = { operation_id: 'permission-expense-op', expense_id: 'permission-expense', promotion_id: c.active_promotion_id, client_contract: 'a6-gate-c-v1', authority_epoch: c.authority_epoch, expected_control_revision: c.revision, created_at: '2026-09-27T17:00:00.000Z', amount_cents: 2500, concept: 'Útiles', category: 'Limpieza', payment_method: 'efectivo', expense_date: '2026-09-26', note: 'Synthetic' };
-  for (const [path, body, method] of [['/commands/expense.create', expense], ['/settings', { key: 'test', value: 1 }], ['/auth/product-images', {}], ['/auth/devices', {}], ['/auth/pairing-code', {}]]) {
+  for (const [path, body, method] of [['/commands/expense.create', expense], ['/settings', { key: 'test', value: 1 }], ['/auth/product-images', {}], ['/auth/devices', {}], ['/auth/pairing-code', {}], ['/commands/import.stage', {}]]) {
     const response = await call(f, path, paired.session_token, body, method);
     assert.equal(response.status, 403, path);
     if (path === '/commands/expense.create') assert.deepEqual(await response.json(), { error: 'forbidden_role', action: 'expense.create' });
   }
-  for (const path of ['/read/status','/read/sales','/read/sales/s1/items','/read/inventory-movements']) {
+  for (const path of ['/read/status','/read/sales','/read/sales/s1/items','/read/inventory-movements','/read/canonical/expenses']) {
     assert.equal((await call(f,path,paired.session_token,null,'GET')).status,403,path);
   }
   assert.equal((await call(f,'/read/canonical/status',paired.session_token,null,'GET')).status,200);
@@ -38,6 +38,9 @@ test('paired employees cannot invoke owner actions; owner expense and settings r
   assert.equal((await call(f,'/commands/expense.create',paired.session_token,next)).status,201);
   assert.equal(f.sql("SELECT expected_cents FROM canonical_cash_state WHERE session_id='employee-shift'").expected_cents,5000);
   assert.equal((await call(f, '/commands/expense.create', 'owner-token', expense)).status, 201);
+  // An employee must not replay an owner expense outside their own open shift.
+  assert.equal((await call(f, '/commands/expense.create', paired.session_token, expense)).status, 403);
+  assert.equal((await call(f, '/read/canonical/expenses', 'owner-token', null, 'GET')).status, 200);
   assert.equal((await call(f, '/settings', 'owner-token', { key: 'test', value: 1 })).status, 200);
 });
 
@@ -107,4 +110,21 @@ test('employee completes canonical sale, credit collection, cash and sync pull',
   await tab.api.refresh();
   assert.equal((await call(f,'/auth/dni-lookup','employee-flow-token',{dni:'12345678'})).status,200);
   assert.equal((await call(f,'/sync/operations/missing','employee-flow-token',null,'GET')).status,404);
+});
+
+test('employee expense authorization runs before any replay lookup', async () => {
+  const queries = [];
+  const db = {prepare(sql) {
+    queries.push(sql);
+    assert.match(sql, /s.status='OPEN'/, 'only the employee shift check may run');
+    return {bind() { return {async first() { return null; }}; }};
+  }};
+  const body = {operation_id:'replayed-op',expense_id:'replayed-expense',promotion_id:'promotion',
+    client_contract:'a6-gate-c-v1',authority_epoch:1,expected_control_revision:1,
+    created_at:'2026-10-15T00:00:00Z',amount_cents:500,concept:'Salida',category:'Otros',
+    payment_method:'efectivo',expense_date:'2026-10-14',session_id:'foreign-shift',expected_session_revision:0};
+  const result = await createCanonicalExpense({async json() {return body;}}, {DB:db},
+    {posRole:'empleado',principalId:'employee'}, (body,status) => ({body,status}));
+  assert.deepEqual(result, {body:{error:'forbidden_role',action:'expense.create'},status:403});
+  assert.equal(queries.length,1);
 });

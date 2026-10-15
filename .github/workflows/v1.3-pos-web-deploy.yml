@@ -77,7 +77,9 @@ jobs:
           cp tools/cloudflare-pos-web/public/activate.js tools/cloudflare-pos-web/_site/activate.js
           sed -i "s/__BUILD_HASH__/$GITHUB_SHA/g" tools/cloudflare-pos-web/_site/index.html
           sed -i "s/__BUILD_HASH__/$GITHUB_SHA/g" tools/cloudflare-pos-web/_site/app/sw.js
-          if grep -Fq '__BUILD_HASH__' tools/cloudflare-pos-web/_site/app/sw.js tools/cloudflare-pos-web/_site/index.html; then
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sed -i "s/__BUILD_HASH__/$GITHUB_SHA/g; s/__BUILD_DATE__/$BUILD_DATE/g" tools/cloudflare-pos-web/_site/app/js/config/build-info.js
+          if grep -Eq '__BUILD_HASH__|__BUILD_DATE__' tools/cloudflare-pos-web/_site/app/sw.js tools/cloudflare-pos-web/_site/index.html tools/cloudflare-pos-web/_site/app/js/config/build-info.js; then
             echo "Service Worker build hash placeholder was not replaced" >&2
             exit 1
           fi

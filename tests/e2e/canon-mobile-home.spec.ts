@@ -14,8 +14,8 @@ test('phone uses one drawer for actions and genuine empty activity', async ({ pa
   await expect(page.locator('#naMobileActivityList')).toContainText('Sin movimientos recientes');
   await page.locator('#naMobileMenuToggle').click();
   const drawer = page.locator('#naMobileDrawer');
-  await expect(drawer.getByRole('button')).toHaveCount(10);
-  for (const label of ['Inicio', 'Nueva venta', 'Ventas', 'Ingresar mercadería', 'Buscar cliente', 'Registrar abono', 'Abrir / cerrar caja', 'Registrar gasto', 'Configuración']) {
+  await expect(drawer.getByRole('button')).toHaveCount(9);
+  for (const label of ['Inicio', 'Nueva venta', 'Ventas', 'Inventario', 'Clientes', 'Caja', 'Gastos', 'Configuración']) {
     await expect(drawer.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
   await expect(drawer.getByRole('button', { name: 'Inicio', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -113,7 +113,7 @@ test('drawer targets reuse existing routes and refresh leaves loaded business st
     })()
   `));
   expect(unchanged).toBe(true);
-  for (const [label, destination] of [['Ventas','pageVentas'],['Ingresar mercadería','pageInventario'],['Buscar cliente','pageClientes'],['Registrar abono','pageClientes'],['Abrir / cerrar caja','pageCaja'],['Registrar gasto','pageGastos'],['Configuración','pageConfig']]) {
+  for (const [label, destination] of [['Ventas','pageVentas'],['Inventario','pageInventario'],['Clientes','pageClientes'],['Caja','pageCaja'],['Gastos','pageGastos'],['Configuración','pageConfig']]) {
     await page.locator('#naMobileMenuToggle').click();
     await page.locator('#naMobileDrawer').getByRole('button', { name:label, exact:true }).click();
     await expect(page.locator('#'+destination)).toHaveClass(/active/);

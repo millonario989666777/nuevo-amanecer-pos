@@ -29,5 +29,11 @@ test('sync entities and read routes distinguish operations from reports', () => 
   assert.equal(p.canDo('empleado', p.SYNC_ENTITIES.expenses), true);
   assert.equal(p.canDo('empleado', p.SYNC_ENTITIES.unknown), false);
   for (const path of ['/read/status','/read/sales','/read/sales/s1/items','/read/inventory-movements']) assert.deepEqual(p.routeRoles(path,'GET'),['owner']);
-  for (const path of p.API_ROUTES.filter(r=>r.path.startsWith('/read/canonical/')).map(r=>r.path)) assert.deepEqual(p.routeRoles(path,'GET'),['owner','empleado']);
+  for (const path of p.API_ROUTES.filter(r=>r.path.startsWith('/read/canonical/')).map(r=>r.path)) assert.deepEqual(p.routeRoles(path,'GET'),path === '/read/canonical/expenses' ? ['owner'] : ['owner','empleado']);
+});
+
+test('imports and canonical expense reports are owner-only', () => {
+  assert.deepEqual(p.routeRoles('/commands/import.stage','POST'), ['owner']);
+  assert.deepEqual(p.routeRoles('/read/canonical/expenses','GET'), ['owner']);
+  assert.equal(p.API_ROUTES.find(r => r.path === '/read/canonical/expenses').action, 'reports.view');
 });

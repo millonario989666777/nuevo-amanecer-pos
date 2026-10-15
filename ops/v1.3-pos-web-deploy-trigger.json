@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Cajero que abrió/cerró turno (#670); desplegar solo POS web.",
-  "retry_attempt": 123,
-  "retry_reason": "Deploy de base 00cf3050 (#670 cajero por turno, incluye #667). Backend desplegado por hotfix attempt 33. Rollback: 9a3d617469081884f0e528594f58c3c3740b112a.",
-  "requested_at_utc": "2026-10-15T01:11:05Z",
-  "approved_base": "00cf3050499fbc8b340114e54eb42ded09f93db9"
+  "note": "Historial de Caja (#667); desplegar solo POS web.",
+  "retry_attempt": 125,
+  "retry_reason": "Deploy de base 19bcbc82 (#667 historial Caja). Sin cambios de backend. Rollback: 85c28cb4ac8dbb6ee3321100527f77f596fed3d9.",
+  "requested_at_utc": "2026-10-15T11:31:00Z",
+  "approved_base": "19bcbc82e5a2c3c02aefbd13e3c1565fbaacd723"
 }

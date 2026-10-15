@@ -25,6 +25,7 @@ const PRECACHE_URLS = [
   './css/client-credit-accounts-v2.css',
   './css/canon-desktop-dashboard.css',
   './css/canon-mobile-home.css',
+  './css/mobile-drawer.css',
   './css/mobile-inventory.css',
   './css/inventario-redesign.css',
   './js/inventory/mobile-inventory.js',

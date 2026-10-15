@@ -329,8 +329,8 @@ body.dark .na-review-close{background:#334155}
 .na-ds-ok{background:var(--teal,#15803d)}.na-ds-ok:disabled{opacity:1;background:#94a3b8;color:#0f172a}
 body.dark .na-ds-ok:disabled{background:#475569;color:#e2e8f0}
 
-/* Permission feedback stays below the application top bar. */
-#naNoPermission{top:calc(72px + env(safe-area-inset-top));height:calc(var(--na-vvh,100dvh) - 72px - env(safe-area-inset-top));bottom:0;text-align:center}
+/* Permission feedback blocks the whole viewport. */
+#naNoPermission{position:fixed;inset:0;height:auto;background:rgba(15,23,42,.55);z-index:100000;pointer-events:auto;text-align:center}
 #naNoPermission .na-pin-box{margin:auto;width:min(100%,400px)}
 #naNoPermission .na-permission-lock{font-size:40px;margin-bottom:16px}
 #naNoPermission .na-pin-actions{justify-content:center}

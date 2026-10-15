@@ -3,7 +3,7 @@
   'use strict';
   var owner = ['owner'], both = ['owner', 'empleado'];
   var SCREENS = {};
-  ['pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
+  ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
   ['pageGastos', 'pageConfig', 'pageProximamente', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
   ['expense.create', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
@@ -29,7 +29,8 @@
     { path: '/auth/product-images/item', methods: ['GET'], roles: both },
     { path: '/commands/expense.create', methods: ['POST'], roles: both, action: 'cash.expense' }
   ];
-  ['sale.create','cash.open','cash.close','payment.create','payment.batch','credit-account.create','product.create','product.update','customer.create','customer.contact.set','customer.credit-policy.set','inventory.adjust','adjustment.create','compensation.create','sale.annul','import.stage'].forEach(function (name) { API_ROUTES.push({ path: '/commands/' + name, methods: ['POST'], roles: both }); });
+  ['sale.create','cash.open','cash.close','payment.create','payment.batch','credit-account.create','product.create','product.update','customer.create','customer.contact.set','customer.credit-policy.set','inventory.adjust','adjustment.create','compensation.create','sale.annul'].forEach(function (name) { API_ROUTES.push({ path: '/commands/' + name, methods: ['POST'], roles: both }); });
+  API_ROUTES.push({ path: '/commands/import.stage', methods: ['POST'], roles: owner });
   API_ROUTES.push({ path: '/auth/dni-lookup', methods: ['POST'], roles: both });
   API_ROUTES.push({ path: '/commands/sale.annul', methods: ['GET'], roles: both });
   ['/auth/session','/auth/record-meta','/auth/sale-annulments'].forEach(function (path) { API_ROUTES.push({ path: path, methods: ['GET'], roles: both }); });
@@ -39,7 +40,8 @@
   API_ROUTES.push({ path: '/sync/operations/:id', methods: ['GET'], roles: both });
   API_ROUTES.push({ path: '/imports/:id', methods: ['GET'], roles: both });
   ['status','sales','inventory-movements','sales/:id/items'].forEach(function (name) { API_ROUTES.push({ path: '/read/' + name, methods: ['GET'], roles: owner, action: 'reports.view' }); });
-  ['status','snapshot','products','customers','credits','credit-payments','credit-accounts','sales','sale-items','inventory-movements','cash-movements','cash-sessions','financial-events','expenses'].forEach(function (name) { API_ROUTES.push({ path: '/read/canonical/' + name, methods: ['GET'], roles: both }); });
+  ['status','snapshot','products','customers','credits','credit-payments','credit-accounts','sales','sale-items','inventory-movements','cash-movements','cash-sessions','financial-events'].forEach(function (name) { API_ROUTES.push({ path: '/read/canonical/' + name, methods: ['GET'], roles: both }); });
+  API_ROUTES.push({ path: '/read/canonical/expenses', methods: ['GET'], roles: owner, action: 'reports.view' });
   var PRODUCT_IMAGE_PATHS = Array.from(new Set(API_ROUTES.filter(function (r) { return r.path.indexOf('/auth/product-images') === 0; }).map(function (r) { return r.path; })));
   var ROLE_PATHS = ['/auth/reviews','/auth/reviews/resolve','/auth/me','/auth/owner-pin','/auth/owner-approval','/auth/pairing-code','/auth/pair','/auth/devices','/auth/devices/revoke','/settings'];
   function allowed(role, roles) { return (role === 'owner' || role === 'empleado') && roles.indexOf(role) >= 0; }
