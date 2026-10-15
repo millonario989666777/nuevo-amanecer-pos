@@ -1,92 +1,44 @@
 (function (root) {
   'use strict';
+  // Próximamente (solo dueño). Este archivo es liviano: el registro (datos) se carga bajo demanda
+  // desde js/modules/proximamente-registry.js al abrir la sección. El bloqueo vive en
+  // NA_PERMISSIONS.FEATURE_LOCKS (js/config/pos-permissions.js), única fuente cliente/servidor.
+  var REGISTRY_SRC = 'js/modules/proximamente-registry.js';
+  var MODULES = ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras'];
+  var PRIORITY_LABELS = { alta: 'Prioridad alta', media: 'Prioridad media', baja: 'Prioridad baja' };
+  var FEATURES = null, loading = null, filters = { priority: '', query: '' }, openModules = {};
   function freeze(value) {
     if (value && typeof value === 'object') { Object.keys(value).forEach(function (key) { freeze(value[key]); }); Object.freeze(value); }
     return value;
   }
-  var FEATURES = freeze([
-    { id: 'creditos-vencimiento', name: 'Créditos con vencimiento por documento y cobro múltiple', description: 'Organiza vencimientos y cobra varios documentos juntos.', icon: '📅', enabled: true, page: 'pageClientes', preview: { type: 'table', columns: ['Documento', 'Cliente', 'Vencimiento', 'Saldo'] } },
-    { id: 'gastos', name: 'Gastos (categorías y reporte)', description: 'Clasifica egresos y consulta su reporte por categoría.', icon: '🧾', enabled: true, page: 'pageGastos', preview: { type: 'form', fields: ['Categoría', 'Descripción', 'Importe'] } },
-    { id: 'reportes', name: 'Reportes', description: 'Ventas por día, productos más vendidos, utilidad, cajero y método de pago.', icon: '📊', enabled: true, page: 'pageVentas', preview: { type: 'table', columns: ['Día', 'Producto', 'Ventas', 'Utilidad', 'Cajero', 'Método de pago'] } },
-    { id: 'cotizaciones', name: 'Cotizaciones', description: 'Prepara propuestas de venta para tus clientes.', icon: '📋', enabled: false, page: null, preview: { type: 'form', fields: ['Cliente', 'Producto', 'Cantidad', 'Precio'] } },
-    { id: 'cuentas-pagar', name: 'Cuentas por pagar a proveedores', description: 'Consulta saldos y vencimientos de tus proveedores.', icon: '🏷️', enabled: false, page: null, preview: { type: 'table', columns: ['Proveedor', 'Documento', 'Vencimiento', 'Saldo'] } },
-    { id: 'compartir-pdf-whatsapp', name: 'Compartir por PDF y WhatsApp', description: 'Prepara documentos para compartir con tus clientes.', icon: '📄', enabled: false, page: null, preview: { type: 'form', fields: ['Documento', 'Cliente', 'Teléfono'] } },
-    { id: 'filtro-fechas-export', name: 'Filtro de fechas con exportación', description: 'Selecciona un período y prepara la exportación de datos.', icon: '🗓️', enabled: true, page: 'pageVentas', preview: { type: 'form', fields: ['Desde', 'Hasta', 'Formato'] } },
-    { id: 'pedidos-pos', name: 'Pedidos en el POS', description: 'Registra pedidos internos y consúltalos en una lista desde la caja.', icon: '🧺', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Pedido', 'Cliente', 'Total', 'Estado'] } },
-    { id: 'pedido-a-boleta', name: 'Convertir pedido a boleta con un clic', description: 'Pasa un pedido guardado a venta y comprobante sin volver a digitarlo.', icon: '🔁', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Pedido', 'Cliente', 'Total'] } },
-    { id: 'venta-por-presentacion', name: 'Venta por presentación (unidad ↔ caja)', description: 'Vende por unidad, blíster o caja y descuenta el stock en la unidad correcta.', icon: '📦', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'form', fields: ['Producto', 'Presentación', 'Unidades', 'Precio'] } },
-    { id: 'app-android-nativa', name: 'App Android nativa para vender', description: 'Vende, cobra y cierra caja desde una app instalada en el celular del personal.', icon: '🤖', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Aparato', 'Usuario', 'Estado'] } },
-    { id: 'valorizacion-inventario', name: 'Valorización de inventario', description: 'Muestra cuánto vale tu mercadería al costo y al precio de venta.', icon: '💰', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Categoría', 'Unidades', 'Valor al costo', 'Valor de venta'] } },
-    { id: 'reporte-arqueo', name: 'Reporte de arqueo de caja por fechas', description: 'Consulta y descarga los arqueos de caja de un rango de fechas.', icon: '🧾', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Fecha', 'Caja', 'Esperado', 'Contado', 'Diferencia'] } },
-    { id: 'cpe-sin-internet', name: 'Comprobante electrónico sin internet', description: 'Emite el comprobante en contingencia y envíalo a SUNAT al volver la conexión.', icon: '📴', enabled: false, page: null, pending: true, priority: 'alta', preview: { type: 'table', columns: ['Comprobante', 'Emitido', 'Envío SUNAT'] } },
-    { id: 'venta-granel', name: 'Venta a granel', description: 'Vende por peso o medida con un flujo propio para productos a granel.', icon: '🥄', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'form', fields: ['Producto', 'Cantidad', 'Unidad', 'Precio'] } },
-    { id: 'gaveta-dinero', name: 'Apertura de gaveta de dinero', description: 'Abre el cajón de dinero desde el POS al cobrar en efectivo.', icon: '🗄️', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'form', fields: ['Impresora/gaveta', 'Abrir al cobrar'] } },
-    { id: 'tipos-gasto', name: 'Tipos de gasto configurables', description: 'Crea y ordena tus propias categorías de gasto.', icon: '🗂️', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'table', columns: ['Tipo de gasto', 'Gastos', 'Total'] } },
-    { id: 'gasto-con-foto', name: 'Gasto con foto del comprobante', description: 'Adjunta una imagen del recibo o boleta a cada gasto.', icon: '📷', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'form', fields: ['Gasto', 'Imagen'] } },
-    { id: 'gasto-a-cuenta', name: 'Gasto «a cuenta» (a crédito)', description: 'Registra gastos que se pagarán después y su saldo pendiente.', icon: '📝', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'table', columns: ['Gasto', 'Proveedor', 'Saldo', 'Vence'] } },
-    { id: 'comprobante-por-correo', name: 'Envío del comprobante por correo', description: 'Envía automáticamente el comprobante al correo del cliente.', icon: '✉️', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'form', fields: ['Cliente', 'Correo', 'Comprobante'] } },
-    { id: 'reporte-ventas-stock', name: 'Reporte de ventas con stock', description: 'Cruza lo vendido con el stock actual para decidir qué reponer.', icon: '📊', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'table', columns: ['Producto', 'Vendido', 'Stock', 'Días de stock'] } },
-    { id: 'app-almaceneros', name: 'App para almaceneros', description: 'Perfil separado para que el personal de almacén reciba y cuente mercadería.', icon: '🏷️', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'table', columns: ['Usuario', 'Tarea', 'Estado'] } },
-    { id: 'equipos-pos', name: 'Compatibilidad con equipos POS', description: 'Soporte para equipos todo en uno (Sunmi, iMin), ticketeras y lectoras.', icon: '🖨️', enabled: false, page: null, pending: true, priority: 'media', preview: { type: 'table', columns: ['Equipo', 'Tipo', 'Estado'] } },
-    { id: 'tipo-cierre', name: 'Tipo de cierre de caja', description: 'Clasifica cada cierre (normal, parcial, de turno) para filtrarlo después.', icon: '🏁', enabled: false, page: null, pending: true, priority: 'baja', preview: { type: 'table', columns: ['Cierre', 'Tipo', 'Monto'] } },
-    { id: 'shopify-woocommerce', name: 'Integración con Shopify y WooCommerce', description: 'Recibe pedidos y sincroniza stock con tu tienda online externa.', icon: '🛒', enabled: false, page: null, pending: true, priority: 'baja', preview: { type: 'table', columns: ['Canal', 'Pedido', 'Estado'] } },
-    { id: 'bandeja-multicanal', name: 'Bandeja única de pedidos multicanal', description: 'Reúne pedidos de tienda online, WhatsApp y redes con sus estados.', icon: '📥', enabled: false, page: null, pending: true, priority: 'baja', preview: { type: 'table', columns: ['Canal', 'Pedido', 'Estado'] } },
-    { id: 'plan-distribuidor', name: 'Ventas de campo para distribuidores', description: 'Pedidos de vendedores en ruta, zonas de despacho y mapa de pendientes.', icon: '🗺️', enabled: false, page: null, pending: true, priority: 'baja', preview: { type: 'table', columns: ['Vendedor', 'Zona', 'Pedidos'] } },
-    { id: 'clientes-puntos', name: 'Clientes frecuentes y puntos', description: 'Acumula puntos por compra y premia a tus clientes frecuentes.', icon: '⭐', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Cliente', 'Compras', 'Puntos'] } },
-    { id: 'conteo-fisico', name: 'Conteo físico de inventario', description: 'Cuenta el stock real y compáralo con el sistema antes de ajustar.', icon: '📦', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Producto', 'Sistema', 'Contado', 'Diferencia'] } },
-    { id: 'sucursales', name: 'Sucursales / almacenes', description: 'Maneja varias tiendas o almacenes con su propio stock.', icon: '🏬', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Sucursal', 'Productos', 'Stock'] } },
-    { id: 'recetas-psicotropicos', name: 'Recetas médicas y control de psicotrópicos', description: 'Registra recetas y controla la venta de medicamentos restringidos.', icon: '💊', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Paciente', 'Médico', 'N.º de receta', 'Medicamento'] } },
-    { id: 'sunat-comprobantes', name: 'Facturación electrónica SUNAT (boletas/facturas)', description: 'Emite boletas y facturas electrónicas válidas ante SUNAT.', icon: '🧾', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Tipo', 'Serie', 'Cliente', 'Total'] } },
-    { id: 'etiquetas-precios', name: 'Etiquetas e impresión de precios', description: 'Imprime etiquetas con precio y código de barras de tus productos.', icon: '🏷️', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Producto', 'Cantidad', 'Formato'] } },
-    { id: 'promociones-combos', name: 'Promociones y combos', description: 'Crea ofertas, packs y descuentos por tiempo limitado.', icon: '🎁', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Promoción', 'Productos', 'Precio', 'Vigencia'] } },
-    { id: 'delivery', name: 'Pedidos a domicilio / delivery', description: 'Registra pedidos para entregar y sigue su estado.', icon: '🛵', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Pedido', 'Cliente', 'Dirección', 'Estado'] } },
-    { id: 'catalogo-en-linea', name: 'Catálogo en línea para clientes', description: 'Comparte un catálogo web para que tus clientes vean productos y precios.', icon: '🌐', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Producto', 'Precio', 'Disponible'] } },
-    { id: 'recordatorios-recompra', name: 'Recordatorios de recompra a clientes', description: 'Avisa a tus clientes cuando les toca volver a comprar.', icon: '🔔', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Cliente', 'Producto', 'Próxima compra'] } },
-    { id: 'kardex', name: 'Kardex por producto', description: 'Consulta entradas, salidas y saldo valorizado de cada producto.', icon: '📒', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Fecha', 'Movimiento', 'Entrada', 'Salida', 'Saldo'] } },
-    { id: 'metas-comisiones', name: 'Metas y comisiones de vendedores', description: 'Define metas de venta y calcula comisiones por vendedor.', icon: '🎯', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Vendedor', 'Meta', 'Vendido', 'Comisión'] } },
-    { id: 'notificaciones-dueno', name: 'Notificaciones al dueño (WhatsApp)', description: 'Recibe por WhatsApp avisos de cierres, stock bajo y ventas.', icon: '📲', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Teléfono', 'Avisos'] } },
-    { id: 'offline-mejorado', name: 'Modo sin conexión mejorado', description: 'Trabaja más tiempo sin internet y sincroniza todo al volver.', icon: '📶', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Operación', 'Estado', 'Sincronizado'] } },
-    { id: 'venta-voz', name: 'Venta rápida por voz', description: 'Agrega productos al carrito dictándolos en voz alta.', icon: '🎙️', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Dictado', 'Producto', 'Cantidad'] } },
-    { id: 'cobro-qr-yape-plin', name: 'Pagos con Yape/Plin QR', description: 'Muestra un QR con el monto para que el cliente pague al instante.', icon: '📱', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Monto', 'Billetera', 'Referencia'] } },
-    { id: 'cierre-billetes', name: 'Cierre de caja con conteo de billetes', description: 'Cuenta billetes y monedas por denominación al cerrar caja.', icon: '💵', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Denominación', 'Cantidad', 'Subtotal'] } },
-    { id: 'asistencia-empleados', name: 'Control de asistencia de empleados', description: 'Registra entradas y salidas del personal.', icon: '🕘', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Empleado', 'Entrada', 'Salida'] } },
-    { id: 'turnos-personal', name: 'Turnos y horarios del personal', description: 'Planifica los turnos y horarios de tu equipo.', icon: '🗓️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Empleado', 'Día', 'Horario'] } },
-    { id: 'proveedores', name: 'Gestión de proveedores', description: 'Guarda datos de contacto y condiciones de tus proveedores.', icon: '🚚', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Proveedor', 'RUC', 'Teléfono'] } },
-    { id: 'sustitutos-genericos', name: 'Productos sustitutos/genéricos en farmacia', description: 'Sugiere genéricos o alternativas cuando un producto falta.', icon: '🔁', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Producto', 'Sustituto', 'Precio'] } },
-    { id: 'interacciones-medicamentos', name: 'Alertas de interacción de medicamentos', description: 'Advierte combinaciones de medicamentos que no deben venderse juntas.', icon: '⚠️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Medicamento', 'Interactúa con', 'Riesgo'] } },
-    { id: 'historial-clinico', name: 'Historial clínico simple del cliente', description: 'Anota alergias y tratamientos del cliente para atenderlo mejor.', icon: '🩺', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Cliente', 'Alergias', 'Tratamiento'] } },
-    { id: 'encuestas', name: 'Encuestas de satisfacción', description: 'Pregunta a tus clientes cómo fue su experiencia.', icon: '💬', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Fecha', 'Cliente', 'Calificación'] } },
-    { id: 'apartados', name: 'Apartados / separación de productos', description: 'Separa productos con un adelanto y completa el pago después.', icon: '📌', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Cliente', 'Producto', 'Adelanto', 'Saldo'] } },
-    { id: 'tarjetas-regalo', name: 'Tarjetas de regalo', description: 'Vende tarjetas con saldo que tus clientes canjean en compras.', icon: '🎟️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Código', 'Saldo', 'Vence'] } },
-    { id: 'auditoria-cambios', name: 'Auditoría de cambios (quién modificó qué)', description: 'Revisa quién cambió precios, stock o datos y cuándo.', icon: '🕵️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Fecha', 'Usuario', 'Cambio'] } },
-    { id: 'panel-tv-pedidos', name: 'Panel en TV para pedidos', description: 'Muestra en una pantalla los pedidos en preparación y listos.', icon: '📺', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Pedido', 'Estado'] } },
-    { id: 'multi-moneda', name: 'Multi-moneda (dólares)', description: 'Cobra y registra ventas en dólares con tipo de cambio.', icon: '💱', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Moneda', 'Tipo de cambio', 'Monto'] } },
-    { id: 'balanza', name: 'Integración con balanza para abarrotes', description: 'Lee el peso directo de la balanza al vender productos a granel.', icon: '⚖️', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Producto', 'Peso', 'Precio por kg'] } },
-    { id: 'ventas-espera', name: 'Ventas en espera (carrito en pausa)', description: 'Pausa una venta para atender a otro cliente y retómala luego.', icon: '⏸️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Venta', 'Cliente', 'Total'] } },
-    { id: 'guias-remision', name: 'Guías de remisión SUNAT', description: 'Emite guías de remisión electrónicas para trasladar mercadería.', icon: '📃', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Destinatario', 'Punto de llegada', 'Productos'] } },
-    { id: 'sunat-resumen-anulaciones', name: 'Resumen diario y anulaciones SUNAT', description: 'Envía el resumen diario de boletas y comunica anulaciones a SUNAT.', icon: '📤', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Fecha', 'Comprobantes', 'Estado'] } },
-    { id: 'clientes-documentos-listas', name: 'Clientes con CE/pasaporte, grupos y listas de precios', description: 'Registra clientes extranjeros y asigna grupos con precios propios.', icon: '🪪', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Tipo de documento', 'Número', 'Grupo', 'Lista de precios'] } },
-    { id: 'importar-clientes', name: 'Importar clientes (Excel/CSV)', description: 'Carga tu lista de clientes desde un archivo Excel o CSV.', icon: '📥', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Archivo', 'Hoja'] } },
-    { id: 'precio-por-margen', name: 'Precio automático por margen', description: 'Calcula el precio de venta a partir del costo y el margen deseado.', icon: '🧮', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Costo', 'Margen %', 'Precio'] } },
-    { id: 'edicion-masiva-precios', name: 'Edición masiva de precios', description: 'Cambia precios de muchos productos a la vez por % o monto.', icon: '✏️', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Categoría', 'Ajuste', 'Valor'] } },
-    { id: 'transferencias-almacenes', name: 'Transferencias entre almacenes/tiendas', description: 'Mueve stock entre almacenes o tiendas con registro.', icon: '🔄', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Origen', 'Destino', 'Producto', 'Cantidad'] } },
-    { id: 'transferencias-cajas', name: 'Transferencias entre cajas', description: 'Pasa efectivo de una caja a otra dejando constancia.', icon: '💸', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Caja origen', 'Caja destino', 'Monto'] } },
-    { id: 'bancos-depositos', name: 'Bancos y depósitos (tesorería)', description: 'Registra depósitos y saldos de tus cuentas bancarias.', icon: '🏦', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Banco', 'Fecha', 'Depósito', 'Saldo'] } },
-    { id: 'punto-equilibrio', name: 'Punto de equilibrio', description: 'Calcula cuánto debes vender para cubrir tus gastos.', icon: '📈', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Gastos fijos', 'Margen', 'Venta mínima'] } },
-    { id: 'tarjeta-recargo', name: 'Pago con tarjeta con recargo %', description: 'Aplica un recargo porcentual cuando el cliente paga con tarjeta.', icon: '💳', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Recargo %', 'Monto'] } },
-    { id: 'serie-por-cajero', name: 'Serie de comprobante por cajero', description: 'Asigna una serie de comprobantes distinta a cada cajero.', icon: '🔢', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Cajero', 'Serie', 'Correlativo'] } },
-    { id: 'atajos-teclado', name: 'Atajos de teclado completos', description: 'Usa el teclado para vender y moverte más rápido por el sistema.', icon: '⌨️', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Tecla', 'Acción'] } },
-    { id: 'servicios-recargas', name: 'Cobro de servicios y recargas', description: 'Cobra recibos de servicios y recargas de celular.', icon: '🔌', enabled: false, page: null, pending: true, preview: { type: 'form', fields: ['Servicio', 'Código', 'Monto'] } },
-    { id: 'reporte-igv', name: 'Reporte de IGV', description: 'Resume el IGV de tus ventas y compras del período.', icon: '🧮', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Período', 'Base', 'IGV'] } },
-    { id: 'rotacion-abc', name: 'Rotación ABC por categoría', description: 'Clasifica tus productos por cuánto se venden para priorizar compras.', icon: '🔤', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Producto', 'Categoría', 'Clase'] } },
-    { id: 'calendario-gastos', name: 'Calendario de gastos', description: 'Programa gastos recurrentes y recibe recordatorios de pago.', icon: '📆', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['Fecha', 'Gasto', 'Monto'] } },
-    { id: 'multi-ruc', name: 'Multi-RUC', description: 'Opera varias empresas (RUC) desde el mismo sistema.', icon: '🏢', enabled: false, page: null, pending: true, preview: { type: 'table', columns: ['RUC', 'Razón social', 'Estado'] } }
-  ]);
-  var PRIORITY_LABELS = { alta: 'Prioridad alta', media: 'Prioridad media', baja: 'Prioridad baja' };
-  function list() { return FEATURES; }
-  function get(id) { return FEATURES.find(function (feature) { return feature.id === id; }); }
-  function isEnabled(id) { var feature = get(id); return !!(feature && feature.enabled && feature.page); }
+  function locked(id) {
+    var p = root.NA_PERMISSIONS;
+    return !(p && typeof p.featureLocked === 'function') || p.featureLocked(id);
+  }
+  function build(rows) {
+    FEATURES = freeze((rows || []).map(function (row) {
+      var copy = {}; Object.keys(row).forEach(function (key) { copy[key] = row[key]; });
+      copy.enabled = !locked(row.id); copy.page = row.page || null; return copy;
+    }));
+    return FEATURES;
+  }
+  function load() {
+    if (FEATURES) return Promise.resolve(FEATURES);
+    if (root.NA_PROXIMAMENTE_REGISTRY) return Promise.resolve(build(root.NA_PROXIMAMENTE_REGISTRY));
+    if (loading) return loading;
+    loading = new Promise(function (resolve, reject) {
+      if (!root.document) { reject(new Error('registry_unavailable')); return; }
+      var script = root.document.createElement('script'); script.src = REGISTRY_SRC; script.async = true;
+      script.onload = function () { resolve(build(root.NA_PROXIMAMENTE_REGISTRY)); };
+      script.onerror = function () { loading = null; reject(new Error('registry_unavailable')); };
+      root.document.head.appendChild(script);
+    });
+    return loading;
+  }
+  function list() { return FEATURES || []; }
+  function get(id) { return list().find(function (feature) { return feature.id === id; }); }
   function isUnlocked(feature) { return !!(feature && feature.enabled && feature.page); }
+  function isEnabled(id) { return isUnlocked(get(id)); }
   function ownerAllowed() {
     return !!(root.NA_ROLES && typeof root.NA_ROLES.canConfigure === 'function' && root.NA_ROLES.canConfigure());
   }
@@ -139,20 +91,75 @@
     }
     openPreview(feature.id);
   }
-  function render(container) {
-    if (!container || !ownerAllowed()) return;
-    container.replaceChildren();
-    FEATURES.forEach(function (feature) {
-      var unlocked = isUnlocked(feature);
-      var card = element('button', 'na-prox-card' + (unlocked ? ' is-enabled' : '')); card.type = 'button'; card.dataset.featureId = feature.id;
-      if (!unlocked) card.appendChild(element('span', 'na-prox-badge', '🔒 Próximamente' + (PRIORITY_LABELS[feature.priority] ? ' · ' + PRIORITY_LABELS[feature.priority] : '')));
-      var icon = element('span', 'na-prox-icon', feature.icon); icon.setAttribute('aria-hidden', 'true'); card.appendChild(icon);
-      card.appendChild(element('span', 'na-prox-name', feature.name));
-      card.appendChild(element('span', 'na-prox-description', feature.description));
-      card.addEventListener('click', function () { openFeature(feature); }); container.appendChild(card);
-    });
+  function normalize(text) { return String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function matches(feature) {
+    if (filters.priority && feature.priority !== filters.priority) return false;
+    var q = normalize(filters.query).trim();
+    return !q || normalize(feature.name + ' ' + feature.description + ' ' + feature.module).indexOf(q) >= 0;
   }
-  root.NA_PROXIMAMENTE = freeze({ FEATURES: FEATURES, list: list, get: get, isEnabled: isEnabled, isUnlocked: isUnlocked, render: render, openPreview: openPreview, openFeature: openFeature });
+  function card(feature) {
+    var unlocked = isUnlocked(feature);
+    var node = element('button', 'na-prox-card' + (unlocked ? ' is-enabled' : '')); node.type = 'button'; node.dataset.featureId = feature.id;
+    if (!unlocked) node.appendChild(element('span', 'na-prox-badge', '🔒 Próximamente' + (PRIORITY_LABELS[feature.priority] ? ' · ' + PRIORITY_LABELS[feature.priority] : '')));
+    if (feature.uncertain) node.appendChild(element('span', 'na-prox-tag', 'por confirmar'));
+    var icon = element('span', 'na-prox-icon', feature.icon); icon.setAttribute('aria-hidden', 'true'); node.appendChild(icon);
+    node.appendChild(element('span', 'na-prox-name', feature.name));
+    node.appendChild(element('span', 'na-prox-description', feature.description));
+    node.addEventListener('click', function () { openFeature(feature); });
+    return node;
+  }
+  function renderSections(host) {
+    host.replaceChildren();
+    var shown = 0;
+    MODULES.forEach(function (module) {
+      var items = list().filter(function (f) { return f.module === module && matches(f); });
+      var rank = { alta: 0, media: 1, baja: 2 };
+      items = items.slice().sort(function (a, b) { return (isUnlocked(b) - isUnlocked(a)) || ((a.priority ? rank[a.priority] : 3) - (b.priority ? rank[b.priority] : 3)); });
+      if (!items.length) return;
+      shown += items.length;
+      var section = element('details', 'na-prox-section'); section.dataset.module = module;
+      if (openModules[module] !== false) section.open = true;
+      section.addEventListener('toggle', function () { openModules[module] = section.open; });
+      section.appendChild(element('summary', 'na-prox-summary', module + ' (' + items.length + ')'));
+      var grid = element('div', 'na-prox-grid na-prox-section-grid');
+      items.forEach(function (feature) { grid.appendChild(card(feature)); });
+      section.appendChild(grid); host.appendChild(section);
+    });
+    if (!shown) host.appendChild(element('p', 'na-prox-empty', 'No hay funciones con ese filtro.'));
+  }
+  function toolbar(host) {
+    var bar = element('div', 'na-prox-toolbar');
+    var search = element('input', 'na-prox-search'); search.type = 'search'; search.placeholder = 'Buscar función'; search.setAttribute('aria-label', 'Buscar función'); search.value = filters.query;
+    search.addEventListener('input', function () { filters.query = search.value; renderSections(host); });
+    bar.appendChild(search);
+    var chips = element('div', 'na-prox-chips'); chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Prioridad');
+    [['', 'Todas'], ['alta', 'Alta'], ['media', 'Media'], ['baja', 'Baja']].forEach(function (pair) {
+      var chip = element('button', 'na-prox-chip' + (filters.priority === pair[0] ? ' is-active' : ''), pair[1]); chip.type = 'button'; chip.dataset.priority = pair[0];
+      chip.setAttribute('aria-pressed', String(filters.priority === pair[0]));
+      chip.addEventListener('click', function () {
+        filters.priority = pair[0];
+        chips.querySelectorAll('.na-prox-chip').forEach(function (c) { var on = c.dataset.priority === pair[0]; c.className = 'na-prox-chip' + (on ? ' is-active' : ''); c.setAttribute('aria-pressed', String(on)); });
+        renderSections(host);
+      });
+      chips.appendChild(chip);
+    });
+    bar.appendChild(chips);
+    return bar;
+  }
+  function render(container) {
+    if (!container || !ownerAllowed()) return Promise.resolve();
+    return load().then(function () {
+      if (!ownerAllowed()) return;
+      container.className = 'na-prox-grid na-prox-root';
+      container.replaceChildren();
+      var sections = element('div', 'na-prox-sections');
+      container.appendChild(toolbar(sections)); container.appendChild(sections);
+      renderSections(sections);
+    }, function () { container.replaceChildren(element('p', 'na-prox-empty', 'No se pudo cargar la lista. Revisa la conexión e inténtalo otra vez.')); });
+  }
+  var api = { MODULES: MODULES, load: load, list: list, get: get, isEnabled: isEnabled, isUnlocked: isUnlocked, render: render, openPreview: openPreview, openFeature: openFeature };
+  Object.defineProperty(api, 'FEATURES', { get: function () { return FEATURES; }, enumerable: true });
+  root.NA_PROXIMAMENTE = Object.freeze(api);
   if (typeof module !== 'undefined' && module.exports) module.exports = root.NA_PROXIMAMENTE;
   function init() {
     var page = root.document.getElementById('pageProximamente');

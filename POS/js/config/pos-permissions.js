@@ -47,12 +47,95 @@
   var ROLE_PATHS = ['/auth/reviews','/auth/reviews/resolve','/auth/me','/auth/owner-pin','/auth/owner-approval','/auth/pairing-code','/auth/pair','/auth/devices','/auth/devices/revoke','/settings'];
   function allowed(role, roles) { return (role === 'owner' || role === 'empleado') && roles.indexOf(role) >= 0; }
   function routeRoles(path, method) {
+    var feature = /^\/features\/([a-z0-9-]+)(\/|$)/.exec(path); if (feature) return featureLocked(feature[1]) ? [] : owner;
     if (/^\/read\/sales\/[^/]+\/items$/.test(path)) path = '/read/sales/:id/items';
     if (/^\/sync\/operations\/[^/]+$/.test(path)) path = '/sync/operations/:id';
     if (/^\/imports\/[^/]+$/.test(path)) path = '/imports/:id';
     var route = API_ROUTES.find(function (r) { return r.path === path && (!r.methods || r.methods.indexOf(String(method || 'GET').toUpperCase()) >= 0); });
     return route ? route.roles : owner;
   }
+  // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
+  // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
+  // Id ausente = bloqueada (default-deny).
+  var FEATURE_LOCKS = {
+    'creditos-vencimiento': false,
+    'gastos': false,
+    'reportes': false,
+    'cotizaciones': true,
+    'cuentas-pagar': true,
+    'compartir-pdf-whatsapp': true,
+    'filtro-fechas-export': false,
+    'pedidos-pos': true,
+    'pedido-a-boleta': true,
+    'venta-por-presentacion': true,
+    'app-android-nativa': true,
+    'valorizacion-inventario': true,
+    'reporte-arqueo': true,
+    'cpe-sin-internet': true,
+    'venta-granel': true,
+    'gaveta-dinero': true,
+    'tipos-gasto': true,
+    'gasto-con-foto': true,
+    'gasto-a-cuenta': true,
+    'comprobante-por-correo': true,
+    'reporte-ventas-stock': true,
+    'app-almaceneros': true,
+    'equipos-pos': true,
+    'tipo-cierre': true,
+    'shopify-woocommerce': true,
+    'bandeja-multicanal': true,
+    'plan-distribuidor': true,
+    'clientes-puntos': true,
+    'conteo-fisico': true,
+    'sucursales': true,
+    'recetas-psicotropicos': true,
+    'sunat-comprobantes': true,
+    'etiquetas-precios': true,
+    'promociones-combos': true,
+    'delivery': true,
+    'catalogo-en-linea': true,
+    'recordatorios-recompra': true,
+    'kardex': true,
+    'metas-comisiones': true,
+    'notificaciones-dueno': true,
+    'offline-mejorado': true,
+    'venta-voz': true,
+    'cobro-qr-yape-plin': true,
+    'cierre-billetes': true,
+    'asistencia-empleados': true,
+    'turnos-personal': true,
+    'proveedores': true,
+    'sustitutos-genericos': true,
+    'interacciones-medicamentos': true,
+    'historial-clinico': true,
+    'encuestas': true,
+    'apartados': true,
+    'tarjetas-regalo': true,
+    'auditoria-cambios': true,
+    'panel-tv-pedidos': true,
+    'multi-moneda': true,
+    'balanza': true,
+    'ventas-espera': true,
+    'guias-remision': true,
+    'sunat-resumen-anulaciones': true,
+    'clientes-documentos-listas': true,
+    'importar-clientes': true,
+    'precio-por-margen': true,
+    'edicion-masiva-precios': true,
+    'transferencias-almacenes': true,
+    'transferencias-cajas': true,
+    'bancos-depositos': true,
+    'punto-equilibrio': true,
+    'tarjeta-recargo': true,
+    'serie-por-cajero': true,
+    'atajos-teclado': true,
+    'servicios-recargas': true,
+    'reporte-igv': true,
+    'rotacion-abc': true,
+    'calendario-gastos': true,
+    'multi-ruc': true
+  };
+  function featureLocked(id) { return !Object.prototype.hasOwnProperty.call(FEATURE_LOCKS, id) || FEATURE_LOCKS[id] !== false; }
   function freeze(value) {
     Object.keys(value).forEach(function (key) { if (value[key] && typeof value[key] === 'object' && !Object.isFrozen(value[key])) freeze(value[key]); });
     return Object.freeze(value);
@@ -62,6 +145,6 @@
     PROXY_PREFIXES: ['/health', '/auth/*', '/read/*', '/commands/*', '/imports/*', '/sync/operations*', '/settings'],
     canAccessScreen: function (role, id) { return allowed(role, Object.prototype.hasOwnProperty.call(SCREENS, id) ? SCREENS[id] : owner); },
     canDo: function (role, action) { return allowed(role, Object.prototype.hasOwnProperty.call(ACTIONS, action) ? ACTIONS[action] : owner); },
-    routeRoles: routeRoles
+    routeRoles: routeRoles, FEATURE_LOCKS: FEATURE_LOCKS, featureLocked: featureLocked
   });
 })(globalThis);

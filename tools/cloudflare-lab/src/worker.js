@@ -68,6 +68,12 @@ export default {
       if (request.method === 'GET' && url.pathname === '/health') {
         return await health(env);
       }
+      // Próximamente: server lock keyed by the stable feature id (PERMISSIONS.FEATURE_LOCKS). Locked => 403 for everyone.
+      if (url.pathname.startsWith('/features/')) {
+        const id = url.pathname.split('/')[2] || '';
+        if (PERMISSIONS.featureLocked(id)) return json({ error: 'feature_locked', feature: id }, 403);
+        return json({ error: 'not_found' }, 404);
+      }
       if (url.pathname === '/auth/activate') {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
         return await activateSession(request, env);
