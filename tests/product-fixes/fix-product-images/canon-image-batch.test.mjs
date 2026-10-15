@@ -82,3 +82,12 @@ test('408 render photo lookups read catalog codes linearly',async()=>{
  ctx.NuevoAmanecerImageBatch.withSources(()=>{for(const x of catalog)assert.equal(ctx.NuevoAmanecerImageBatch.source(x),image);});
  assert.ok(reads<=catalog.length*3,`catalog reads ${reads} must be bounded`);
 });
+
+test('filename mapping keeps zeros and exact suffix codes; summary includes unmatched filenames',()=>{
+ const a=api(),catalog=[p,{...p,id:'suffix',sku:'01_1',barcode:''}];
+ for(const [name,code] of [['folder/04692485.jpg','04692485'],['01_1.jpg','01_1'],['04692485_1.jpg','04692485'],['04692485-1.png','04692485'],['04692485 (1).webp','04692485']])assert.equal(a._test.filenameCode(name,catalog),code);
+ const rows=a.plan([{codes:['01'],image},{codes:['missing'],image,filename:'missing.jpg'}],[{...p,imagen:image}],[]),report=a._test.summary(rows);
+ assert.equal(report.linked,1);assert.equal(report.existing,1);assert.equal(report.missing,1);assert.deepEqual(Array.from(report.unmatched),['missing.jpg']);
+ assert.equal(a._test.summary([{status:'ambiguous'},{status:'duplicate'}]).ambiguous,2);
+ assert.equal(a._test.summary(Array.from({length:55},()=>({status:'missing',entry:{filename:'x'}}))).unmatched.length,50);
+});
