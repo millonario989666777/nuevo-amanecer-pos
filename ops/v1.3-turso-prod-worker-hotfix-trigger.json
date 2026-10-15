@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima) deploy of #711 (reviewed OK by asistente 2 and 4): /features/:id in API_ROUTES, locked ids 403 feature_locked, asistencia-empleados owner-only 403 forbidden_role. No schema changes. Rollback to a6a220ab (worker 38).",
-  "target_commit": "83bea74dc366b8775eaea121e36106c70875592f",
-  "rollback_ref": "a6a220ab98a03b8e8a0d13244de6204d456d182d",
+  "authorization_context": "Owner authorized deploy of #717 (OK asistente 2 code, asistente 4 tests): owner-only image storage usage in /auth/product-images manifest. No schema changes. Rollback to 83bea74d (worker 39, currently live).",
+  "target_commit": "408ed443da3720b8af8fdcf8a2cbbe4de4e69e16",
+  "rollback_ref": "83bea74dc366b8775eaea121e36106c70875592f",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 39,
-  "optimization": "PROXIMAMENTE_711"
+  "attempt": 40,
+  "optimization": "IMAGES_FOLLOWUP_717"
 }
