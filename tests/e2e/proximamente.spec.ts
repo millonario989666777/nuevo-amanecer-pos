@@ -15,7 +15,8 @@ async function rolePage(page, role) {
   await page.waitForFunction(role => window.NA_ROLES?.role === role && window.NA_ROLES.confirmed, role);
 }
 
-const ids = ['creditos-vencimiento', 'gastos', 'reportes', 'cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp', 'filtro-fechas-export'];
+const unlockedPages = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
+const TOTAL = 56;
 
 test('employee cannot enter Próximamente', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -42,9 +43,17 @@ test('owner sees ordered previews without writes', async ({ page }) => {
   await configButton.click();
   await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
   const cards = page.locator('#pageProximamente .na-prox-card');
-  await expect(cards).toHaveCount(7);
-  expect(await cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-feature-id')))).toEqual(ids);
-  for (const id of ids) {
+  await expect(cards).toHaveCount(TOTAL);
+  const ids = await cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-feature-id')));
+  expect(ids.slice(0, 3)).toEqual(['creditos-vencimiento', 'gastos', 'reportes']);
+  for (const [id, pageId] of Object.entries(unlockedPages)) {
+    await expect(page.locator(`[data-feature-id="${id}"]`)).toHaveClass(/is-enabled/);
+    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toHaveCount(0);
+  }
+  const locked = ids.filter(id => !(id in unlockedPages));
+  expect(locked.length).toBe(TOTAL - 4);
+  for (const id of locked) {
+    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toHaveText('🔒 Próximamente');
     await page.locator(`[data-feature-id="${id}"]`).click();
     const preview = page.locator('#naProxPreview');
     await expect(preview).toBeVisible();
@@ -57,6 +66,8 @@ test('owner sees ordered previews without writes', async ({ page }) => {
     await expect(preview).toHaveCount(0);
   }
   expect(writes).toEqual([]);
+  await page.locator('[data-feature-id="gastos"]').click();
+  await expect(page.locator('#pageGastos')).toHaveClass(/\bactive\b/);
 });
 
 for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {
@@ -64,7 +75,7 @@ for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {
     await page.setViewportSize({ width, height: 900 });
     await rolePage(page, 'owner');
     await page.evaluate(() => window.goPage('pageProximamente'));
-    await expect(page.locator('.na-prox-card')).toHaveCount(7);
+    await expect(page.locator('.na-prox-card')).toHaveCount(TOTAL);
     const count = await page.locator('.na-prox-grid').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
     expect(count).toBe(columns);
     if (width === 390) {

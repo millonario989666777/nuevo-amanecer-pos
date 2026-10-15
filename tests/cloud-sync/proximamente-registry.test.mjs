@@ -7,30 +7,53 @@ const source = readFileSync('POS/js/modules/proximamente.js', 'utf8');
 const context = vm.createContext({ module: { exports: {} } });
 vm.runInContext(source, context);
 const registry = context.NA_PROXIMAMENTE;
-const ids = ['creditos-vencimiento', 'gastos', 'reportes', 'cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp', 'filtro-fechas-export'];
+const original = ['creditos-vencimiento', 'gastos', 'reportes', 'cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp', 'filtro-fechas-export'];
+const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
+const indexHtml = readFileSync('POS/index.html', 'utf8');
 
-test('registry has seven ordered, frozen, disabled features and lookup helpers', () => {
-  assert.deepEqual(Array.from(registry.FEATURES, f => f.id), ids);
-  assert.equal(new Set(registry.FEATURES.map(f => f.id)).size, 7);
+test('registry keeps the original order, unlocks only shipped features and adds locked pending entries', () => {
+  const ids = Array.from(registry.FEATURES, f => f.id);
+  assert.deepEqual(ids.slice(0, 7), original);
+  assert.equal(ids.length, 56);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(new Set(registry.FEATURES.map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.ok(Object.isFrozen(registry.FEATURES));
   assert.equal(context.module.exports, registry);
   assert.equal(registry.list(), registry.FEATURES);
   for (const feature of registry.list()) {
     assert.ok(Object.isFrozen(feature));
-    assert.equal(feature.enabled, false);
-    assert.equal(feature.page, null);
     assert.equal(registry.get(feature.id), feature);
-    assert.equal(registry.isEnabled(feature.id), false);
-    assert.equal(registry.isUnlocked(feature), false);
     assert.ok(['form', 'table'].includes(feature.preview.type));
-    assert.ok(!feature.description.includes('\n'));
+    assert.ok(feature.name && feature.description && !feature.description.includes('\n'));
+    if (unlocked[feature.id]) {
+      assert.equal(feature.enabled, true);
+      assert.equal(feature.page, unlocked[feature.id]);
+      assert.ok(indexHtml.includes(`id="${feature.page}"`), feature.page + ' exists');
+      assert.equal(registry.isUnlocked(feature), true);
+    } else {
+      assert.equal(feature.enabled, false, feature.id);
+      assert.equal(feature.page, null, feature.id);
+      assert.equal(registry.isEnabled(feature.id), false);
+      assert.equal(registry.isUnlocked(feature), false);
+    }
   }
+  const pending = registry.FEATURES.filter(f => f.pending);
+  assert.equal(pending.length, 49);
+  assert.ok(pending.every(f => !f.enabled && f.page === null && !original.includes(f.id)));
+  for (const id of ['ventas-espera', 'kardex', 'sunat-comprobantes', 'multi-ruc', 'cobro-qr-yape-plin']) assert.ok(registry.get(id)?.pending, id);
+  for (const id of ['compras', 'alertas-vencimiento', 'precios-mayor', 'respaldo', 'stock-lotes-fefo', 'cierre-remoto-sesiones']) assert.equal(registry.get(id), undefined, id + ' already exists in the POS');
   assert.equal(registry.get('missing'), undefined);
   assert.equal(registry.isEnabled('missing'), false);
   assert.equal(registry.isUnlocked(null), false);
   assert.equal(registry.isUnlocked({ enabled: true, page: null }), false);
   assert.equal(registry.isUnlocked({ enabled: true, page: 'pageGastos' }), true);
   assert.equal(registry.isUnlocked({ enabled: false, page: 'pageGastos' }), false);
+});
+
+test('pending entries add no server write routes', () => {
+  vm.runInContext(readFileSync('POS/js/config/pos-permissions.js', 'utf8'), context);
+  const paths = context.NA_PERMISSIONS.API_ROUTES.map(r => r.path).join(' ');
+  for (const f of registry.FEATURES.filter(f => f.pending)) assert.ok(!paths.includes(f.id), f.id);
 });
 
 test('Próximamente is explicitly owner-only and registry has no network APIs', () => {
