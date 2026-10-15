@@ -1,0 +1,21 @@
+html.na-role-locked [data-menu-target="pageProximamente"]{display:none!important}
+#pageProximamente{overflow:auto;padding:24px;background:var(--bg)}
+#pageProximamente h1{margin:0 0 24px;color:var(--dark)}
+.na-prox-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+.na-prox-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;padding:52px 20px 24px;text-align:left;font:inherit;color:#0f172a;background:#fff;border:1px solid #94a3b8;border-radius:16px;opacity:.6;cursor:pointer}
+.na-prox-card:focus-visible{outline:3px solid var(--teal);outline-offset:4px}
+.na-prox-badge{position:absolute;right:12px;top:12px;border-radius:8px;padding:4px 8px;background:#e2e8f0;color:#334155;font-size:12px}
+.na-prox-icon{font-size:28px}.na-prox-name{font-weight:800;font-size:17px}
+.na-prox-description{max-width:100%;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.na-prox-preview{margin:auto;width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;background:#fff;color:#0f172a;border:1px solid #94a3b8;border-radius:16px;font:inherit}
+.na-prox-preview::backdrop{background:rgb(15 23 42 / .55)}
+.na-prox-banner{background:#e2e8f0;color:#334155;padding:12px;border-radius:8px;margin:0 0 16px}
+.na-prox-preview h2{font-size:20px;margin-bottom:20px}
+.na-prox-form{display:grid;gap:16px}.na-prox-form label{display:grid;gap:6px}
+.na-prox-form input{width:100%;padding:10px;color:inherit;background:transparent;border:1px solid #94a3b8;border-radius:6px;opacity:1}
+.na-prox-table-scroll{overflow:auto}.na-prox-preview table{width:100%;border-collapse:collapse}.na-prox-preview th,.na-prox-preview td{text-align:left;padding:12px;border-bottom:1px solid #94a3b8}
+.na-prox-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}.na-prox-actions button{font:inherit;padding:10px 18px;border:1px solid #94a3b8;border-radius:8px;cursor:pointer}.na-prox-actions button:disabled{opacity:.5;cursor:default}
+body.dark .na-prox-card,body.dark .na-prox-preview{background:#1e293b;color:#f8fafc}
+body.dark .na-prox-badge,body.dark .na-prox-banner{background:#475569;color:#f8fafc}
+@media(min-width:600px){.na-prox-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1024px){.na-prox-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
