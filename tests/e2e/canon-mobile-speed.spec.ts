@@ -27,7 +27,7 @@ test('P0-2: OCR, catálogo de referencia y SheetJS no se descargan al abrir; OCR
  expect(await page.evaluate(()=>typeof extractPurchaseDocument)).toBe('undefined');
  expect(await page.evaluate(()=>typeof XLSX)).toBe('undefined');
  await page.evaluate(()=>{window.NA_MENU_NAVIGATION.navigate('pageInventario');invRender();});
- await page.getByRole('button',{name:'OCR compras',exact:true}).click();
+ await page.locator('#pageInventario .inv-secondary>summary').click();await page.getByRole('button',{name:'OCR compras',exact:true}).click();
  await page.waitForFunction(()=>typeof extractPurchaseDocument==='function'&&NuevoAmanecerLazyAssets.loaded('ocr'),null,{timeout:30000});
  expect(requested.some(p=>p.endsWith('reference-catalog-data.js'))).toBe(true);
  await expect(page.getByRole('button',{name:'Subir PDF o documento',exact:true})).toBeVisible();

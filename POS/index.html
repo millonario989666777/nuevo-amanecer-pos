@@ -66,6 +66,7 @@
     <link rel="stylesheet" href="css/na-line-icons.css">
     <link rel="stylesheet" href="css/config-e2.css">
     <link rel="stylesheet" href="css/config-v9.css">
+    <link rel="stylesheet" href="css/inventario-redesign.css">
     <link rel="stylesheet" href="css/theme-dark.css">
     <script>
       // The mobile enhancement must never leave a usable home permanently hidden.
@@ -573,10 +574,11 @@
     <div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mVentaLibre')">Cancelar</button><button class="mbtn mbtn-ok amber" id="vlConfirmar" onclick="confirmarVentaLibre()">➕ Agregar al carrito</button></div>
 </div></div></div>
 
-<div class="modal-overlay" id="mProd"><div class="modal"><div class="mhead teal"><div class="mhead-title" id="mProdTitle">➕ Nuevo producto</div><button class="btn-close-m" onclick="cerrarModal('mProd')">✕</button></div><div class="mbody">
+<div class="modal-overlay" id="mProd"><div class="modal"><div class="mhead teal"><div class="mhead-title" id="mProdTitle"><i class="na-ic na-ic-plus" aria-hidden="true"></i> Nuevo producto</div><button class="btn-close-m" aria-label="Cerrar" onclick="cerrarModal('mProd')"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div><div class="mbody">
     <div class="prod-unified">
         <input type="checkbox" id="pManualCode" hidden checked>
 
+        <details class="inv-form-section" open><summary>Datos básicos</summary><div class="inv-section-body">
         <div class="fg">
             <div class="fl">Nombre <span class="req">*</span></div>
             <input class="fi" id="pNombre" placeholder="Ej: cuates x 44 gr" oninput="_naF12ProductNameChanged()">
@@ -594,8 +596,7 @@
             </div>
             <div class="fg">
                 <div class="fl">Icono o emoji</div>
-                <div class="product-icon-input-row"><input class="fi" id="pIcon" placeholder="📦" maxlength="12" oninput="_naF12ManualIconChanged()"><button type="button" class="product-icon-mini-btn" onclick="abrirSelectorEmoji()">😀 Elegir</button></div>
-                <div class="product-icon-actions"><button type="button" class="product-icon-action active" id="pIconAutoBtn" onclick="_naF12EnableAutoEmoji()">✨ Automático</button><button type="button" class="product-icon-action" onclick="abrirCreadorIcono()">🎨 Crear icono</button><span class="product-icon-mode" id="pIconMode">Automático</span></div>
+                <div class="product-icon-actions inv-icon-choices"><details id="pIconMenu"><summary>Elegir</summary><div class="inv-icon-menu"><button type="button" class="product-icon-action active" id="pIconAutoBtn" onclick="_naF12EnableAutoEmoji();document.getElementById('pIconMenu').open=false">Automático</button><button type="button" class="product-icon-action" onclick="abrirCreadorIcono();document.getElementById('pIconMenu').open=false">Crear icono</button><button type="button" class="product-icon-action" onclick="abrirSelectorEmoji();document.getElementById('pIconMenu').open=false">Emoji manual</button><label for="pIcon">Escribir emoji</label><input class="fi" id="pIcon" placeholder="📦" maxlength="12" oninput="_naF12ManualIconChanged()"><span class="product-icon-mode" id="pIconMode">Automático</span></div></details><button type="button" class="product-icon-action" onclick="document.getElementById('pImagen').click()">Subir imagen</button></div>
             </div>
         </div>
 
@@ -603,27 +604,29 @@
 
         <div class="fg">
             <div class="fl">Imagen del producto</div>
-            <div class="prod-image-line"><button type="button" class="prod-image-btn" onclick="document.getElementById('pImagen').click()">📷 Subir imagen</button><button type="button" class="prod-image-remove" id="pRemoveImageBtn" onclick="_naF12RemoveProductImage()" hidden>🗑️ Quitar</button><div id="imgPreview" class="prod-image-preview">📦</div></div>
+            <div class="prod-image-line"><button type="button" class="prod-image-remove" id="pRemoveImageBtn" onclick="_naF12RemoveProductImage()" hidden><i class="na-ic na-ic-trash" aria-hidden="true"></i> Quitar</button><div id="imgPreview" class="prod-image-preview">📦</div></div>
             <input type="file" id="pImagen" accept="image/*" capture="environment" onchange="previewImagen()" style="display:none">
         </div>
 
+        </div></details><details class="inv-form-section"><summary>Precios</summary><div class="inv-section-body">
         <div class="prod-unified-grid2">
             <div class="fg"><div class="fl">Costo (S/) <span class="req">*</span></div><input class="fi" id="pCosto" type="number" inputmode="decimal" placeholder="0.00" step="0.01" min="0" oninput="calcMargen()"></div>
             <div class="fg"><div class="fl">Precio venta (S/) <span class="req">*</span></div><input class="fi" id="pPrecio" type="number" inputmode="decimal" placeholder="0.00" step="0.01" min="0" oninput="calcMargen()"></div>
         </div>
 
-        <div class="prod-margin"><strong>📈 Margen de ganancia</strong><span id="mgVal">—</span></div>
-
-        <div id="pInventoryFields">
-            <div class="prod-unified-grid2">
-                <div class="fg"><div class="fl">Stock inicial <span class="req">*</span></div><input class="fi" id="pStock" type="number" inputmode="numeric" placeholder="0" min="0"></div>
-                <div class="fg"><div class="fl">Stock mínimo</div><input class="fi" id="pStockMin" type="number" inputmode="numeric" placeholder="5" min="0"></div>
-            </div>
-        </div>
+        <div class="prod-margin"><strong><i class="na-ic na-ic-swap" aria-hidden="true"></i> Margen de ganancia</strong><span id="mgVal">—</span></div>
 
         <div class="prod-unified-grid2">
             <div class="fg"><div class="fl">Precio por caja (S/)</div><input class="fi" id="pPrecioCaja" type="number" inputmode="decimal" placeholder="0.00" step="0.01" min="0"></div>
             <div class="fg"><div class="fl">Unidades por caja (precio mayorista)</div><input class="fi" id="pUnidCaja" type="number" inputmode="numeric" placeholder="24" min="1"></div>
+        </div>
+
+        </div></details><details class="inv-form-section"><summary>Inventario</summary><div class="inv-section-body">
+        <div id="pInventoryFields">
+            <div class="prod-unified-grid2">
+                <div class="fg"><div class="fl" id="pStockLabel">Stock inicial</div><input class="fi" id="pStock" type="number" inputmode="numeric" placeholder="0" min="0"><button type="button" class="inv-form-action" id="pAdjustStock" hidden onclick="_naProductMovement(true)">Ajustar stock</button></div>
+                <div class="fg"><div class="fl">Stock mínimo</div><input class="fi" id="pStockMin" type="number" inputmode="numeric" placeholder="5" min="0"></div>
+            </div>
         </div>
 
         <!-- NUEVO FASE 9: presentación de compra para calcular reposición inteligente. -->
@@ -632,9 +635,10 @@
             <div class="fg"><div class="fl">Unidades por presentación</div><input class="fi" id="pFactorCompra" type="number" inputmode="decimal" placeholder="1" min="0.001" step="0.001"><div class="field-help">Ejemplo: 1 caja = 24 unidades de venta.</div></div>
         </div>
 
-        <div class="fg"><div class="fl">Fecha vencimiento</div><input class="fi" id="pVenc" type="date"></div>
+        <div class="fg"><div class="fl">Fecha vencimiento</div><input class="fi" id="pVenc" type="date" readonly hidden><div id="pExpiryDisplay"></div><div id="pLotList"></div><div class="field-help" id="pExpiryHelp">Sin lotes. El vencimiento se registra al ingresar lotes.</div><button type="button" class="inv-form-action" id="pManageLots" onclick="_naProductMovement(false)">Gestionar lotes / registrar ingreso</button></div>
 
-        <details class="prod-advanced">
+        </div></details>
+        <details class="prod-advanced inv-form-section">
             <summary>Opciones avanzadas</summary>
             <div class="prod-advanced-body">
                 <div class="prod-advanced-row">
@@ -664,10 +668,10 @@
             </div>
         </details>
 
-        <div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mProd')">Cancelar</button><button class="mbtn mbtn-ok" onclick="guardarProd()">💾 Guardar</button></div>
+        <div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mProd')">Cancelar</button><button class="mbtn mbtn-ok" onclick="guardarProd()"><i class="na-ic na-ic-save" aria-hidden="true"></i> Guardar</button></div>
     </div>
 </div></div></div>
-<div class="modal-overlay" id="mMovInv"><div class="modal"><div class="mhead teal"><div class="mhead-title"><i class="na-ic na-ic-box" aria-hidden="true"></i> Registrar movimiento</div><button class="btn-close-m" onclick="cerrarModal('mMovInv')">✕</button></div><div class="mbody"><div style="background:#f8fafc;border-radius:9px;padding:11px;margin-bottom:13px;display:flex;align-items:center;gap:10px"><span id="mMovIcon" style="font-size:22px">📦</span><div><div id="mMovNombre" style="font-size:13px;font-weight:800"></div><div id="mMovStock" style="font-size:11px;color:var(--slate);font-weight:600"></div></div></div><div class="mov-type-row"><div class="mov-type-btn active entrada" data-type="entrada" onclick="setMovType(this,'entrada')"><div class="mti">📥</div><div class="mtl">Entrada</div></div><div class="mov-type-btn salida" data-type="salida" onclick="setMovType(this,'salida')"><div class="mti">📤</div><div class="mtl">Salida</div></div></div><div class="fg"><div class="fl">Cantidad <span class="req">*</span></div><input class="fi-big" id="mMovCant" type="number" placeholder="0" min="1"></div><div class="fg" style="margin-top:12px"><div class="fl">Motivo</div><select class="fs" id="mMovMotivo"><option>Compra a proveedor</option><option>Devolución</option><option>Ajuste de inventario</option><option>Merma / daño</option><option>Producto vencido</option></select></div><div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mMovInv')">Cancelar</button><button class="mbtn mbtn-ok" onclick="guardarMovInv()"><i class="na-ic na-ic-check" aria-hidden="true"></i> Registrar</button></div></div></div></div>
+<div class="modal-overlay" id="mMovInv"><div class="modal"><div class="mhead teal"><div class="mhead-title"><i class="na-ic na-ic-box" aria-hidden="true"></i> Registrar movimiento</div><button class="btn-close-m" aria-label="Cerrar" onclick="cerrarModal('mMovInv')"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div><div class="mbody"><div style="background:#f8fafc;border-radius:9px;padding:11px;margin-bottom:13px;display:flex;align-items:center;gap:10px"><span id="mMovIcon" style="font-size:22px">📦</span><div><div id="mMovNombre" style="font-size:13px;font-weight:800"></div><div id="mMovStock" style="font-size:11px;color:var(--slate);font-weight:600"></div></div></div><div class="mov-type-row"><div class="mov-type-btn active entrada" data-type="entrada" onclick="setMovType(this,'entrada')"><div class="mti"><i class="na-ic na-ic-in" aria-hidden="true"></i></div><div class="mtl">Entrada</div></div><div class="mov-type-btn salida" data-type="salida" onclick="setMovType(this,'salida')"><div class="mti"><i class="na-ic na-ic-out" aria-hidden="true"></i></div><div class="mtl">Salida</div></div></div><div class="fg"><div class="fl">Cantidad <span class="req">*</span></div><input class="fi-big" id="mMovCant" type="number" placeholder="0" min="1"></div><div class="fg" style="margin-top:12px"><div class="fl">Motivo</div><select class="fs" id="mMovMotivo"><option>Compra a proveedor</option><option>Devolución</option><option>Ajuste de inventario</option><option>Merma / daño</option><option>Producto vencido</option></select><button type="button" id="mMovPurchaseLink" class="inv-form-action" onclick="cerrarModal('mMovInv');NA_PURCHASES.open()">Registrar como compra (con proveedor y documento)</button></div><div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mMovInv')">Cancelar</button><button class="mbtn mbtn-ok" onclick="guardarMovInv()"><i class="na-ic na-ic-check" aria-hidden="true"></i> Registrar</button></div></div></div></div>
 
 <div class="modal-overlay" id="mCli"><div class="modal"><div class="mhead teal"><div class="mhead-title" id="mCliTitle">Nuevo cliente</div><button class="btn-close-m" onclick="cerrarModal('mCli')">✕</button></div><div class="mbody"><div class="fg"><div class="fl">Nombre completo <span class="req">*</span></div><input class="fi" id="cNombre" placeholder="Ej: María López García"></div><div class="frow"><div class="fg"><div class="fl">DNI / RUC</div><input class="fi" id="cDni" placeholder="12345678" maxlength="11"></div><div class="fg"><div class="fl">WhatsApp / Teléfono</div><input class="fi" id="cTel" type="tel" placeholder="+51 987654321" maxlength="32"></div></div><div class="fg"><div class="fl">Dirección</div><input class="fi" id="cDir" placeholder="Jr. Los Pinos 123"></div><div class="fg"><div class="fl">Línea de crédito (opcional)</div><input class="fi" id="cLinea" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" placeholder="Vacío = línea automática"></div><div class="mbtns"><button class="mbtn mbtn-cancel" onclick="cerrarModal('mCli')">Cancelar</button><button class="mbtn mbtn-ok" onclick="guardarCli()">Guardar</button></div></div></div></div>
 
@@ -1007,7 +1011,7 @@
 <script id="na-security-sales-render" src="js/legacy-inline/inline-10.js"></script>
 <script id="na-security-cash-render" src="js/legacy-inline/inline-11.js"></script>
 <script id="na-security-credit-render" src="js/legacy-inline/inline-12.js"></script>
-<div class="modal-overlay" id="productImageBatchModal" role="dialog" aria-modal="true" aria-labelledby="productImageBatchTitle" style="display:none"><div class="modal" style="max-width:760px;width:95vw"><div class="mhead teal"><span class="mhead-title" id="productImageBatchTitle">Fotos por lote</span><button class="btn-close-m" onclick="document.getElementById('productImageBatchModal').style.display='none'">✕</button></div><div class="mbody"><p>Las fotos se guardan en este dispositivo. Usa Exportar lote para llevarlas a otro teléfono o PC.</p><label for="productImageBatchFiles">Seleccionar lote o fotos</label><input id="productImageBatchFiles" type="file" accept=".json,image/png,image/jpeg,image/webp" multiple><label style="display:block;margin:12px 0"><input id="productImageBatchReplace" type="checkbox"> Reemplazar fotos existentes</label><p id="productImageBatchStatus" role="status" aria-live="polite"></p><div style="max-height:300px;overflow:auto"><table style="width:100%"><thead><tr><th>Códigos</th><th>Producto</th><th>Estado</th></tr></thead><tbody id="productImageBatchRows"></tbody></table></div></div><div class="mbtns" style="padding:0 18px 18px"><button class="mbtn mbtn-cancel" id="productImageBatchExport">Exportar lote</button><button class="mbtn mbtn-cancel" id="productImageBatchUndo">Deshacer último lote</button><button class="mbtn mbtn-ok" id="productImageBatchApply" style="grid-column:1/-1">Guardar fotos listas</button></div></div></div>
+<div class="modal-overlay" id="productImageBatchModal" role="dialog" aria-modal="true" aria-labelledby="productImageBatchTitle" style="display:none"><div class="modal" style="max-width:760px;width:95vw"><div class="mhead teal"><span class="mhead-title" id="productImageBatchTitle">Fotos múltiples</span><button class="btn-close-m" onclick="document.getElementById('productImageBatchModal').style.display='none'">✕</button></div><div class="mbody"><p>Las fotos se guardan en este dispositivo. Usa Exportar grupo de fotos para llevarlas a otro teléfono o PC.</p><label for="productImageBatchFiles">Seleccionar paquete de fotos</label><input id="productImageBatchFiles" type="file" accept=".json,image/png,image/jpeg,image/webp" multiple><label style="display:block;margin:12px 0"><input id="productImageBatchReplace" type="checkbox"> Reemplazar fotos existentes</label><p id="productImageBatchStatus" role="status" aria-live="polite"></p><div style="max-height:300px;overflow:auto"><table style="width:100%"><thead><tr><th>Códigos</th><th>Producto</th><th>Estado</th></tr></thead><tbody id="productImageBatchRows"></tbody></table></div></div><div class="mbtns" style="padding:0 18px 18px"><button class="mbtn mbtn-cancel" id="productImageBatchExport">Exportar grupo de fotos</button><button class="mbtn mbtn-cancel" id="productImageBatchUndo">Deshacer último grupo de fotos</button><button class="mbtn mbtn-ok" id="productImageBatchApply" style="grid-column:1/-1">Guardar fotos listas</button></div></div></div>
 <script src="js/products/image-batch.js"></script>
 <script src="js/inventory/mobile-inventory.js"></script>
 <script id="na-security-image-preview" src="js/legacy-inline/inline-13.js"></script>

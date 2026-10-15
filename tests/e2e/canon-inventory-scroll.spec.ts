@@ -14,7 +14,7 @@ for(const width of [360,390,430,701,767])for(const tab of ['todos','sugerencia']
   await expect(page.locator('.g-topbar')).not.toHaveClass(/g-topbar-hidden/);
  }
  expect(await page.evaluate(()=>JSON.stringify(productos))).toBe(before);
- await page.locator('.inv-filters>summary').click();await expect(page.locator('#invCat')).toBeVisible();
+ await expect(page.locator('#invCat')).toBeVisible();await expect(page.locator('.inv-sticky-controls')).toBeVisible();
  await page.setViewportSize({width:768,height:844});
  // Etapa 2: en tablet Inventario tampoco oculta la cabecera (evita el salto del primer gesto).
  await expect.poll(()=>page.evaluate(()=>window._naTopbarGesture.isActive())).toBe(false);
