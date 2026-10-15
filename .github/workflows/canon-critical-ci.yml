@@ -80,7 +80,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "22.13"
+          node-version: "22"
 
       - name: CANON UI and repository architecture contracts
         shell: bash
