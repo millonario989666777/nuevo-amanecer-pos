@@ -8,9 +8,9 @@
   <style>
     :root{font-family:Nunito,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0f172a;background:#f4f7f8}
     *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
-    .card{width:min(560px,100%);background:#fff;border:1px solid #dbe5e7;border-radius:22px;padding:28px;box-shadow:0 18px 50px rgba(15,23,42,.10)}
+    .card{min-height:440px;width:min(560px,100%);background:#fff;border:1px solid #dbe5e7;border-radius:22px;padding:28px;box-shadow:0 18px 50px rgba(15,23,42,.10)}
     .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.logo{font-size:34px}.title{font-weight:900;font-size:24px}.sub{color:#64748b;font-weight:700;font-size:13px}
-    .status{padding:12px 14px;border-radius:12px;background:#ecfeff;color:#155e75;font-weight:800;font-size:13px;margin:16px 0}
+    .status{min-height:56px;padding:12px 14px;border-radius:12px;background:#ecfeff;color:#155e75;font-weight:800;font-size:13px;margin:16px 0}
     .status[data-state="error"]{background:#fef2f2;color:#b91c1c}.status[data-state="ok"]{background:#ecfdf5;color:#047857}
     label{display:block;font-size:12px;font-weight:900;margin:16px 0 7px}.row{display:flex;gap:10px}
     input{flex:1;min-width:0;border:1px solid #cbd5e1;border-radius:12px;padding:13px 14px;font-size:15px}
@@ -18,7 +18,7 @@
     button.secondary,a.secondary{background:#e2e8f0;color:#0f172a}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
     .hint{font-size:12px;line-height:1.5;color:#64748b;margin-top:14px}
     [hidden]{display:none!important}
-    @media(max-width:520px){.card{padding:21px}.row{flex-direction:column}.row button{width:100%}}
+    @media(max-width:520px){.card{min-height:520px;padding:21px}.row{flex-direction:column}.row button{width:100%}}
   </style>
 </head>
 <body>
