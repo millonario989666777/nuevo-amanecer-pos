@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Rendimiento móvil (#696) y regresión visual (#695). Worker sin cambios.",
-  "retry_attempt": 129,
-  "retry_reason": "Deploy de base 5247b812 (#695, #696). Rollback: 514de90ad663d9003bccdefd9a70c58a925f1aad (build de 128).",
-  "requested_at_utc": "2026-10-15T15:56:49Z",
-  "approved_base": "5247b81248f9239b3c07c35fea360021e88b6378"
+  "note": "Scroll con rueda en Inventario PC/tablet y CSS de diseño no diferido (#700). Worker sin cambios.",
+  "retry_attempt": 130,
+  "retry_reason": "Deploy de base 9208d99b (#700). Rollback: c10f1809 (build de 129).",
+  "requested_at_utc": "2026-10-15T18:14:42Z",
+  "approved_base": "9208d99b6ce850deb8c0988e050061b7a5fb4991"
 }
