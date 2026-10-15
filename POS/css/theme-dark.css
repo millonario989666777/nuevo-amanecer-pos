@@ -708,3 +708,107 @@ body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle .na-ic {color
 body.dark .product-icon-mini-btn, body.dark .product-icon-action, body.dark .prod-image-remove {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
 body.dark .product-icon-action.active {background-color:#153b3d;border-color:#2dd4bf;color:#5eead4}
 body.dark .product-icon-mode {background-color:var(--na-dk-surface-2);color:var(--na-dk-muted)}
+
+/* Inventario redesign (#658) dark overrides
+   Colors only; keep the redesign's geometry and light-mode rules intact. */
+body.dark #pageInventario {background-color:var(--na-dk-bg)}
+body.dark #pageInventario .inv-sticky-controls {background-color:var(--na-dk-bg)}
+body.dark #pageInventario .top-mod-bar,
+body.dark #pageInventario .inv-secondary button,
+body.dark #pageInventario .search-box,
+body.dark #pageInventario .ss,
+body.dark #pageInventario .table-card,
+body.dark #pageInventario .btn-act,
+body.dark #mProd .modal,
+body.dark #mMovInv .modal,
+body.dark #mProd .mhead,
+body.dark #mMovInv .mhead,
+body.dark #mProd .inv-form-section,
+body.dark #mProd .inv-form-action,
+body.dark #mMovInv .inv-form-action,
+body.dark #mProd .mbtns,
+body.dark #mProd .inv-icon-choices>button,
+body.dark #mProd .inv-icon-choices summary,
+body.dark #mProd .inv-icon-menu {
+  background-color:var(--na-dk-surface);
+  border-color:var(--na-dk-border);
+}
+body.dark #pageInventario .inv-secondary summary,
+body.dark #pageInventario .inv-secondary button,
+body.dark #pageInventario .btn-act,
+body.dark #mProd .inv-form-action,
+body.dark #mMovInv .inv-form-action,
+body.dark #mProd .inv-icon-choices>button,
+body.dark #mProd .inv-icon-choices summary {color:var(--na-dk-text)}
+body.dark #pageInventario .tab,
+body.dark #pageInventario.inv-mobile-simple .tabs-wrap>.tab {
+  background-color:var(--na-dk-surface-2);
+  border-color:var(--na-dk-border);
+  color:var(--na-dk-text);
+}
+body.dark #pageInventario .tab.active,
+body.dark #pageInventario.inv-mobile-simple .tabs-wrap>.tab.active {
+  background-color:var(--teal-light);
+  color:var(--teal-dark);
+}
+body.dark #pageInventario th,
+body.dark #pageInventario .prod-icon-sm,
+body.dark #pageInventario .stock-pill,
+body.dark #pageInventario.inv-mobile-simple .stock-pill,
+body.dark #pageInventario .venc-pill,
+body.dark #mProd .btn-close-m,
+body.dark #mMovInv .btn-close-m,
+body.dark #mProd .inv-form-section>summary {
+  background-color:var(--na-dk-surface-2);
+  color:var(--na-dk-text);
+}
+body.dark #pageInventario th,
+body.dark #pageInventario .prod-sku-sm,
+body.dark #mProd .btn-close-m,
+body.dark #mMovInv .btn-close-m,
+body.dark #mProd .field-help {color:var(--na-dk-muted)}
+body.dark #mProd .fi,
+body.dark #mProd .fs,
+body.dark #mMovInv .fs,
+body.dark #mProd .inv-form-lot {border-color:var(--na-dk-border)}
+body.dark #mProd input[readonly],
+body.dark #mProd #pStock[readonly] {
+  background-color:var(--na-dk-surface-2);
+  color:var(--na-dk-muted);
+}
+body.dark #pageInventario .stock-pill.low,
+body.dark #pageInventario .stock-pill.out,
+body.dark #pageInventario.inv-mobile-simple .stock-pill.low,
+body.dark #pageInventario.inv-mobile-simple .stock-pill.out,
+body.dark #pageInventario .venc-pill.vencido {
+  background-color:var(--na-dk-danger-bg);
+  color:var(--na-dk-danger-text);
+}
+body.dark #pageInventario .inv-expiry-status.vencido,
+body.dark #mProd .inv-expiry-status.vencido {color:var(--na-dk-danger-text)}
+body.dark #pageInventario .inv-expiry-status.pronto,
+body.dark #mProd .inv-expiry-status.pronto,
+body.dark #pageInventario .btn-edt,
+body.dark #pageInventario .btn-ent {color:#fde68a}
+body.dark #mMovInv .mov-type-btn.entrada.active {
+  background-color:var(--na-dk-surface-2);
+  color:#fde68a;
+}
+@media(max-width:1023px){
+  body.dark #pageInventario .table-card,
+  body.dark #pageInventario.inv-mobile-simple .table-card {background-color:transparent}
+  body.dark #pageInventario #invBody tr,
+  body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory] {
+    background-color:var(--na-dk-surface);
+    border-color:var(--na-dk-border);
+  }
+  body.dark #pageInventario .act-btns {border-color:var(--na-dk-border)}
+}
+/* The 390px polish uses the same 767px breakpoint and important backgrounds. */
+@media(max-width:767px){
+  body.dark #mProd.modal-overlay,
+  body.dark #mProd.modal-overlay .modal,
+  body.dark #mProd .mhead,
+  body.dark #mProd .mbody,
+  body.dark #mProd .mbtns {background-color:var(--na-dk-surface)!important}
+}
