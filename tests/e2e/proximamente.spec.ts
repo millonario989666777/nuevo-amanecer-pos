@@ -16,7 +16,7 @@ async function rolePage(page, role) {
 }
 
 const unlockedPages = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
-const TOTAL = 56;
+const TOTAL = 76;
 
 test('employee cannot enter Próximamente', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -53,7 +53,7 @@ test('owner sees ordered previews without writes', async ({ page }) => {
   const locked = ids.filter(id => !(id in unlockedPages));
   expect(locked.length).toBe(TOTAL - 4);
   for (const id of locked) {
-    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toHaveText('🔒 Próximamente');
+    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toContainText('🔒 Próximamente');
     await page.locator(`[data-feature-id="${id}"]`).click();
     const preview = page.locator('#naProxPreview');
     await expect(preview).toBeVisible();
@@ -65,6 +65,7 @@ test('owner sees ordered previews without writes', async ({ page }) => {
     await preview.getByRole('button', { name: 'Cerrar', exact: true }).click();
     await expect(preview).toHaveCount(0);
   }
+  await expect(page.locator('[data-feature-id="pedidos-pos"] .na-prox-badge')).toHaveText('🔒 Próximamente · Prioridad alta');
   expect(writes).toEqual([]);
   await page.locator('[data-feature-id="gastos"]').click();
   await expect(page.locator('#pageGastos')).toHaveClass(/\bactive\b/);

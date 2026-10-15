@@ -14,7 +14,7 @@ const indexHtml = readFileSync('POS/index.html', 'utf8');
 test('registry keeps the original order, unlocks only shipped features and adds locked pending entries', () => {
   const ids = Array.from(registry.FEATURES, f => f.id);
   assert.deepEqual(ids.slice(0, 7), original);
-  assert.equal(ids.length, 56);
+  assert.equal(ids.length, 76);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(registry.FEATURES.map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.ok(Object.isFrozen(registry.FEATURES));
@@ -38,7 +38,14 @@ test('registry keeps the original order, unlocks only shipped features and adds 
     }
   }
   const pending = registry.FEATURES.filter(f => f.pending);
-  assert.equal(pending.length, 49);
+  assert.equal(pending.length, 69);
+  const prioritized = registry.FEATURES.filter(f => f.priority);
+  assert.equal(prioritized.length, 20);
+  const rank = { alta: 0, media: 1, baja: 2 };
+  assert.deepEqual(prioritized.map(f => rank[f.priority]), prioritized.map(f => rank[f.priority]).slice().sort((a, b) => a - b), 'ordered alta → media → baja');
+  assert.ok(prioritized.every(f => f.pending && !f.enabled && f.page === null));
+  assert.equal(ids.indexOf(prioritized[0].id), 7, 'prioritized entries come right after the original seven');
+  for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito']) assert.equal(registry.get(id), undefined, id + ' already exists');
   assert.ok(pending.every(f => !f.enabled && f.page === null && !original.includes(f.id)));
   for (const id of ['ventas-espera', 'kardex', 'sunat-comprobantes', 'multi-ruc', 'cobro-qr-yape-plin']) assert.ok(registry.get(id)?.pending, id);
   for (const id of ['compras', 'alertas-vencimiento', 'precios-mayor', 'respaldo', 'stock-lotes-fefo', 'cierre-remoto-sesiones']) assert.equal(registry.get(id), undefined, id + ' already exists in the POS');
