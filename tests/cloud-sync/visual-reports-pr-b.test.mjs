@@ -23,7 +23,7 @@ test('Reportes cuenta productos sin costo (unidades y ventas) y marca la gananci
   const c = ctx();
   const m = c.m([{ items: [{ id: 'A', precio: 5, qty: 2 }, { id: 'B', precio: 4, qty: 3 }, { id: 'VARIOS', name: 'Varios', precio: 10, qty: 1 }] }]);
   assert.equal(m.cost, 6); assert.equal(m.noCostProducts, 2); assert.equal(m.noCostUnits, 4); assert.equal(m.noCostRevenue, 22);
-  assert.ok(in05.includes("report.metrics.noCostProducts?'Ganancia bruta (estimada)':'Ganancia bruta'"));
+  assert.ok(in05.includes("report.metrics.noCostProducts?'Ganancia bruta (sin costo completo)':'Ganancia bruta'"));
   assert.match(fn('_naF8NoCostNotice'), /producto\(s\) sin costo/);
 });
 
