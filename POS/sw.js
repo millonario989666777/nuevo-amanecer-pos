@@ -15,6 +15,7 @@ const PRECACHE_URLS = [
   './css/proximamente.css',
   './css/sales-reports.css',
   './js/modules/proximamente.js',
+  './js/modules/proximamente-registry.js',
   './css/layout.css',
   './css/components.css',
   './css/responsive.css',

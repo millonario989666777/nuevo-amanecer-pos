@@ -16,7 +16,19 @@ async function rolePage(page, role) {
 }
 
 const unlockedPages = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
-const TOTAL = 56;
+
+async function registry(page) {
+  return page.evaluate(async () => { const api = (window as any).NA_PROXIMAMENTE; await api.load(); return api.list().map(f => ({ id: f.id, module: f.module, unlocked: api.isUnlocked(f), locked: (window as any).NA_PERMISSIONS.featureLocked(f.id), uncertain: !!f.uncertain })); });
+}
+
+test('registry is not loaded until Próximamente opens', async ({ page }) => {
+  await rolePage(page, 'owner');
+  expect(await page.evaluate(() => !!(window as any).NA_PROXIMAMENTE_REGISTRY)).toBe(false);
+  expect(await page.locator('script[src*="proximamente-registry"]').count()).toBe(0);
+  await page.evaluate(() => window.goPage('pageProximamente'));
+  await expect(page.locator('#pageProximamente .na-prox-card').first()).toBeVisible();
+  expect(await page.evaluate(() => !!(window as any).NA_PROXIMAMENTE_REGISTRY)).toBe(true);
+});
 
 test('employee cannot enter Próximamente', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -27,40 +39,43 @@ test('employee cannot enter Próximamente', async ({ page }) => {
   await expect(page.locator('#naNoPermission')).toBeVisible();
   await expect(page.locator('#naNoPermission')).toContainText('Sin permiso');
   await expect(page.locator('#pageProximamente')).not.toHaveClass(/\bactive\b/);
+  await expect(page.locator('#pageProximamente .na-prox-card')).toHaveCount(0);
   await expect(page.locator('.menu-desktop-sidebar [data-menu-target="pageProximamente"]')).toHaveCount(0);
 });
 
-test('owner sees ordered previews without writes', async ({ page }) => {
+test('every registry entry: server lock exists; locked ones show the lock and preview without writes; employee gets Sin permiso', async ({ page, browser }) => {
+  test.setTimeout(180000);
   await rolePage(page, 'owner');
   const writes: string[] = [];
-  page.on('request', request => {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url());
-  });
+  page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
   await page.evaluate(() => window.goPage('pageConfig'));
   const configButton = page.locator('#na9Nav [data-go="pageProximamente"]');
-  await expect(configButton).toBeVisible();
   await expect(configButton).toContainText('Funciones en preparación');
   await configButton.click();
   await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
-  const cards = page.locator('#pageProximamente .na-prox-card');
-  await expect(cards).toHaveCount(TOTAL);
-  const ids = await cards.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-feature-id')));
-  expect(ids.slice(0, 3)).toEqual(['creditos-vencimiento', 'gastos', 'reportes']);
-  for (const [id, pageId] of Object.entries(unlockedPages)) {
-    await expect(page.locator(`[data-feature-id="${id}"]`)).toHaveClass(/is-enabled/);
-    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toHaveCount(0);
+  const entries = await registry(page);
+  expect(entries.length).toBeGreaterThan(0);
+  const locks = await page.evaluate(() => Object.keys((window as any).NA_PERMISSIONS.FEATURE_LOCKS));
+  for (const e of entries) {
+    expect(locks, `server lock for ${e.id}`).toContain(e.id);
+    expect(e.unlocked, e.id).toBe(e.id in unlockedPages);
+    expect(e.locked, e.id).toBe(!(e.id in unlockedPages));
   }
-  const locked = ids.filter(id => !(id in unlockedPages));
-  expect(locked.length).toBe(TOTAL - 4);
-  for (const id of locked) {
-    await expect(page.locator(`[data-feature-id="${id}"] .na-prox-badge`)).toHaveText('🔒 Próximamente');
-    await page.locator(`[data-feature-id="${id}"]`).click();
+  await expect(page.locator('#pageProximamente .na-prox-card')).toHaveCount(entries.length);
+  for (const module of ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras']) {
+    const n = entries.filter(e => e.module === module).length;
+    await expect(page.locator(`.na-prox-section[data-module="${module}"] > .na-prox-summary`)).toHaveText(`${module} (${n})`);
+  }
+  for (const e of entries) {
+    const card = page.locator(`[data-feature-id="${e.id}"]`);
+    if (e.unlocked) { await expect(card).toHaveClass(/is-enabled/); await expect(card.locator('.na-prox-badge')).toHaveCount(0); continue; }
+    await expect(card.locator('.na-prox-badge')).toContainText('🔒 Próximamente');
+    if (e.uncertain) await expect(card.locator('.na-prox-tag')).toHaveText('por confirmar');
+    await card.click();
     const preview = page.locator('#naProxPreview');
     await expect(preview).toBeVisible();
     await expect(preview.locator('.na-prox-banner')).toHaveText('Función en preparación, aún no guarda datos');
-    const saves = preview.getByRole('button', { name: 'Guardar', exact: true });
-    expect(await saves.count()).toBeGreaterThan(0);
-    for (const save of await saves.all()) { await expect(save).toBeDisabled(); await save.click({ force: true }); }
+    for (const save of await preview.getByRole('button', { name: 'Guardar', exact: true }).all()) { await expect(save).toBeDisabled(); await save.click({ force: true }); }
     for (const input of await preview.locator('input').all()) await expect(input).toBeDisabled();
     await preview.getByRole('button', { name: 'Cerrar', exact: true }).click();
     await expect(preview).toHaveCount(0);
@@ -68,29 +83,42 @@ test('owner sees ordered previews without writes', async ({ page }) => {
   expect(writes).toEqual([]);
   await page.locator('[data-feature-id="gastos"]').click();
   await expect(page.locator('#pageGastos')).toHaveClass(/\bactive\b/);
+
+  const employee = await browser.newPage();
+  await rolePage(employee, 'empleado');
+  for (const e of entries.filter(x => !x.unlocked)) {
+    const r = await employee.evaluate(id => { const api = (window as any).NA_PROXIMAMENTE; (window as any).goPage('pageProximamente'); api.openPreview(id); return { preview: !!document.getElementById('naProxPreview'), denied: (window as any).NA_PERMISSIONS.canAccessScreen('empleado', 'pageProximamente') }; }, e.id);
+    expect(r.preview, e.id).toBe(false);
+    expect(r.denied, e.id).toBe(false);
+  }
+  await expect(employee.locator('#naNoPermission')).toContainText('Sin permiso');
+  await employee.close();
+});
+
+test('priority chips and search filter the cards', async ({ page }) => {
+  await rolePage(page, 'owner');
+  await page.evaluate(() => window.goPage('pageProximamente'));
+  await page.locator('.na-prox-chip[data-priority="alta"]').click();
+  const alta = await page.locator('.na-prox-card').count();
+  expect(alta).toBeGreaterThan(0);
+  for (const badge of await page.locator('.na-prox-card .na-prox-badge').allTextContents()) expect(badge).toContain('Prioridad alta');
+  await page.locator('.na-prox-chip[data-priority=""]').click();
+  await page.locator('.na-prox-search').fill('kardex');
+  await expect(page.locator('.na-prox-card')).toHaveCount(1);
+  await expect(page.locator('[data-feature-id="kardex"]')).toBeVisible();
 });
 
 for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {
-  test(`grid uses ${columns} columns at ${width}px`, async ({ page }) => {
+  test(`sections use ${columns} columns at ${width}px without horizontal overflow`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await rolePage(page, 'owner');
     await page.evaluate(() => window.goPage('pageProximamente'));
-    await expect(page.locator('.na-prox-card')).toHaveCount(TOTAL);
-    const count = await page.locator('.na-prox-grid').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
+    await expect(page.locator('.na-prox-section-grid').first()).toBeVisible();
+    const count = await page.locator('.na-prox-section-grid').first().evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
     expect(count).toBe(columns);
-    if (width === 390) {
-      const size = await page.locator('[data-feature-id="reportes"] .na-prox-description').evaluate(node => {
-        const height = node.getBoundingClientRect().height;
-        const probe = node.cloneNode(true) as HTMLElement;
-        probe.textContent = 'Ventas';
-        node.parentElement!.appendChild(probe);
-        const lineHeight = probe.getBoundingClientRect().height;
-        probe.remove();
-        return { height, lineHeight };
-      });
-      expect(size.height).toBeGreaterThan(size.lineHeight);
-      expect(size.height).toBeLessThanOrEqual(2 * size.lineHeight + 1);
-    }
+    expect(await page.locator('#pageProximamente').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await page.locator('.na-prox-section[data-module="Caja"] > .na-prox-summary').click();
+    await expect(page.locator('.na-prox-section[data-module="Caja"] .na-prox-card').first()).toBeHidden();
   });
 }
 

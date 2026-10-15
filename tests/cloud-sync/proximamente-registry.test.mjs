@@ -4,68 +4,72 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync('POS/js/modules/proximamente.js', 'utf8');
-const context = vm.createContext({ module: { exports: {} } });
-vm.runInContext(source, context);
-const registry = context.NA_PROXIMAMENTE;
-const original = ['creditos-vencimiento', 'gastos', 'reportes', 'cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp', 'filtro-fechas-export'];
-const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
+const registrySource = readFileSync('POS/js/modules/proximamente-registry.js', 'utf8');
+const permissionsSource = readFileSync('POS/js/config/pos-permissions.js', 'utf8');
 const indexHtml = readFileSync('POS/index.html', 'utf8');
+const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas' };
+const MODULES = ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras'];
 
-test('registry keeps the original order, unlocks only shipped features and adds locked pending entries', () => {
-  const ids = Array.from(registry.FEATURES, f => f.id);
-  assert.deepEqual(ids.slice(0, 7), original);
-  assert.equal(ids.length, 56);
+function loaded() {
+  const context = vm.createContext({ module: { exports: {} } });
+  vm.runInContext(permissionsSource, context);
+  vm.runInContext(registrySource, context);
+  context.module = { exports: {} };
+  vm.runInContext(source, context);
+  return context;
+}
+
+test('registry data loads lazily and lock state comes only from pos-permissions FEATURE_LOCKS', async () => {
+  const c = loaded(); const api = c.NA_PROXIMAMENTE; const P = c.NA_PERMISSIONS;
+  assert.equal(api.list().length, 0, 'nothing built until load()');
+  await api.load();
+  const ids = api.list().map(f => f.id);
+  assert.equal(ids.length, 76);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(new Set(registry.FEATURES.map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
-  assert.ok(Object.isFrozen(registry.FEATURES));
-  assert.equal(context.module.exports, registry);
-  assert.equal(registry.list(), registry.FEATURES);
-  for (const feature of registry.list()) {
-    assert.ok(Object.isFrozen(feature));
-    assert.equal(registry.get(feature.id), feature);
-    assert.ok(['form', 'table'].includes(feature.preview.type));
-    assert.ok(feature.name && feature.description && !feature.description.includes('\n'));
-    if (unlocked[feature.id]) {
-      assert.equal(feature.enabled, true);
-      assert.equal(feature.page, unlocked[feature.id]);
-      assert.ok(indexHtml.includes(`id="${feature.page}"`), feature.page + ' exists');
-      assert.equal(registry.isUnlocked(feature), true);
+  assert.equal(new Set(api.list().map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
+  assert.equal(JSON.stringify(Object.keys(P.FEATURE_LOCKS).sort()), JSON.stringify(ids.slice().sort()), 'every registry id has exactly one server lock entry');
+  assert.doesNotMatch(registrySource, /enabled\s*:/, 'registry carries no lock state');
+  assert.doesNotMatch(registrySource, /casamarket|https?:\/\//i, 'no third-party URLs or copied text');
+  assert.doesNotMatch(indexHtml, /proximamente-registry\.js/, 'registry is not in the main bundle');
+  for (const f of api.list()) {
+    assert.ok(Object.isFrozen(f));
+    assert.ok(MODULES.includes(f.module), f.id);
+    assert.ok(['form', 'table'].includes(f.preview.type));
+    assert.ok(f.name && f.description && !f.description.includes('\n'));
+    if (unlocked[f.id]) {
+      assert.equal(P.FEATURE_LOCKS[f.id], false); assert.equal(f.page, unlocked[f.id]);
+      assert.ok(indexHtml.includes(`id="${f.page}"`)); assert.equal(api.isUnlocked(f), true);
     } else {
-      assert.equal(feature.enabled, false, feature.id);
-      assert.equal(feature.page, null, feature.id);
-      assert.equal(registry.isEnabled(feature.id), false);
-      assert.equal(registry.isUnlocked(feature), false);
+      assert.equal(P.FEATURE_LOCKS[f.id], true, f.id); assert.equal(f.page, null); assert.equal(api.isUnlocked(f), false); assert.ok(f.pending || ['cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp'].includes(f.id));
     }
   }
-  const pending = registry.FEATURES.filter(f => f.pending);
-  assert.equal(pending.length, 49);
-  assert.ok(pending.every(f => !f.enabled && f.page === null && !original.includes(f.id)));
-  for (const id of ['ventas-espera', 'kardex', 'sunat-comprobantes', 'multi-ruc', 'cobro-qr-yape-plin']) assert.ok(registry.get(id)?.pending, id);
-  for (const id of ['compras', 'alertas-vencimiento', 'precios-mayor', 'respaldo', 'stock-lotes-fefo', 'cierre-remoto-sesiones']) assert.equal(registry.get(id), undefined, id + ' already exists in the POS');
-  assert.equal(registry.get('missing'), undefined);
-  assert.equal(registry.isEnabled('missing'), false);
-  assert.equal(registry.isUnlocked(null), false);
-  assert.equal(registry.isUnlocked({ enabled: true, page: null }), false);
-  assert.equal(registry.isUnlocked({ enabled: true, page: 'pageGastos' }), true);
-  assert.equal(registry.isUnlocked({ enabled: false, page: 'pageGastos' }), false);
+  const prioritized = api.list().filter(f => f.priority);
+  assert.equal(prioritized.length, 20);
+  assert.equal(JSON.stringify(api.list().filter(f => f.uncertain).map(f => f.id).sort()), JSON.stringify(['gasto-a-cuenta', 'tipo-cierre']));
+  for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito', 'compras', 'stock-lotes-fefo']) assert.equal(api.get(id), undefined, id + ' already exists in the POS');
 });
 
-test('pending entries add no server write routes', () => {
-  vm.runInContext(readFileSync('POS/js/config/pos-permissions.js', 'utf8'), context);
-  const paths = context.NA_PERMISSIONS.API_ROUTES.map(r => r.path).join(' ');
-  for (const f of registry.FEATURES.filter(f => f.pending)) assert.ok(!paths.includes(f.id), f.id);
+test('server lock is keyed by feature id, default-deny, and unlocking is a one-line change', () => {
+  const c = loaded(); const P = c.NA_PERMISSIONS;
+  assert.equal(P.featureLocked('kardex'), true);
+  assert.equal(P.featureLocked('no-such-feature'), true);
+  assert.equal(P.featureLocked('gastos'), false);
+  assert.deepEqual(Array.from(P.routeRoles('/features/kardex', 'POST')), []);
+  assert.deepEqual(Array.from(P.routeRoles('/features/no-such-feature/items', 'GET')), []);
+  assert.deepEqual(Array.from(P.routeRoles('/features/gastos', 'GET')), ['owner']);
+  for (const id of Object.keys(P.FEATURE_LOCKS)) assert.match(permissionsSource, new RegExp(`^    '${id}': (true|false),?$`, 'm'), id + ' lock is one line');
+  const worker = readFileSync('tools/cloudflare-lab/src/worker.js', 'utf8');
+  assert.match(worker, /startsWith\('\/features\/'\)[\s\S]{0,200}PERMISSIONS\.featureLocked\(id\)\) return json\(\{ error: 'feature_locked'/);
 });
 
-test('Próximamente is explicitly owner-only and registry has no network APIs', () => {
-  vm.runInContext(readFileSync('POS/js/config/pos-permissions.js', 'utf8'), context);
-  const p = context.NA_PERMISSIONS;
+test('Próximamente is explicitly owner-only and the module has no network APIs besides loading its own registry', () => {
+  const c = loaded(); const p = c.NA_PERMISSIONS;
   assert.deepEqual(Array.from(p.SCREENS.pageProximamente), ['owner']);
-  assert.equal(p.canAccessScreen('owner', 'pageProximamente'), true);
   assert.equal(p.canAccessScreen('empleado', 'pageProximamente'), false);
-  assert.doesNotMatch(source, /fetch|XMLHttpRequest|sendBeacon/);
+  assert.doesNotMatch(source + registrySource, /fetch|XMLHttpRequest|sendBeacon/);
 });
 
-function renderHarness(featuresJson, config = false) {
+function renderHarness(rows, locks, config = false) {
   class Node {
     constructor(tag) {
       this.tagName = String(tag).toUpperCase();
@@ -146,56 +150,50 @@ function renderHarness(featuresJson, config = false) {
     const info = new Node('button'); info.dataset.cfgcat = 'info';
     sidebar.appendChild(info); page.appendChild(sidebar); doc.body.appendChild(page);
   }
-  const patched = source.replace(
-    /var FEATURES = freeze\(\[[\s\S]*?\]\);/,
-    `var FEATURES = freeze(${featuresJson});`
-  );
   const ctx = vm.createContext({
     module: { exports: {} },
     document: doc,
     MutationObserver: function (callback) { this.observe = function (node) { observations.push({ node, callback }); }; },
     goPage: id => navigated.push(id),
-    NA_ROLES: { canConfigure: () => true }
+    NA_ROLES: { canConfigure: () => true },
+    NA_PROXIMAMENTE_REGISTRY: rows,
+    NA_PERMISSIONS: { featureLocked: id => locks[id] !== false }
   });
-  vm.runInContext(patched, ctx);
-  const container = new Node('div');
-  container.className = 'na-prox-grid';
-  ctx.NA_PROXIMAMENTE.render(container);
-  return { container, navigated, api: ctx.NA_PROXIMAMENTE, doc, ctx, observations };
+  vm.runInContext(source, ctx);
+  return { navigated, api: ctx.NA_PROXIMAMENTE, doc, ctx, observations };
 }
+const cardsOf = node => { const out = []; const walk = n => { if ((n.className || '').split(/\s+/).includes('na-prox-card')) out.push(n); n.children.forEach(walk); }; walk(node); return out; };
 
-test('enabled card without page stays locked; enabled with page unlocks and navigates', () => {
-  const locked = renderHarness(JSON.stringify([
-    { id: 'gastos', name: 'Gastos', description: 'Desc', icon: '🧾', enabled: true, preview: { type: 'form', fields: ['Categoría'] } },
-    { id: 'reportes', name: 'Reportes', description: 'Desc', icon: '📊', enabled: true, page: 'pageVentas', preview: { type: 'table', columns: ['Día'] } },
-    { id: 'cotizaciones', name: 'Cotizaciones', description: 'Desc', icon: '📋', enabled: false, page: 'pagePOS', preview: { type: 'form', fields: ['Cliente'] } }
-  ]));
-  assert.equal(locked.api.isEnabled('gastos'), false);
-  assert.equal(locked.api.isEnabled('reportes'), true);
-  assert.equal(locked.api.isEnabled('cotizaciones'), false);
-  const cards = locked.container.children;
-  assert.equal(cards.length, 3);
-
-  assert.equal(cards[0].className, 'na-prox-card');
-  assert.ok(cards[0].children.some(n => (n.className || '') === 'na-prox-badge'));
-  cards[0].events.click();
-  assert.equal(locked.navigated.length, 0);
-  const preview = locked.doc.getElementById('naProxPreview');
-  assert.ok(preview);
-  preview.close();
-  assert.equal(locked.doc.getElementById('naProxPreview'), null);
-
-  assert.equal(cards[1].className, 'na-prox-card is-enabled');
-  assert.ok(!cards[1].children.some(n => (n.className || '') === 'na-prox-badge'));
-  cards[1].events.click();
-  assert.deepEqual(locked.navigated, ['pageVentas']);
-  assert.equal(locked.doc.getElementById('naProxPreview'), null);
-
-  assert.equal(cards[2].className, 'na-prox-card');
-  assert.ok(cards[2].children.some(n => (n.className || '') === 'na-prox-badge'));
-  cards[2].events.click();
-  assert.deepEqual(locked.navigated, ['pageVentas']);
-  assert.ok(locked.doc.getElementById('naProxPreview'));
+test('unlock needs lock=false AND a page; sections group by module with counters; filters work', async () => {
+  const rows = [
+    { id: 'gastos', module: 'Caja', name: 'Gastos', description: 'Desc', icon: '🧾', preview: { type: 'form', fields: ['Categoría'] } },
+    { id: 'reportes', module: 'Ventas', name: 'Reportes', description: 'Desc', icon: '📊', page: 'pageVentas', preview: { type: 'table', columns: ['Día'] } },
+    { id: 'cotizaciones', module: 'Ventas', name: 'Cotizaciones', description: 'Desc', icon: '📋', page: 'pagePOS', priority: 'alta', preview: { type: 'form', fields: ['Cliente'] } },
+    { id: 'gaveta', module: 'Caja', name: 'Gaveta', description: 'Cajón', icon: '🗄️', priority: 'media', uncertain: true, preview: { type: 'form', fields: ['X'] } }
+  ];
+  const h = renderHarness(rows, { gastos: false, reportes: false, cotizaciones: true, gaveta: true });
+  const container = new h.doc.body.constructor('div'); container.className = 'na-prox-grid';
+  await h.api.render(container);
+  assert.equal(h.api.isEnabled('gastos'), false, 'unlocked lock without page stays locked');
+  assert.equal(h.api.isEnabled('reportes'), true);
+  assert.equal(h.api.isEnabled('cotizaciones'), false, 'locked even with a page');
+  const summaries = []; const walk = n => { if (n.className === 'na-prox-summary') summaries.push(n.textContent); n.children.forEach(walk); }; walk(container);
+  assert.deepEqual(summaries, ['Ventas (2)', 'Caja (2)']);
+  const cards = cardsOf(container);
+  assert.deepEqual(cards.map(c => c.dataset.featureId), ['reportes', 'cotizaciones', 'gaveta', 'gastos'], 'unlocked first, then alta/media/baja');
+  const badge = n => n.children.find(x => x.className === 'na-prox-badge');
+  assert.equal(badge(cards[1]).textContent, '🔒 Próximamente · Prioridad alta');
+  assert.ok(cards[2].children.some(x => x.className === 'na-prox-tag' && x.textContent === 'por confirmar'));
+  cards[1].events.click(); assert.equal(h.navigated.length, 0); assert.ok(h.doc.getElementById('naProxPreview'));
+  h.doc.getElementById('naProxPreview').close();
+  cards[0].events.click(); assert.deepEqual(h.navigated, ['pageVentas']);
+  const chips = []; const walk2 = n => { if ((n.className || '').startsWith('na-prox-chip')) chips.push(n); n.children.forEach(walk2); }; walk2(container);
+  chips.find(c => c.dataset.priority === 'media').events.click();
+  assert.deepEqual(cardsOf(container).map(c => c.dataset.featureId), ['gaveta']);
+  chips.find(c => c.dataset.priority === '').events.click();
+  const search = []; const walk3 = n => { if (n.className === 'na-prox-search') search.push(n); n.children.forEach(walk3); }; walk3(container);
+  search[0].value = 'cotiz'; search[0].events.input();
+  assert.deepEqual(cardsOf(container).map(c => c.dataset.featureId), ['cotizaciones']);
 });
 
 test('configuration shortcut lives in the owner-only Configuración nav', () => {
