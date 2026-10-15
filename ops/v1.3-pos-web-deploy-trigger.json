@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Arreglos PC (#707): ficha financiera legible/2 columnas, Sin DNI, Caja ancha, Inicio cajero+miles, cálculos por cobrar/stock crítico. Worker sin cambios.",
-  "retry_attempt": 133,
-  "retry_reason": "Deploy de base ed3f2df5 (#707). Rollback: 1ff83c1f57411ef4c438926ed5fdd5bf017b4f44 (build de 132).",
-  "requested_at_utc": "2026-10-15T18:50:58Z",
-  "approved_base": "ed3f2df5a268b161e712630eafc722df1c4d1372"
+  "note": "Stock crítico incluye agotados (#709).",
+  "retry_attempt": 134,
+  "retry_reason": "Deploy de base a6a220ab (#709). Rollback: 0411402fac1db5a032e114f49f9fb64873185698 (build de 133).",
+  "requested_at_utc": "2026-10-15T20:11:44Z",
+  "approved_base": "a6a220ab98a03b8e8a0d13244de6204d456d182d"
 }

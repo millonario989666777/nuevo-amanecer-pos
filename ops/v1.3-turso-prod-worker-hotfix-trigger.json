@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima, 'arregla') deploy of #697 review fixes: expense create/update/void closed-day checks use server time and server_received_at (migration 0033 already applied with R2 backup), /features/<id> session-first 401/403/404, CSV and closure dedupe fixes. Rollback to f66e2d5d (worker 36).",
-  "target_commit": "4c7200b2cc82f0c2c7eac538f8592fa862ddabf6",
-  "rollback_ref": "f66e2d5d56602df956736f6ccf311f8d331ff691",
+  "authorization_context": "Owner standing permission (2026-10-15 Lima). Deploy of #709: expense.create always writes server_received_at without a per-request PRAGMA (migration 0033 applied in prod with R2 backup). No schema changes. Rollback to 4c7200b2 (worker 37).",
+  "target_commit": "a6a220ab98a03b8e8a0d13244de6204d456d182d",
+  "rollback_ref": "4c7200b2cc82f0c2c7eac538f8592fa862ddabf6",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 37,
-  "optimization": "REVIEW_FIXES_514DE90"
+  "attempt": 38,
+  "optimization": "EXPENSE_NO_PRAGMA"
 }
