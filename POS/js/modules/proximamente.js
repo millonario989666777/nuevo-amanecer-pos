@@ -5,17 +5,18 @@
     return value;
   }
   var FEATURES = freeze([
-    { id: 'creditos-vencimiento', name: 'Créditos con vencimiento por documento y cobro múltiple', description: 'Organiza vencimientos y cobra varios documentos juntos.', icon: '📅', enabled: false, preview: { type: 'table', columns: ['Documento', 'Cliente', 'Vencimiento', 'Saldo'] } },
-    { id: 'gastos', name: 'Gastos (categorías y reporte)', description: 'Clasifica egresos y consulta su reporte por categoría.', icon: '🧾', enabled: false, preview: { type: 'form', fields: ['Categoría', 'Descripción', 'Importe'] } },
-    { id: 'reportes', name: 'Reportes', description: 'Ventas por día, productos más vendidos, utilidad, cajero y método de pago.', icon: '📊', enabled: false, preview: { type: 'table', columns: ['Día', 'Producto', 'Ventas', 'Utilidad', 'Cajero', 'Método de pago'] } },
-    { id: 'cotizaciones', name: 'Cotizaciones', description: 'Prepara propuestas de venta para tus clientes.', icon: '📋', enabled: false, preview: { type: 'form', fields: ['Cliente', 'Producto', 'Cantidad', 'Precio'] } },
-    { id: 'cuentas-pagar', name: 'Cuentas por pagar a proveedores', description: 'Consulta saldos y vencimientos de tus proveedores.', icon: '🏷️', enabled: false, preview: { type: 'table', columns: ['Proveedor', 'Documento', 'Vencimiento', 'Saldo'] } },
-    { id: 'compartir-pdf-whatsapp', name: 'Compartir por PDF y WhatsApp', description: 'Prepara documentos para compartir con tus clientes.', icon: '📄', enabled: false, preview: { type: 'form', fields: ['Documento', 'Cliente', 'Teléfono'] } },
-    { id: 'filtro-fechas-export', name: 'Filtro de fechas con exportación', description: 'Selecciona un período y prepara la exportación de datos.', icon: '🗓️', enabled: false, preview: { type: 'form', fields: ['Desde', 'Hasta', 'Formato'] } }
+    { id: 'creditos-vencimiento', name: 'Créditos con vencimiento por documento y cobro múltiple', description: 'Organiza vencimientos y cobra varios documentos juntos.', icon: '📅', enabled: false, page: null, preview: { type: 'table', columns: ['Documento', 'Cliente', 'Vencimiento', 'Saldo'] } },
+    { id: 'gastos', name: 'Gastos (categorías y reporte)', description: 'Clasifica egresos y consulta su reporte por categoría.', icon: '🧾', enabled: false, page: null, preview: { type: 'form', fields: ['Categoría', 'Descripción', 'Importe'] } },
+    { id: 'reportes', name: 'Reportes', description: 'Ventas por día, productos más vendidos, utilidad, cajero y método de pago.', icon: '📊', enabled: false, page: null, preview: { type: 'table', columns: ['Día', 'Producto', 'Ventas', 'Utilidad', 'Cajero', 'Método de pago'] } },
+    { id: 'cotizaciones', name: 'Cotizaciones', description: 'Prepara propuestas de venta para tus clientes.', icon: '📋', enabled: false, page: null, preview: { type: 'form', fields: ['Cliente', 'Producto', 'Cantidad', 'Precio'] } },
+    { id: 'cuentas-pagar', name: 'Cuentas por pagar a proveedores', description: 'Consulta saldos y vencimientos de tus proveedores.', icon: '🏷️', enabled: false, page: null, preview: { type: 'table', columns: ['Proveedor', 'Documento', 'Vencimiento', 'Saldo'] } },
+    { id: 'compartir-pdf-whatsapp', name: 'Compartir por PDF y WhatsApp', description: 'Prepara documentos para compartir con tus clientes.', icon: '📄', enabled: false, page: null, preview: { type: 'form', fields: ['Documento', 'Cliente', 'Teléfono'] } },
+    { id: 'filtro-fechas-export', name: 'Filtro de fechas con exportación', description: 'Selecciona un período y prepara la exportación de datos.', icon: '🗓️', enabled: false, page: null, preview: { type: 'form', fields: ['Desde', 'Hasta', 'Formato'] } }
   ]);
   function list() { return FEATURES; }
   function get(id) { return FEATURES.find(function (feature) { return feature.id === id; }); }
   function isEnabled(id) { var feature = get(id); return !!(feature && feature.enabled); }
+  function isUnlocked(feature) { return !!(feature && feature.enabled && feature.page); }
   function ownerAllowed() {
     return !!(root.NA_ROLES && typeof root.NA_ROLES.canConfigure === 'function' && root.NA_ROLES.canConfigure());
   }
@@ -59,19 +60,29 @@
     dialog.addEventListener('close', function () { dialog.remove(); });
     root.document.body.appendChild(dialog); dialog.showModal();
   }
+  function openFeature(feature) {
+    if (isUnlocked(feature) && typeof root.goPage === 'function') {
+      var open = root.document && root.document.getElementById('naProxPreview');
+      if (open) open.close();
+      root.goPage(feature.page);
+      return;
+    }
+    openPreview(feature.id);
+  }
   function render(container) {
     if (!container || !ownerAllowed()) return;
     container.replaceChildren();
     FEATURES.forEach(function (feature) {
-      var card = element('button', 'na-prox-card'); card.type = 'button'; card.dataset.featureId = feature.id;
-      card.appendChild(element('span', 'na-prox-badge', '🔒 Próximamente'));
+      var unlocked = isUnlocked(feature);
+      var card = element('button', 'na-prox-card' + (unlocked ? ' is-enabled' : '')); card.type = 'button'; card.dataset.featureId = feature.id;
+      if (!unlocked) card.appendChild(element('span', 'na-prox-badge', '🔒 Próximamente'));
       var icon = element('span', 'na-prox-icon', feature.icon); icon.setAttribute('aria-hidden', 'true'); card.appendChild(icon);
       card.appendChild(element('span', 'na-prox-name', feature.name));
       card.appendChild(element('span', 'na-prox-description', feature.description));
-      card.addEventListener('click', function () { openPreview(feature.id); }); container.appendChild(card);
+      card.addEventListener('click', function () { openFeature(feature); }); container.appendChild(card);
     });
   }
-  root.NA_PROXIMAMENTE = freeze({ FEATURES: FEATURES, list: list, get: get, isEnabled: isEnabled, render: render, openPreview: openPreview });
+  root.NA_PROXIMAMENTE = freeze({ FEATURES: FEATURES, list: list, get: get, isEnabled: isEnabled, isUnlocked: isUnlocked, render: render, openPreview: openPreview, openFeature: openFeature });
   if (typeof module !== 'undefined' && module.exports) module.exports = root.NA_PROXIMAMENTE;
   function init() {
     var page = root.document.getElementById('pageProximamente');

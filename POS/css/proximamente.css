@@ -4,6 +4,7 @@ html.na-role-locked [data-menu-target="pageProximamente"]{display:none!important
 .na-prox-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 .na-prox-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;padding:52px 20px 24px;text-align:left;font:inherit;color:#0f172a;background:#fff;border:1px solid #94a3b8;border-radius:16px;opacity:.6;cursor:pointer}
 .na-prox-card:focus-visible{outline:3px solid var(--teal);outline-offset:4px}
+.na-prox-card.is-enabled{opacity:1}
 .na-prox-badge{position:absolute;right:12px;top:12px;border-radius:8px;padding:4px 8px;background:#e2e8f0;color:#334155;font-size:12px}
 .na-prox-icon{font-size:28px}.na-prox-name{font-weight:800;font-size:17px}
 .na-prox-description{max-width:100%;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
