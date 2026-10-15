@@ -24,7 +24,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
   assert.equal(api.list().length, 0, 'nothing built until load()');
   await api.load();
   const ids = api.list().map(f => f.id);
-  assert.equal(ids.length, 89);
+  assert.equal(ids.length, 96);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(api.list().map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.equal(JSON.stringify(Object.keys(P.FEATURE_LOCKS).sort()), JSON.stringify(ids.slice().sort()), 'every registry id has exactly one server lock entry');
@@ -44,8 +44,8 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
     }
   }
   const prioritized = api.list().filter(f => f.priority);
-  assert.equal(prioritized.length, 37);
-  assert.deepEqual(Array.from(api.list().filter(f=>f.uncertain).map(f=>f.id)).sort(), 'app-android-nativa cpe-sin-internet venta-granel gaveta-dinero comprobante-por-correo app-almaceneros equipos-pos shopify-woocommerce bandeja-multicanal plan-distribuidor multi-ruc balanza calendario-gastos gasto-a-cuenta tipo-cierre firma-digital'.split(' ').sort());
+  assert.equal(prioritized.length, 44);
+  assert.deepEqual(Array.from(api.list().filter(f=>f.uncertain).map(f=>f.id)).sort(), 'app-android-nativa cpe-sin-internet venta-granel gaveta-dinero comprobante-por-correo app-almaceneros equipos-pos shopify-woocommerce bandeja-multicanal plan-distribuidor multi-ruc balanza calendario-gastos gasto-a-cuenta tipo-cierre firma-digital sunat-comprobantes'.split(' ').sort());
   for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito', 'compras', 'stock-lotes-fefo']) assert.equal(api.get(id), undefined, id + ' already exists in the POS');
 });
 
@@ -54,8 +54,8 @@ test('server lock is keyed by feature id, default-deny, and unlocking is a one-l
   assert.equal(P.featureLocked('kardex'), true);
   assert.equal(P.featureLocked('no-such-feature'), true);
   assert.equal(P.featureLocked('gastos'), false);
-  assert.deepEqual(Array.from(P.routeRoles('/features/kardex', 'POST')), []);
-  assert.deepEqual(Array.from(P.routeRoles('/features/no-such-feature/items', 'GET')), []);
+  assert.deepEqual(Array.from(P.routeRoles('/features/kardex', 'POST')), ['owner', 'empleado']);
+  assert.deepEqual(Array.from(P.routeRoles('/features/no-such-feature/items', 'GET')), ['owner', 'empleado']);
   assert.deepEqual(Array.from(P.routeRoles('/features/gastos', 'GET')), ['owner']);
   for (const id of Object.keys(P.FEATURE_LOCKS)) assert.match(permissionsSource, new RegExp(`^    '${id}': (true|false),?$`, 'm'), id + ' lock is one line');
   const worker = readFileSync('tools/cloudflare-lab/src/worker.js', 'utf8');
@@ -204,4 +204,29 @@ test('configuration shortcut lives in the owner-only Configuración nav', () => 
   assert.ok(reset > entry, 'the entry precedes Reseteo');
   assert.match(v9, /Próximamente<small>Funciones en preparación<\/small>/);
   assert.match(v9, /var go = t\.closest\('#na9Nav \[data-go\]'\); if \(go\) \{ if \(canEdit\(\) && typeof root\.goPage === 'function'\) root\.goPage\(go\.dataset\.go\); return; \}/);
+});
+
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+test('new candidates stay locked and attendance keeps its owner policy when unlocked', async () => {
+  const c = loaded(); await c.NA_PROXIMAMENTE.load();
+  for (const id of addedIds) {
+    const entry = c.NA_PROXIMAMENTE.get(id);
+    assert.ok(entry, id);
+    assert.equal(c.NA_PERMISSIONS.FEATURE_LOCKS[id], true, id);
+    assert.equal(entry.page, null);
+    assert.ok(['alta', 'media', 'baja'].includes(entry.priority));
+  }
+  assert.deepEqual(Array.from(c.NA_PROXIMAMENTE.get('asistencia-empleados').roles), ['owner']);
+  assert.deepEqual(Array.from(c.NA_PERMISSIONS.FEATURE_ROLES['asistencia-empleados']), ['owner']);
+  assert.deepEqual(Array.from(c.NA_PERMISSIONS.routeRoles('/features/asistencia-empleados', 'GET')), ['owner']);
+  assert.deepEqual(Array.from(c.NA_PERMISSIONS.API_ROUTES.find(r => r.path === '/features/:id').roles), ['owner', 'empleado']);
+  const h = renderHarness([c.NA_PROXIMAMENTE.get('asistencia-empleados')], { 'asistencia-empleados': false });
+  h.ctx.NA_ROLES.canConfigure = () => false;
+  const host = new h.doc.body.constructor('div');
+  await h.api.render(host);
+  h.api.openPreview('asistencia-empleados');
+  h.api.openFeature({ id: 'asistencia-empleados', enabled: true, page: 'pageAsistencia', roles: ['owner'] });
+  assert.deepEqual(h.navigated, []);
+  assert.equal(cardsOf(host).length, 0);
+  assert.equal(h.doc.getElementById('naProxPreview'), null);
 });

@@ -83,6 +83,7 @@
     root.document.body.appendChild(dialog); dialog.showModal();
   }
   function openFeature(feature) {
+    if (!feature || !ownerAllowed()) return;
     if (isUnlocked(feature) && typeof root.goPage === 'function') {
       var open = root.document && root.document.getElementById('naProxPreview');
       if (open) open.close();

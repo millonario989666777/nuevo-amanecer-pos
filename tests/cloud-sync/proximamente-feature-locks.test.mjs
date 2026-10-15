@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { activeCanon } from './canon-browser-harness.mjs';
+import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
+
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+
+test('real Worker authenticates then returns feature_locked for every locked registry id without writes', async t => {
+  const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
+  f.addDevice('feature-owner', 'writer', 'active', 'feature-owner-token');
+  f.addDevice('feature-employee', 'writer', 'active', 'feature-employee-token');
+  f.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('session:feature-employee','empleado','test','2026-10-15T00:00:00Z')");
+  const context = vm.createContext({});
+  vm.runInContext(readFileSync('POS/js/modules/proximamente-registry.js', 'utf8'), context);
+  const ids = context.NA_PROXIMAMENTE_REGISTRY.map(f => f.id).filter(id => PERMISSIONS.featureLocked(id));
+  for (const id of addedIds) assert.ok(ids.includes(id), id);
+  const before = f.database.prepare('SELECT * FROM canonical_control').all();
+  for (const id of [...ids, 'unknown-feature']) {
+    for (const method of ['GET', 'POST']) {
+      const response = await f.fetch('http://localhost/features/' + id, { method, headers: { authorization: 'Bearer feature-owner-token' } });
+      assert.equal(response.status, 403, id);
+      assert.equal((await response.json()).error, 'feature_locked', id);
+    }
+  }
+  for (const method of ['GET', 'POST']) {
+    const denied = await f.fetch('http://localhost/features/asistencia-empleados', { method, headers: { authorization: 'Bearer feature-employee-token' } });
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).error, 'forbidden_role');
+  }
+  assert.equal(PERMISSIONS.routeRoles('/features/asistencia-empleados', 'GET').includes('empleado'), false, 'role restriction is independent of the lock');
+  const missing = await f.fetch('http://localhost/features/' + addedIds[0]);
+  assert.equal(missing.status, 401);
+  assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
+});
