@@ -6,7 +6,7 @@
  #pageInventario #invBody .stock-pill{flex:0 1 auto;min-width:0;padding:4px 6px}
 }
 @media(max-width:1023px){
- .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%}
+ body:has(#pageInventario.active) .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%}
 }
 #pageInventario .inv-expiry-status,#mProd .inv-expiry-status,
 #pageInventario .venc-pill,#mProd .venc-pill{white-space:nowrap}
