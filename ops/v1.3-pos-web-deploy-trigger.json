@@ -9,7 +9,7 @@
   "activation_secret_embedded": false,
   "note": "Scroll con rueda en Inventario PC/tablet y CSS de diseño no diferido (#700). Worker sin cambios.",
   "retry_attempt": 130,
-  "retry_reason": "Deploy de base 9208d99b (#700). Rollback: c10f1809 (build de 129).",
+  "retry_reason": "Deploy de base 9208d99b (#700). Rollback: c10f18093e370977ade27cc2fb6dc89b53fa4c72 (build de 129).",
   "requested_at_utc": "2026-10-15T18:14:42Z",
   "approved_base": "9208d99b6ce850deb8c0988e050061b7a5fb4991"
 }
