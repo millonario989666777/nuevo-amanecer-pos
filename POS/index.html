@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <!-- Arranque rápido: en el dominio publicado, sin sesión guardada se vuelve al lanzador antes de pedir CSS/JS.
-         Es un subconjunto estricto de lo que ya redirige hosted-canonical-guard.js (que sigue validando todo). -->
+         Es un subconjunto estricto de lo que ya redirige la guardia de abajo (que sigue validando todo). -->
     <script>(function(){try{var l=location;if(!/\.nuevo-amanecer-pos\.workers\.dev$/.test(l.hostname)||!/^\/app(\/|$)/.test(l.pathname))return;var c=JSON.parse(localStorage.getItem('na_cloud_sync_credentials')||'null');if(!c||typeof c.token!=='string'||!c.token)l.replace(l.origin+'/');}catch(_){}})();</script>
     <!-- Comprobación completa, síncrona y antes de los recursos de la app; no usa document.body. -->
     <script src="/runtime-config.js"></script>
