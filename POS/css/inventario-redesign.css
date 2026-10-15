@@ -1,5 +1,5 @@
 #pageInventario{background:#f6f8fa;min-width:0}
-#pageInventario .page-chrome{overflow:visible!important;clip-path:none!important;transform:none!important}
+#pageInventario .page-chrome{overflow:visible!important;clip-path:none!important;transform:none!important;margin-bottom:0!important}
 #pageInventario .top-mod-bar{background:white;display:flex;flex-wrap:wrap;gap:12px;padding:18px}
 #pageInventario .top-mod-title{color:var(--teal)}
 #pageInventario .ocr-purchase-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -176,3 +176,25 @@
 #mProd .fg:has(> #pStock){display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 #mProd .fg:has(> #pStock) > .fl{grid-column:1/-1}
 #mProd .inv-form-lot .inv-expiry-status{display:block}
+/* 390px: cabecera compacta, opaca y fija; la lista recupera la pantalla y nada
+   transparente captura o deja pasar toques. Resumen en una sola fila desplazable. */
+@media(max-width:767px){
+ body.module-mobile-scroll #pageInventario.inv-mobile-simple.active>.page-chrome{position:sticky!important;top:56px!important;z-index:60!important;background:#f6f8fa!important;box-shadow:0 -8px 0 0 #f6f8fa,0 2px 6px rgba(15,23,42,.08);isolation:isolate;pointer-events:auto}
+ #pageInventario.inv-mobile-simple>.page-chrome .top-mod-bar{padding:8px 12px!important;gap:8px!important;flex-wrap:nowrap!important;align-items:center}
+ #pageInventario.inv-mobile-simple>.page-chrome .top-mod-title{flex:1 1 auto!important;flex-basis:auto!important;font-size:17px!important;min-width:0;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+ #pageInventario.inv-mobile-simple>.page-chrome .ocr-purchase-actions{flex-wrap:nowrap!important;gap:6px!important}
+ #pageInventario.inv-mobile-simple .inv-secondary>summary{padding:10px 2px!important;font-size:13px!important}
+ #pageInventario.inv-mobile-simple>.page-chrome .ocr-purchase-actions{display:flex!important;flex:0 0 auto!important;width:auto!important;margin-left:auto;align-items:center}
+ #pageInventario.inv-mobile-simple>.page-chrome .ocr-purchase-actions>button{flex:0 0 auto!important;width:auto!important;min-width:0!important;padding:0 10px!important;min-height:40px!important}
+ #pageInventario.inv-mobile-simple .inv-sticky-controls{position:static!important;padding:0!important}
+ #pageInventario.inv-mobile-simple .filter-bar{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,128px)!important;gap:6px!important;padding:6px 12px!important}
+ #pageInventario.inv-mobile-simple .filter-bar .search-box,#pageInventario.inv-mobile-simple .filter-bar .f-select{flex:none!important;width:100%!important;grid-column:auto!important}
+ #pageInventario.inv-mobile-simple .tabs-wrap{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none;padding:2px 12px 6px!important}
+ #pageInventario.inv-mobile-simple .tabs-wrap>.tab{flex:0 0 auto!important;min-height:40px!important;padding:6px 10px!important}
+ #pageInventario.inv-mobile-simple .stats-strip{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;gap:6px!important;padding:0 12px 8px!important;scrollbar-width:none;opacity:1!important;transform:none!important;pointer-events:auto!important}
+ #pageInventario.inv-mobile-simple .stats-strip .ss{flex:0 0 auto!important;min-width:92px!important;padding:5px 8px!important;border-radius:10px}
+ #pageInventario.inv-mobile-simple .stats-strip .ss-num{font-size:14px!important;white-space:nowrap!important;overflow-wrap:normal!important}
+ #pageInventario.inv-mobile-simple .stats-strip .ss-lbl{font-size:10px!important;white-space:nowrap}
+ #pageInventario.inv-mobile-simple .table-wrap{position:relative;z-index:0}
+ body.dark #pageInventario.inv-mobile-simple.active>.page-chrome{background:var(--na-dk-bg)!important;box-shadow:0 -8px 0 0 var(--na-dk-bg),0 2px 6px rgba(0,0,0,.4)}
+}

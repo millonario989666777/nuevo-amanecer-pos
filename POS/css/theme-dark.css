@@ -1,0 +1,814 @@
+/* Dark overrides; product-modal scroll fixes are scoped to body.dark. */
+body.dark {
+  --na-dk-bg:#0f172a;
+  --na-dk-surface:#1a2234;
+  --na-dk-surface-2:#1e293b;
+  --na-dk-border:#334155;
+  --na-dk-text:#e5e7eb;
+  --na-dk-muted:#94a3b8;
+  --na-dk-danger-bg:#7f1d1d;
+  --na-dk-danger-text:#fecaca;
+  --white:var(--na-dk-surface);
+  --bg:var(--na-dk-bg);
+  --border:var(--na-dk-border);
+  --dark:var(--na-dk-text);
+  --slate:var(--na-dk-muted);
+  --pos-ref-ink:var(--na-dk-text);
+  --pos-ref-soft:var(--na-dk-surface-2);
+  --pos-ref-line:var(--na-dk-border);
+  --teal-light:#153b3d;
+  --teal-dark:#5eead4;
+  --green-light:#14352a;
+  --red-light:var(--na-dk-danger-bg);
+  background-color:var(--na-dk-bg);
+  color:var(--na-dk-text);
+}
+/* Neutral borders only: semantic accents retain their original colors. */
+body.dark :where(.card, .fi, .fs, .fi-big, .modal, .mbtns, .tab, hr, th, td) {border-color:var(--na-dk-border)}
+body.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+body.dark select, body.dark option, body.dark textarea {
+  background-color:var(--na-dk-surface-2);
+  color:var(--na-dk-text);
+  border-color:var(--na-dk-border);
+}
+body.dark input::placeholder, body.dark textarea::placeholder {color:var(--na-dk-muted)}
+body.dark .g-topbar, body.dark .sidebar, body.dark .na-mobile-drawer,
+body.dark #pagePOS .pos-commandbar, body.dark #pagePOS .pos-customer-bar,
+body.dark #pagePOS #posPhoneAccount, body.dark #pagePOS dialog,
+body.dark #pageInventario #invBody tr, body.dark #pageInventario #invBody td,
+body.dark #mProd .modal, body.dark #mProd .mbody,
+body.dark .report-card, body.dark .report-method, body.dark .report-kpi,
+body.dark .sales-report, body.dark .sales-report-controls {
+  background-color:var(--na-dk-surface);
+  color:var(--na-dk-text);
+}
+body.dark .g-logo-text, body.dark #topBusinessName, body.dark #pagePOS #posPhoneTitle,
+body.dark .na-mobile-drawer-link, body.dark .prod-name-sm {color:var(--na-dk-text)}
+body.dark .na-mobile-drawer-link[aria-current="page"], body.dark .mbtn-cancel,
+body.dark .venc-pill.na, body.dark .cat-pill {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .na-mobile-drawer-label small, body.dark .prod-sku-sm,
+body.dark #mProd .fh, body.dark #mProd [class*="hint"], body.dark #mProd small {color:var(--na-dk-muted)}
+body.dark .banner-cerrada-cj {background:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .banner-cerrada-cj * {color:var(--na-dk-text)}
+body.dark .stock-pill.out, body.dark .stock-pill.low, body.dark .venc-pill.vencido,
+body.dark .purchase-priority.urgent {background-color:var(--na-dk-danger-bg);color:var(--na-dk-danger-text)}
+/* Inline-rendered hints, expiry cells and banners need to outrank inline colors. */
+body.dark [style*="background:#fff"], body.dark [style*="background: #fff"],
+body.dark [style*="background:white"], body.dark [style*="background: white"],
+body.dark [style*="background:#f8fafc"], body.dark [style*="background:#f1f5f9"],
+body.dark [style*="background:rgba(255"], body.dark [style*="background: rgba(255"] {
+  background-color:var(--na-dk-surface-2)!important;
+  color:var(--na-dk-text)!important;
+}
+body.dark [style*="color:#64748b"], body.dark [style*="color:#94a3b8"],
+body.dark [style*="color:#475569"], body.dark [style*="color:#334155"] {color:var(--na-dk-muted)!important}
+body.dark [style*="border:"][style*="#e2e8f0"],
+body.dark [style*="border:"][style*="#cbd5e1"],
+body.dark [style*="border:"][style*="#edf1f5"] {border-color:var(--na-dk-border)!important}
+
+/* Existing hardcoded light surfaces and ink, scoped without changing geometry. */
+body.dark .g-status {color:var(--na-dk-text)}
+body.dark #localStatus[data-state] {background-color:var(--na-dk-surface-2)}
+body.dark #localStatus[data-state="disconnected"] {background-color:var(--na-dk-surface-2)}
+body.dark .g-settings-btn {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark .g-settings-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark .hero-pill {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark .hero-pill.success {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .hero-pill.warn {background-color:var(--na-dk-surface-2)}
+body.dark .module-card:hover {border-color:var(--na-dk-border)}
+body.dark .home-link-btn {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark .health-item {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark .search-box {background-color:var(--na-dk-surface-2)}
+body.dark .ss.green .ss-num {color:var(--na-dk-text)}
+body.dark .cat-mini-btn {background-color:var(--na-dk-surface-2)}
+body.dark .cat-btn {background-color:var(--na-dk-surface-2)}
+body.dark .product-card:active {background-color:var(--na-dk-surface-2)}
+body.dark .p-stock-badge.ok {color:var(--na-dk-text)}
+body.dark .btn-close-x {background-color:var(--na-dk-surface-2)}
+body.dark .product-card.no-stock.sale-allowed .p-stock-badge {background-color:var(--na-dk-surface-2)}
+body.dark .free-sale-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark .cart-item-flag.free {background-color:var(--na-dk-surface-2)}
+body.dark .cart-item-flag.shortage {background-color:var(--na-dk-surface-2)}
+body.dark .sale-special-badge.free {background-color:var(--na-dk-surface-2)}
+body.dark .sale-special-badge.shortage {background-color:var(--na-dk-surface-2)}
+body.dark #mVentaLibre .mbody {background-color:var(--na-dk-surface-2)}
+body.dark .free-sale-note {background-color:var(--na-dk-surface-2)}
+body.dark .free-sale-summary>div {background-color:var(--na-dk-surface-2)}
+body.dark .free-sale-summary span {color:var(--na-dk-text)}
+body.dark .btn-sec {background-color:var(--na-dk-surface-2)}
+body.dark .btn-sec:hover {background-color:var(--na-dk-surface-2)}
+body.dark .btn-pagar {background-color:var(--na-dk-surface-2)}
+body.dark .btn-cancelar-cart {background-color:var(--na-dk-surface-2)}
+body.dark .scanner-indicator {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .scanner-indicator.reading {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .scanner-indicator.success {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .scanner-indicator.error {background-color:var(--na-dk-surface-2)}
+body.dark .scanner-indicator.error .scanner-dot {background-color:var(--na-dk-surface-2)}
+body.dark .scanner-indicator.disabled {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border);color:var(--na-dk-text)}
+body.dark thead tr {background-color:var(--na-dk-surface-2)}
+body.dark tr:hover td {background-color:var(--na-dk-surface-2)}
+body.dark .stock-pill.ok {color:var(--na-dk-text)}
+body.dark .venc-pill.ok {color:var(--na-dk-text)}
+body.dark .venc-pill.na {background-color:var(--na-dk-surface-2)}
+body.dark .btn-ent {color:var(--na-dk-text)}
+body.dark .btn-edt {background-color:var(--na-dk-surface-2)}
+body.dark .cs-c {color:var(--na-dk-text)}
+body.dark .cr-item {background-color:var(--na-dk-surface-2)}
+body.dark .cra-p {color:var(--na-dk-text)}
+body.dark .cr-prog {background-color:var(--na-dk-surface-2)}
+body.dark .btn-cerrar-cj {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark .cjsg.green .cjsg-val,
+body.dark #pageCaja .cjsg.red .cjsg-val,
+body.dark #pageCaja .cjsg.amber .cjsg-val,
+body.dark #pageCaja .mov-amt.neg {color:var(--na-dk-text)}
+body.dark #pageCaja .cjsg.red,
+body.dark #pageCaja .cjsg.amber,
+body.dark #pageCaja .btn-cjac.egr,
+body.dark #pageCaja .btn-cjac.gas {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageCaja .cjsg.red .cjsg-icon,
+body.dark #pageCaja .btn-cjac.egr .bci {color:#f87171}
+body.dark #pageCaja .cjsg.amber .cjsg-icon,
+body.dark #pageCaja .btn-cjac.gas .bci {color:#fbbf24}
+/* Closed actions remain inert, but readable instead of fading their contents. */
+body.dark #pageCaja .cj-acciones[style*="opacity"] {opacity:1!important}
+body.dark #pageCaja .btn-cjac:disabled {opacity:1;color:var(--na-dk-text)}
+body.dark .btn-cjac.ing {color:var(--na-dk-text)}
+body.dark .mov-amt.pos {color:var(--na-dk-text)}
+body.dark .vkpi.green .vkpi-val {color:var(--na-dk-text)}
+body.dark .mp-ef {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .v-detalle {background-color:var(--na-dk-surface-2)}
+body.dark .btn-close-m {background-color:var(--na-dk-surface-2)}
+body.dark .mbtn-cancel {background-color:var(--na-dk-surface-2)}
+body.dark .mov-type-btn.active.entrada .mtl {color:var(--na-dk-text)}
+body.dark .credit-pay-chip {background-color:var(--na-dk-surface-2)}
+body.dark .credit-breakdown-preview {background-color:var(--na-dk-surface-2)}
+body.dark .credit-detail-box {background-color:var(--na-dk-surface-2)}
+body.dark .credit-payment-card {background-color:var(--na-dk-surface-2)}
+body.dark .credit-payment-head span {color:var(--na-dk-text)}
+body.dark .abono-prev {background-color:var(--na-dk-surface-2)}
+body.dark .abp-lbl {color:var(--na-dk-text)}
+body.dark .abp-val {color:var(--na-dk-text)}
+body.dark .change-row {background-color:var(--na-dk-surface-2)}
+body.dark .change-lbl {color:var(--na-dk-text)}
+body.dark .change-val {color:var(--na-dk-text)}
+body.dark .cfg-toggle {background-color:var(--na-dk-surface-2)}
+body.dark .cfg-pill.ok {color:var(--na-dk-text)}
+body.dark .printer-device-empty {background-color:var(--na-dk-surface-2)}
+body.dark .printer-device-state.connected {color:var(--na-dk-text)}
+body.dark #mTicket #ticketBody {background-color:var(--na-dk-surface-2)}
+body.dark #ticketBody,
+body.dark #ticketBody * {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-width-info {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .ticket-thermal-note {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border);color:var(--na-dk-text)}
+body.dark #ticketBody .thermal-ticket-pre {background-color:var(--na-dk-surface-2)}
+body.dark .payment-hint.ok {color:var(--na-dk-text)}
+body.dark #mBtnConf:disabled {color:var(--na-dk-text)}
+body.dark .pay-change-row span {color:var(--na-dk-text)}
+body.dark .pay-change-row strong {color:var(--na-dk-text)}
+body.dark .pay-btn-secondary {background-color:var(--na-dk-surface-2)}
+body.dark .pay-btn-primary.needs-data {color:var(--na-dk-text)}
+body.dark .quick-pay-option.cash {background-color:var(--na-dk-surface-2)}
+body.dark .quick-pay-option.transfer {background-color:var(--na-dk-surface-2)}
+body.dark .cash-inline-note {color:var(--na-dk-text)}
+body.dark .na-confirm-actions {background-color:var(--na-dk-surface-2)}
+body.dark .na-confirm-btn {background-color:var(--na-dk-surface-2)}
+body.dark .na-confirm-btn.cancel {color:var(--na-dk-text)}
+body.dark #mProd .mbody {background-color:var(--na-dk-surface-2)}
+/* Scroll the form body while reserving the footer's full height. */
+body.dark #mProd .modal {position:relative;display:flex;flex-direction:column;overflow:hidden}
+body.dark #mProd .mhead {flex-shrink:0}
+body.dark #mProd .mbody {min-height:0;overflow:hidden!important;padding-bottom:100px!important}
+body.dark #mProd .prod-unified {min-height:0;overflow-y:auto!important}
+body.dark #mProd .mbtns {background-color:var(--na-dk-surface-2);position:absolute!important;bottom:0!important;left:18px;right:18px;padding-bottom:14px}
+body.dark #mProd .prod-margin {background-color:#153b3d}
+body.dark #mProd .prod-margin strong {color:#5eead4}
+body.dark #mProd .field-help {color:var(--na-dk-muted)}
+body.dark #mProd .prod-image-btn {color:var(--na-dk-text)}
+body.dark #mProd .product-icon-actions:has(#pIconAutoBtn.active) #pIconMode {display:none}
+body.dark .prod-unified .fl {color:var(--na-dk-text)}
+body.dark .prod-new-cat-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .prod-image-btn {background-color:var(--na-dk-surface-2)}
+body.dark .prod-image-preview {background-color:var(--na-dk-surface-2)}
+body.dark .prod-advanced {background-color:var(--na-dk-surface-2)}
+body.dark .prod-advanced summary {color:var(--na-dk-text)}
+body.dark .prod-advanced summary::after {color:var(--na-dk-text)}
+body.dark .prod-stock-toggle {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark .prod-stock-toggle strong {color:var(--na-dk-text)}
+body.dark .alt-code-box {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark .alt-code-title {color:var(--na-dk-text)}
+body.dark .alt-code-help {color:var(--na-dk-text)}
+body.dark .alt-code-count {background-color:var(--na-dk-surface-2)}
+body.dark .alt-code-number {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .alt-code-remove {background-color:var(--na-dk-surface-2)}
+body.dark .alt-code-add {background-color:var(--na-dk-surface-2)}
+body.dark .alt-code-add:disabled {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border);color:var(--na-dk-text)}
+body.dark .prod-yesno button {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .ticket-zone-presets {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-zone-row.is-off {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-zone-order button {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-zone-control select {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-zone-slider:before {background-color:var(--na-dk-surface-2)}
+body.dark .ticket-zone-foot {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu.active {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .menu-side-link:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .menu-side-link.is-active {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .main-scroll.home-shell {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .menu-desktop-eyebrow {color:var(--na-dk-text)}
+body.dark #pageMenu .menu-desktop-live {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageMenu .qs-label {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-sub {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-trend[data-trend="up"] {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-trend[data-trend="flat"] {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-prev {color:var(--na-dk-text)}
+body.dark #pageMenu .menu-activity-row {color:var(--na-dk-text)}
+body.dark #pageMenu .menu-pending-row {color:var(--na-dk-text)}
+body.dark #pageMenu .menu-pending-mark.amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .menu-pending-mark.red {background-color:var(--na-dk-surface-2)}
+body.dark #pageConfig .cfg-topbar-simple .top-mod-title::after {color:var(--na-dk-text)}
+body.dark .g-topbar {background-color:var(--na-dk-surface-2)}
+body.dark .na-mobile-menu-toggle,
+body.dark .g-topbar .g-settings-btn {color:var(--na-dk-text)}
+body.dark .g-topbar .back-btn {color:var(--na-dk-text)}
+body.dark #pageMenu .main-scroll.home-shell {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .na-mobile-welcome {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .na-mobile-welcome h1 {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-welcome p {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-card {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .qs-val {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-label {color:var(--na-dk-text)}
+body.dark #pageMenu .qs-sub {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-section-head::after {background-color:var(--na-dk-surface-2)}
+body.dark #pageMenu .na-mobile-section-head h2 {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-activity-copy strong {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-activity-copy small {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-activity-time {color:var(--na-dk-text)}
+body.dark #pageMenu .na-mobile-activity-value {color:var(--na-dk-text)}
+body.dark .na-mobile-drawer {background-color:var(--na-dk-surface-2)}
+body.dark .na-mobile-drawer-close {background-color:var(--na-dk-surface-2)}
+body.dark .na-mobile-profile strong {color:var(--na-dk-text)}
+body.dark .na-mobile-profile small {color:var(--na-dk-text)}
+body.dark .na-mobile-drawer-link {color:var(--na-dk-text)}
+body.dark .na-mobile-drawer-link[aria-current='page'] {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .na-mobile-drawer-link:active {background-color:var(--na-dk-surface-2)}
+body.dark .na-mobile-drawer-label small {color:var(--na-dk-text)}
+body.dark .na-landscape-cloud {background-color:var(--na-dk-surface-2)}
+body.dark #pageVentas .na-canonical-pending > h3,
+body.dark #pageClientes .na-canonical-pending > h3 {color:var(--na-dk-text)}
+body.dark #pageVentas .na-canonical-pending-item,
+body.dark #pageClientes .na-canonical-pending-item {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .na-canonical-pending-item-detail {color:var(--na-dk-text)}
+body.dark .na-canonical-pending-status,
+body.dark .na-canonical-conflict {background-color:var(--na-dk-surface-2)}
+body.dark .na-canonical-conflict {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale .pos-commandbar {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posCustomerButton::after {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale .cart-head-title {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale .qty-btn {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale .total-main>span:first-child {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posPhoneAccount:not([hidden]) {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale dialog {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale dialog button {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posSidebar .cat-btn {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posSidebar .cat-btn.active {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posPhoneCatalog .p-stock-badge {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro .pay-modal {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro .pay-total-card {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-total-label {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-total-value {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="efectivo"],
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-digital-group],
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="credito"] {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="efectivo"].active,
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-digital-group].active,
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="credito"].active {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"] {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"] .pml {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced,
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced[hidden] {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button.active {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row span {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-modal-footer {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro .pay-modal-footer .pay-btn-secondary {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"].active {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .pay-change-row span {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"] {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"] .pml {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #mCobro .pay-methods .pm-btn[data-method="mixto"].active {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #mCobro #mCashAdvanced .cash-quick-inline button {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #btnCartMenu {color:var(--na-dk-text)}
+body.dark.na-pos-phone-device #cartMenuDropdown {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-phone-device #cartMenuDropdown>button {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-commandbar {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-menu-button {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .pos-menu-button:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-module-mark {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-module-copy strong {color:var(--na-dk-text)}
+body.dark #pagePOS .pos-module-copy span {color:var(--na-dk-text)}
+body.dark #pagePOS .pos-search-box {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-search-box input {color:var(--na-dk-text)}
+body.dark #pagePOS .free-sale-btn {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .free-sale-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-majorista-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .pos-majorista-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS>.pos-body {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .sidebar {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cat-btn {color:var(--na-dk-text)}
+body.dark #pagePOS .cat-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cat-btn.active {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .products-area {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .product-card {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .product-card:active {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .p-name {color:var(--na-dk-text)}
+body.dark #pagePOS .cart-drawer {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-head {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-head-title {color:var(--na-dk-text)}
+body.dark #pagePOS .cart-mode-tag {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .btn-close-x {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .btn-close-x:hover {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .cart-menu-dropdown {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS #btnDescInfo {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-items {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-empty {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-item {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .ci-name {color:var(--na-dk-text)}
+body.dark #pagePOS .ci-price {color:var(--na-dk-text)}
+body.dark #pagePOS .qty-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .qty-btn:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .qty-num {color:var(--na-dk-text)}
+body.dark #pagePOS .ci-sub {color:var(--na-dk-text)}
+body.dark #pagePOS .btn-rm:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-footer {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-secondary-actions {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-secondary-actions button {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .cart-secondary-actions button:hover {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .cart-count-line {color:var(--na-dk-text)}
+body.dark #pagePOS .total-row {color:var(--na-dk-text)}
+body.dark #pagePOS .cart-actions {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .btn-rapido {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .btn-rapido:hover:not(:disabled) {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .btn-cancelar-cart:hover {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-reference-active #backBtn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .pos-runtime-status {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .pos-runtime-status[data-state="disconnected"] {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-runtime-status[data-state="disconnected"] .dot {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-runtime-status[data-state="update"] {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-runtime-status[data-state="update"] .dot {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-customer-button {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pagePOS .cart-line-unit {color:var(--na-dk-text)}
+body.dark #pagePOS .pos-line-editor form {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .modal-overlay .mbody>.mbtns {background-color:var(--na-dk-surface-2)}
+body.dark .mov-ic.credito {background-color:var(--na-dk-surface-2)}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle {background-color:var(--na-dk-surface-2)}
+body.dark .na-review-notice {background-color:var(--na-dk-surface-2)}
+body.dark .badge-descuento-revision {background-color:var(--na-dk-surface-2)}
+body.dark .na-review-box {background-color:var(--na-dk-surface-2)}
+body.dark .na-review-row {border-color:var(--na-dk-border)}
+body.dark .na-review-row small {color:var(--na-dk-text)}
+body.dark .na-ds-sheet {background-color:var(--na-dk-surface-2)}
+body.dark .na-ds-head span {color:var(--na-dk-text)}
+body.dark .na-ds-chips button,
+body.dark .na-ds-mode button {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #naDsInput {border-color:var(--na-dk-border)}
+body.dark .na-ds-preview {color:var(--na-dk-text)}
+body.dark .na-ds-cancel {background-color:var(--na-dk-surface-2)}
+body.dark .na-sale-note label {color:var(--na-dk-text)}
+body.dark .na-sale-note input {border-color:var(--na-dk-border)}
+body.dark .na-pur-head input,
+body.dark .na-pur-line input {border-color:var(--na-dk-border)}
+body.dark .na-pur-del {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .na-pur-add {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-hint {color:var(--na-dk-text)}
+body.dark .na-pur-item {border-color:var(--na-dk-border)}
+body.dark .na-pur-item summary small {color:var(--na-dk-text)}
+body.dark .na-pur-row {border-color:var(--na-dk-border)}
+body.dark .na-pur-line {border-color:var(--na-dk-border)}
+body.dark .na-pay-net.offline,
+body.dark .na-pay-net.rejected {background-color:var(--na-dk-surface-2)}
+body.dark .na-pay-net.checking {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-err {background-color:var(--na-dk-surface-2)}
+body.dark .na-pay-net.done {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-err.info {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-item.na-pur-open {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-partial-h {background-color:var(--na-dk-surface-2)}
+body.dark .na-pur-reason {border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-client-account-shell {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-section-title>span,
+body.dark #pageClientes .na-v2-section>h3,
+body.dark #pageClientes .na-v2-why h3 {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row:hover {border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-category-balance span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-product {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-total {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-progress-meta {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-index {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-copy small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-amount {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-status {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-installment-overdue {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-status {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-today {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-today .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-today .na-v2-installment-status {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-paid {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-status {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-amount {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-pay.secondary {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-info-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-credit-info {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-paid-row {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-paid-row>span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-line-hero>small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-metrics strong {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-metric-danger {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-reason-list p {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-empty {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-client-identity>.na-v2-eyebrow {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head p {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-head-money span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-head-money small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-section-title>span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row strong {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row>b {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-slate {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-green {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-slate {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-client-loading {color:var(--na-dk-text)}
+body.dark #pageClientes .na-client-loading-title {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-pay {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-head strong {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-selectall,
+body.dark #pageClientes .na-v2-batch-auto {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-amount>span,
+body.dark #pageClientes .na-v2-batch-method-row label>span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-amount input {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-method-row select,
+body.dark #pageClientes .na-v2-batch-method-row input {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-summary {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-check-wrap {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-check-ui {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-pay.na-v2-batch-confirmed .na-v2-batch-summary {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-row-confirmed .na-v2-batch-check-wrap {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-row-confirmed .na-v2-row {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-batch-row-confirmed .na-v2-batch-allocation {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-batch-row-paid .na-v2-row-value small {color:var(--na-dk-text)}
+body.dark .cashier-mini-btn.danger {background-color:var(--na-dk-surface-2)}
+body.dark .cashier-status.active {color:var(--na-dk-text)}
+body.dark .cashier-status.inactive {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .sale-state-badge.completed {color:var(--na-dk-text)}
+body.dark .sale-state-badge.credit {background-color:var(--na-dk-surface-2)}
+body.dark .sale-state-badge.cancelled {background-color:var(--na-dk-surface-2)}
+body.dark .sale-type-badge {background-color:var(--na-dk-surface-2)}
+body.dark .credit-policy-badge.ok {color:var(--na-dk-text)}
+body.dark .credit-policy-badge.warn {background-color:var(--na-dk-surface-2)}
+body.dark .credit-policy-badge.bad {background-color:var(--na-dk-surface-2)}
+body.dark .credit-policy-badge.manual {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .credit-policy-badge.off {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .btn-credit-eval {background-color:var(--na-dk-surface-2)}
+body.dark .credit-modal-summary {background-color:var(--na-dk-surface-2)}
+body.dark .credit-modal-summary.is-blocked {background-color:var(--na-dk-surface-2)}
+body.dark .credit-modal-summary.is-manual {background-color:var(--na-dk-surface-2)}
+body.dark .credit-modal-summary .cms-cell {background-color:var(--na-dk-surface-2)}
+body.dark .credit-eval-card {background-color:var(--na-dk-surface-2)}
+body.dark .credit-requirements {background-color:var(--na-dk-surface-2)}
+body.dark .credit-req-row .done {color:var(--na-dk-text)}
+body.dark .credit-eval-note {background-color:var(--na-dk-surface-2)}
+body.dark .credit-policy-input {background-color:var(--na-dk-surface-2)}
+body.dark .credit-manual-warning {background-color:var(--na-dk-surface-2)}
+body.dark .credit-manual-warning.safe {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .sales-report-control select,
+body.dark .sales-report-control input {background-color:var(--na-dk-surface-2)}
+body.dark .sales-report-control input:disabled {background-color:var(--na-dk-surface-2)}
+body.dark .report-card {background-color:var(--na-dk-surface-2)}
+body.dark .report-card.green strong {color:var(--na-dk-text)}
+body.dark .report-note {color:var(--na-dk-text);background-color:var(--na-dk-surface-2)}
+body.dark .report-section {background-color:var(--na-dk-surface-2)}
+body.dark .report-table th {background-color:var(--na-dk-surface-2)}
+body.dark .report-table td {border-color:var(--na-dk-border)}
+body.dark .report-table .positive {color:var(--na-dk-text)}
+body.dark .report-method {background-color:var(--na-dk-surface-2)}
+body.dark .report-bar-track {background-color:var(--na-dk-surface-2)}
+body.dark .report-rank-row .amount {color:var(--na-dk-text)}
+body.dark .purchase-summary-card {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-toolbar {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-toolbar select {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-card {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-card.urgent {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-card.risk {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-priority.urgent {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-priority.soon {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-priority.review {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-priority.ok {color:var(--na-dk-text)}
+body.dark .purchase-metric {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-edit-btn {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-note {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-detail-box {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-sim {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-sim-result {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-sim-result.good {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .purchase-sim-result.warn {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-sim-result.bad {background-color:var(--na-dk-surface-2)}
+body.dark .purchase-projection th {background-color:var(--na-dk-surface-2)}
+body.dark .f10-btn.warn {background-color:var(--na-dk-surface-2)}
+body.dark .f10-btn.danger {background-color:var(--na-dk-surface-2)}
+body.dark .f10-role-badge.admin {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .f10-role-badge.supervisor {color:var(--na-dk-text)}
+body.dark .f10-role-badge.cajero {color:var(--na-dk-text)}
+body.dark .f10-role-badge.personalizado {background-color:var(--na-dk-surface-2)}
+body.dark .f10-note {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .f10-warning {background-color:var(--na-dk-surface-2)}
+body.dark .prod-image-remove {background-color:var(--na-dk-surface-2)}
+body.dark .emoji-auto-card {background-color:var(--na-dk-surface-2)}
+body.dark .emoji-auto-card small {color:var(--na-dk-text)}
+body.dark .emoji-choice {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark .emoji-choice:hover,
+body.dark .emoji-choice:focus {background-color:var(--na-dk-surface-2)}
+body.dark .emoji-empty {color:var(--na-dk-text)}
+body.dark .product-visibility-badge.no-restock,
+body.dark .inventory-visibility-badge.no-restock {background-color:var(--na-dk-surface-2)}
+body.dark .product-visibility-badge.discontinued,
+body.dark .inventory-visibility-badge.discontinued {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark .na-ap-step {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark .na-ap-note {background-color:var(--na-dk-surface-2)}
+body.dark .na-ap-preview {border-color:var(--na-dk-border)}
+body.dark .na-ap-reset {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageConfig.na-cfg-list .cfg-cat-btn {background-color:var(--na-dk-surface-2)}
+body.dark .na-g-revoke {background-color:var(--na-dk-surface-2)}
+body.dark .na-pin-box {background-color:var(--na-dk-surface-2)}
+body.dark .na-pin-detail {color:var(--na-dk-text)}
+body.dark .na-pin-input {border-color:var(--na-dk-border)}
+body.dark .na-pin-actions button {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9 .na9-sw span::before {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9 .na9-badge {color:var(--na-dk-text)}
+body.dark #naCfgV9 .na9-pvbox {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9 .na9-ticket {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9 .na9-th-simple i {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9.na9-lt .na9-it.on .na9-tt small {color:var(--na-dk-text)}
+body.dark #naCfgV9.na9 .na9-reset .na9-it.on {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9 .na9-tab {color:var(--na-dk-text)}
+body.dark #naCfgV9.na9.na9-dk .na9-sw span::before {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9.na9-dk .na9-btn.red {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #naCfgV9.na9 .na9-note {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9 .na9-note.danger {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9 .na9-badge {color:var(--na-dk-text)}
+body.dark #naCfgV9.na9 .na9-pvbox {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9 .na9-ticket {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9 .na9-th-simple i {background-color:var(--na-dk-surface-2)}
+body.dark #naCfgV9.na9.na9-dk .na9-btn:not(.sec):not(.red) {color:var(--na-dk-text)}
+body.dark #na9TkFormat {background-color:var(--na-dk-surface-2)}
+body.dark html[data-na-theme]:not([data-na-theme=verde]) body:not(.dark) #pagePOS .cart-empty {color:var(--na-dk-text)}
+body.dark html[data-na-theme]:not([data-na-theme=verde]) body:not(.dark) #pageMenu .menu-panel-head span {color:var(--na-dk-text)}
+body.dark #pagePOS .pos-module-identity {background-color:var(--na-dk-surface-2)}
+body.dark #pagePOS .pos-module-copy strong {color:var(--na-dk-text)}
+body.dark #pagePOS .pos-module-copy span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-client-account-screen {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-client-account-shell {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-section-title>span,
+body.dark #pageClientes .na-v2-section>h3,
+body.dark #pageClientes .na-v2-why h3 {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row:hover {border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-category-balance span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-product {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-total {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-progress-meta {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-index {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-copy small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-amount {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-status {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
+body.dark #pageClientes .na-v2-installment-overdue {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-status {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-today {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-today .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-today .na-v2-installment-status {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-paid {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-status {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-installment-paid .na-v2-installment-amount {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-pay.secondary {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-info-btn {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-credit-info {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-paid-row {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-paid-row>span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-line-hero>small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-metrics strong {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-metric-danger {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-reason-list p {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-empty {border-color:var(--na-dk-border);background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-client-identity>.na-v2-eyebrow {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head p {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-client-head .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-head-money span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-head-money small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-section-title>span {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row strong {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row small {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-row>b {color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-green {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-risk-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-risk-slate {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-green {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-amber {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-red {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-v2-behavior-hero.na-v2-tone-slate {background-color:var(--na-dk-surface-2)}
+body.dark #pageClientes .na-client-loading {color:var(--na-dk-text)}
+body.dark #pageClientes .na-client-loading-title {color:var(--na-dk-text)}
+body.dark #mCreditoSection .lab-credit-destination {border-color:var(--na-dk-border)}
+body.dark .lab-credit-destination-option {border-color:var(--na-dk-border)}
+body.dark .lab-credit-destination-option.selected {background-color:var(--na-dk-surface-2)}
+body.dark .lab-credit-installment-config {background-color:var(--na-dk-surface-2)}
+body.dark .lab-credit-category-card {background-color:var(--na-dk-surface-2)}
+body.dark .lab-credit-category-head button {background-color:var(--na-dk-surface-2)}
+body.dark .lab-credit-category-card fieldset label {border-color:var(--na-dk-border)}
+body.dark .g-sync.saved {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-tools>summary,
+body.dark #pageInventario.inv-mobile-simple .inv-product-menu>summary {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-filters>summary {border-color:var(--na-dk-border)}
+body.dark #pageInventario.inv-mobile-simple .inv-mobile-count {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-menu-content {background-color:var(--na-dk-surface-2);border-color:var(--na-dk-border)}
+body.dark #pageInventario.inv-mobile-simple .table-card {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory] {border-color:var(--na-dk-border)}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory]>td:nth-child(3)>div:first-child {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .stock-pill {color:var(--na-dk-text)}
+body.dark #pageInventario {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario .ocr-purchase-status {color:var(--na-dk-text)}
+body.dark .ocr-source-options p {color:var(--na-dk-text)}
+body.dark #ocrReviewStatus {color:var(--na-dk-text)}
+body.dark .ocr-review-row[data-decision="CONFIRMED"] {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .top-mod-bar {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .top-mod-title {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .filter-bar {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .search-box {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .inv-mobile-controls {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .inv-summary>summary {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-summary .stats-strip {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .tabs-wrap {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .tbadge {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-more>summary {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-mobile-totals {background-color:var(--na-dk-surface-2);color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-mobile-totals strong {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory] {background-color:var(--na-dk-surface-2)}
+body.dark #pageInventario.inv-mobile-simple .prod-name-sm {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple .inv-mobile-category {color:var(--na-dk-text)}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory]>td:nth-child(3)>div:first-child {color:var(--na-dk-text)}
+body.dark #mOcrPurchaseReview .mbtns {background-color:var(--na-dk-surface-2)}
+body.dark #btnDarkMode .na-li,
+body.dark #topSettingsBtn .na-li {color:var(--na-dk-text)}
+body.dark .na-li-dot.green {color:var(--na-dk-text)}
+body.dark .c-meta .na-li {color:var(--na-dk-text)}
+body.dark .search-box .na-li-search {color:var(--na-dk-text)}
+body.dark #mPagoCred .mbody>.mbtns,
+body.dark #mCierre .mbody>.mbtns {background-color:var(--na-dk-surface-2)}
+body.dark .na-mobile-menu-toggle:has(>.na-ic) {color:var(--na-dk-text)}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle {color:var(--na-dk-text)}
+body.dark .na-receipt-preview pre {background-color:var(--na-dk-surface-2)}
+body.dark .na-receipt-payment-row {border-color:var(--na-dk-border)}
+body.dark #pageInventario {--dark:var(--na-dk-text);--border:var(--na-dk-border);background-color:var(--na-dk-bg)}
+body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory]>td:nth-child(3)>div:first-child {color:var(--na-dk-text)!important}
+body.dark #pageInventario.inv-mobile-simple .stock-pill.out,
+body.dark #pageInventario.inv-mobile-simple .stock-pill.low {background-color:var(--na-dk-danger-bg);color:var(--na-dk-danger-text)}
+/* Preserve semantic contrast after the general surface overrides. */
+body.dark .p-stock-badge.out, body.dark .cart-item-flag.shortage,
+body.dark .sale-special-badge.shortage, body.dark .stock-pill.out,
+body.dark .venc-pill.vencido {background-color:var(--na-dk-danger-bg);color:var(--na-dk-danger-text)}
+body.dark .report-card.red strong, body.dark .report-table .negative {color:var(--na-dk-danger-text)}
+body.dark .report-card.green strong, body.dark .report-table .positive {color:#86efac}
+body.dark .report-card.purple strong {color:#d8b4fe}
+body.dark .report-card.amber strong {color:#fde68a}
+
+/* Venta (teléfono): título y botón de menú legibles; solo color. */
+body.dark.na-pos-phone-device #pagePOS.phone-sale #posPhoneTitle {color:var(--na-dk-text)}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle {background-color:var(--na-dk-surface-2)!important;color:var(--na-dk-text)!important}
+body.dark.na-pos-reference-active>.g-topbar>.na-mobile-menu-toggle .na-ic {color:var(--na-dk-text)!important;background-color:currentColor}
+/* Formulario de producto: acciones de icono. */
+body.dark .product-icon-mini-btn, body.dark .product-icon-action, body.dark .prod-image-remove {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
+body.dark .product-icon-action.active {background-color:#153b3d;border-color:#2dd4bf;color:#5eead4}
+body.dark .product-icon-mode {background-color:var(--na-dk-surface-2);color:var(--na-dk-muted)}
+
+/* Inventario redesign (#658) dark overrides
+   Colors only; keep the redesign's geometry and light-mode rules intact. */
+body.dark #pageInventario {background-color:var(--na-dk-bg)}
+body.dark #pageInventario .inv-sticky-controls {background-color:var(--na-dk-bg)}
+body.dark #pageInventario .top-mod-bar,
+body.dark #pageInventario .inv-secondary button,
+body.dark #pageInventario .search-box,
+body.dark #pageInventario .ss,
+body.dark #pageInventario .table-card,
+body.dark #pageInventario .btn-act,
+body.dark #mProd .modal,
+body.dark #mMovInv .modal,
+body.dark #mProd .mhead,
+body.dark #mMovInv .mhead,
+body.dark #mProd .inv-form-section,
+body.dark #mProd .inv-form-action,
+body.dark #mMovInv .inv-form-action,
+body.dark #mProd .mbtns,
+body.dark #mProd .inv-icon-choices>button,
+body.dark #mProd .inv-icon-choices summary,
+body.dark #mProd .inv-icon-menu {
+  background-color:var(--na-dk-surface);
+  border-color:var(--na-dk-border);
+}
+body.dark #pageInventario .inv-secondary summary,
+body.dark #pageInventario .inv-secondary button,
+body.dark #pageInventario .btn-act,
+body.dark #mProd .inv-form-action,
+body.dark #mMovInv .inv-form-action,
+body.dark #mProd .inv-icon-choices>button,
+body.dark #mProd .inv-icon-choices summary {color:var(--na-dk-text)}
+body.dark #pageInventario .tab,
+body.dark #pageInventario.inv-mobile-simple .tabs-wrap>.tab {
+  background-color:var(--na-dk-surface-2);
+  border-color:var(--na-dk-border);
+  color:var(--na-dk-text);
+}
+body.dark #pageInventario .tab.active,
+body.dark #pageInventario.inv-mobile-simple .tabs-wrap>.tab.active {
+  background-color:var(--teal-light);
+  color:var(--teal-dark);
+}
+body.dark #pageInventario th,
+body.dark #pageInventario .prod-icon-sm,
+body.dark #pageInventario .stock-pill,
+body.dark #pageInventario.inv-mobile-simple .stock-pill,
+body.dark #pageInventario .venc-pill,
+body.dark #mProd .btn-close-m,
+body.dark #mMovInv .btn-close-m,
+body.dark #mProd .inv-form-section>summary {
+  background-color:var(--na-dk-surface-2);
+  color:var(--na-dk-text);
+}
+body.dark #pageInventario th,
+body.dark #pageInventario .prod-sku-sm,
+body.dark #mProd .btn-close-m,
+body.dark #mMovInv .btn-close-m,
+body.dark #mProd .field-help {color:var(--na-dk-muted)}
+body.dark #mProd .fi,
+body.dark #mProd .fs,
+body.dark #mMovInv .fs,
+body.dark #mProd .inv-form-lot {border-color:var(--na-dk-border)}
+body.dark #mProd input[readonly],
+body.dark #mProd #pStock[readonly] {
+  background-color:var(--na-dk-surface-2);
+  color:var(--na-dk-muted);
+}
+body.dark #pageInventario .stock-pill.low,
+body.dark #pageInventario .stock-pill.out,
+body.dark #pageInventario.inv-mobile-simple .stock-pill.low,
+body.dark #pageInventario.inv-mobile-simple .stock-pill.out,
+body.dark #pageInventario .venc-pill.vencido {
+  background-color:var(--na-dk-danger-bg);
+  color:var(--na-dk-danger-text);
+}
+body.dark #pageInventario .inv-expiry-status.vencido,
+body.dark #mProd .inv-expiry-status.vencido {color:var(--na-dk-danger-text)}
+body.dark #pageInventario .inv-expiry-status.pronto,
+body.dark #mProd .inv-expiry-status.pronto,
+body.dark #pageInventario .btn-edt,
+body.dark #pageInventario .btn-ent {color:#fde68a}
+body.dark #mMovInv .mov-type-btn.entrada.active {
+  background-color:var(--na-dk-surface-2);
+  color:#fde68a;
+}
+@media(max-width:1023px){
+  body.dark #pageInventario .table-card,
+  body.dark #pageInventario.inv-mobile-simple .table-card {background-color:transparent}
+  body.dark #pageInventario #invBody tr,
+  body.dark #pageInventario.inv-mobile-simple #invBody>tr[data-mobile-inventory] {
+    background-color:var(--na-dk-surface);
+    border-color:var(--na-dk-border);
+  }
+  body.dark #pageInventario .act-btns {border-color:var(--na-dk-border)}
+}
+/* The 390px polish uses the same 767px breakpoint and important backgrounds. */
+@media(max-width:767px){
+  body.dark #mProd.modal-overlay,
+  body.dark #mProd.modal-overlay .modal,
+  body.dark #mProd .mhead,
+  body.dark #mProd .mbody,
+  body.dark #mProd .mbtns {background-color:var(--na-dk-surface)!important}
+}

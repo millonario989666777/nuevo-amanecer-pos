@@ -85,6 +85,7 @@ function filterCfgCategories(){const query=document.getElementById('cfgSearchCat
 
 // ===== DARK MODE =====
 let isDark=false;
+window.__naSetIsDark=function(value){isDark=!!value;};
 
 // ===== NUEVO AMANECER v4.0 — CORRECCIONES Y MEJORAS =====
 // FASE 7: evaluación y línea de crédito con ganancia real
@@ -438,7 +439,7 @@ loadAllData=async function(){
   if(!chosen||seeded)await saveAllData();
 };
 loadAppState=function(){
-  const snap=_naReadLocalSnapshot()||_naReadSessionSnapshot(),legacy=_naGetJSON('na_app_state',{}),state=Object.keys(_naLoadedUIState||{}).length?_naLoadedUIState:(_naValidSnapshot(snap)?snap.ui||{}:legacy);isDark=!!state.isDark;try{const _ap=JSON.parse(localStorage.getItem('na_v9_appearance')||'{}');if(_ap.mode==='noche'||_ap.mode==='claro')isDark=_ap.mode==='noche';else if(_ap.mode==='auto')isDark=!!(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);}catch(_){}document.body.classList.toggle('dark',isDark);const darkBtn=document.getElementById('btnDarkMode');if(darkBtn)darkBtn.innerHTML=(window.NA_ICON?NA_ICON(isDark?'sun':'moon'):(isDark?'☀️':'🌙'));_naApplyConfigUI();const pageId=state.currentPage;if(pageId&&pageId!=='pageMenu'&&document.getElementById(pageId))goPage(pageId);else _naSchedulePageRender('pageMenu');
+  const snap=_naReadLocalSnapshot()||_naReadSessionSnapshot(),legacy=_naGetJSON('na_app_state',{}),state=Object.keys(_naLoadedUIState||{}).length?_naLoadedUIState:(_naValidSnapshot(snap)?snap.ui||{}:legacy);window.NA_THEME.resolveLegacy(!!state.isDark);window.NA_THEME.apply();_naApplyConfigUI();const pageId=state.currentPage;if(pageId&&pageId!=='pageMenu'&&document.getElementById(pageId))goPage(pageId);else _naSchedulePageRender('pageMenu');
 };
 
 

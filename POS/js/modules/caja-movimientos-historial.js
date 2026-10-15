@@ -144,7 +144,7 @@
     rows.forEach(r => {
       const card = el('article', 'cv-card na-cash-hist-card'); card.dataset.sessionId = r.sessionId;
       const toggle = button('', () => { const expanded = toggle.getAttribute('aria-expanded') === 'true'; toggle.setAttribute('aria-expanded', String(!expanded)); detail.hidden = expanded; }, 'cv-close-toggle'); toggle.setAttribute('aria-expanded', 'false');
-      toggle.append(el('strong', '', fmtDate(r.fecha) + ' · ' + r.apertura + ' → ' + (r.cierreFecha && r.cierreFecha !== r.fecha ? fmtDate(r.cierreFecha) + ' ' : '') + r.cierre)); line(toggle, 'Cajero', r.cajero || 'No registrado'); line(toggle, 'Total vendido', r.localMissing ? '—' : money(r.ventas));
+      toggle.append(el('strong', '', fmtDate(r.fecha) + ' · ' + r.apertura + ' → ' + (r.cierreFecha && r.cierreFecha !== r.fecha ? fmtDate(r.cierreFecha) + ' ' : '') + r.cierre)); line(toggle, 'Abrió', r.openedByName || r.cajero || 'No registrado'); line(toggle, 'Cerró', r.closedByName || 'No registrado'); line(toggle, 'Total vendido', r.localMissing ? '—' : money(r.ventas));
       toggle.append(el('span', 'cv-pill ' + (r.diferencia == null ? '' : r.diferencia === 0 ? 'cv-ok' : 'cv-bad'), 'Diferencia: ' + (r.diferencia == null ? 'No registrada' : money(r.diferencia) + (r.diferencia === 0 ? ' · Cuadrado' : r.diferencia > 0 ? ' · sobrante' : ' · faltante'))));
       const detail = el('div', 'cv-close-detail'); detail.hidden = true;
       const received = el('section', 'cv-detail-block'), credit = el('section', 'cv-detail-block cv-credit-block');
