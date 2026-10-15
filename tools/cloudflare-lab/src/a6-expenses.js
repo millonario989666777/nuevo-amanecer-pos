@@ -158,7 +158,8 @@ export async function createCanonicalExpense(request,env,auth,json) {
 }
 
 // Lima has a fixed UTC-5 offset (no DST).
-export function limaToday(now=Date.now()) { return new Date(now-5*3600e3).toISOString().slice(0,10); }
+export function limaDate(value) { const t=typeof value==='number'?value:Date.parse(String(value||'')); return Number.isFinite(t)?new Date(t-5*3600e3).toISOString().slice(0,10):''; }
+export function limaToday(now=Date.now()) { return limaDate(now); }
 
 export async function expenseRevisionsAvailable(db) {
   return !!await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_expense_revisions'").first();
@@ -201,8 +202,19 @@ export async function reviseCanonicalExpense(command, request, env, auth, json) 
   if(!editing&&Number(expense.cash_delta_cents)!==0)return json({error:'cash_expense_void_requires_adjustment'},409);
   const currentDate=expense.action==='edit'&&expense.revised_expense_date?expense.revised_expense_date:expense.expense_date;
   const dateChanged=editing&&body.expense_date!==currentDate;
-  if(dateChanged&&body.expense_date>limaToday())return json({error:'expense_date_in_future'},409);
-  if(dateChanged&&expense.session_id&&await db.prepare('SELECT 1 FROM canonical_cash_closures WHERE session_id=?1').bind(expense.session_id).first())return json({error:'expense_date_locked_closed_shift'},409);
+  if(editing&&body.expense_date>limaToday())return json({error:'expense_date_in_future'},409);
+  if(dateChanged){
+    if(expense.session_id){
+      const shift=await db.prepare('SELECT s.opened_at,c.closed_at FROM canonical_cash_sessions s LEFT JOIN canonical_cash_closures c ON c.session_id=s.session_id WHERE s.session_id=?1').bind(expense.session_id).first();
+      if(shift?.closed_at)return json({error:'expense_date_locked_closed_shift'},409);
+      const from=shift?.opened_at?limaDate(shift.opened_at):currentDate;
+      if(body.expense_date<from)return json({error:'expense_date_outside_shift'},409);
+    } else {
+      // Gasto sin turno: hasta 31 días antes de su registro (Lima), nunca futuro.
+      const created=limaDate(expense.created_at)||currentDate;
+      if(body.expense_date<limaDate(Date.parse(created+'T12:00:00Z')-31*86400e3))return json({error:'expense_date_out_of_range'},409);
+    }
+  }
   if(await namespaceCollision(db,body.operation_id)||await db.prepare('SELECT 1 FROM canonical_expense_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict'},409);
   // CAS and authority are checked again in the same atomic INSERT; unique revision
   // rejects concurrent contenders. Nothing touches the base ledger or cash state.
