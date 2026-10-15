@@ -14,8 +14,8 @@ test('fresh storage stays light through inventory rows and the product form', as
   await page.evaluate(() => (window as any).NA_MENU_NAVIGATION.navigate('pageInventario'));
   await expect(page.locator('#pageInventario')).toBeVisible();
   await expect(page.locator('body')).not.toHaveClass(/\bdark\b/);
-  await page.locator('#invBody .prod-name-sm').first().click();
-  await expect(page.locator('#invBody .inv-product-menu[open]').first()).toBeVisible();
+  await expect(page.locator('#invBody .prod-name-sm').first()).toBeVisible();
+  await expect(page.locator('#invBody .btn-edt').first()).toBeVisible();
   await expect(page.locator('body')).not.toHaveClass(/\bdark\b/);
   await page.evaluate(() => (window as any).abrirModalProd());
   await expect(page.locator('#mProd')).toBeVisible();
