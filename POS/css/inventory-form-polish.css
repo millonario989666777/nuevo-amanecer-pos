@@ -1,0 +1,12 @@
+/* Keep inventory names readable without reserving excess space for stock. */
+@media(max-width:767px){
+ #pageInventario.inv-mobile-simple #invBody>tr{grid-template-columns:minmax(0,1fr) auto auto!important}
+ #pageInventario #invBody .prod-info>div:last-child{flex:1;min-width:0}
+ #pageInventario.inv-mobile-simple #invBody .prod-name-sm{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+ #pageInventario #invBody .stock-pill{flex:0 1 auto;min-width:0;padding:4px 6px}
+}
+@media(max-width:1023px){
+ body:has(#pageInventario.active) .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%}
+}
+#pageInventario .inv-expiry-status,#mProd .inv-expiry-status,
+#pageInventario .venc-pill,#mProd .venc-pill{white-space:nowrap}
