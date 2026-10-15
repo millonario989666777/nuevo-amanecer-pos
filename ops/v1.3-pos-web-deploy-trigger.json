@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Imágenes de producto (#652); desplegar solo POS web.",
-  "retry_attempt": 121,
-  "retry_reason": "Deploy de base 3ce17a85 (#658 inventario + #662 modo oscuro global). Solo POS web, sin cambios en tools/cloudflare-lab. Sin migraciones. Rollback: a589c085.",
-  "requested_at_utc": "2026-10-15T00:38:53Z",
-  "approved_base": "3ce17a851668cd7f3dc47133c2d62b6a5d4368d0"
+  "note": "Inventario 390: cabecera compacta, sin toques filtrados (#669); desplegar solo POS web.",
+  "retry_attempt": 122,
+  "retry_reason": "Deploy de base 2aff8145 (#669 inventario 390 cabecera/toques/scroll). Solo POS web, sin cambios en tools/cloudflare-lab. Sin migraciones. Rollback: b28e2638.",
+  "requested_at_utc": "2026-10-15T01:01:30Z",
+  "approved_base": "2aff81458ba9fe509e2fa7ac418fa7b1bf94e51e"
 }
