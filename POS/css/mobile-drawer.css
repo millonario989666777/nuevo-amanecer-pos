@@ -1,7 +1,7 @@
 @media (max-width:767px) {
   .na-mobile-drawer.na-drawer-v2 {display:flex;flex-direction:column;height:100dvh;overflow:hidden;background:#f7fafb}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-head {flex:none;grid-template-columns:40px minmax(0,1fr) 44px;gap:10px;padding:max(20px,env(safe-area-inset-top)) 16px 40px;background:linear-gradient(135deg,#14a3a8,#0b7f88)}
-  .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-logo {width:40px;height:40px;border-radius:10px;object-fit:cover}
+  .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-logo {width:40px;height:40px;border-radius:10px;object-fit:cover;background-color:transparent}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-brand {min-width:0}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-brand strong {font-size:17px;overflow-wrap:anywhere}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-close {width:44px;height:44px;flex:none}
@@ -12,6 +12,8 @@
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-label {min-width:0}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-label small {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#73869b}
   .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-link[aria-current='page'] {background:#e7f5f3;color:#137e81}
+  .na-mobile-drawer-version {flex:none;font-size:11px;text-align:center;padding:8px 16px max(12px,env(safe-area-inset-bottom));color:#73869b}
+  body.dark .na-mobile-drawer-version {color:var(--na-dk-muted)}
   body.dark .na-mobile-drawer.na-drawer-v2 {background:var(--na-dk-bg);color:var(--na-dk-text)}
   body.dark .na-mobile-drawer.na-drawer-v2 .na-mobile-drawer-head {background:linear-gradient(135deg,#0f6f75,#0b5257)}
   body.dark .na-mobile-drawer.na-drawer-v2 .na-mobile-profile {background:var(--na-dk-surface);border-color:var(--na-dk-border)}

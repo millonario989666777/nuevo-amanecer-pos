@@ -164,6 +164,7 @@
     var o = doc.createElement('div'); o.id = 'naNoPermission'; o.className = 'na-pin-overlay';
     o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true');
     o.innerHTML = '<div class="na-pin-box"><div class="na-permission-lock" aria-hidden="true">🔒</div><div class="na-pin-title">Sin permiso</div><div class="na-pin-detail">Pídele acceso al dueño</div><div class="na-pin-actions"><button type="button" class="na-pin-ok">Volver a la venta</button></div></div>';
+    o.addEventListener('click', function (event) { event.stopPropagation(); });
     o.querySelector('button').onclick = function () { o.remove(); backToSale(); };
     doc.body.appendChild(o);
   }

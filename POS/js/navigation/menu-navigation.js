@@ -317,14 +317,14 @@
 
   function canShowDrawerPage(pageId) {
     var roles = root.NA_ROLES;
-    var role = roles ? roles.role : 'owner';
+    // Unknown or unconfirmed identities get the restricted menu; isOwner() already requires a confirmed cloud role.
+    var role = roles && typeof roles.isOwner === 'function' && roles.isOwner() ? 'owner' : 'empleado';
     if (pageId === 'pageMenu') return true;
     // The shared table (POS/js/config/pos-permissions.js, PR #668) plugs in here automatically.
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
-      var effectiveRole = roles && roles.isOwner && roles.isOwner() ? 'owner' : role;
-      return root.NA_PERMISSIONS.canAccessScreen(effectiveRole, pageId);
+      return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return pageId !== 'pageConfig' || !roles || (typeof roles.canConfigure === 'function' && roles.canConfigure());
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos') || role === 'owner';
   }
 
   function renderDrawerItems() {
@@ -378,7 +378,31 @@
     var avatar = document.getElementById('naMobileProfileAvatar');
     if (avatar) avatar.textContent = profileName.trim().split(/\s+/).filter(Boolean).map(function (part) { return part.charAt(0); }).slice(0, 2).join('').toUpperCase();
     var role = document.getElementById('naMobileProfileRole');
-    if (role) role.textContent = roles ? ({ owner:'Dueño', empleado:'Empleado' }[roles.role] || 'Verificando permisos…') : actor ? ({ admin:'Administrador', supervisor:'Supervisor', cajero:'Cajero', personalizado:'Personalizado' }[actor.role] || 'Cajero') : 'Dueño';
+    var roleLabel = 'Verificando permisos…';
+    if (roles && typeof roles.isOwner === 'function' && roles.isOwner()) roleLabel = 'Dueño';
+    else if (roles && roles.confirmed && roles.role === 'empleado') roleLabel = 'Empleado';
+    if (role) role.textContent = roleLabel;
+  }
+
+  function updateDrawerVersion() {
+    var version = document.getElementById('naMobileDrawerVersion');
+    if (!version) return;
+    var info = root.NA_BUILD_INFO;
+    version.textContent = 'Versión local';
+    if (!info || !info.hash || info.hash.indexOf('__') === 0) return;
+    var date = new Date(info.date);
+    if (isNaN(date.getTime())) return;
+    version.textContent = 'Versión ' + info.hash.slice(0, 7) + ' · ' + date.toLocaleDateString('es-PE', { timeZone:'America/Lima', day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  function loadDrawerBuildInfo() {
+    updateDrawerVersion();
+    if (root.NA_BUILD_INFO || document.getElementById('naBuildInfoScript')) return;
+    var script = node('script');
+    script.id = 'naBuildInfoScript';
+    script.src = 'js/config/build-info.js';
+    script.onload = updateDrawerVersion;
+    document.body.appendChild(script);
   }
 
   function createMobileLandscape() {
@@ -658,9 +682,9 @@
       drawer.inert = true;
 
       var drawerHead = node('div', 'na-mobile-drawer-head');
-      var logo = node('img', 'na-mobile-drawer-logo');
-      logo.src = 'assets/icons/icon-192.png';
-      logo.alt = '';
+      // Same sun mark as the top bar logo (styled via .na-mobile-drawer-brand-icon).
+      var logo = node('span', 'na-mobile-drawer-logo na-mobile-drawer-brand-icon');
+      logo.setAttribute('aria-hidden', 'true');
       drawerHead.appendChild(logo);
       var brand = node('div', 'na-mobile-drawer-brand');
       var businessName = document.getElementById('topBusinessName');
@@ -688,7 +712,11 @@
       drawer.appendChild(profile);
       var navigation = node('nav', 'na-mobile-drawer-nav');
       drawer.appendChild(navigation);
+      var version = node('small', 'na-mobile-drawer-version', 'Versión local');
+      version.id = 'naMobileDrawerVersion';
+      drawer.appendChild(version);
       document.body.appendChild(drawer);
+      loadDrawerBuildInfo();
       renderDrawerItems();
     }
 

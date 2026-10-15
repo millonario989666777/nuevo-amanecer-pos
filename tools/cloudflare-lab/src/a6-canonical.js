@@ -39,9 +39,10 @@ export function canonicalRuntimeDenied(url, env, json) {
 async function authorizeCanonicalRead(request, env, helpers) {
   if (request.headers.get('authorization') || request.headers.get('x-session-token')) {
     const auth = await helpers.authorizeSession(request, env);
-    return auth instanceof Response ? auth : helpers.authorizeRead(request, env);
+    if (auth instanceof Response) return { denied: auth };
+    return { denied: await helpers.authorizeRead(request, env), role: auth && auth.posRole };
   }
-  return helpers.authorizeRead(request, env);
+  return { denied: await helpers.authorizeRead(request, env) };
 }
 
 export async function handleA6(request, url, env, helpers) {
@@ -59,8 +60,9 @@ export async function handleA6(request, url, env, helpers) {
     }
 
     if (request.method !== 'GET') return helpers.json({ error:'method_not_allowed' },405,{ allow:'GET, OPTIONS' });
-    const denied = await authorizeCanonicalRead(request,env,helpers); if (denied) return denied;
-    return canonicalRead(url,getDatabase(env),helpers.json);
+    const access = await authorizeCanonicalRead(request,env,helpers); if (access.denied) return access.denied;
+    // Business expenses are owner-only; employees get them omitted from the bulk snapshot.
+    return canonicalRead(url,getDatabase(env),helpers.json,access.role === 'empleado' ? { omitExpenses:true } : {});
   }
 
   const localDenied = a6LocalDenied(url, env, helpers.json);
@@ -458,7 +460,7 @@ export async function canonicalRead(url,db,json,options={}){
   if(!sameControl({...initial,financial_revision:before?.financial_revision},before))return json({error:'authority_changed'},409);
   if(['cash-sessions','financial-events'].includes(type)&&before.mode!=='ACTIVE')return json({error:'canonical_not_active'},409);
   // FASE7 LAB: additive bulk snapshot under ONE financial_revision fence.
-  if(type==='snapshot')return canonicalSnapshot(db,json,before,plan);
+  if(type==='snapshot')return canonicalSnapshot(db,json,before,plan,options);
   if(type==='status'){
     const counts=await statusCounts(db,before,plan.schema);
     const after=await plan.current();
@@ -729,11 +731,12 @@ const SNAPSHOT_COLLECTIONS=[
  * Pagination: pages under the same fence until complete; lab dataset fits ≤100/page.
  * On mid-read drift → 409 entire response (ZERO partial payload).
  */
-async function canonicalSnapshot(db,json,before,plan){
+async function canonicalSnapshot(db,json,before,plan,options={}){
   if(!before||!['CANONICAL_READ_ONLY','ACTIVE'].includes(before.mode)||!before.active_promotion_id)return json({error:'canonical_not_published'},409);
   const payload={};
   for(const [type,key] of SNAPSHOT_COLLECTIONS){
     if(['cash-sessions','financial-events'].includes(type)&&before.mode!=='ACTIVE'){payload[key]=[];continue;}
+    if(type==='expenses'&&options.omitExpenses){payload[key]=[];continue;}
     const items=[];
     let pageKey='';
     let pages=0;

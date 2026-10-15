@@ -845,10 +845,11 @@ function validatePayment(method, totalCents, payment) {
 }
 
 async function stageImport(request, env) {
-  const frozen = await authorityFence(getDatabase(env));
-  if (frozen) return frozen;
+  // Role check first: employees are refused before any authority state is revealed.
   const auth = await authorizeSession(request, env);
   if (auth instanceof Response) return auth;
+  const frozen = await authorityFence(getDatabase(env));
+  if (frozen) return frozen;
   const deviceId = auth.principalId;
   let body;
   try { body = await request.json(); } catch { return json({ error: 'invalid_json' }, 400); }

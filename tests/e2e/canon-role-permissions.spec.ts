@@ -64,14 +64,17 @@ test('employee cash flow offers expense creation only with their open shift', as
   await expect(button).toBeHidden();
 });
 
-test('permission feedback is centered below the top bar on mobile', async ({ page }) => {
+test('permission feedback covers the viewport with a blocking backdrop on mobile', async ({ page }) => {
   await page.setViewportSize({width:390,height:844});
   await rolePage(page,'empleado');
   await page.evaluate(()=>window.goPage('pageGastos'));
   const overlay=page.locator('#naNoPermission');
   await expect(overlay).toBeVisible();
   const bounds=await overlay.boundingBox();
-  expect(bounds.y).toBeGreaterThanOrEqual(72);
+  expect(bounds.y).toBe(0);
+  expect(bounds.height).toBeGreaterThanOrEqual(844);
+  expect(await overlay.evaluate(el=>getComputedStyle(el).backgroundColor)).toMatch(/rgba\(15, 23, 42, 0\.55\)/);
+  expect(await page.evaluate(()=>document.elementFromPoint(20,820)?.id)).toBe('naNoPermission');
   const box=await overlay.locator('.na-pin-box').boundingBox();
   const button=await overlay.getByRole('button',{name:'Volver a la venta'}).boundingBox();
   expect(button.width).toBeGreaterThanOrEqual(box.width-48);

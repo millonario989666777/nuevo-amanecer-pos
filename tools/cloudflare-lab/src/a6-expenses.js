@@ -80,9 +80,9 @@ export async function createCanonicalExpense(request,env,auth,json) {
 
   const db = getDatabase(env);
   const hash = await sha256Hex(stableStringify({command:EXPENSE_COMMAND,body}));
+  if (auth.posRole === 'empleado' && !await employeeCashExpenseAllowed(db, body, auth)) return json({error:'forbidden_role',action:'expense.create'},403);
   const existing = await replay(db,body,hash,json,auth);
   if (existing) return existing;
-  if (auth.posRole === 'empleado' && !await employeeCashExpenseAllowed(db, body, auth)) return json({error:'forbidden_role',action:'expense.create'},403);
   const denied = await authorityError(db,body,auth);
   if (denied) return json({error:denied},409);
   if (await namespaceCollision(db,body.operation_id)) return json({error:'operation_id_conflict',operation_id:body.operation_id},409);
