@@ -28,9 +28,9 @@
   }
   function findLocal(dni) {
     var keys = aliases(dni);
-    var c = legacyList().find(function (x) { return keys.indexOf(digits(x && x.dni)) >= 0; });
+    var c = legacyList().find(function (x) { return !root.NA_DOC.isPlaceholderDoc(x && x.dni) && keys.indexOf(digits(x && x.dni)) >= 0; });
     if (c) return { id: c.id, name: c.nombre };
-    var k = canonList().find(function (x) { return keys.indexOf(digits(x && x.document)) >= 0; });
+    var k = canonList().find(function (x) { return !root.NA_DOC.isPlaceholderDoc(x && x.document) && keys.indexOf(digits(x && x.document)) >= 0; });
     return k ? { id: k.customer_id, name: k.name } : null;
   }
   function hint(text) {

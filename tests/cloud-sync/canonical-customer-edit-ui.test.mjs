@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { docHelpers } from '../helpers/doc-helpers.mjs';
 
 // QA CANON: "DATOS DEL CLIENTE" only showed "Clientes está protegido". The contact editor
 // already saves through canonical customer.contact.set, so in CANON it is a canonical
@@ -33,7 +34,7 @@ function contactHarness({ canonicalOn, userLock = false }) {
   const d = dom();
   const toasts = [];
   const store = new Map(userLock ? [['na_lock_clientes', 'true']] : []);
-  const ctx = vm.createContext({
+  const ctx = vm.createContext({ ...docHelpers,
     document: d.document, console,
     clientes: [{ id: 'C-1', nombre: 'Luis', tel: '' }],
     toast: (m, t) => toasts.push([m, t]),
@@ -75,7 +76,7 @@ function bridgeHarness({ lineValue = '', policyResult = true, createFails = fals
   for (const [id, v] of [['cNombre', 'Ana Pérez'], ['cDni', ''], ['cTel', ''], ['cDir', ''], ['cLinea', lineValue]]) { const n = d.el('input'); n.id = id; n.value = v; }
   const calls = [];
   const toasts = [];
-  const ctx = vm.createContext({
+  const ctx = vm.createContext({ ...docHelpers,
     document: d.document, console,
     toast: (m, t) => toasts.push([m, t]),
     cerrarModal: id => calls.push(['close', id]),
@@ -155,7 +156,7 @@ function identityHarness({ setResult, pendingAfter = null } = {}) {
   const d = dom();
   const toasts = [], calls = [];
   let pending = null;
-  const ctx = vm.createContext({
+  const ctx = vm.createContext({ ...docHelpers,
     document: d.document, console,
     clientes: [{ id: 'C-1', nombre: 'Luis', tel: '', dni: '12345678', dir: 'Jr. Uno 1' }, { id: 'C-2', nombre: 'Rosa Bodega', tel: '', dni: '20111111111', dir: '' }],
     toast: (m, t) => toasts.push([m, t]),

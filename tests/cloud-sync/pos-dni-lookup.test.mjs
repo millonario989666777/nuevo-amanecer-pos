@@ -242,7 +242,7 @@ test('cliente: RUC de 11 dígitos rellena razón social y dirección vacía; 9-1
   const posted = [];
   const win = { document, navigator: { onLine: true }, setTimeout: () => 0,
     NA_ROLES: { api: async (path, body) => { posted.push([path, body]); return { status: 'found', name: 'MI EMPRESA SAC', address: 'AV. LIMA 123', doc_type: 'ruc' }; } } };
-  vm.runInNewContext(src, { window: win, globalThis: win, Date, String, Array, Object });
+  vm.runInNewContext(readFileSync("POS/js/core/utils.js","utf8") + "\n" + src, { window: win, globalThis: win, Date, String, Array, Object });
   els.cDni.value = '1234567890'; await win.NA_DNI_LOOKUP.check();
   assert.equal(posted.length, 0);
   els.cDni.value = '20123456786'; await win.NA_DNI_LOOKUP.check();
@@ -265,7 +265,7 @@ async function clientHarness({ clientes = [], reply, online = true } = {}) {
   const timers = [];
   const win = { document, navigator: { onLine: online }, setTimeout: fn => { timers.push(fn); return 0; },
     NA_ROLES: { api: async (path, body) => { posted.push(body.dni); return reply ? reply(body.dni) : { status: 'manual', reason: 'not_found' }; } } };
-  vm.runInNewContext(`var clientes = ${JSON.stringify(clientes)};\n` + src, { window: win, globalThis: win, Date, String, Array, Object, Number });
+  vm.runInNewContext(readFileSync("POS/js/core/utils.js","utf8") + "\n" + `var clientes = ${JSON.stringify(clientes)};\n` + src, { window: win, globalThis: win, Date, String, Array, Object, Number });
   const type = async v => { els.cDni.value = v; await win.NA_DNI_LOOKUP.check(); };
   return { els, posted, type, timers, api: win.NA_DNI_LOOKUP, hint: () => els.cDniHint?.textContent || '' };
 }

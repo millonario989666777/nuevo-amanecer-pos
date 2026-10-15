@@ -124,7 +124,7 @@
     add.push(center((type === 'boleta' ? 'BOLETA DE VENTA' : 'FACTURA') + ' ' + f.serie + '-' + String((sale && sale.id) || '000000'), w));
     add.push(center('Formato de impresion. No es', w)); add.push(center('comprobante electronico SUNAT', w));
     if (f.showClient) add.push(('Cliente: ' + (cust ? (cust.nombre || cust.name || '') : 'Cliente general')).slice(0, w));
-    if (f.showDoc) add.push((cust && cust.dni ? docLabel(cust.dni) + ': ' + cust.dni : (type === 'factura' ? 'RUC: ---' : 'DNI: ---')).slice(0, w));
+    if (f.showDoc) add.push((cust && _naDocumentValue(cust.dni) ? docLabel(cust.dni) + ': ' + cust.dni : (type === 'factura' ? 'RUC: ---' : 'DNI: ---')).slice(0, w));
     add.push('-'.repeat(w));
     var at = lines.indexOf(''); if (at < 0) at = 0;
     lines.splice(at + 1, 0, add.join('\n'));

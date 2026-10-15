@@ -108,15 +108,11 @@
 #pageClientes .na-v2-name-line{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 #pageClientes .na-v2-client-head h2,#pageClientes .na-v2-subhead h2,#pageClientes .na-v2-behavior-hero h2{margin:0;font-size:25px;line-height:1.13;color:var(--ink,#172033);letter-spacing:-.025em}
 #pageClientes .na-v2-client-head h2{
-  font-family:"Arial Black","Roboto Black","Noto Sans",system-ui,sans-serif;
-  font-weight:1000;
+  font-family:inherit;
+  font-weight:800;
   text-transform:uppercase;
-  letter-spacing:-.055em;
-  -webkit-text-stroke:.35px currentColor;
-  font-stretch:expanded;
+  letter-spacing:-.01em;
   display:inline-block;
-  transform:scaleX(1.06);
-  transform-origin:left center;
   max-width:94%;
 }
 #pageClientes .na-v2-client-head p,#pageClientes .na-v2-credit-title p,#pageClientes .na-v2-behavior-hero p{margin:7px 0 0;color:var(--slate,#64748b);font-size:12px;font-weight:700}
@@ -345,16 +341,12 @@
 }
 #pageClientes .na-v2-client-head h2{
   grid-row:2;
-  font-family:Impact,"Arial Black","Noto Sans",system-ui,sans-serif;
+  font-family:inherit;
   font-size:clamp(31px,4.25vw,38px);
   line-height:.98;
-  font-weight:1000;
-  letter-spacing:-.045em;
-  color:#080c16;
-  -webkit-text-stroke:.55px #080c16;
-  text-shadow:0 1px 0 rgba(255,255,255,.12);
-  transform:scaleX(1.1);
-  transform-origin:left center;
+  font-weight:800;
+  letter-spacing:-.01em;
+  color:var(--ink,#172033);
   max-width:88%;
 }
 #pageClientes .na-v2-client-head p{
@@ -560,7 +552,6 @@
   }
   #pageClientes .na-v2-client-head h2{
     font-size:28px;
-    transform:scaleX(1.06);
   }
   #pageClientes .na-v2-head-money{
     padding-left:0;
@@ -1069,3 +1060,27 @@
   #pageClientes .na-v2-batch-head{flex-direction:column;align-items:stretch}
   #pageClientes .na-v2-batch-selectall{width:100%}
 }
+
+/* Desktop financial detail: debt/accounts on the left, management on the right. */
+@media (min-width:1024px){
+  #pageClientes .na-client-account-screen .na-client-account-shell{width:min(100%,1400px)}
+  #pageClientes .na-v2-client-head h2{word-break:normal;overflow-wrap:break-word;hyphens:none}
+  #pageClientes .na-v2-client-detail{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;align-items:start}
+  #pageClientes .na-v2-client-detail > .na-v2-back{grid-column:1 / -1;justify-self:start}
+  #pageClientes .na-v2-client-detail > .na-v2-client-head{grid-column:1;grid-row:2}
+  #pageClientes .na-v2-client-detail > .na-v2-accounts-section{grid-column:1;grid-row:3;margin-top:0}
+  #pageClientes .na-v2-client-detail > .na-v2-section:last-child{grid-column:2;grid-row:2 / 4;margin-top:0}
+}
+
+body.dark #pageClientes .na-v2-client-head h2{color:var(--na-dk-text,#f1f5f9)}
+/* Modo oscuro: los degradados claros de la ficha tapaban el color de fondo oscuro. */
+body.dark #pageClientes{--na-v2-surface:var(--na-dk-surface,#1e293b);--na-v2-surface-soft:var(--na-dk-surface-2,#0f172a);--na-v2-border:rgba(148,163,184,.25);--ink:#f1f5f9;--slate:#cbd5e1}
+body.dark #pageClientes .na-client-account-screen .na-client-account-shell{background:var(--na-dk-surface-2,#0f172a)}
+body.dark #pageClientes .na-client-account-screen .na-v2-client-head{background:linear-gradient(135deg,#0f3b3f 0%,#142a3b 100%);border-color:rgba(45,212,191,.28)}
+body.dark #pageClientes .na-client-account-screen .na-v2-client-head::before,body.dark #pageClientes .na-client-account-screen .na-v2-client-head::after{opacity:.08}
+body.dark #pageClientes .na-client-account-screen .na-v2-client-head h2,body.dark #pageClientes .na-client-account-screen .na-v2-head-money strong{color:#f1f5f9}
+body.dark #pageClientes .na-client-account-screen .na-v2-client-head p,body.dark #pageClientes .na-client-account-screen .na-v2-head-money span,body.dark #pageClientes .na-client-account-screen .na-v2-head-money small{color:#cbd5e1}
+body.dark #pageClientes .na-client-account-screen .na-v2-row{background:var(--na-dk-surface,#1e293b);border-color:rgba(148,163,184,.25)}
+body.dark #pageClientes .na-client-account-screen .na-v2-row strong{color:#f1f5f9}
+body.dark #pageClientes .na-client-account-screen .na-v2-row small{color:#cbd5e1}
+body.dark #pageClientes .na-client-account-screen .na-v2-module-icon{background:var(--na-dk-surface-2,#0f172a);border-color:rgba(148,163,184,.25);color:#e2e8f0}

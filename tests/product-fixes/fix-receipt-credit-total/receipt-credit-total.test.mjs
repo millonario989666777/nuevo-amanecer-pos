@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { docHelpers } from '../../helpers/doc-helpers.mjs';
 
 const SHARE = 'POS/js/modules/ticket/share-receipt.js';
 const read = p => readFileSync(p, 'utf8');
@@ -26,7 +27,7 @@ function previousCredits() {
 const V094 = { id: 'V-094', fecha: '2026-10-11', hora: '08:25:00 p. m.', metodo: 'credito', clienteId: 'C-DALILA', clienteNombre: 'DALILA @', cajero: 'Frank', items: [{ name: 'Arroz', qty: 1, precio: 102.5 }] };
 
 function realTicket(extra = {}) {
-  const ctx = vm.createContext({ console, Blob, TextEncoder, Uint8Array, atob, Intl, navigator: {}, document: { addEventListener() {} }, _naDefaults: { ticket: {} }, appConfig: { ticket: {} },
+  const ctx = vm.createContext({ ...docHelpers, console, Blob, TextEncoder, Uint8Array, atob, Intl, navigator: {}, document: { addEventListener() {} }, _naDefaults: { ticket: {} }, appConfig: { ticket: {} },
     _naGetBusiness: () => ({ nombre: 'Nuevo Amanecer', cajero: 'Frank' }), totalV: s => (s.items || []).reduce((sum, i) => sum + i.qty * i.precio, 0),
     desglosarIGV: total => ({ subtotal: total, igv: 0, total }), obtenerHoy: () => '2026-10-11', nowT: () => '20:25', _naHydrateTicket() {}, _naSaveTicketSettings() {}, ...extra });
   for (const p of ['POS/js/modules/ticket/legacy.js', 'POS/js/modules/ticket/zones.js', SHARE]) vm.runInContext(read(p), ctx);
