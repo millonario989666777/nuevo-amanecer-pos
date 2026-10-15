@@ -1,0 +1,25 @@
+/* Sales report only: mobile-first cards, with tables scrolling inside the card. */
+#pageVentas .report-wrap { --sr-bg:#fff; --sr-border:#e2e8f0; --sr-text:#172b36; --sr-muted:#536574; color:var(--sr-text); min-width:0; }
+#pageVentas .report-section, #pageVentas .report-card { background:var(--sr-bg); border:1px solid var(--sr-border); border-radius:16px; box-shadow:0 3px 14px #132d3b08; min-width:0; overflow:hidden; }
+#pageVentas .report-section { margin:16px 0; }
+#pageVentas .report-section-head { display:flex; flex-wrap:wrap; gap:6px 16px; padding:16px; border-bottom:1px solid var(--sr-border); }
+#pageVentas .report-section-head span, #pageVentas .report-card small, #pageVentas .report-rank .meta { color:var(--sr-muted); }
+#pageVentas .report-grid, #pageVentas .report-mini-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+#pageVentas .report-card { padding:16px; }
+#pageVentas .report-table-wrap { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+#pageVentas .report-table { width:100%; border-collapse:collapse; }
+#pageVentas .report-table th, #pageVentas .report-table td { padding:12px; border-bottom:1px solid var(--sr-border); }
+#pageVentas .report-table .main-cell { min-width:130px; overflow-wrap:anywhere; }
+#pageVentas .report-hero { display:flex; flex-wrap:wrap; gap:16px; padding:20px; border-radius:16px; }
+#pageVentas .report-rank-row { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:10px; padding:12px; }
+#pageVentas .report-rank .name { overflow-wrap:anywhere; }
+#pageVentas #ventasReportControls { flex-wrap:wrap; gap:12px; }
+#pageVentas #ventasReportControls[hidden] { display:none; }
+#pageVentas .sales-report-control { min-width:0; flex:1 1 140px; }
+#pageVentas .sales-report-control select, #pageVentas .sales-report-control input { width:100%; min-height:44px; box-sizing:border-box; }
+#pageVentas .sales-report-export { min-height:44px; }
+#pageVentas .sales-report-range { flex-basis:100%; overflow-wrap:anywhere; }
+body.dark #pageVentas .report-wrap { --sr-bg:#182735; --sr-border:#344654; --sr-text:#edf4f8; --sr-muted:#b6c8d3; }
+body.dark #pageVentas .report-table th, body.dark #pageVentas .report-table td, body.dark #pageVentas .report-card { color:var(--sr-text); background:var(--sr-bg); }
+@media(min-width:600px) { #pageVentas .report-grid, #pageVentas .report-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(min-width:1100px) { #pageVentas .report-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
