@@ -61,6 +61,8 @@
   var FEATURE_ROLES = { 'asistencia-empleados': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
+    'credito-cuotas': true,
+    'reparto-abono-multiples-deudas': true,
     'clonar-venta': true,
     'nota-credito-parcial-compras': true,
     'clientes-filtro-deuda': true,

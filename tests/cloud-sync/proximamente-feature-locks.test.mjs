@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { activeCanon } from './canon-browser-harness.mjs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
 
 test('real Worker authenticates then returns feature_locked for every locked registry id without writes', async t => {
   const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
