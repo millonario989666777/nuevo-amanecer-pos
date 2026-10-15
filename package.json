@@ -5,7 +5,9 @@
   "description": "E2E smoke test harness for the Nuevo Amanecer POS CANON app. Test infrastructure only; does not ship with the product.",
   "scripts": {
     "test:e2e": "playwright test",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:visual": "playwright test -c playwright.visual.config.ts",
+    "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots"
   },
   "devDependencies": {
     "@playwright/test": "1.47.2"

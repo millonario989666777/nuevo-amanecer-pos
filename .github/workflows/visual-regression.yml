@@ -1,0 +1,39 @@
+name: Visual Regression
+
+on:
+  pull_request:
+    paths:
+      - 'POS/**'
+      - 'tests/visual/**'
+      - 'playwright.visual.config.ts'
+      - '.github/workflows/visual-regression.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: mcr.microsoft.com/playwright:v1.47.2-jammy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Compare screenshots
+        run: npx playwright test -c playwright.visual.config.ts
+      - name: Upload visual results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: visual-results
+          path: |
+            tests/visual/__screenshots__/
+            test-results/
+          retention-days: 7
