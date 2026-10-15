@@ -87,3 +87,25 @@ test('concurrent edits commit one revision and snapshots expose the same effecti
  const res=await f.fetch('http://localhost/read/canonical/snapshot',{headers:{authorization:'Bearer expense-owner-token'}});
  assert.equal(res.status,200);const snap=await res.json();assert.equal(snap.expenses[0].concept,'Concurrent');assert.equal(snap.expenses[0].revision,1);
 });
+test('edits cannot move expense_date into the future or out of a closed shift; same-date edits still work',async t=>{
+ const {f,call}=await setup(t);
+ const future=new Date(Date.now()+3*86400e3).toISOString().slice(0,10);
+ let res=await call('expense.update',{...common(f,'future'),expected_revision:0,concept:'X',category:'Otro',note:null,expense_date:future});
+ assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_in_future');
+ const base=common(f,'open2');delete base.expense_id;
+ assert.equal((await call('cash.open',{...base,session_id:'shift2',opening_cents:10000})).status,201);
+ assert.equal((await call('expense.create',{...common(f,'cash2'),expense_id:'cash2',amount_cents:500,concept:'Cash',category:'Otro',payment_method:'efectivo',expense_date:'2026-10-15',session_id:'shift2',expected_session_revision:0})).status,201);
+ res=await call('expense.update',{...common(f,'open-move'),expense_id:'cash2',expected_revision:0,concept:'Cash',category:'Otro',note:null,expense_date:'2026-10-14'});
+ assert.equal(res.status,201,'open shift allows date correction');
+ assert.equal((await call('cash.close',{...base,operation_id:'close2',session_id:'shift2',expected_session_revision:1,counted_cents:9500})).status,201);
+ res=await call('expense.update',{...common(f,'closed-move'),expense_id:'cash2',expected_revision:1,concept:'Cash',category:'Otro',note:null,expense_date:'2026-10-13'});
+ assert.equal(res.status,409);assert.equal((await res.json()).error,'expense_date_locked_closed_shift');
+ res=await call('expense.update',{...common(f,'closed-same'),expense_id:'cash2',expected_revision:1,concept:'Cash renamed',category:'Otro',note:null,expense_date:'2026-10-14'});
+ assert.equal(res.status,201,'closed shift still allows non-date edits');
+});
+test('revision lookups are scoped by promotion_id',()=>{
+ for(const file of ['tools/cloudflare-lab/src/a6-expenses.js','tools/cloudflare-lab/src/a6-canonical.js']){
+  const src=readFileSync(file,'utf8');const subs=src.match(/SELECT MAX\(revision\) FROM canonical_expense_revisions WHERE [^)]*/g)||[];
+  assert.ok(subs.length>=2,file);for(const q of subs)assert.match(q,/promotion_id=/,file+': '+q);
+ }
+});

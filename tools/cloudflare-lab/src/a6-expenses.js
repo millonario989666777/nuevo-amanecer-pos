@@ -157,6 +157,9 @@ export async function createCanonicalExpense(request,env,auth,json) {
   return json(result,201);
 }
 
+// Lima has a fixed UTC-5 offset (no DST).
+export function limaToday(now=Date.now()) { return new Date(now-5*3600e3).toISOString().slice(0,10); }
+
 export async function expenseRevisionsAvailable(db) {
   return !!await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='canonical_expense_revisions'").first();
 }
@@ -188,14 +191,18 @@ export async function reviseCanonicalExpense(command, request, env, auth, json) 
     return json({...result(row),status:'already_processed',idempotent:true});
   }
   const existing=await replayRevision();if(existing)return existing;
-  const expense=await db.prepare(`SELECT e.*,COALESCE(r.revision,0) AS revision,r.action FROM canonical_expenses e
+  const expense=await db.prepare(`SELECT e.*,COALESCE(r.revision,0) AS revision,r.action,r.expense_date AS revised_expense_date FROM canonical_expenses e
     LEFT JOIN canonical_expense_revisions r ON r.expense_id=e.expense_id AND r.promotion_id=e.promotion_id
-      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id)
+      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id AND promotion_id=e.promotion_id)
     WHERE e.expense_id=?1 AND e.promotion_id=?2`).bind(body.expense_id,body.promotion_id).first();
   if(!expense)return json({error:'expense_not_found'},404);
   if(Number(expense.revision)!==body.expected_revision)return json({error:'stale_expense_revision'},409);
   if(expense.action==='void')return json({error:'expense_voided'},409);
   if(!editing&&Number(expense.cash_delta_cents)!==0)return json({error:'cash_expense_void_requires_adjustment'},409);
+  const currentDate=expense.action==='edit'&&expense.revised_expense_date?expense.revised_expense_date:expense.expense_date;
+  const dateChanged=editing&&body.expense_date!==currentDate;
+  if(dateChanged&&body.expense_date>limaToday())return json({error:'expense_date_in_future'},409);
+  if(dateChanged&&expense.session_id&&await db.prepare('SELECT 1 FROM canonical_cash_closures WHERE session_id=?1').bind(expense.session_id).first())return json({error:'expense_date_locked_closed_shift'},409);
   if(await namespaceCollision(db,body.operation_id)||await db.prepare('SELECT 1 FROM canonical_expense_operations WHERE operation_id=?1').bind(body.operation_id).first())return json({error:'operation_id_conflict'},409);
   // CAS and authority are checked again in the same atomic INSERT; unique revision
   // rejects concurrent contenders. Nothing touches the base ledger or cash state.
@@ -204,14 +211,15 @@ export async function reviseCanonicalExpense(command, request, env, auth, json) 
     const inserted=await db.prepare(`INSERT INTO canonical_expense_revisions
       (operation_id,expense_id,promotion_id,revision,action,concept,category,note,expense_date,request_hash,device_id,created_at)
       SELECT ?1,?2,?3,?4+1,?5,?6,?7,?8,?9,?10,?11,?12
-      WHERE COALESCE((SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=?2),0)=?4
+      WHERE COALESCE((SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=?2 AND promotion_id=?3),0)=?4
+        AND (?17=0 OR ?18 IS NULL OR NOT EXISTS(SELECT 1 FROM canonical_cash_closures WHERE session_id=?18))
         AND EXISTS(SELECT 1 FROM canonical_control c JOIN devices d ON d.device_id=?11
           WHERE c.id=1 AND c.mode='ACTIVE' AND c.active_promotion_id=?3 AND c.authority_epoch=?13
           AND c.revision=?14 AND c.minimum_client_contract=?15 AND d.role='writer' AND d.status='active' AND d.credential_hash=?16)
       RETURNING *`).bind(body.operation_id,body.expense_id,body.promotion_id,body.expected_revision,action,
         editing?body.concept.trim():null,editing?body.category.trim():null,editing?(body.note||null):null,
-        editing?body.expense_date:null,hash,auth.principalId,body.created_at,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.credentialHash).first();
-    if(!inserted){const denied=await authorityError(db,body,auth);return json({error:denied||'stale_expense_revision'},409);}
+        editing?body.expense_date:null,hash,auth.principalId,body.created_at,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.credentialHash,dateChanged?1:0,expense.session_id||null).first();
+    if(!inserted){const denied=await authorityError(db,body,auth);if(!denied&&dateChanged&&expense.session_id&&await db.prepare('SELECT 1 FROM canonical_cash_closures WHERE session_id=?1').bind(expense.session_id).first())return json({error:'expense_date_locked_closed_shift'},409);return json({error:denied||'stale_expense_revision'},409);}
     return json(result(inserted),201);
   } catch(error) {
     const recovered=await replayRevision();if(recovered)return recovered;

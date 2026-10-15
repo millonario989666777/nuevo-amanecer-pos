@@ -7,7 +7,7 @@ function context(){
  c.window=c;vm.runInContext(readFileSync('POS/js/core/lima-time.js','utf8'),c);vm.runInContext(readFileSync('POS/js/legacy-inline/inline-05.js','utf8'),c);return c;
 }
 test('categories, cashier identities, physical units, missing costs and all CSV sections',()=>{
- const c=context();c.ventas=[{id:'a',fecha:'2026-10-15',total:20,cajeroId:'a',cajeroNombre:'Ana; "A"',metodo:'yape',items:[{id:1,name:'Medicina',precio:10,qty:2}]},{id:'b',fecha:'2026-10-15',total:7,items:[{id:2,name:'Libre',precio:7,qty:1}]},{id:'void',fecha:'2026-10-15',anulada:true,total:100,items:[]}];
+ const c=context();c.ventas=[{id:'a',fecha:'2026-10-15',total:20,cajeroId:'a',cajeroNombre:'Ana; "A"',metodo:'yape',items:[{id:1,name:'Medicina',precio:10,qty:2,costo:3}]},{id:'b',fecha:'2026-10-15',total:7,items:[{id:2,name:'Libre',precio:7,qty:1}]},{id:'void',fecha:'2026-10-15',anulada:true,total:100,items:[]}];
  const r=c._naF8BuildReport({from:'2026-10-15',to:'2026-10-15'});
  assert.equal(r.categories[0].name,'Farmacia');assert.equal(r.categories[0].revenue,20);assert.equal(r.categories[0].units,2);assert.equal(r.categories[0].margin,70);assert.equal(r.categories[1].margin,null);assert.equal(r.cashiers[1].name,'Sin cajero');assert.equal(r.metrics.gross,null);
  const csv=c._naF8Csv(r);for(const section of ['Resumen','Categorias','Cajeros','Formas_pago','Productos','Clientes','Dias','Meses'])assert.ok(csv.includes(section));assert.ok(csv.includes('"Ana; ""A"""'));assert.equal(r.sales.length,2);

@@ -47,8 +47,14 @@
       ? root.obtenerHoy()
       : new Date().toLocaleDateString('en-CA');
   }
+  function modalMode(edit) {
+    var modal=root.document.getElementById('mGasto');if(!modal)return;
+    var title=modal.querySelector('.mhead-title'),ok=modal.querySelector('.mbtn-ok');
+    if(title&&title.lastChild)title.lastChild.textContent=edit?' Editar gasto':' Registrar gasto';
+    if(ok&&ok.lastChild)ok.lastChild.textContent=edit?' Guardar cambios':' Registrar';
+  }
   function resetAndOpen() {
-    editing=null;
+    editing=null;modalMode(false);
     ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.disabled=false;field.readOnly=false;}});
     ['gasDesc','gasNota'].forEach(function (id) {
       var field = root.document.getElementById(id);
@@ -107,7 +113,7 @@
   root.NA_EXPENSES = {
     edit: function(expense) {
       if(!owner()||!enabled()||busy||expense.voided)return;
-      resetAndOpen();editing=expense;
+      resetAndOpen();editing=expense;modalMode(true);
       [['gasDesc',expense.desc],['gasCat',expense.cat],['gasNota',expense.nota],['gasFecha',expense.fecha],['gasMonto',expense.monto],['gasMetodo',expense.metodo]].forEach(function(pair){var field=root.document.getElementById(pair[0]);if(field)field.value=pair[1]||'';});
       ['gasMonto','gasMetodo'].forEach(function(id){var field=root.document.getElementById(id);if(field){field.readOnly=true;field.disabled=true;}});
     },
@@ -136,8 +142,9 @@
       busy=true;
       try {
         var input=Object.assign(revisionInput(editing),{concept:clean(root.document.getElementById('gasDesc')?.value),category:clean(root.document.getElementById('gasCat')?.value),note:clean(root.document.getElementById('gasNota')?.value),expense_date:clean(root.document.getElementById('gasFecha')?.value)});
+        if(input.expense_date>today()){notify('La fecha del gasto no puede ser futura.');return false;}
         await revise('expense.update',input);editing=null;closeModal();await refreshCanonical();renderExpenseViews();notify('Gasto editado','success');return true;
-      }catch(error){notify('No se pudo editar el gasto: '+error.message);return false;}finally{busy=false;}
+      }catch(error){var m=String(error&&error.message||'');notify(m.includes('expense_date_locked_closed_shift')?'El turno de este gasto ya está cerrado: no se puede cambiar su fecha.':m.includes('expense_date_in_future')?'La fecha del gasto no puede ser futura.':'No se pudo editar el gasto: '+m);return false;}finally{busy=false;}
     }
     if (!authorized()) return false;
 

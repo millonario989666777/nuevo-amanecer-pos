@@ -600,9 +600,9 @@ async function loadCollectionRows(db,type,before,page,schema=null){
     const expenseReady=await expenseLedgerAvailable(db,schema);
     const revisionsReady=expenseReady&&(schema?schema.has('canonical_expense_revisions'):await expenseRevisionsAvailable(db));
     const overlay=revisionsReady?`LEFT JOIN canonical_expense_revisions r ON r.expense_id=e.expense_id AND r.promotion_id=e.promotion_id
-      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id)
+      AND r.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id AND promotion_id=e.promotion_id)
       LEFT JOIN canonical_expense_revisions m ON m.expense_id=e.expense_id AND m.promotion_id=e.promotion_id AND m.action='edit'
-      AND m.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id AND action='edit')`:'';
+      AND m.revision=(SELECT MAX(revision) FROM canonical_expense_revisions WHERE expense_id=e.expense_id AND action='edit' AND promotion_id=e.promotion_id)`:'';
     const metadata=['concept','category','expense_date','note'].map(k=>revisionsReady?`CASE WHEN m.expense_id IS NULL THEN e.${k} ELSE m.${k} END AS ${k}`:`e.${k}`).join(',');
     rows=before.mode==='ACTIVE'&&expenseReady
       ? await db.prepare(`SELECT e.expense_id AS read_key,e.expense_id,e.operation_id,e.promotion_id,e.session_id,e.amount_cents,e.cash_delta_cents,
