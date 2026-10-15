@@ -1,3 +1,4 @@
+import { cashSessionCashierAvailable, authenticatedCashier } from './cash-session-cashier.js';
 import { getDatabase } from './database-binding.js';
 import { sha256Hex, stableStringify } from './a5-import-core.js';
 
@@ -144,15 +145,18 @@ export async function createCanonicalFinancial(command, request, env, auth, json
     Object.assign(result,{session_id:body.session_id,session_revision:session.revision+1,expected_cents:session.expected_cents+cashDelta});
   }
   const effects = [];
+  const cashierTable = command === 'cash.open' ? 'canonical_cash_sessions' : command === 'cash.close' ? 'canonical_cash_closures' : null;
+  const cashierReady = cashierTable && await cashSessionCashierAvailable(db, cashierTable);
+  const cashier = cashierReady ? await authenticatedCashier(db, auth) : null;
   if (command === 'cash.open') {
     Object.assign(result,{session_id:body.session_id,session_revision:0,expected_cents:body.opening_cents});
-    effects.push(db.prepare(`INSERT INTO canonical_cash_sessions(session_id,promotion_id,open_operation_id,opening_cents,cash_movement_watermark,opened_at)
-      VALUES(?1,?2,?3,?4,(SELECT COALESCE(MAX(rowid),0) FROM cash_movements),?5)`)
-      .bind(body.session_id,body.promotion_id,body.operation_id,body.opening_cents,body.created_at));
+    effects.push(db.prepare(`INSERT INTO canonical_cash_sessions(session_id,promotion_id,open_operation_id,opening_cents,cash_movement_watermark,opened_at${cashierReady ? ',opened_by_user_id,opened_by_name' : ''})
+      VALUES(?1,?2,?3,?4,(SELECT COALESCE(MAX(rowid),0) FROM cash_movements),?5${cashierReady ? ',?6,?7' : ''})`)
+      .bind(body.session_id,body.promotion_id,body.operation_id,body.opening_cents,body.created_at,...(cashierReady ? [cashier.userId,cashier.name] : [])));
   } else if (command === 'cash.close') {
     Object.assign(result,{counted_cents:body.counted_cents,difference_cents:body.counted_cents-session.expected_cents});
-    effects.push(db.prepare(`INSERT INTO canonical_cash_closures(session_id,close_operation_id,expected_cents,counted_cents,difference_cents,cash_movement_watermark,closed_at)
-      VALUES(?1,?2,?3,?4,?5,?6,?7)`).bind(body.session_id,body.operation_id,session.expected_cents,body.counted_cents,result.difference_cents,session.closing_watermark,body.created_at));
+    effects.push(db.prepare(`INSERT INTO canonical_cash_closures(session_id,close_operation_id,expected_cents,counted_cents,difference_cents,cash_movement_watermark,closed_at${cashierReady ? ',closed_by_user_id,closed_by_name' : ''})
+      VALUES(?1,?2,?3,?4,?5,?6,?7${cashierReady ? ',?8,?9' : ''})`).bind(body.session_id,body.operation_id,session.expected_cents,body.counted_cents,result.difference_cents,session.closing_watermark,body.created_at,...(cashierReady ? [cashier.userId,cashier.name] : [])));
   } else {
     result.event_id = body.operation_id;
     result.cash_delta_cents = cashDelta;
