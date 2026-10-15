@@ -20,9 +20,9 @@ test('CANON image batch previews, persists, resolves and undoes without mutating
   await setup(page);
   const before=await page.evaluate('JSON.stringify(productos)'),code=await page.evaluate('productos[0].sku');
   await page.locator('#productImageBatchFiles').setInputFiles({name:'lote.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,entries:[{codes:[code],image}]}))});
-  await expect(page.locator('#productImageBatchStatus')).toContainText('1 fotos listas');
+  await expect(page.locator('#productImageBatchStatus')).toContainText('Vinculadas: 1');
   await page.locator('#productImageBatchReplace').check();
-  await expect(page.locator('#productImageBatchStatus')).toContainText('1 fotos listas');
+  await expect(page.locator('#productImageBatchStatus')).toContainText('Vinculadas: 1');
   await page.locator('#productImageBatchApply').click();
   await expect(page.locator('#productImageBatchStatus')).toContainText('1 fotos guardadas y verificadas');
   expect(await page.evaluate('JSON.stringify(productos)')).toBe(before);
@@ -44,7 +44,7 @@ test('CANON image batch previews, persists, resolves and undoes without mutating
 test('a changed stored catalog rejects a stale preview',async({page})=>{
   await setup(page);const code=await page.evaluate('productos[0].sku');
   await page.locator('#productImageBatchFiles').setInputFiles({name:'lote.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,entries:[{codes:[code],image}]}))});
-  await expect(page.locator('#productImageBatchStatus')).toContainText('1 fotos listas');
+  await expect(page.locator('#productImageBatchStatus')).toContainText('Vinculadas: 1');
   await page.evaluate(async({code,image})=>{await new Promise<void>((resolve,reject)=>{const r=indexedDB.open('nuevo-amanecer-product-images-v1',1);r.onsuccess=()=>{const db=r.result,tx=db.transaction('catalogs','readwrite');tx.objectStore('catalogs').put({entries:[{codes:[code],image}]},'canon:image-batch-test');tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>reject(tx.error);};});},{code,image});
   await page.locator('#productImageBatchApply').click();
   await expect(page.locator('#productImageBatchStatus')).toContainText('catálogo cambió');

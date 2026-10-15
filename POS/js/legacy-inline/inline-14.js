@@ -7,14 +7,20 @@ function _naSecRenderProductImage(visual,product,safeImage,size){
   const placeholder=()=>{if(window.NA_ICON&&NA_ICON_IS_DEFAULT_PRODUCT(product?.icon)){visual.textContent='';visual.classList.add('na-noimg');}else visual.textContent=product?.icon||'📦';};
   if(!safeImage){placeholder();return;}
   const image=document.createElement('img');
+  image.loading='lazy';image.decoding='async';
+  // Measure the existing slot once mounted: responsive CSS remains the authority.
+  const dimensions=()=>{const box=visual.getBoundingClientRect();image.width=size||Math.round(box.width)||70;image.height=size||Math.round(box.height)||70;};
+  image.style.width='100%';image.style.height='100%';
   image.src=safeImage;
   image.alt=String(product?.name||'Producto');
-  if(size)image.style.cssText=`width:${size}px;height:${size}px;object-fit:cover;border-radius:6px`;
+  if(size)image.style.cssText=`width:${size}px;height:${size}px;object-fit:contain;border-radius:inherit`;
+  image.style.setProperty('object-fit','contain','important');
   image.addEventListener('error',()=>{
     image.remove();
     placeholder();
   },{once:true});
-  visual.appendChild(image);
+  visual.appendChild(image);dimensions();
+  if(!size)requestAnimationFrame(dimensions);
 }
 function _naSecProductCard(parent,product,allowNoStock){
   const box=modoMayorista&&!_naCanonSaleMode()&&product.precioCaja>0&&product.unidCaja>0,price=box?product.precioCaja:product.precio,label=box?`Caja x${product.unidCaja} · S/ ${_naNumber(price).toFixed(2)}`:`S/ ${_naNumber(price).toFixed(2)}`;

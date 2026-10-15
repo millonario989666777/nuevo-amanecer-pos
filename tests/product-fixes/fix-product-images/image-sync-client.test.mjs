@@ -14,17 +14,16 @@ test('remove posts the exact delete shape and refreshes',async()=>{
  assert.deepEqual(JSON.parse(JSON.stringify(f.calls[0].body)),{product_id:'p1',delete:true});
  assert.ok(f.calls.at(-1).path.startsWith('/auth/product-images?'));
 });
-test('thumbnail falls back to 240px and rejects oversized output',async()=>{
- for(const finalLength of [50000,60001]){
-  const calls=[],draws=[];
-  const canvas={getContext:()=>({drawImage:(...args)=>draws.push(args.slice(3))}),toDataURL:(type,quality)=>{calls.push([canvas.width,canvas.height,quality]);return 'x'.repeat(calls.length<3?60001:finalLength);}};
+test('thumbnail searches sizes and qualities, with JPEG only when WebP unsupported',async()=>{
+ for(const fallback of [false,true]){
+  const calls=[];const canvas={getContext:()=>({drawImage(){}}),toDataURL:(type,quality)=>{calls.push([canvas.width,type,quality]);if(fallback&&type==='image/webp')return 'data:image/png;base64,AAAA';return 'data:'+type+';base64,'+'A'.repeat(canvas.width===320&&quality===.7?52000:54000);}};
   class Image {constructor(){this.width=640;this.height=480;}set src(x){this.onload();}}
-  const context=vm.createContext({setTimeout:()=>0,Image,document:{readyState:'loading',addEventListener(){},createElement:()=>canvas}});
-  vm.runInContext(script,context);
-  const result=context.NuevoAmanecerImageSync.thumbnail('raw');
-  if(finalLength>60000)await assert.rejects(result,/Miniatura demasiado grande/);else assert.equal((await result).length,50000);
-  assert.deepEqual(calls,[[320,240,.72],[320,240,.5],[240,180,.6]]);
-  assert.deepEqual(draws,[[320,240],[240,180]]);
+  const context=vm.createContext({setTimeout:()=>0,Image,document:{readyState:'loading',addEventListener(){},createElement:()=>canvas}});vm.runInContext(script,context);
+  const result=await context.NuevoAmanecerImageSync.thumbnail('raw');assert.ok(result.startsWith('data:image/'+(fallback?'jpeg':'webp')));assert.ok(result.split(',')[1].length*3/4<=40000);assert.ok(result.length<60000);
+  assert.deepEqual(calls.slice(fallback?1:0),[.8,.7,.6,.5].map(q=>[384,fallback?'image/jpeg':'image/webp',q]).concat([[320,fallback?'image/jpeg':'image/webp',.8],[320,fallback?'image/jpeg':'image/webp',.7]]));
+  canvas.toDataURL=type=>'data:'+type+';base64,'+'A'.repeat(canvas.width===256?52000:54000);assert.ok((await context.NuevoAmanecerImageSync.thumbnail('raw')).length<60000);assert.equal(canvas.width,256);
+  canvas.toDataURL=type=>'data:'+type+';base64,'+'A'.repeat(54000);await assert.rejects(context.NuevoAmanecerImageSync.thumbnail('raw'),/Miniatura demasiado grande/);
+  assert.deepEqual(Array.from(context.NuevoAmanecerImageSync._test.THUMBNAIL_SIZES),[384,320,256]);
  }
 });
 test('client always fetches images by product_id, never by code',async()=>{const f=fixture();await f.sync.refresh(true);f.sync.source({id:'nope',sku:'001'});f.sync.source({id:'p1'});await tick();assert.ok(f.calls.some(c=>c.path.includes('/item?product_id=')));assert.ok(f.calls.every(c=>!/[?&]code=/.test(c.path)));assert.ok(!/[?&]code=/.test(script));});

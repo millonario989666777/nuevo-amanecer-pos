@@ -1,3 +1,6 @@
+// One capture listener handles non-bubbling image errors in inventory HTML templates.
+if(typeof document!=='undefined')document.addEventListener('error',function(event){const image=event.target;if(image?.matches?.('img[data-na-prod-img]'))image.replaceWith(document.createTextNode(image.dataset.naProdImg||'📦'));},true);
+function _naInventoryImageMarkup(source,product){const mobile=document.getElementById('pageInventario')?.classList.contains('inv-mobile-simple')&&window.matchMedia('(max-width: 767px)').matches,width=mobile?42:44,height=mobile?56:44;return `<img src="${_naEsc(source)}" alt="${_naEsc(product.name||'Producto')}" data-na-prod-img="${_naEsc(product.icon||'📦')}" width="${width}" height="${height}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;}
 
 // Seguridad: solamente se aceptan imágenes rasterizadas y la vista previa usa nodos DOM.
 window.NuevoAmanecerProductImageOverlay=Object.freeze({
@@ -61,7 +64,7 @@ function _naSafeSetProductPreview(source,altText){
     const image=document.createElement('img');
     image.src=safeSource;
     image.alt=String(altText||'Vista previa del producto');
-    image.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:8px';
+    image.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit';
     preview.appendChild(image);
   }else preview.textContent=document.getElementById('pIcon')?.value||'📦';
   const remove=document.getElementById('pRemoveImageBtn');
