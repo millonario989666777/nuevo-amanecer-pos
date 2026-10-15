@@ -1,3 +1,4 @@
+import { cashSessionCashierAvailable } from './cash-session-cashier.js';
 import { getDatabase } from './database-binding.js';
 import { rememberLotSchema, lotsReady } from './stock-lots.js';
 import { A6_FIELD_MAP, A6_MAPPING_VERSION, A6_POLICY, A6_SCHEMA_VERSION, a6PolicyHash, mapStagingRow } from './a6-mapping.js';
@@ -601,10 +602,16 @@ async function loadCollectionRows(db,type,before,page,schema=null){
           .bind(before.active_promotion_id,page.key,page.limit+1).all()
       : {results:[]};
   } else if(sqlName==='cash_sessions'){
-    rows=await db.prepare(`SELECT session_id AS read_key,session_id,promotion_id,open_operation_id,opening_cents,cash_movement_watermark,opened_at,status,
-      (SELECT o.device_id FROM canonical_financial_operations o WHERE o.operation_id=open_operation_id) AS opened_by_device_id,
-      close_operation_id,expected_cents,counted_cents,difference_cents,closing_watermark,closed_at,revision FROM canonical_cash_state
-      WHERE promotion_id=?1 AND session_id>?2 ORDER BY session_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
+    const openedReady=await cashSessionCashierAvailable(db,'canonical_cash_sessions');
+    const closedReady=await cashSessionCashierAvailable(db,'canonical_cash_closures');
+    rows=await db.prepare(`SELECT s.session_id AS read_key,s.*,
+      (SELECT fo.device_id FROM canonical_financial_operations fo WHERE fo.operation_id=s.open_operation_id) AS opened_by_device_id,
+      ${openedReady ? 'o.opened_by_user_id,o.opened_by_name' : 'NULL AS opened_by_user_id,NULL AS opened_by_name'},
+      ${closedReady ? 'c.closed_by_user_id,c.closed_by_name' : 'NULL AS closed_by_user_id,NULL AS closed_by_name'}
+      FROM canonical_cash_state s
+      LEFT JOIN canonical_cash_sessions o ON o.session_id=s.session_id
+      LEFT JOIN canonical_cash_closures c ON c.session_id=s.session_id
+      WHERE s.promotion_id=?1 AND s.session_id>?2 ORDER BY s.session_id LIMIT ?3`).bind(before.active_promotion_id,page.key,page.limit+1).all();
   } else if(sqlName==='financial_events'){
     rows=await db.prepare(`SELECT event_id AS read_key,event_id,operation_id,promotion_id,event_type,session_id,credit_id,credit_provenance,
       credit_delta_cents,cash_delta_cents,payment_method,reference,reason,compensates_operation_id,created_at FROM canonical_financial_events

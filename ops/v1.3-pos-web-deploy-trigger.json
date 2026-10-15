@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Imágenes de producto (#652); desplegar solo POS web.",
-  "retry_attempt": 120,
-  "retry_reason": "Deploy de base ee371cff (#652 product images, backend ya desplegado #663). Solo POS web. Sin migraciones. Rollback: 7e5df996d75ca2c955c97d60034b54d311ba8db8.",
-  "requested_at_utc": "2026-10-14T22:48:23Z",
-  "approved_base": "ee371cff3a85e588b2ad47de3f5616787212909b"
+  "note": "Cajero que abrió/cerró turno (#670); desplegar solo POS web.",
+  "retry_attempt": 123,
+  "retry_reason": "Deploy de base 00cf3050 (#670 cajero por turno, incluye #667). Backend desplegado por hotfix attempt 33. Rollback: 9a3d617469081884f0e528594f58c3c3740b112a.",
+  "requested_at_utc": "2026-10-15T01:11:05Z",
+  "approved_base": "00cf3050499fbc8b340114e54eb42ded09f93db9"
 }

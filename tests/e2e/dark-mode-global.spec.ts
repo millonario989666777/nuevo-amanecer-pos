@@ -14,10 +14,13 @@ test('fresh storage stays light through inventory rows and the product form', as
   await page.evaluate(() => (window as any).NA_MENU_NAVIGATION.navigate('pageInventario'));
   await expect(page.locator('#pageInventario')).toBeVisible();
   await expect(page.locator('body')).not.toHaveClass(/\bdark\b/);
-  await expect(page.locator('#invBody .prod-name-sm').first()).toBeVisible();
-  await expect(page.locator('#invBody .btn-edt').first()).toBeVisible();
+  const name = page.locator('#invBody .prod-name-sm').first();
+  const edit = page.locator('#invBody .btn-edt').first();
+  await expect(name).toBeVisible();
+  await expect(edit).toBeVisible();
+  await name.click();
   await expect(page.locator('body')).not.toHaveClass(/\bdark\b/);
-  await page.evaluate(() => (window as any).abrirModalProd());
+  await edit.click();
   await expect(page.locator('#mProd')).toBeVisible();
   await expect(page.locator('body')).not.toHaveClass(/\bdark\b/);
   await page.evaluate(() => (window as any).NA_CONFIG_V9_BOOT.applyAppearance());
