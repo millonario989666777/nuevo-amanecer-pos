@@ -63,6 +63,15 @@ async function namespaceCollision(db,operationId) {
   return !!(row && Object.values(row).some(Number));
 }
 
+export async function employeeCashExpenseAllowed(db, body, auth) {
+  if (!body || !id(body.session_id) || body.payment_method !== 'efectivo' || !uint(body.amount_cents) || body.amount_cents === 0) return false;
+  const session = await db.prepare(`SELECT s.session_id FROM canonical_cash_state s
+    JOIN canonical_financial_operations o ON o.operation_id=s.open_operation_id
+    WHERE s.session_id=?1 AND s.status='OPEN' AND o.device_id=?2
+      AND s.promotion_id=(SELECT active_promotion_id FROM canonical_control WHERE id=1)`).bind(body.session_id, auth.principalId).first();
+  return !!session;
+}
+
 export async function createCanonicalExpense(request,env,auth,json) {
   let body;
   try { body = await request.json(); } catch { return json({error:'invalid_json'},400); }
@@ -71,6 +80,7 @@ export async function createCanonicalExpense(request,env,auth,json) {
 
   const db = getDatabase(env);
   const hash = await sha256Hex(stableStringify({command:EXPENSE_COMMAND,body}));
+  if (auth.posRole === 'empleado' && !await employeeCashExpenseAllowed(db, body, auth)) return json({error:'forbidden_role',action:'expense.create'},403);
   const existing = await replay(db,body,hash,json,auth);
   if (existing) return existing;
   const denied = await authorityError(db,body,auth);
@@ -109,6 +119,8 @@ export async function createCanonicalExpense(request,env,auth,json) {
     statements.push(db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok)
       VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)`).bind(token + ':' + label));
   }
+
+  if (auth.posRole === 'empleado') statements.push(db.prepare(`INSERT INTO canonical_assertions(assertion_id,ok) SELECT ?1,CASE WHEN EXISTS(SELECT 1 FROM canonical_cash_state s JOIN canonical_financial_operations o ON o.operation_id=s.open_operation_id WHERE s.session_id=?2 AND s.status='OPEN' AND o.device_id=?3) THEN 1 ELSE 0 END`).bind(token + ':employee-shift',body.session_id,auth.principalId));
 
   pushChecked(db.prepare(`INSERT INTO canonical_write_guards(operation_id,commit_token,promotion_id,authority_epoch,control_revision,client_contract,principal_id,credential_hash)
     VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`).bind(body.operation_id,token,body.promotion_id,body.authority_epoch,body.expected_control_revision,body.client_contract,auth.principalId,auth.credentialHash),'guard');

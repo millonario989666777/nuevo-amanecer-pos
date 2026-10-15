@@ -544,6 +544,7 @@
     var isOpen = selected.status === 'OPEN';
     return {
       abierta: isOpen,
+      openedByDeviceId: selected.opened_by_device_id || null,
       cerrada: !isOpen,
       fondo: cents(selected.opening_cents),
       cajero: '',

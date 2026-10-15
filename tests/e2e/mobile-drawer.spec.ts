@@ -29,10 +29,14 @@ for (const employee of [false, true]) {
     if (employee) {
       await expect(drawer.locator('[data-page="pageConfig"]')).toHaveCount(0);
       await expect(page.locator('#naMobileProfileName')).toHaveText('María Torres');
-      await expect(page.locator('#naMobileProfileRole')).toHaveText('Empleado');
+      // The cached role cannot be confirmed offline, so the label stays pending.
+      await expect(page.locator('#naMobileProfileRole')).toHaveText('Verificando permisos…');
       await expect(page.locator('#naMobileProfileAvatar')).toHaveText('MT');
     } else {
       await expect(drawer.locator('button')).toHaveCount(9);
+      await expect(drawer.locator('#naMobileDrawerVersion')).toHaveText('Versión local');
+      await expect(drawer.locator('.na-mobile-drawer-head .na-mobile-drawer-logo')).toHaveCSS('background-image', /svg/);
+      await expect(drawer.locator('.na-mobile-drawer-head img')).toHaveCount(0);
     }
     const permitted = await page.evaluate(ids => ids.filter(id => (window as any).NA_MENU_NAVIGATION.canShowDrawerPage(id)), pages);
     const destinations = await drawer.locator('.na-mobile-drawer-link').evaluateAll(rows => rows.map(row => row.getAttribute('data-page')!));

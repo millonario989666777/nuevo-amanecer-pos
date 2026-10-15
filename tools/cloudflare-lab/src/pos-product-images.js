@@ -1,5 +1,6 @@
+import { canDo } from './pos-permissions.js';
 // Miniaturas internas: los fragmentos se publican antes de cambiar el manifiesto.
-export const PRODUCT_IMAGE_PATHS = new Set(['/auth/product-images', '/auth/product-images/item']);
+export { PRODUCT_IMAGE_PATHS } from './pos-permissions.js';
 const hash = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 const validId = p => typeof p === 'string' && p.length > 0 && p.length <= 160 && !/[\x00-\x1f\x7f]/.test(p);
 async function productExists(db, id, strict = false) {
@@ -20,7 +21,7 @@ export async function deleteProductImages(db, productId) {
 }
 export async function productImagesRoute(request, url, env, auth, json, db) {
   if (request.method !== 'GET' && !(['POST', 'DELETE'].includes(request.method) && url.pathname === '/auth/product-images')) return json({ error: 'method_not_allowed' }, 405);
-  if (request.method !== 'GET' && auth.posRole !== 'owner') return json({ error: 'forbidden_role' }, 403);
+  if (request.method !== 'GET' && !canDo(auth.posRole, 'product-images.write')) return json({ error: 'forbidden_role' }, 403);
   try {
     // Por id se lee una sola fila (evita leer todo el manifiesto por cada miniatura).
     const direct = request.method === 'GET' && url.pathname === '/auth/product-images/item' && url.searchParams.get('product_id') !== null;

@@ -74,7 +74,9 @@
       if (e.status === 403 && e.message === 'session_revoked') { try { root.localStorage.setItem(REVOKED_KEY, '1'); } catch (_) {} revokedScreen(true); }
       if (e.status === 401 || e.status === 403) setState({ role: 'unknown' }, true); else paint();
     }
-    state.ready = true; return state;
+    state.ready = true;
+    if (state.confirmed) { var notice = doc.querySelector('.na-offline-cfg'); if (notice) notice.remove(); }
+    return state;
   }
 
   var PIN_ERRORS = {
@@ -150,39 +152,69 @@
   };
 
   // Configuración solo para el dueño, por cualquier camino de navegación.
-  function guardConfig() {
-    var page = doc.getElementById('pageConfig');
-    if (!page || !page.classList.contains('active') || canConfigure()) return;
-    page.classList.remove('active');
+  function forbidden(id) {
+    return !root.NA_PERMISSIONS.canAccessScreen('empleado', id) && !canConfigure();
+  }
+  function backToSale() {
     try { if (root.NA_MENU_NAVIGATION) root.NA_MENU_NAVIGATION.navigate('pagePOS'); else root.goPage('pagePOS'); } catch (_) {}
-    if (state.role === 'empleado') toast('Configuración es solo para el dueño.', 'error');
-    else offlineNotice();
+  }
+  function noPermission() {
+    if (!state.confirmed && cloud()) { offlineNotice(); return; }
+    if (doc.getElementById('naNoPermission') || !doc.body) return;
+    var o = doc.createElement('div'); o.id = 'naNoPermission'; o.className = 'na-pin-overlay';
+    o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true');
+    o.innerHTML = '<div class="na-pin-box"><div class="na-permission-lock" aria-hidden="true">🔒</div><div class="na-pin-title">Sin permiso</div><div class="na-pin-detail">Pídele acceso al dueño</div><div class="na-pin-actions"><button type="button" class="na-pin-ok">Volver a la venta</button></div></div>';
+    o.addEventListener('click', function (event) { event.stopPropagation(); });
+    o.querySelector('button').onclick = function () { o.remove(); backToSale(); };
+    doc.body.appendChild(o);
+  }
+  function guardConfig() {
+    doc.querySelectorAll('.page.active').forEach(function (page) {
+      if (forbidden(page.id)) { page.classList.remove('active'); backToSale(); noPermission(); }
+      else if (page.id === 'pageConfig' && !canConfigure()) { page.classList.remove('active'); backToSale(); offlineNotice(); }
+    });
+    if (forbidden('ventas:reportes')) {
+      var tab = doc.querySelector('#pageVentas [onclick*="reportes"].active');
+      if (tab && typeof root.ventasSetTab === 'function') root.ventasSetTab(doc.querySelector('#pageVentas .tab'), 'hoy');
+    }
+  }
+  function wrapNavigation() {
+    if (typeof root.goPage === 'function' && !root.goPage.__naPermissions) {
+      var go = root.goPage;
+      root.goPage = function (id) { if (forbidden(id)) { noPermission(); return false; } return go.apply(this, arguments); };
+      root.goPage.__naPermissions = true;
+    }
+    if (typeof root.ventasSetTab === 'function' && !root.ventasSetTab.__naPermissions) {
+      var setTab = root.ventasSetTab;
+      root.ventasSetTab = function (btn, tab) { if (tab === 'reportes' && forbidden('ventas:reportes')) { noPermission(); return false; } return setTab.apply(this, arguments); };
+      root.ventasSetTab.__naPermissions = true;
+    }
   }
   // Solo Configuración y pantallas del dueño fallan cerrado; vender, cobrar y la cola siguen igual.
   function offlineNotice() {
     if (doc.querySelector('.na-offline-cfg')) return;
-    // Aviso no bloqueante: no tapa la venta y se cierra con «Volver a la venta» o solo a los 8 s.
-    var o = doc.createElement('div'); o.className = 'na-offline-cfg na-offline-banner'; o.setAttribute('role', 'status'); o.setAttribute('aria-live', 'polite');
-    root.setTimeout(function () { if (o.parentNode) o.remove(); }, 8000);
-    var online = root.navigator.onLine !== false;
-    o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">' + (online ? 'Comprobando permisos…' : 'Sin conexión') + '</div>'
-      + '<div class="na-pin-detail">' + (online ? 'Configuración se abre cuando el servidor confirma que eres el dueño. Inténtalo de nuevo en unos segundos.' : 'Sin conexión: Configuración necesita internet para confirmar que eres el dueño.') + '</div>'
-      + '<div class="na-pin-actions"><button type="button" class="na-pin-ok na-offline-back">Volver a la venta</button></div></div>';
-    o.querySelector('.na-offline-back').addEventListener('click', function () { o.remove(); });
-    // Una hoja abierta con showModal (p. ej. «Agregar productos») está en la capa superior: el aviso va dentro de ella.
-    var top = null; try { var ds = doc.querySelectorAll('dialog[open]'); top = ds.length ? ds[ds.length - 1] : null; } catch (_) {}
-    (top || doc.body).appendChild(o);
-    if (online) refresh();
+    var o = doc.createElement('div'); o.className = 'na-offline-cfg na-pin-overlay'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true');
+    o.innerHTML = '<div class="na-pin-box"><div class="na-pin-title">Confirmando permisos…</div><div class="na-pin-detail">Necesitamos conexión para confirmar tus permisos con el servidor.</div><div class="na-pin-actions"><button type="button" class="na-pin-ok na-role-retry">Reintentar</button><button type="button" class="na-offline-back">Volver a la venta</button></div></div>';
+    o.querySelector('.na-offline-back').onclick = function () { o.remove(); backToSale(); };
+    o.querySelector('.na-role-retry').onclick = async function () {
+      this.disabled = true;
+      try { await refresh(); if (state.confirmed) { o.remove(); guardConfig(); } }
+      finally { this.disabled = false; }
+    };
+    doc.body.appendChild(o);
   }
   function install() {
-    var page = doc.getElementById('pageConfig');
-    if (page && !install.done && typeof root.MutationObserver === 'function') {
+    wrapNavigation();
+    if (!install.done && typeof root.MutationObserver === 'function') {
       install.done = true;
-      new root.MutationObserver(guardConfig).observe(page, { attributes: true, attributeFilter: ['class'] });
+      var observer = new root.MutationObserver(guardConfig);
+      doc.querySelectorAll('.page').forEach(function (page) { observer.observe(page, { attributes: true, attributeFilter: ['class'] }); });
     }
     guardConfig();
     refresh().then(guardConfig);
   }
+  root.addEventListener('load', wrapNavigation);
+  root.addEventListener('hashchange', guardConfig);
   root.addEventListener('na:role', guardConfig);
   root.addEventListener('online', function () { refresh(); });
   root.addEventListener('offline', function () { state.confirmed = false; paint(); guardConfig(); });

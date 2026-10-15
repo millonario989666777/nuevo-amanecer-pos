@@ -615,6 +615,7 @@
             try { root.localStorage.removeItem(PAGE_LIMIT_KEY); } catch (_) {}
             fail('CANONICAL_PAGE_LIMIT_RETRY');
           }
+          if (route === 'expenses' && response.status === 403) return { route: route, name: name, items: [] };
           if (!response.ok) fail('CANONICAL_READ_' + response.status);
           var meta = await response.json(); verify(meta, expected);
           if (meta.mode === 'ACTIVE' && !uint(meta.financial_revision)) fail('STALE_AUTHORITY_BINDING');
@@ -645,6 +646,8 @@
       var coreEntries = [['products', 'products'], ['customers', 'customers'], ['credits', 'credits'], ['credit-payments', 'payments'], ['credit-accounts', 'creditAccounts']];
       var accountsEntry = coreEntries[4];
       var activeEntries = [['cash-sessions', 'cashSessions'], ['financial-events', 'financialEvents'], ['expenses', 'expenses'], ['sales', 'sales'], ['sale-items', 'saleItems'], ['inventory-movements', 'inventoryMovements'], ['cash-movements', 'cashMovements']];
+
+      if (root.NA_ROLES && root.NA_ROLES.role === 'empleado') activeEntries = activeEntries.filter(function (entry) { return entry[0] !== 'expenses'; });
 
       if (!bulkApplied) {
       // credit-accounts (page 1 already in flight with status) is fenced against status
@@ -1737,7 +1740,10 @@
       });
       var owner = conflictOwner(result);
       if (owner) rejected.last_conflict = owner; else delete rejected.last_conflict;
-      durableJournal(rejected);
+      if (response.status === 403 && result && result.error === 'forbidden_role') {
+        root.localStorage.removeItem(JOURNAL);
+        if (root.localStorage.getItem(JOURNAL) !== null) fail('CANONICAL_STORAGE_NOT_DURABLE');
+      } else durableJournal(rejected);
       fail('CANONICAL_FINANCIAL_REJECTED_' + response.status);
     }
     if (!result || !(response.status === 201 && result.status === 'created' && result.idempotent === false || response.status === 200 && result.status === 'already_processed' && result.idempotent === true) ||

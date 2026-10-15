@@ -1,0 +1,66 @@
+/* Shared browser and Worker role policy. Unknown identities always fail closed. */
+(function (root) {
+  'use strict';
+  var owner = ['owner'], both = ['owner', 'empleado'];
+  var SCREENS = {};
+  ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
+  ['pageGastos', 'pageConfig', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
+  var ACTIONS = {};
+  ['expense.create', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
+  ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
+  var SYNC_ENTITIES = {};
+  ['products','sales','sale_items','customers','credits','credit_payments','cash_closures','inventory_movements'].forEach(function (id) { SYNC_ENTITIES[id] = 'sync.write'; });
+  SYNC_ENTITIES.expenses = 'cash.expense';
+  SYNC_ENTITIES.cash_movements = 'cash.expense';
+  var API_ROUTES = [
+    { path: '/auth/reviews', methods: ['GET'], roles: both },
+    { path: '/auth/reviews/resolve', methods: ['POST'], roles: owner, action: 'reviews.resolve' },
+    { path: '/auth/me', methods: ['GET'], roles: both },
+    { path: '/auth/owner-pin', methods: ['POST'], roles: owner, action: 'owner-pin.set' },
+    { path: '/auth/owner-approval', methods: ['POST'], roles: both },
+    { path: '/auth/pairing-code', methods: ['POST'], roles: owner, action: 'pairing-code.create' },
+    { path: '/auth/pair', methods: ['POST'], roles: both },
+    { path: '/auth/devices', methods: ['POST'], roles: owner, action: 'devices.manage' },
+    { path: '/auth/devices/revoke', methods: ['POST'], roles: owner, action: 'devices.manage' },
+    { path: '/settings', methods: ['GET'], roles: both },
+    { path: '/settings', methods: ['POST'], roles: owner, action: 'settings.set' },
+    { path: '/auth/product-images', methods: ['GET'], roles: both },
+    { path: '/auth/product-images', methods: ['POST', 'DELETE'], roles: owner, action: 'product-images.write' },
+    { path: '/auth/product-images/item', methods: ['GET'], roles: both },
+    { path: '/commands/expense.create', methods: ['POST'], roles: both, action: 'cash.expense' }
+  ];
+  ['sale.create','cash.open','cash.close','payment.create','payment.batch','credit-account.create','product.create','product.update','customer.create','customer.contact.set','customer.credit-policy.set','inventory.adjust','adjustment.create','compensation.create','sale.annul'].forEach(function (name) { API_ROUTES.push({ path: '/commands/' + name, methods: ['POST'], roles: both }); });
+  API_ROUTES.push({ path: '/commands/import.stage', methods: ['POST'], roles: owner });
+  API_ROUTES.push({ path: '/auth/dni-lookup', methods: ['POST'], roles: both });
+  API_ROUTES.push({ path: '/commands/sale.annul', methods: ['GET'], roles: both });
+  ['/auth/session','/auth/record-meta','/auth/sale-annulments'].forEach(function (path) { API_ROUTES.push({ path: path, methods: ['GET'], roles: both }); });
+  ['/auth/sale-notes','/auth/purchases'].forEach(function (path) { API_ROUTES.push({ path: path, methods: ['GET','POST'], roles: both }); });
+  API_ROUTES.push({ path: '/auth/purchases/close-partial', methods: ['POST'], roles: both });
+  API_ROUTES.push({ path: '/sync/operations', methods: ['POST'], roles: both });
+  API_ROUTES.push({ path: '/sync/operations/:id', methods: ['GET'], roles: both });
+  API_ROUTES.push({ path: '/imports/:id', methods: ['GET'], roles: both });
+  ['status','sales','inventory-movements','sales/:id/items'].forEach(function (name) { API_ROUTES.push({ path: '/read/' + name, methods: ['GET'], roles: owner, action: 'reports.view' }); });
+  ['status','snapshot','products','customers','credits','credit-payments','credit-accounts','sales','sale-items','inventory-movements','cash-movements','cash-sessions','financial-events'].forEach(function (name) { API_ROUTES.push({ path: '/read/canonical/' + name, methods: ['GET'], roles: both }); });
+  API_ROUTES.push({ path: '/read/canonical/expenses', methods: ['GET'], roles: owner, action: 'reports.view' });
+  var PRODUCT_IMAGE_PATHS = Array.from(new Set(API_ROUTES.filter(function (r) { return r.path.indexOf('/auth/product-images') === 0; }).map(function (r) { return r.path; })));
+  var ROLE_PATHS = ['/auth/reviews','/auth/reviews/resolve','/auth/me','/auth/owner-pin','/auth/owner-approval','/auth/pairing-code','/auth/pair','/auth/devices','/auth/devices/revoke','/settings'];
+  function allowed(role, roles) { return (role === 'owner' || role === 'empleado') && roles.indexOf(role) >= 0; }
+  function routeRoles(path, method) {
+    if (/^\/read\/sales\/[^/]+\/items$/.test(path)) path = '/read/sales/:id/items';
+    if (/^\/sync\/operations\/[^/]+$/.test(path)) path = '/sync/operations/:id';
+    if (/^\/imports\/[^/]+$/.test(path)) path = '/imports/:id';
+    var route = API_ROUTES.find(function (r) { return r.path === path && (!r.methods || r.methods.indexOf(String(method || 'GET').toUpperCase()) >= 0); });
+    return route ? route.roles : owner;
+  }
+  function freeze(value) {
+    Object.keys(value).forEach(function (key) { if (value[key] && typeof value[key] === 'object' && !Object.isFrozen(value[key])) freeze(value[key]); });
+    return Object.freeze(value);
+  }
+  root.NA_PERMISSIONS = freeze({ SCREENS: SCREENS, ACTIONS: ACTIONS, SYNC_ENTITIES: SYNC_ENTITIES, API_ROUTES: API_ROUTES,
+    ROLE_PATHS: ROLE_PATHS, PRODUCT_IMAGE_PATHS: PRODUCT_IMAGE_PATHS,
+    PROXY_PREFIXES: ['/health', '/auth/*', '/read/*', '/commands/*', '/imports/*', '/sync/operations*', '/settings'],
+    canAccessScreen: function (role, id) { return allowed(role, Object.prototype.hasOwnProperty.call(SCREENS, id) ? SCREENS[id] : owner); },
+    canDo: function (role, action) { return allowed(role, Object.prototype.hasOwnProperty.call(ACTIONS, action) ? ACTIONS[action] : owner); },
+    routeRoles: routeRoles
+  });
+})(globalThis);

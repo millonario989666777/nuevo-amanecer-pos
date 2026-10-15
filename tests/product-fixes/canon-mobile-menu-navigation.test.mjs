@@ -268,21 +268,67 @@ test('CANON shell still loads and precaches menu navigation', () => {
   assert.match(sw, /'\.\/js\/navigation\/menu-navigation\.js'/);
 });
 
-test('drawer permissions use the shared screen table and preserve owner overrides', () => {
+test('drawer permissions hide owner screens until the role is confirmed', () => {
   const h = harness();
   const canShow = h.context.NA_MENU_NAVIGATION.canShowDrawerPage;
-  assert.equal(canShow('pageConfig'), true, 'local mode defaults to owner');
-  h.context.NA_ROLES = { role: 'empleado', canConfigure: () => false };
-  assert.equal(canShow('pageConfig'), false);
-  assert.equal(canShow('pageClientes'), true);
+  for (const roles of [undefined, {role:'owner'}, {role:'owner',isOwner:()=>false}, {role:'unknown',confirmed:true}, {role:'empleado',confirmed:true,isOwner:()=>false}]) {
+    h.context.NA_ROLES = roles;
+    assert.equal(canShow('pageConfig'), false);
+    assert.equal(canShow('pageGastos'), false);
+    assert.equal(canShow('pageClientes'), true);
+  }
   const calls = [];
-  h.context.NA_PERMISSIONS = { canAccessScreen(role, page) { calls.push([role, page]); return page === 'pagePOS'; } };
+  h.context.NA_PERMISSIONS = { canAccessScreen(role, page) { calls.push([role,page]); return role === 'owner'; } };
+  h.context.NA_ROLES = undefined;
   assert.equal(canShow('pageMenu'), true);
-  assert.deepEqual(calls, [], 'Inicio bypasses the table');
-  assert.equal(canShow('pageClientes'), false);
-  assert.equal(canShow('pagePOS'), true);
-  assert.deepEqual(calls, [['empleado', 'pageClientes'], ['empleado', 'pagePOS']]);
-  h.context.NA_ROLES.isOwner = () => true;
-  canShow('pageConfig');
-  assert.deepEqual(calls.at(-1), ['owner', 'pageConfig']);
+  assert.equal(canShow('pageConfig'), false);
+  let owner = false;
+  h.context.NA_ROLES = {role:'owner',confirmed:false,isOwner:()=>owner};
+  assert.equal(canShow('pageGastos'), false);
+  assert.deepEqual(calls, [['empleado','pageConfig'],['empleado','pageGastos']]);
+  owner = true; // isOwner() is true only once the cloud role is confirmed (or in local mode)
+  assert.equal(canShow('pageConfig'), true);
+  assert.deepEqual(calls.at(-1), ['owner','pageConfig']);
+  delete h.context.NA_PERMISSIONS;
+  assert.equal(canShow('pageGastos'), true);
+});
+
+function isolatedFunction(name, context) {
+  const start = source.indexOf('  function ' + name + '(');
+  const end = source.indexOf('\n  function ', start + 1);
+  return vm.runInNewContext('(' + source.slice(start,end).trim() + ')', context);
+}
+
+test('mobile profile shows a pending label unless an accepted role is confirmed', () => {
+  const label = {textContent:''};
+  const context = {root:{},document:{getElementById:id=>id === 'naMobileProfileRole' ? label : null}};
+  const refresh = isolatedFunction('refreshMobileProfile', context);
+  for (const roles of [undefined,{role:'owner'},{role:'owner',confirmed:false,isOwner:()=>false},{role:'empleado',confirmed:false},{role:'unknown',confirmed:true}]) {
+    context.root.NA_ROLES = roles;
+    refresh();
+    assert.equal(label.textContent, 'Verificando permisos…');
+  }
+  for (const [role,text] of [['owner','Dueño'],['empleado','Empleado']]) {
+    context.root.NA_ROLES = {role,confirmed:true,isOwner:()=>role === 'owner'};
+    refresh();
+    assert.equal(label.textContent,text);
+  }
+});
+
+test('drawer version uses the build hash and Lima publish date with a local fallback', () => {
+  const version = {textContent:''};
+  const context = {root:{},document:{getElementById:()=>version},Date};
+  const update = isolatedFunction('updateDrawerVersion',context);
+  update();
+  assert.equal(version.textContent,'Versión local');
+  context.root.NA_BUILD_INFO = {hash:'__BUILD_HASH__',date:'__BUILD_DATE__'};
+  update();
+  assert.equal(version.textContent,'Versión local');
+  context.root.NA_BUILD_INFO = {hash:'abcdef123456',date:'2026-10-15T02:00:00Z'};
+  update();
+  assert.equal(version.textContent,'Versión abcdef1 · 14/10/2026');
+  assert.match(source,/script.src = 'js\/config\/build-info.js'/);
+  assert.match(source,/script.onload = updateDrawerVersion/);
+  assert.match(source,/loadDrawerBuildInfo\(\)/);
+  assert.equal(readFileSync('POS/js/config/build-info.js','utf8').trim(), "window.NA_BUILD_INFO = { hash: '__BUILD_HASH__', date: '__BUILD_DATE__' };");
 });

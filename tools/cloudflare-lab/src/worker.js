@@ -1,3 +1,4 @@
+import { canDo, PERMISSIONS } from './pos-permissions.js';
 import { setCanonicalCustomerContact } from './a6-customer-contacts.js';
 import { getDatabase } from './database-binding.js';
 // Gateway mínimo: POS OUTBOX -> Worker -> D1 sync_operations.
@@ -7,7 +8,7 @@ import { A5_A4_QUARANTINE_TRANSFORM_VERSION, A5_TRANSFORM_VERSION, buildManifest
 import { handleA6, isA6Path, canonicalRuntimeDenied } from './a6-canonical.js';
 import { createCanonicalSale, createCanonicalCreditAccount, canUseCanonicalSaleFastPath, CANONICAL_CLIENT_CONTRACT } from './a6-commerce.js';
 import { createCanonicalFinancial, createCanonicalPaymentBatch, FINANCIAL_COMMANDS } from './a6-financial.js';
-import { createCanonicalExpense, EXPENSE_COMMAND } from './a6-expenses.js';
+import { createCanonicalExpense, employeeCashExpenseAllowed, EXPENSE_COMMAND } from './a6-expenses.js';
 import { createCanonicalProduct, updateCanonicalProduct, PRODUCT_COMMANDS } from './a6-products.js';
 import { createCanonicalCustomer, CUSTOMER_COMMANDS } from './a6-customers.js';
 import { setCanonicalCustomerCreditPolicy, CUSTOMER_CREDIT_POLICY_COMMANDS } from './a6-customer-credit-policy.js';
@@ -18,7 +19,7 @@ import { purchasesRoute, closePartialRoute } from './pos-purchases.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { dniLookupRoute, DNI_LOOKUP_PATH } from './pos-dni-lookup.js';
-import { handleRoles, ownerGate, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
+import { handleRoles, ownerGate, posRoleFor, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -59,7 +60,7 @@ export default {
       }
       if (isA6Path(url.pathname)) {
         if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }), isRead);
-        return cors(await handleA6(request, url, env, { json, authorizeRead, authorizeSession }), isRead);
+        return cors(await handleA6(request, url, env, { json, authorizeRead: authorizePermissionRead, authorizeSession }), isRead);
       }
       if (request.method === 'OPTIONS' && (url.pathname === '/health' || url.pathname.startsWith('/auth/') || url.pathname === '/settings' || url.pathname.startsWith('/commands/') || url.pathname.startsWith('/imports/') || url.pathname.startsWith('/sync/operations') || url.pathname.startsWith('/read/'))) {
         return cors(new Response(null, { status: 204 }), isRead);
@@ -129,7 +130,7 @@ export default {
       }
       if (isRead) {
         if (request.method !== 'GET') return cors(json({ error: 'method_not_allowed' }, 405, { allow: 'GET, OPTIONS' }), true);
-        const denied = authorizeRead(request, env);
+        const denied = await authorizePermissionRead(request, env);
         if (denied) return cors(denied, true);
         const frozen = await authorityFence(getDatabase(env));
         if (frozen) return cors(frozen, true);
@@ -224,12 +225,14 @@ export default {
         return await createCanonicalCreditAccount(request, env, auth, json);
       }
       if (financialCommand === EXPENSE_COMMAND) {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
         const denied = canonicalRuntimeDenied(url, env, json);
         if (denied) return denied;
-        const auth = await authorizeSession(request, env);
-        if (auth instanceof Response) return auth;
-        return await createCanonicalExpense(request, env, auth, json);
+        const role = auth.posRole || await posRoleFor(getDatabase(env), auth.principalId);
+        if (!canDo(role, 'expense.create') && !canDo(role, 'cash.expense')) return json({ error: 'forbidden_role', action: 'expense.create' }, 403);
+        return await createCanonicalExpense(request, env, { ...auth, posRole: role }, json);
       }
       if (financialCommand === 'payment.batch') {
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'POST, OPTIONS' });
@@ -275,6 +278,10 @@ export default {
           if (auth instanceof Response) return auth;
           return await lookupOperation(decodeURIComponent(match[1]), getDatabase(env));
         }
+      }
+      if (sessionCredential(request)) {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
       }
       return json({ error: 'not_found' }, 404);
     } catch (error) {
@@ -407,13 +414,26 @@ async function authorizeSession(request, env) {
   if (session.role !== 'writer') return json({ error: 'read_only_session' }, 403);
   // Authorization is intentionally read-only. It must not create a write race
   // or interfere with the atomic business/canonical batch that follows.
-  return { sessionId: session.session_id, principalId: session.device_id, credentialHash: tokenHash, posRole: session.pos_role === 'empleado' ? 'empleado' : 'owner' };
+  const role = session.pos_role === 'empleado' ? 'empleado' : 'owner';
+  if (!PERMISSIONS.routeRoles(new URL(request.url).pathname, request.method).includes(role)) return json({ error: 'forbidden_role' }, 403);
+  return { sessionId: session.session_id, principalId: session.device_id, credentialHash: tokenHash, posRole: role };
 }
 
 function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function authorizePermissionRead(request, env) {
+  if (request.headers.get('authorization') || request.headers.get('x-session-token')) {
+    const auth = await authorizeSession(request, env);
+    if (auth instanceof Response) return auth;
+    const role = await posRoleFor(getDatabase(env), auth.principalId);
+    if (!PERMISSIONS.routeRoles(new URL(request.url).pathname, request.method).includes(role)) return json({ error: 'forbidden_role', action: 'reports.view' }, 403);
+    return null;
+  }
+  return authorizeRead(request, env);
 }
 
 function authorizeRead(request, env) {
@@ -550,6 +570,15 @@ async function insertOperation(request, env) {
   const problem = validateOperation(body);
   if (problem) return json({ error: 'invalid_operation', message: problem }, 400);
   const db = getDatabase(env);
+  const role = await posRoleFor(db, auth.principalId);
+  const action = Object.prototype.hasOwnProperty.call(PERMISSIONS.SYNC_ENTITIES, body.entity_type) ? PERMISSIONS.SYNC_ENTITIES[body.entity_type] : undefined;
+  let permitted = canDo(role, action);
+  if (permitted && role === 'empleado' && ['expenses','cash_movements'].includes(body.entity_type)) {
+    let payload; try { payload = JSON.parse(body.payload); } catch {}
+    permitted = (body.entity_type !== 'cash_movements' || payload?.tipo === 'gas') &&
+      !['update','delete','edit'].includes(payload?.action) && await employeeCashExpenseAllowed(db, payload, auth);
+  }
+  if (!permitted) return json({ error: 'forbidden_role', operation_id: body.operation_id, entity_type: body.entity_type }, 403);
 
   const computedHash = await sha256Hex(body.payload);
   if (computedHash !== body.payload_hash) {
@@ -816,10 +845,11 @@ function validatePayment(method, totalCents, payment) {
 }
 
 async function stageImport(request, env) {
-  const frozen = await authorityFence(getDatabase(env));
-  if (frozen) return frozen;
+  // Role check first: employees are refused before any authority state is revealed.
   const auth = await authorizeSession(request, env);
   if (auth instanceof Response) return auth;
+  const frozen = await authorityFence(getDatabase(env));
+  if (frozen) return frozen;
   const deviceId = auth.principalId;
   let body;
   try { body = await request.json(); } catch { return json({ error: 'invalid_json' }, 400); }
