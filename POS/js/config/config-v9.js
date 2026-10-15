@@ -401,6 +401,7 @@
     }
     nav.hidden = false;
     nav.innerHTML = '<h2>Configuración</h2>' + TOP.map(function (t) { return '<button type="button" class="na9-it' + (t[0] === st.top ? ' on' : '') + '" data-top="' + t[0] + '">' + I(t[2]) + '<span class="na9-tt">' + esc(t[1]) + '<small>' + esc(t[3]) + '</small></span>' + CHEV + '</button>'; }).join('')
+      + (doc.getElementById('pageProximamente') ? '<button type="button" class="na9-it" data-go="pageProximamente">' + I('lock') + '<span class="na9-tt">Próximamente<small>Funciones en preparación</small></span>' + CHEV + '</button>' : '')
       + '<div class="na9-reset"><button type="button" class="na9-it' + (st.top === 'reset' ? ' on' : '') + '" data-top="reset">' + I('reset') + '<span class="na9-tt">Reseteo</span>' + CHEV + '</button></div>';
     var h;
     if (st.top === 'reset') h = '<div class="na9-card"><div class="na9-hd"><h3>Reseteo</h3><p>Volver a descargar los datos de la nube</p></div><div class="na9-bd">' + resetBody() + '</div></div>';
@@ -488,6 +489,7 @@
   async function onClick(e) {
     var t = e.target; if (!t || !t.closest) return;
     if (!t.closest('#naCfgV9')) return;
+    var go = t.closest('#na9Nav [data-go]'); if (go) { if (canEdit() && typeof root.goPage === 'function') root.goPage(go.dataset.go); return; }
     var top = t.closest('[data-top]'); if (top) { st.top = top.dataset.top; st.open = true; remember(); render(); if (!wide()) try { root.scrollTo(0, 0); } catch (_) {} return; }
     var tab = t.closest('[data-tab]'); if (tab) { st.tab[st.top] = tab.dataset.tab; remember(); render(); return; }
     var a = t.closest('[data-act]'); if (!a) return;

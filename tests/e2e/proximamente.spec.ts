@@ -22,7 +22,6 @@ test('employee cannot enter Próximamente', async ({ page }) => {
   await rolePage(page, 'empleado');
   await page.locator('#naMobileMenuToggle').click();
   await expect(page.locator('#naMobileDrawer [data-page="pageProximamente"]')).toHaveCount(0);
-  await expect(page.locator('#cfgSidebar [data-cfgcat="proximamente"]')).toHaveAttribute('hidden', '');
   await page.evaluate(() => window.goPage('pageProximamente'));
   await expect(page.locator('#naNoPermission')).toBeVisible();
   await expect(page.locator('#naNoPermission')).toContainText('Sin permiso');
@@ -37,9 +36,9 @@ test('owner sees ordered previews without writes', async ({ page }) => {
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url());
   });
   await page.evaluate(() => window.goPage('pageConfig'));
-  const configButton = page.locator('#cfgSidebar [data-cfgcat="proximamente"]');
+  const configButton = page.locator('#na9Nav [data-go="pageProximamente"]');
   await expect(configButton).toBeVisible();
-  expect(await configButton.evaluate(button => button.nextElementSibling?.getAttribute('data-cfgcat'))).toBe('info');
+  await expect(configButton).toContainText('Funciones en preparación');
   await configButton.click();
   await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
   const cards = page.locator('#pageProximamente .na-prox-card');
@@ -97,7 +96,7 @@ test('local owner opens Próximamente from the drawer and configuration', async 
   await row.click();
   await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
   await page.evaluate(() => window.goPage('pageConfig'));
-  const button = page.locator('#cfgSidebar [data-cfgcat="proximamente"]');
+  const button = page.locator('#na9Nav [data-go="pageProximamente"]');
   await expect(button).toBeVisible();
   await button.click();
   await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);

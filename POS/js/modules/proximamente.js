@@ -85,26 +85,6 @@
   root.NA_PROXIMAMENTE = freeze({ FEATURES: FEATURES, list: list, get: get, isEnabled: isEnabled, isUnlocked: isUnlocked, render: render, openPreview: openPreview, openFeature: openFeature });
   if (typeof module !== 'undefined' && module.exports) module.exports = root.NA_PROXIMAMENTE;
   function init() {
-    var sidebar = root.document.getElementById('cfgSidebar');
-    var configButton = sidebar && sidebar.querySelector('[data-cfgcat="proximamente"]');
-    if (sidebar && !configButton) {
-      configButton = element('button', 'cfg-cat-btn'); configButton.type = 'button'; configButton.dataset.cfgcat = 'proximamente';
-      configButton.appendChild(element('span', '', '🔒'));
-      var copy = element('div');
-      copy.appendChild(element('strong', '', 'Próximamente'));
-      copy.appendChild(element('small', '', 'Funciones en preparación'));
-      configButton.appendChild(copy);
-      configButton.addEventListener('click', function () { if (ownerAllowed() && typeof root.goPage === 'function') root.goPage('pageProximamente'); });
-      sidebar.insertBefore(configButton, sidebar.querySelector('[data-cfgcat="info"]'));
-    }
-    if (configButton) {
-      function updateConfig() { configButton.hidden = !ownerAllowed(); }
-      var configPage = root.document.getElementById('pageConfig');
-      if (configPage) new root.MutationObserver(updateConfig).observe(configPage, { attributes: true, attributeFilter: ['class'] });
-      // pos-roles-client repaints <html> classes whenever the role is (un)confirmed.
-      new root.MutationObserver(updateConfig).observe(root.document.documentElement, { attributes: true, attributeFilter: ['class'] });
-      updateConfig();
-    }
     var page = root.document.getElementById('pageProximamente');
     if (!page) return;
     function update() {

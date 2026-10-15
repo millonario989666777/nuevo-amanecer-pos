@@ -175,26 +175,11 @@ test('enabled card without page stays locked; enabled with page unlocks and navi
   assert.ok(locked.doc.getElementById('naProxPreview'));
 });
 
-test('configuration shortcut precedes info and rechecks owner permission on page activation', () => {
-  const h = renderHarness('[]', true);
-  const sidebar = h.doc.getElementById('cfgSidebar');
-  const button = sidebar.querySelector('[data-cfgcat="proximamente"]');
-  assert.equal(sidebar.children.length, 2);
-  assert.equal(sidebar.children[0], button);
-  assert.equal(button.type, 'button');
-  assert.equal(button.textContent, '🔒PróximamenteFunciones en preparación');
-  assert.equal(button.hidden, false);
-  button.events.click();
-  assert.deepEqual(h.navigated, ['pageProximamente']);
-  const observer = h.observations.find(o => o.node.id === 'pageConfig');
-  for (const roles of [undefined, { canConfigure: () => false }]) {
-    h.ctx.NA_ROLES = roles;
-    observer.callback();
-    assert.equal(button.hidden, true);
-    button.events.click();
-    assert.deepEqual(h.navigated, ['pageProximamente']);
-  }
-  h.ctx.NA_ROLES = { canConfigure: () => true };
-  observer.callback();
-  assert.equal(button.hidden, false);
+test('configuration shortcut lives in the owner-only Configuración nav', () => {
+  const v9 = readFileSync(new URL('../../POS/js/config/config-v9.js', import.meta.url), 'utf8');
+  const gate = v9.indexOf('if (!canEdit())'), entry = v9.indexOf('data-go="pageProximamente"'), reset = v9.indexOf('data-top="reset">', entry);
+  assert.ok(gate > 0 && entry > gate, 'the entry is rendered only after the owner gate');
+  assert.ok(reset > entry, 'the entry precedes Reseteo');
+  assert.match(v9, /Próximamente<small>Funciones en preparación<\/small>/);
+  assert.match(v9, /var go = t\.closest\('#na9Nav \[data-go\]'\); if \(go\) \{ if \(canEdit\(\) && typeof root\.goPage === 'function'\) root\.goPage\(go\.dataset\.go\); return; \}/);
 });
