@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Drawer móvil (#674); desplegar solo POS web.",
-  "retry_attempt": 124,
-  "retry_reason": "Deploy de base 85c28cb4 (#674 mobile drawer). Sin cambios de backend. Rollback: f24f35087a81f0c27385005e5462a35e88c4e61f.",
-  "requested_at_utc": "2026-10-15T01:50:00Z",
-  "approved_base": "85c28cb4ac8dbb6ee3321100527f77f596fed3d9"
+  "note": "Historial de Caja (#667); desplegar solo POS web.",
+  "retry_attempt": 125,
+  "retry_reason": "Deploy de base 19bcbc82 (#667 historial Caja). Sin cambios de backend. Rollback: 85c28cb4ac8dbb6ee3321100527f77f596fed3d9.",
+  "requested_at_utc": "2026-10-15T11:31:00Z",
+  "approved_base": "19bcbc82e5a2c3c02aefbd13e3c1565fbaacd723"
 }
