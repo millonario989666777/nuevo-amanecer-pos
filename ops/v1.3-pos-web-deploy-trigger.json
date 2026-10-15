@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Créditos/Reportes/Gastos (#683, #684), caja sessionId (#682), Próximamente (#685); desplegar POS web (backend ya desplegado en worker hotfix 35).",
-  "retry_attempt": 127,
-  "retry_reason": "Deploy de base e8f31a6d (#682, #683, #684, #685, migración 0032). Backend desplegado antes (worker hotfix 35, run 38744156300). Rollback: 533d5d321498c3078c9c3e9dd8e8d351e45d78e6.",
-  "requested_at_utc": "2026-10-15T13:37:29Z",
-  "approved_base": "e8f31a6d359c2cfdd081d558fbb863c196a20d28"
+  "note": "Correcciones de revisión (#689, #690) y Próximamente rediseñado (#691); backend ya desplegado en worker hotfix 36.",
+  "retry_attempt": 128,
+  "retry_reason": "Deploy de base 9484b4e1 (#689, #690, #691). Backend desplegado antes (worker hotfix 36, run 38750619168). Rollback: e8f31a6d359c2cfdd081d558fbb863c196a20d28 (build de 127).",
+  "requested_at_utc": "2026-10-15T14:22:10Z",
+  "approved_base": "9484b4e1560996f1149c8f6e5975545670995be3"
 }
