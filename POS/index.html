@@ -20,6 +20,7 @@
     <!-- SheetJS solo al exportar/importar Excel (js/core/lazy-assets.js). -->
     <script type="text/x-na-lazy" data-na-lazy="sheetjs" src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/proximamente.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/responsive.css" media="print" onload="this.media='all'">
@@ -354,6 +355,12 @@
     <div class="v-kpi-row" id="ventasKPI"></div>
     </div>
     <div id="ventasContent" style="flex:1;overflow-y:auto;display:flex;flex-direction:column"></div>
+</div>
+
+<!-- PRÓXIMAMENTE -->
+<div class="page" id="pageProximamente">
+    <h1>Próximamente</h1>
+    <div class="na-prox-grid" id="naProximamenteGrid"></div>
 </div>
 
 <!-- GASTOS -->
@@ -1053,6 +1060,7 @@
 <script src="js/canon-pos-reference-ui.js"></script>
 <script src="js/canon-phone-sale.js"></script>
 <script src="js/canon-desktop-dashboard.js"></script>
+<script src="js/modules/proximamente.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>
 <script src="js/config/pos-reviews-client.js"></script>

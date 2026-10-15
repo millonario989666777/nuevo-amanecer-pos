@@ -4,7 +4,7 @@
   var owner = ['owner'], both = ['owner', 'empleado'];
   var SCREENS = {};
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
-  ['pageGastos', 'pageConfig', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
+  ['pageGastos', 'pageConfig', 'pageProximamente', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
   ['expense.create', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });

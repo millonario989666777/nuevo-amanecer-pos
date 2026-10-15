@@ -14,7 +14,7 @@ test('phone uses one drawer for actions and genuine empty activity', async ({ pa
   await expect(page.locator('#naMobileActivityList')).toContainText('Sin movimientos recientes');
   await page.locator('#naMobileMenuToggle').click();
   const drawer = page.locator('#naMobileDrawer');
-  await expect(drawer.getByRole('button')).toHaveCount(9);
+  await expect(drawer.getByRole('button')).toHaveCount(10);
   for (const label of ['Inicio', 'Nueva venta', 'Ventas', 'Inventario', 'Clientes', 'Caja', 'Gastos', 'Configuración']) {
     await expect(drawer.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
