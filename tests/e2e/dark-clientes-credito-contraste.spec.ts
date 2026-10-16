@@ -82,7 +82,11 @@ async function removeFixRules(page: Page) {
       if (!/theme-dark\.css/.test(sheet.href || '')) continue;
       const marker = Array.from(sheet.cssRules).findIndex(r => ((r as CSSStyleRule).selectorText || '') === 'body.dark #pageClientes .na-v2-subhead');
       if (marker < 0) continue;
-      while (sheet.cssRules.length > marker && ((sheet.cssRules[marker] as CSSStyleRule).selectorText || '').includes('#pageClientes')) { sheet.deleteRule(marker); n++; }
+      // Hasta el bloque de auditoría oscura (último body.dark .cfg-toggle), que va después.
+      const sels = Array.from(sheet.cssRules).map(r => (r as CSSStyleRule).selectorText || '');
+      const audit = sels.lastIndexOf('body.dark .cfg-toggle');
+      const end = audit > marker ? audit : sheet.cssRules.length;
+      for (let i = end - 1; i >= marker; i--) { sheet.deleteRule(i); n++; }
     }
     return n;
   });

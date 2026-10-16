@@ -66,15 +66,19 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
     for (const sheet of Array.from(document.styleSheets)) {
       if (!/theme-dark\.css/.test(sheet.href || '')) continue;
       const rules = sheet.cssRules;
+      // El bloque de auditoría oscura (desde el último body.dark .cfg-toggle) también pinta el OCR:
+      // se quita igual para medir el "antes", pero solo se cuentan las 4 reglas originales.
+      const sels = Array.from(rules).map(r => (r as CSSStyleRule).selectorText || '');
+      const audit = sels.lastIndexOf('body.dark .cfg-toggle');
       for (let i = rules.length - 1; i >= 0; i--) {
         const sel = (rules[i] as CSSStyleRule).selectorText || '';
-        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); n++; }
+        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|\.na-pur-overlay \.na-pur-box button\.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); if (audit < 0 || i < audit) n++; }
       }
     }
     return n;
   });
-  // followups-156 agrega una segunda regla oscura OCR; sin ambas queda su nuevo estilo claro propio.
-  expect(removed).toBe(5);
+  // La estructura OCR está en la regla de auditoría; se cuentan solo las 4 reglas originales.
+  expect(removed).toBe(4);
   const before = await measureAll(page);
   // El ícono del menú no tiene reglas nuevas; en esta segunda medición la franja ya está visible y lo desplaza (bug de posición aparte).
   for (const k of ['total', 'ocr', 'banner'] as const) expect(dark[k].box, k).toEqual(before[k].box);
@@ -126,15 +130,28 @@ for (const dark of [true, false]) {
 
 // data-tone (danger/warn) es el único gancho del modo oscuro: los respaldos [style*="254, 226, 226"] y
 // [style*="254, 243, 199"] se quitaron (render() es el único que pinta la franja y siempre pone data-tone).
-test('theme-dark.css: las reglas de #naStatusBanner usan solo [data-tone], sin [style*=]', async ({ page }) => {
+test('theme-dark.css: franja por [data-tone]; auditoría y followups usan exactamente dos selectores [style*=], en #mgVal y #cajContent', async ({ page }) => {
   await boot(page, true);
   const selectors = await page.evaluate(() => {
     const out: string[] = [];
+    const inline: string[] = [];
     const walk = (rules: CSSRuleList) => { for (const r of Array.from(rules)) { const sel = (r as CSSStyleRule).selectorText; if (sel && sel.includes('#naStatusBanner')) out.push(sel); if ((r as CSSGroupingRule).cssRules) walk((r as CSSGroupingRule).cssRules); } };
-    for (const sheet of Array.from(document.styleSheets)) if (/theme-dark\.css/.test(sheet.href || '')) walk(sheet.cssRules);
-    return out;
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (!/theme-dark\.css/.test(sheet.href || '')) continue;
+      walk(sheet.cssRules);
+      // Solo los bloques nuevos: las reglas genéricas previas también usan [style*=].
+      const sels = Array.from(sheet.cssRules).map(r => (r as CSSStyleRule).selectorText || '');
+      const audit = sels.lastIndexOf('body.dark .cfg-toggle');
+      if (audit >= 0) inline.push(...sels.slice(audit).filter(sel => sel.includes('[style*=')));
+    }
+    return { banner: out, inline };
   });
-  expect(selectors).toEqual(['body.dark #naStatusBanner[data-tone="danger"]', 'body.dark #naStatusBanner[data-tone="warn"]']);
+  expect(selectors.banner).toEqual(['body.dark #naStatusBanner[data-tone="danger"]', 'body.dark #naStatusBanner[data-tone="warn"]']);
+  expect(selectors.inline).toHaveLength(2);
+  expect(selectors.inline).toEqual([
+    'body.dark #mProd .prod-margin #mgVal[style*="21, 128, 61"]',
+    'body.dark #cajContent span[style*="color: rgb(21, 128, 61)"]',
+  ]);
 });
 
 const DARK_BANNER = { danger: ['rgb(254, 202, 202)', 'rgb(127, 29, 29)'], warn: ['rgb(253, 230, 138)', 'rgb(69, 26, 3)'] };
