@@ -7,7 +7,7 @@ const source = readFileSync('POS/js/modules/proximamente.js', 'utf8');
 const registrySource = readFileSync('POS/js/modules/proximamente-registry.js', 'utf8');
 const permissionsSource = readFileSync('POS/js/config/pos-permissions.js', 'utf8');
 const indexHtml = readFileSync('POS/index.html', 'utf8');
-const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'valorizacion-inventario': 'pageValorizacion' };
+const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'clientes-filtro-deuda': 'pageClientes', 'valorizacion-inventario': 'pageValorizacion' };
 const MODULES = ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras'];
 
 function loaded() {
@@ -206,7 +206,7 @@ test('configuration shortcut lives in the owner-only Configuración nav', () => 
   assert.match(v9, /var go = t\.closest\('#na9Nav \[data-go\]'\); if \(go\) \{ if \(canEdit\(\) && typeof root\.goPage === 'function'\) root\.goPage\(go\.dataset\.go\); return; \}/);
 });
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
 test('new candidates stay locked and attendance keeps its owner policy when unlocked', async () => {
   const c = loaded(); await c.NA_PROXIMAMENTE.load();
   for (const id of addedIds) {
