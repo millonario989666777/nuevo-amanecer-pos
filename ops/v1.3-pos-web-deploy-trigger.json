@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#744 lectura de crédito V2 sin mutar créditos ni reconstruir índice. Worker 43 sin cambios (tabla de permisos idéntica).",
-  "retry_attempt": 144,
-  "retry_reason": "Deploy de base 1e8b287ad4d486555840807f425e8cf265907636 (#744). Rollback: 7a446ae8961dca3259ba8d8bc2ab63c5071a13f2 (build de 143).",
-  "requested_at_utc": "2026-10-16T04:15:57Z",
-  "approved_base": "1e8b287ad4d486555840807f425e8cf265907636"
+  "note": "#745 ABC: ID corto en filas sin código y select de período sin recortar; #747 _naCreditPolicy no reemplaza appConfig.creditPolicy. Worker 43 sin cambios (tabla de permisos idéntica).",
+  "retry_attempt": 145,
+  "retry_reason": "Deploy de base 8ebc3ef47f3f4f35850e9ff6223a52f47c13a82a (#745 + #747). Rollback: web 144 28a552d249a05274d026f5436fcdd0568e4bb0a5 (merge 1e8b287ad4d486555840807f425e8cf265907636).",
+  "requested_at_utc": "2026-10-16T04:40:56Z",
+  "approved_base": "8ebc3ef47f3f4f35850e9ff6223a52f47c13a82a"
 }
