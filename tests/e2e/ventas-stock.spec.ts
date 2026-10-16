@@ -91,8 +91,8 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     const stream = await download.createReadStream();
     const chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
     const csv = Buffer.concat(chunks).toString('utf8');
-    expect(csv).toContain('Producto,Código,Categoría,Unidades vendidas,Importe,Stock,Promedio diario,Días de cobertura,Estado\r\n');
-    expect(csv.startsWith('\uFEFF')).toBe(true); expect(csv).not.toMatch(/costo|precioCompra|margin/i);
+    expect(csv).toContain('Producto,Código,Categoría,Unidades vendidas,Stock,Promedio diario,Días de cobertura,Estado\r\n');
+    expect(csv.startsWith('\uFEFF')).toBe(true); expect(csv).not.toMatch(/costo|precioCompra|margin|Importe/i);
     await noOverflow(page);
     expect(await readState(page)).toBe(before);
     expect(await page.evaluate(() => JSON.stringify({ ...localStorage }))).toBe(storageBefore);

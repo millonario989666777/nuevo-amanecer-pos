@@ -72,7 +72,7 @@
       return { key: ref.key, id: ref.id, code: shortCode(item) || visibleId(ref.id),
         name: text(item.name != null ? item.name : item.nombre) || shortCode(item) || 'Producto sin nombre',
         category: categoryKey(item.cat || item.categoria), stock: stock, stockMin: catalog ? number(item.stockMin) : 0,
-        unitsSold: 0, revenueRaw: 0, transactions: 0 };
+        unitsSold: 0, transactions: 0 };
     }
     (Array.isArray(products) ? products : []).forEach(function (item) {
       if (!item || typeof item !== 'object') return;
@@ -90,12 +90,11 @@
         var ref = identity(item); if (!ref) return;
         if (ref.key.indexOf('id:') !== 0 && bySku.has(text(item.sku))) ref = bySku.get(text(item.sku));
         var qty = number(item.qty != null ? item.qty : item.cantidad);
-        var revenue = number(item.precio != null ? item.precio : item.precioUnitario) * qty;
-        if (qty <= 0 || !Number.isFinite(revenue)) return;
+        if (qty <= 0) return;
         if (!rows.has(ref.key)) rows.set(ref.key, createRow(item, ref, false));
         var row = rows.get(ref.key);
         if (!row.category) row.category = categoryKey(item.cat || item.categoria);
-        row.unitsSold += qty; row.revenueRaw += revenue;
+        row.unitsSold += qty;
         if (!seen.has(ref.key)) { row.transactions++; seen.add(ref.key); }
       });
     });
@@ -106,7 +105,6 @@
     var result = Array.from(rows.values()).filter(function (row) {
       return (category === null || row.category === category) && (!query || normalized(row.name + ' ' + row.code).includes(query));
     }).map(function (row) {
-      row.revenueCents = Math.round(Number(row.revenueRaw.toFixed(2)) * 100); delete row.revenueRaw;
       row.avgDaily = row.unitsSold / range.days;
       row.coverageDays = row.stock > 0 && row.avgDaily > 0 ? row.stock / row.avgDaily : null;
       row.status = row.stock === null ? 'sin_control' : row.stock <= 0 && (row.unitsSold > 0 || row.stockMin > 0) ? 'sin_stock' :
@@ -121,19 +119,19 @@
     var counts = { sin_stock: 0, reponer: 0, sin_movimiento: 0, ok: 0, sin_control: 0 };
     result.forEach(function (row) { counts[row.status]++; });
     return { range: range, categories: categories, rows: result, counts: counts,
-      unitsSold: result.reduce(function (sum, row) { return sum + row.unitsSold; }, 0),
-      revenue: result.reduce(function (sum, row) { return sum + row.revenueCents; }, 0) / 100 };
+      unitsSold: result.reduce(function (sum, row) { return sum + row.unitsSold; }, 0) };
   }
   function toCsv(report) {
     function cell(value) {
       var valueText = value == null ? '' : String(value);
       // Solo texto: un número negativo (stock -2) no es una fórmula y se exporta tal cual.
-      if (typeof value === 'string' && /^[=+@\t\r-]/.test(valueText)) valueText = "'" + valueText;
+      // Espacios iniciales no esconden una fórmula (" =1+1"): se mira el texto sin ellos.
+      if (typeof value === 'string' && /^[=+@\t\r-]/.test(valueText.trimStart())) valueText = "'" + valueText;
       return /[",\r\n]/.test(valueText) ? '"' + valueText.replace(/"/g, '""') + '"' : valueText;
     }
-    var lines = [['Producto', 'Código', 'Categoría', 'Unidades vendidas', 'Importe', 'Stock', 'Promedio diario', 'Días de cobertura', 'Estado']];
+    var lines = [['Producto', 'Código', 'Categoría', 'Unidades vendidas', 'Stock', 'Promedio diario', 'Días de cobertura', 'Estado']];
     report.rows.forEach(function (row) {
-      lines.push([row.name, row.code, categoryLabel(row.category), row.unitsSold, (row.revenueCents / 100).toFixed(2), row.stock,
+      lines.push([row.name, row.code, categoryLabel(row.category), row.unitsSold, row.stock,
         Number(row.avgDaily.toFixed(2)), row.coverageDays === null ? null : Number(row.coverageDays.toFixed(1)), LABELS[row.status]]);
     });
     return '\uFEFF' + lines.map(function (line) { return line.map(cell).join(','); }).join('\r\n') + '\r\n';

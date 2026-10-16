@@ -22,8 +22,9 @@ test('statuses, coverage, cents, totals, transactions and priority order', () =>
   const r = report();
   assert.deepEqual(Array.from(r.rows, x => x.status), ['sin_stock', 'reponer', 'reponer', 'sin_movimiento', 'ok', 'sin_control']);
   const low = r.rows.find(x => x.id === 'low');
-  assert.equal(low.avgDaily, 1); assert.equal(low.coverageDays, 3.5); assert.equal(low.revenueCents, 6000);
-  assert.equal(low.transactions, 1); assert.equal(r.unitsSold, 36); assert.equal(r.revenue, 79.47);
+  assert.equal(low.avgDaily, 1); assert.equal(low.coverageDays, 3.5);
+  assert.equal(low.transactions, 1); assert.equal(r.unitsSold, 36);
+  assert.ok(!('revenue' in r)); assert.ok(r.rows.every(x => !('revenueCents' in x) && !('revenueRaw' in x)));
   assert.equal(r.rows.at(-1).stock, null); assert.equal(r.counts.reponer, 2);
 });
 test('voided, invalid, future and out-of-range sales excluded; periods include their first day', () => {
@@ -57,7 +58,7 @@ test('CSV uses BOM, CRLF, RFC4180 quotes, dot decimals, guards formulas and omit
   const api = load(); const r = report();
   for (const prefix of ['=', '+', '-', '@']) r.rows.push({ ...r.rows[1], name: prefix + 'formula' });
   const csv = api.toCsv(r);
-  assert.ok(csv.startsWith('\uFEFFProducto,Código,Categoría,Unidades vendidas,Importe,Stock,Promedio diario,Días de cobertura,Estado\r\n'));
+  assert.ok(csv.startsWith('\uFEFFProducto,Código,Categoría,Unidades vendidas,Stock,Promedio diario,Días de cobertura,Estado\r\n'));
   assert.ok(csv.includes('"Ácido, ""especial"""')); assert.ok(csv.includes('3.5'));
   for (const prefix of ['=', '+', '-', '@']) assert.ok(csv.includes("'" + prefix + 'formula'));
   assert.ok(!/costo|cost|precioCompra|margin/i.test(csv)); assert.ok(!csv.replaceAll('\r\n', '').includes('\n'));
@@ -108,6 +109,17 @@ test('CSV: números negativos no se tratan como fórmula y los decimales se redo
   const r = api.buildReport([{ fecha: now, items: [{ id: 'n', qty: 1, precio: 1 }, { id: 'p', qty: 1, precio: 1 }] }],
     [{ id: 'n', name: 'Negativo', stock: -2 }, { id: 'p', name: 'Tercio', stock: 10 }], { now });
   const csv = api.toCsv(r);
-  assert.match(csv, /\r\nNegativo,ID n,Sin categoría,1,1\.00,-2,0\.03,,Sin stock\r\n/);
-  assert.match(csv, /\r\nTercio,ID p,Sin categoría,1,1\.00,10,0\.03,300,OK\r\n/);
+  assert.match(csv, /\r\nNegativo,ID n,Sin categoría,1,-2,0\.03,,Sin stock\r\n/);
+  assert.match(csv, /\r\nTercio,ID p,Sin categoría,1,10,0\.03,300,OK\r\n/);
+});
+
+test('CSV: espacios iniciales no esconden fórmulas; el número negativo sigue saliendo como número', () => {
+  const api = load();
+  const r = api.buildReport([], [{ id: 'f', name: ' =1+1', stock: 5 }, { id: 'n', name: 'Negativo', stock: -3 }], { now });
+  // buildReport ya recorta nombres; el guard de toCsv debe cubrir igual un texto con espacios iniciales.
+  r.rows.push({ ...r.rows.find(x => x.id === 'n'), name: ' =1+1', code: '  @SUM(A1)' });
+  const csv = api.toCsv(r);
+  assert.ok(csv.includes("\r\n' =1+1,'  @SUM(A1),"), csv);
+  assert.match(csv, /\r\nNegativo,ID n,Sin categoría,0,-3,0,,Sin movimiento\r\n/);
+  assert.ok(!/Importe/.test(csv));
 });
