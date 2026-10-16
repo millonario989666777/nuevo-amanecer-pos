@@ -116,3 +116,30 @@ test('employee cannot see the drawer entry or open ABC; direct rendering exposes
   await expect(page.locator('#pageRotacionAbc [data-abc-status]')).toContainText('Sin permiso');
   await expect(page.locator('#pageRotacionAbc [data-abc-controls]')).toBeHidden();
 });
+
+for (const width of [390, 427, 600, 768]) {
+  test(`period select is never clipped at ${width}px («Últimos 30 días» / «Últimos 90 días»)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(() => (window as any).goPage('pageProximamente'));
+    await page.locator('[data-feature-id="rotacion-abc"]').click();
+    const select = page.locator('#pageRotacionAbc [data-abc-period]');
+    await expect(select).toBeVisible();
+    for (const value of ['30', '90']) {
+      await select.selectOption(value);
+      // Un clon con width:max-content mide lo que necesita el texto más largo más la flecha.
+      const [needed, actual] = await select.evaluate(node => {
+        const clone = node.cloneNode(true) as HTMLSelectElement;
+        clone.style.width = 'max-content'; clone.style.position = 'absolute'; clone.style.visibility = 'hidden';
+        node.parentElement!.appendChild(clone);
+        const result = [clone.getBoundingClientRect().width, node.getBoundingClientRect().width];
+        clone.remove();
+        return result;
+      });
+      expect(actual + 0.5).toBeGreaterThanOrEqual(needed);
+    }
+    await noOverflow(page);
+    await page.locator('#pageRotacionAbc .abc-controls').screenshot({ path: test.info().outputPath(`abc-controls-${width}.png`) });
+  });
+}

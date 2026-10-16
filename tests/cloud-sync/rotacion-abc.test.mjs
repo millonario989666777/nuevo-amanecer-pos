@@ -187,7 +187,7 @@ test('rows show the product name or a short code, never the raw internal id', ()
     ])
   ], [], options);
   const rows = report.groups.flatMap(g => g.rows);
-  assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(), [['ABR-12', 'ABR-12'], ['Paracetamol 500 mg', '7750001'], ['Producto sin nombre', '']].sort());
+  assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(), [['ABR-12', 'ABR-12'], ['Paracetamol 500 mg', '7750001'], ['Producto sin nombre', 'ID 0011']].sort());
   for (const r of rows) { assert.doesNotMatch(r.name, /GENERIC:/); assert.doesNotMatch(r.code, /GENERIC:/); }
 });
 
@@ -210,4 +210,18 @@ test("filas 'VARIOS' muestran una segunda línea (código corto o id visible) si
   assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(),
     [['VARIOS', 'ID 7f3c2a91'], ['VARIOS', 'ID aa11bb22'], ['Varios', '278'], ['VARIOS', '']].sort());
   for (const r of rows) { assert.doesNotMatch(r.name, /GENERIC/i); assert.doesNotMatch(r.code, /GENERIC/i); }
+});
+
+test('toda fila genérica sin código (PRÉSTAMO, VIVERES…) muestra ID corto y nunca GENERIC:', () => {
+  const report = api.buildReport([
+    sale([
+      { id: 'GENERIC:1a2b3c4d-0000-4000-8000-000000000001', name: 'PRÉSTAMO', precio: 5, qty: 1 },
+      { id: 'GENERIC:9f8e7d6c-0000-4000-8000-000000000002', name: 'VIVERES', precio: 3, qty: 1 },
+      { id: 'GENERIC:55aa66bb-0000-4000-8000-000000000003', name: 'Recarga', generic_line: { name: 'Recarga', code: 'REC-1' }, precio: 2, qty: 1 }
+    ])
+  ], [], options);
+  const rows = report.groups.flatMap(g => g.rows);
+  assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(),
+    [['PRÉSTAMO', 'ID 1a2b3c4d'], ['VIVERES', 'ID 9f8e7d6c'], ['Recarga', 'REC-1']].sort());
+  for (const r of rows) { assert.doesNotMatch(r.name + ' ' + r.code, /GENERIC/i); }
 });
