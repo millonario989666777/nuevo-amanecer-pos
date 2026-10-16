@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK, e2e 434/434) deploy of base dde26fb5ef3236966bdd2578433b78697e08e3e9: #793 kardex por producto. No schema changes. Rollback to fffaf2ad (worker 53, Cloudflare version 84a7afc6, currently live). Web NOT deployed (pending asistente 5 live check).",
-  "target_commit": "dde26fb5ef3236966bdd2578433b78697e08e3e9",
-  "rollback_ref": "fffaf2ad4c97c30efa0b2de123c2879c230496a3",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK, repeat-each 10 80/80, e2e 440/442 flaky conocidos) deploy of base 1354350a6430419a7ffdcb32c124e861d8fc7a4c: #794 historial de compras por cliente. No schema changes. Rollback to dde26fb5 (worker 54, Cloudflare version c9a75046, currently live). Web NOT deployed (pending asistente 5 live check).",
+  "target_commit": "1354350a6430419a7ffdcb32c124e861d8fc7a4c",
+  "rollback_ref": "dde26fb5ef3236966bdd2578433b78697e08e3e9",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 54,
-  "optimization": "KARDEX_793"
+  "attempt": 55,
+  "optimization": "CLIENTE_HISTORIAL_794"
 }
