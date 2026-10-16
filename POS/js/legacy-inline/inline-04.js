@@ -12,6 +12,9 @@ function _naCreditPolicy(){
   cfg.punctualRate=Math.max(0,Math.min(100,_naNumber(cfg.punctualRate,10)));
   cfg.lateRate=Math.max(0,Math.min(100,_naNumber(cfg.lateRate,5)));
   cfg.dueDays=Math.max(1,Math.min(365,Math.round(_naNumber(cfg.dueDays,30))||30));
+  // Solo reemplaza la referencia guardada si falta, es inválida o no está normalizada (una vez).
+  // Si ya coincide valor por valor, la devuelve tal cual: misma política, sin escribir appConfig en cada evaluación.
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&appConfig.creditPolicy===raw&&Object.keys(cfg).every(k=>Object.prototype.hasOwnProperty.call(raw,k)&&Object.is(raw[k],cfg[k])))return raw;
   appConfig.creditPolicy=cfg;return cfg;
 }
 function _naClientSales(clientId){const key=String(clientId);return (Array.isArray(ventas)?ventas:[]).filter(v=>!v.anulada&&String(v.clienteId??'')===key);}
