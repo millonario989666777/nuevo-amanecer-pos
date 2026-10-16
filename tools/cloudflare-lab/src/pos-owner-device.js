@@ -19,7 +19,6 @@
 //     NO aplicada) las rutas fallan cerrado (503): no se registra nada sin bitácora.
 import { sha256Hex } from './a5-import-core.js';
 import { verifyOwnerPin } from './pos-roles.js';
-import { verifyOwnerApproval } from './pos-assistant-access.js';
 
 export const OWNER_DEVICE_BASE = '/auth/assistant/owner-device';
 export const OWNER_DEVICE_PATHS = Object.freeze({ register: OWNER_DEVICE_BASE + '/register', approve: OWNER_DEVICE_BASE + '/approve', revoke: OWNER_DEVICE_BASE + '/revoke' });
@@ -32,10 +31,13 @@ const nowIso = () => new Date().toISOString();
 async function roleOf(db, deviceId) { const r = await db.prepare('SELECT pos_role FROM pos_device_roles WHERE device_id=?1').bind(String(deviceId)).first(); return r?.pos_role || null; }
 async function ownerCount(db) { return Number((await db.prepare("SELECT COUNT(*) AS n FROM pos_device_roles WHERE pos_role='owner'").first())?.n || 0); }
 async function logReady(db) { try { await db.prepare('SELECT 1 FROM pos_owner_device_log LIMIT 1').all(); return true; } catch { return false; } }
-async function log(db, event, deviceId, by) {
-  await db.prepare('INSERT INTO pos_owner_device_log(event_id,event,device_id,actor_device_id,created_at) VALUES(?1,?2,?3,?4,?5)')
-    .bind(crypto.randomUUID(), event, String(deviceId).slice(0, 160), String(by).slice(0, 160), nowIso()).run();
+// Fila de bitácora como sentencia de un batch: se inserta solo si `cond` se cumple dentro de la misma transacción.
+function logStmtFor(db) {
+  return (event, deviceId, by, cond, extra) => db.prepare(`INSERT INTO pos_owner_device_log(event_id,event,device_id,actor_device_id,created_at) SELECT ?1,?2,?3,?4,?${5 + extra.length} WHERE ${cond}`)
+    .bind(crypto.randomUUID(), event, String(deviceId).slice(0, 160), String(by).slice(0, 160), ...extra, new Date().toISOString());
 }
+async function runBatch(db, stmts) { if (typeof db.batch === 'function') return db.batch(stmts); const out = []; for (const st of stmts) out.push(await st.run()); return out; }
+const changes = (r) => Number(r?.meta?.changes ?? r?.changes ?? 0);
 async function pending(db) {
   const rows = (await db.prepare('SELECT key,value_json FROM pos_settings WHERE key LIKE ?1').bind(PREFIX + '%').all())?.results || [];
   return rows.map((r) => { try { return { key: r.key, ...JSON.parse(r.value_json) }; } catch { return null; } }).filter((x) => x && x.device_id && x.exp > Date.now());
@@ -48,6 +50,7 @@ export async function ownerDeviceRoute(request, env, auth, json, deps = {}) {
   const db = deps.db; if (!db) return json({ error: 'db_missing' }, 500);
   const me = String(auth?.principalId || ''); if (!me) return json({ error: 'unauthorized' }, 401);
   if (!(await logReady(db))) return json({ error: 'owner_device_log_missing', message: 'Falta la bitácora (migración 0035). No se registra nada sin bitácora.' }, 503);
+  const logStmt = logStmtFor(db);
   const isOwner = async () => (await roleOf(db, me)) === 'owner' && auth.posRole === 'owner';
 
   if (path === OWNER_DEVICE_BASE) {
@@ -66,17 +69,23 @@ export async function ownerDeviceRoute(request, env, auth, json, deps = {}) {
     if (body.pin == null || body.pin === '') return json({ error: 'owner_pin_required' }, 403);
     const e = await (deps.verifyPin || verifyOwnerPin)(db, body.pin, me);
     if (e) return json({ error: e.error, attempts_left: e.attempts_left, locked_until: e.locked_until, message: e.status === 429 ? 'Demasiados intentos. Espera 15 min.' : undefined }, e.status || 403);
+    const t0 = nowIso();
     if ((await ownerCount(db)) === 0) {
-      const ins = await db.prepare("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) SELECT ?1,'owner',NULL,'owner-bootstrap',?2 WHERE NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE pos_role='owner') AND NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?1)")
-        .bind(me, nowIso()).run();
-      if (Number(ins?.meta?.changes) === 1) { await log(db, 'register_first', me, me); return json({ ok: true, device_id: me, pos_role: 'owner', via: 'first_owner' }); }
+      // Rol y bitácora en UNA transacción: el log solo se escribe si la fila de dueño se creó (misma marca de tiempo).
+      const r = await runBatch(db, [
+        db.prepare("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) SELECT ?1,'owner',NULL,'owner-bootstrap',?2 WHERE NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE pos_role='owner') AND NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?1)").bind(me, t0),
+        logStmt('register_first', me, me, "EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?5 AND created_by='owner-bootstrap' AND created_at=?6)", [me, t0]),
+      ]);
+      if (changes(r[0]) === 1) return json({ ok: true, device_id: me, pos_role: 'owner', via: 'first_owner' });
     }
     // Ya hay dueño: queda pendiente. El dueño lo aprueba o rechaza desde Configuración > Usuarios y Aparatos.
     const label = typeof body.label === 'string' ? body.label.trim().slice(0, 60) || null : null;
-    await db.prepare(`INSERT INTO pos_settings(key,value_json,revision,updated_at,updated_by) VALUES(?1,?2,1,?3,?4)
-      ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,revision=pos_settings.revision+1,updated_at=excluded.updated_at,updated_by=excluded.updated_by`)
-      .bind(await pendingKey(me), JSON.stringify({ device_id: me, label, at: nowIso(), exp: Date.now() + PENDING_MS }), nowIso(), me.slice(0, 120)).run();
-    await log(db, 'request', me, me);
+    await runBatch(db, [
+      db.prepare(`INSERT INTO pos_settings(key,value_json,revision,updated_at,updated_by) VALUES(?1,?2,1,?3,?4)
+        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,revision=pos_settings.revision+1,updated_at=excluded.updated_at,updated_by=excluded.updated_by`)
+        .bind(await pendingKey(me), JSON.stringify({ device_id: me, label, at: t0, exp: Date.now() + PENDING_MS }), t0, me.slice(0, 120)),
+      logStmt('request', me, me, '1=1', []),
+    ]);
     return json({ ok: false, pending: true, status: 'esperando_aprobacion', message: 'Esperando aprobación desde el teléfono del dueño.' }, 202);
   }
 
@@ -97,24 +106,45 @@ export async function ownerDeviceRoute(request, env, auth, json, deps = {}) {
     const key = await pendingKey(target), row = (await pending(db)).find((p) => p.key === key);
     if (!row) return json({ error: 'not_pending' }, 409);
   }
-  const approvalId = String(request.headers.get('x-owner-approval') || '');
-  const ok = await (deps.verifyApproval || ((id, action, op) => verifyOwnerApproval(db, me, id, action, op)))(approvalId, OWNER_DEVICE_APPROVAL_ACTION, opId);
-  if (!ok) return json({ error: 'owner_approval_required', action: OWNER_DEVICE_APPROVAL_ACTION, operation_id: opId }, 403);
-
+  const approvalId = String(request.headers.get('x-owner-approval') || '').slice(0, 80);
+  if (!approvalId) return json({ error: 'owner_approval_required', action: OWNER_DEVICE_APPROVAL_ACTION, operation_id: opId }, 403);
+  // Todo en UNA transacción (db.batch): cambio de rol, gasto ESTRICTO de la aprobación (operation_id=? AND used_at IS NULL) y bitácora.
+  // La aprobación se gasta DESPUÉS del cambio y solo si el cambio ocurrió; si algo no calza no se escribe nada.
+  const t = nowIso(), A = OWNER_DEVICE_APPROVAL_ACTION;
+  const PRED = 'approval_id=?1 AND device_id=?2 AND action=?3 AND expires_at>?4 AND operation_id=?5 AND used_at IS NULL';
+  const USED = '(SELECT 1 FROM pos_owner_approvals WHERE approval_id=?1 AND used_at=?4)';
+  const ap = [approvalId, me, A, t, opId];
+  const why = async () => ((await db.prepare('SELECT 1 FROM pos_owner_approvals WHERE ' + PRED).bind(...ap).first()) ? null : json({ error: 'owner_approval_required', action: A, operation_id: opId }, 403));
   if (path === OWNER_DEVICE_PATHS.revoke) {
-    // Atómico: nunca deja 0 dueños aunque lleguen dos revocaciones a la vez.
-    const up = await db.prepare("UPDATE pos_device_roles SET pos_role='empleado' WHERE device_id=?1 AND pos_role='owner' AND (SELECT COUNT(*) FROM pos_device_roles WHERE pos_role='owner')>1").bind(target).run();
-    if (Number(up?.meta?.changes) !== 1) return json({ error: 'last_owner', code: 'last_owner' }, 409);
-    await log(db, 'revoke', target, me);
-    return json({ ok: true, device_id: target, pos_role: 'empleado' });
+    const r = await runBatch(db, [
+      db.prepare(`UPDATE pos_owner_approvals SET used_at=?4 WHERE ${PRED} AND EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?6 AND pos_role='owner') AND (SELECT COUNT(*) FROM pos_device_roles WHERE pos_role='owner')>1`).bind(...ap, target),
+      db.prepare(`UPDATE pos_device_roles SET pos_role='empleado' WHERE device_id=?6 AND pos_role='owner' AND EXISTS ${USED}`).bind(...ap, target),
+      logStmt('revoke', target, me, `EXISTS (SELECT 1 FROM pos_owner_approvals WHERE approval_id=?5 AND used_at=?6)`, [approvalId, t]),
+    ]);
+    if (changes(r[1]) === 1) return json({ ok: true, device_id: target, pos_role: 'empleado' });
+    if ((await roleOf(db, target)) !== 'owner') return json({ error: 'not_owner' }, 409);
+    if ((await ownerCount(db)) <= 1) return json({ error: 'last_owner', code: 'last_owner' }, 409);
+    return (await why()) || json({ error: 'conflict' }, 409);
   }
   const key = await pendingKey(target);
-  const del = await db.prepare('DELETE FROM pos_settings WHERE key=?1').bind(key).run();
-  if (Number(del?.meta?.changes) !== 1) return json({ error: 'not_pending' }, 409);
-  if (decision === 'reject') { await log(db, 'reject', target, me); return json({ ok: true, device_id: target, rejected: true }); }
-  const ins = await db.prepare("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) SELECT ?1,'owner',NULL,?2,?3 WHERE NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?1)")
-    .bind(target, 'owner-approval:' + me.slice(0, 120), nowIso()).run();
-  if (Number(ins?.meta?.changes) !== 1) return json({ error: 'device_has_role' }, 409);
-  await log(db, 'approve', target, me);
-  return json({ ok: true, device_id: target, pos_role: 'owner' });
+  if (decision === 'reject') {
+    const r = await runBatch(db, [
+      db.prepare(`UPDATE pos_owner_approvals SET used_at=?4 WHERE ${PRED} AND EXISTS (SELECT 1 FROM pos_settings WHERE key=?6)`).bind(...ap, key),
+      db.prepare(`DELETE FROM pos_settings WHERE key=?6 AND EXISTS ${USED}`).bind(...ap, key),
+      logStmt('reject', target, me, `EXISTS (SELECT 1 FROM pos_owner_approvals WHERE approval_id=?5 AND used_at=?6)`, [approvalId, t]),
+    ]);
+    if (changes(r[0]) === 1) return json({ ok: true, device_id: target, rejected: true });
+    return (await why()) || json({ error: 'not_pending' }, 409);
+  }
+  const mark = 'owner-approval:' + me.slice(0, 80) + ':' + opId.slice(0, 60);
+  const ROW = '(SELECT 1 FROM pos_device_roles WHERE device_id=?6 AND created_by=?7)';
+  const r = await runBatch(db, [
+    db.prepare(`INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) SELECT ?6,'owner',NULL,?7,?4 WHERE NOT EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?6) AND EXISTS (SELECT 1 FROM pos_settings WHERE key=?8) AND EXISTS (SELECT 1 FROM pos_owner_approvals WHERE ${PRED})`).bind(...ap, target, mark, key),
+    db.prepare(`UPDATE pos_owner_approvals SET used_at=?4 WHERE ${PRED} AND EXISTS ${ROW}`).bind(...ap, target, mark),
+    db.prepare(`DELETE FROM pos_settings WHERE key=?8 AND EXISTS ${ROW}`).bind(...ap, target, mark, key),
+    logStmt('approve', target, me, 'EXISTS (SELECT 1 FROM pos_device_roles WHERE device_id=?5 AND created_by=?6)', [target, mark]),
+  ]);
+  if (changes(r[0]) === 1 && changes(r[1]) === 1) return json({ ok: true, device_id: target, pos_role: 'owner' });
+  if (await roleOf(db, target)) return json({ error: 'device_has_role' }, 409);
+  return (await why()) || json({ error: 'not_pending' }, 409);
 }

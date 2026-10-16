@@ -120,3 +120,63 @@ test('ping de un aparato sin fila de rol: 403 con reason sin_rol (para mostrar e
   const e = await call('tok-emp', '/auth/assistant/chat', { ping: true });
   assert.equal(e.status, 403); assert.equal(e.body.error, 'assistant_off'); assert.equal(e.body.reason, undefined);
 });
+
+test('Worker sin clave de DeepSeek: el ping igual dice sin_rol / rol (el registro se ve); el chat falla cerrado 503', async (t) => {
+  const { f, call } = await setup(t);
+  delete f.env.DEEPSEEK_API_KEY; f.env.ASSISTANT_DEMO = '';
+  const s = await call('tok-nuevo', '/auth/assistant/chat', { ping: true });
+  assert.equal(s.status, 403); assert.equal(s.body.reason, 'sin_rol');
+  const o = await call('tok-dueno', '/auth/assistant/chat', { ping: true });
+  assert.equal(o.status, 200); assert.equal(o.body.configured, false);
+  const c = await call('tok-dueno', '/auth/assistant/chat', { text: 'qué me falta reponer' });
+  assert.equal(c.status, 503); assert.equal(c.body.error, 'assistant_not_configured');
+  assert.equal((await call('tok-emp', '/auth/assistant/chat', { text: 'hola' })).status, 403, 'empleado apagado: 403 antes que 503');
+});
+
+test('OWNER_COMMANDS: product.create, assistant.employee_access y assistant.owner_device exigen operation_id en la aprobación', async (t) => {
+  const { call } = await setup(t);
+  const { OWNER_COMMANDS } = await import('../../tools/cloudflare-lab/src/pos-roles.js');
+  for (const action of ['product.create', 'assistant.employee_access', 'assistant.owner_device']) {
+    assert.ok(OWNER_COMMANDS.has(action), action);
+    const r = await call('tok-dueno', '/auth/owner-approval', { pin: PIN, action });
+    assert.equal(r.status, 400, action); assert.equal(r.body.error, 'operation_id_required');
+    assert.ok((await call('tok-dueno', '/auth/owner-approval', { pin: PIN, action, operation_id: 'op-' + action })).status < 300);
+  }
+});
+
+test('A5 db.batch: rol, gasto de la aprobación y bitácora van juntos; si el batch falla no queda nada a medias', async (t) => {
+  const { f, call, approval, role, logs } = await setup(t);
+  assert.equal((await call('tok-nuevo', B + '/register', { pin: PIN })).status, 202);
+  const used = (id) => f.all('SELECT used_at FROM pos_owner_approvals WHERE approval_id=?', id)[0]?.used_at ?? null;
+  const pend = () => f.all("SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:odev:%'")[0].n;
+  // falla a mitad del batch (después del INSERT del rol): todo vuelve atrás, la aprobación sigue sin gastar y el pendiente sigue
+  const a1 = await approval('tok-dueno', 'op-b1');
+  f.failBatchAt(2);
+  await call('tok-dueno', B + '/approve', { device_id: 'session:nuevo', operation_id: 'op-b1' }, { 'x-owner-approval': a1 }).catch(() => null);
+  f.failBatchAt(null);
+  assert.equal(role('nuevo'), null); assert.equal(used(a1), null); assert.equal(pend(), 1);
+  assert.deepEqual(logs().map((l) => l.event), ['request']);
+  // reintento con la MISMA aprobación (no se gastó): pasa, y el pendiente se borra DESPUÉS del insert, en la misma transacción
+  const ok = await call('tok-dueno', B + '/approve', { device_id: 'session:nuevo', operation_id: 'op-b1' }, { 'x-owner-approval': a1 });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body)); assert.equal(role('nuevo'), 'owner'); assert.ok(used(a1)); assert.equal(pend(), 0);
+  assert.deepEqual(logs().map((l) => l.event), ['request', 'approve']);
+  // revocar con fallo en el batch: sigue dueño, sin log de revoke, aprobación intacta
+  const a2 = await approval('tok-dueno', 'op-b2');
+  f.failBatchAt(1);
+  await call('tok-dueno', B + '/revoke', { device_id: 'session:nuevo', operation_id: 'op-b2' }, { 'x-owner-approval': a2 }).catch(() => null);
+  f.failBatchAt(null);
+  assert.equal(role('nuevo'), 'owner'); assert.equal(used(a2), null); assert.equal(logs().length, 2);
+  const rv = await call('tok-dueno', B + '/revoke', { device_id: 'session:nuevo', operation_id: 'op-b2' }, { 'x-owner-approval': a2 });
+  assert.equal(rv.status, 200); assert.equal(role('nuevo'), 'empleado'); assert.equal(logs().at(-1).event, 'revoke');
+});
+
+test('A5 aprobar: si el aparato ya tiene rol, la aprobación NO se gasta y el pendiente no se borra', async (t) => {
+  const { f, call, approval, role } = await setup(t);
+  assert.equal((await call('tok-nuevo', B + '/register', { pin: PIN })).status, 202);
+  f.exec("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) VALUES('session:nuevo','empleado',NULL,'test',?)", new Date().toISOString());
+  const a = await approval('tok-dueno', 'op-c');
+  const r = await call('tok-dueno', B + '/approve', { device_id: 'session:nuevo', operation_id: 'op-c' }, { 'x-owner-approval': a });
+  assert.equal(r.status, 409); assert.equal(r.body.error, 'device_has_role'); assert.equal(role('nuevo'), 'empleado');
+  assert.equal(f.all('SELECT used_at FROM pos_owner_approvals WHERE approval_id=?', a)[0].used_at, null);
+  assert.equal(f.all("SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:odev:%'")[0].n, 1);
+});

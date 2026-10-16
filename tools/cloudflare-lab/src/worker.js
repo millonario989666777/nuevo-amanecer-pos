@@ -23,6 +23,7 @@ import { dniLookupRoute, DNI_LOOKUP_PATH } from './pos-dni-lookup.js';
 import { assistantChatRoute, assistantConfirmRoute, ASSISTANT_CHAT_PATH, ASSISTANT_CONFIRM_PATH } from './pos-assistant.js';
 import { employeeAccessRoute, ACCESS_PATH as ASSISTANT_ACCESS_PATH } from './pos-assistant-access.js';
 import { ownerDeviceRoute, isOwnerDevicePath } from './pos-owner-device.js';
+import { auditRoute, AUDIT_PATH as ASSISTANT_AUDIT_PATH } from './pos-assistant-audit.js';
 import { handleRoles, ownerGate, posRoleFor, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
@@ -124,6 +125,13 @@ export default {
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return cors(auth);
         return cors(await employeeAccessRoute(request, env, auth, json, { db: getDatabase(env) }));
+      }
+      // Auditoría del asistente (solo dueño). Misma bandera ASSISTANT_ENABLED.
+      if (url.pathname === ASSISTANT_AUDIT_PATH) {
+        if (String(env.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return cors(auth);
+        return cors(await auditRoute(request, env, auth, json, { db: getDatabase(env) }));
       }
       // Registro del aparato dueño: además necesita ASSISTANT_OWNER_BOOTSTRAP=1 (la ruta responde 404 sin esa bandera).
       if (isOwnerDevicePath(url.pathname)) {

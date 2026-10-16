@@ -12,7 +12,9 @@ const WINDOW_MS = 15 * 60 * 1000;
 const APPROVAL_MS = 5 * 60 * 1000;
 const PAIRING_MS = 15 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-export const OWNER_COMMANDS = new Set(['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set']);
+export const OWNER_COMMANDS = new Set(['inventory.adjust', 'adjustment.create', 'compensation.create', 'product.update', 'customer.credit-policy.set',
+  // Rama feature/asistente-aislado (Bot 5): su aprobación también exige operation_id (no hay aprobación suelta). product.create necesita el OK del jefe.
+  'product.create', 'assistant.employee_access', 'assistant.owner_device']);
 // 'product.create': CAMBIO DE SERVIDOR DEL POS (rama feature/asistente-aislado), necesita el visto bueno del jefe antes de desplegar.
 // 'assistant.employee_access': asistente (rama feature/asistente-aislado), solo para aprobar el nivel del asistente de un aparato empleado. Aditivo.
 // 'assistant.owner_device': asistente, aprobar/rechazar/quitar un aparato dueño (detrás de ASSISTANT_OWNER_BOOTSTRAP). Aditivo.

@@ -7,11 +7,10 @@
 // - El servidor lo lee en CADA pedido de chat y de confirmación (sin caché): quitar el permiso aplica al instante.
 // - Cambiarlo exige aparato dueño (fila pos_role='owner' explícita) + aprobación del dueño con PIN (POST /auth/owner-approval,
 //   acción 'assistant.employee_access', ligada al operation_id del cambio y gastada de forma estricta: changes===1).
-//   Compatibilidad: también vale el PIN en el cuerpo (verifyOwnerPin, con su límite de intentos por aparato).
+//   Solo con aprobación ligada al operation_id (se quitó el PIN suelto en el cuerpo). Se valida el aparato destino ANTES de gastarla.
 // - Cada cambio se anota en pos_assistant_access_log SI la tabla existe (migración 0034, escrita y NO aplicada).
 // - Las herramientas que cambian algo piden SIEMPRE el PIN del dueño en una tarjeta de un solo uso, en cualquier nivel.
 import { sha256Hex } from './a5-import-core.js';
-import { verifyOwnerPin } from './pos-roles.js';
 
 export const ACCESS_LEVELS = Object.freeze(['off', 'consultas', 'consultas_documentos']);
 export const ACCESS_APPROVAL_ACTION = 'assistant.employee_access';
@@ -78,21 +77,17 @@ export async function employeeAccessRoute(request, env, auth, json, deps = {}) {
   const deviceId = typeof body?.device_id === 'string' ? body.device_id.slice(0, 160) : '';
   const level = ACCESS_LEVELS.includes(body?.level) ? body.level : body?.level == null && typeof body?.enabled === 'boolean' ? (body.enabled ? 'consultas' : 'off') : null;
   if (!deviceId || !level) return json({ error: 'bad_request' }, 400);
-  // Aprobación del dueño ligada a ESTE cambio (operation_id) y gastada una sola vez; o el PIN en el cuerpo.
-  const approvalId = String(request.headers.get('x-owner-approval') || body.approval_id || '');
+  // Solo aprobación del dueño ligada a ESTE cambio (operation_id), gastada una vez. Ya no hay PIN suelto en el cuerpo.
+  const approvalId = String(request.headers.get('x-owner-approval') || '');
   const opId = typeof body.operation_id === 'string' ? body.operation_id.slice(0, 120) : '';
-  if (approvalId) {
-    if (!opId) return json({ error: 'operation_id_required' }, 400);
-    const ok = await (deps.verifyApproval || ((id, action, op) => verifyOwnerApproval(db, auth.principalId, id, action, op)))(approvalId, ACCESS_APPROVAL_ACTION, opId);
-    if (!ok) return json({ error: 'owner_approval_required', action: ACCESS_APPROVAL_ACTION, operation_id: opId }, 403);
-  } else {
-    if (body.pin == null || body.pin === '') return json({ error: 'owner_approval_required', action: ACCESS_APPROVAL_ACTION }, 403);
-    const pinErr = await (deps.verifyPin || verifyOwnerPin)(db, body.pin, auth.principalId);
-    if (pinErr) return json({ error: pinErr.error, attempts_left: pinErr.attempts_left, locked_until: pinErr.locked_until }, pinErr.status || 403);
-  }
+  if (!approvalId) return json({ error: 'owner_approval_required', action: ACCESS_APPROVAL_ACTION, operation_id: opId || null }, 403);
+  if (!opId) return json({ error: 'operation_id_required' }, 400);
+  // Primero se valida el aparato destino; la aprobación se gasta recién cuando todo lo demás está bien.
   let target = null;
   try { target = await db.prepare('SELECT pos_role FROM pos_device_roles WHERE device_id=?1').bind(deviceId).first(); } catch { target = null; }
   if (target?.pos_role !== 'empleado') return json({ error: 'not_employee_device' }, 409);
+  const ok = await (deps.verifyApproval || ((id, action, op) => verifyOwnerApproval(db, auth.principalId, id, action, op)))(approvalId, ACCESS_APPROVAL_ACTION, opId);
+  if (!ok) return json({ error: 'owner_approval_required', action: ACCESS_APPROVAL_ACTION, operation_id: opId }, 403);
   await db.prepare(`INSERT INTO pos_settings(key,value_json,revision,updated_at,updated_by) VALUES(?1,?2,1,?3,?4)
     ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,revision=pos_settings.revision+1,updated_at=excluded.updated_at,updated_by=excluded.updated_by`)
     .bind(await levelKey(deviceId), JSON.stringify({ level }), new Date().toISOString(), String(auth.principalId).slice(0, 120)).run();

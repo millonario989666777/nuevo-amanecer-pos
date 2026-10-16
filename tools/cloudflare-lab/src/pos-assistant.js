@@ -22,6 +22,7 @@ import { canDo } from './pos-permissions.js';
 import { mockAssistantReply } from './pos-assistant-mock.js';
 import { runAssistantQuery, canonicalReader, QUERY_TYPES, employeeDocumentRows } from './pos-assistant-queries.js';
 import { assistantAccess, accessOn, accessLevel, STRICT_APPROVAL_SQL } from './pos-assistant-access.js';
+import { auditWrite } from './pos-assistant-audit.js';
 
 export const ASSISTANT_CHAT_PATH = '/auth/assistant/chat';
 export const ASSISTANT_CONFIRM_PATH = '/auth/assistant/confirm';
@@ -347,6 +348,7 @@ export async function assistantRole(db, auth) {
 }
 
 // ---------- Token de confirmación (un solo uso, 5 minutos) ----------
+const AUDIT_TOOL = Object.freeze({ consulta: 'consultar', documento: 'preparar_documento', pasos: 'explicar_pasos', costo: 'actualizar_costo' });
 const TYPE_TOOL = Object.freeze({ compra: 'preparar_compra', precio: 'proponer_cambio_precio', costo: 'proponer_cambio_precio', ajuste: 'proponer_ajuste_stock', producto: 'proponer_producto_nuevo' });
 const enc = new TextEncoder();
 function b64url(bytes) { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -417,11 +419,10 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
   if (used.value?.op) return json({ ok: true, already_confirmed: true, operation_id: used.value.op, type: tok.t, proposal: withDrops(used.value.drop) });
   if (!(tok.exp > now)) return json({ error: 'confirm_expired' }, 410);
   const approvalAction = OWNER_APPROVAL_ACTION[tok.t];
-  if (approvalAction) {
-    const approvalId = String(request.headers.get('x-owner-approval') || '');
-    const verify = deps.verifyApproval || ((id) => verifyOwnerApproval(deps.db, auth.principalId, id, approvalAction, tok.op));
-    if (!approvalId || !(await verify(approvalId, approvalAction, tok.op))) return json({ error: 'owner_approval_required', action: approvalAction, operation_id: tok.op }, 403);
-  }
+  const approvalId = String(request.headers.get('x-owner-approval') || '');
+  // Sin aprobación ni se mira lo demás. Pero la aprobación se GASTA recién justo antes de marcar la tarjeta como usada (abajo):
+  // un 422 de revisión o un 429 no la queman, así el celular reenvía la MISMA tarjeta con la MISMA aprobación sin pedir el PIN otra vez.
+  if (approvalAction && !approvalId) return json({ error: 'owner_approval_required', action: approvalAction, operation_id: tok.op }, 403);
   // Filas marcadas «Revisa este dato»: hay que aceptarlas o quitarlas una por una, con el op de ESTE token (la consola no se salta el botón).
   let applied = body.proposal;
   if (tok.t === 'compra') {
@@ -439,11 +440,16 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
   const w = await store.get(devKey); const wv = w.value.min === minute ? { ...w.value } : { min: minute, n: 0 };
   if (wv.n >= capFrom(env, 'ASSISTANT_CONFIRMS_PER_MINUTE', ASSISTANT_LIMITS.confirmsPerMinute)) return json({ error: 'rate_limited', retry_after_s: 60 - Math.floor((now % 60000) / 1000) }, 429);
   wv.n++;
+  if (approvalAction) {
+    const verify = deps.verifyApproval || ((id) => verifyOwnerApproval(deps.db, auth.principalId, id, approvalAction, tok.op));
+    if (!(await verify(approvalId, approvalAction, tok.op))) return json({ error: 'owner_approval_required', action: approvalAction, operation_id: tok.op }, 403);
+  }
   if (!(await store.put(usedKey, { op: tok.op, at: now, t: tok.t, drop: applied.quitadas || [] }, used.revision))) {
     const again = await store.get(usedKey);
     return json({ ok: true, already_confirmed: true, operation_id: again.value?.op || tok.op, type: tok.t, proposal: withDrops(again.value?.drop) });
   }
   await store.put(devKey, wv, w.revision);
+  await (deps.audit || auditWrite)(deps.db, [{ device_id: auth.principalId, role, tool: TYPE_TOOL[tok.t] || tok.t, type: tok.t, outcome: 'confirmed', card_id: tok.pid, operation_id: tok.op }]);
   // Devuelve la propuesta verificada contra el token: el cliente aplica ESTA y no otra.
   return json({ ok: true, operation_id: tok.op, type: tok.t, role, proposal: applied });
 }
@@ -469,18 +475,21 @@ export function parseChatBody(body) {
 export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   if (String(env?.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
-  // Falla cerrado: sin clave no hay tarjetas, salvo modo demostración explícito (ASSISTANT_DEMO=1, solo prototipo local y pruebas).
-  if (!env.DEEPSEEK_API_KEY && String(env.ASSISTANT_DEMO || '') !== '1') return json({ error: 'assistant_not_configured', message: 'asistente no configurado' }, 503);
   const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth);
   // Aparato sin fila de rol (el POS lo trata como dueño, el asistente no): se avisa para mostrar «Registrar este teléfono como dueño».
-  if (!accessOn(role)) return json({ ...offBody(role), ...(auth?.posRole === 'owner' ? { reason: 'sin_rol' } : {}) }, 403);
+  const ownerBootstrap = String(env?.ASSISTANT_OWNER_BOOTSTRAP || '') === '1';
+  if (!accessOn(role)) return json({ ...offBody(role), ...(auth?.posRole === 'owner' ? { reason: 'sin_rol', owner_bootstrap: ownerBootstrap } : {}) }, 403);
   const len = Number(request.headers.get('content-length') || 0);
   if (len > ASSISTANT_LIMITS.maxBodyBytes) return json({ error: 'payload_too_large' }, 413);
   let raw; try { raw = await request.text(); } catch { return json({ error: 'bad_request' }, 400); }
   if (raw.length > ASSISTANT_LIMITS.maxBodyBytes) return json({ error: 'payload_too_large' }, 413);
   let body; try { body = JSON.parse(raw); } catch { return json({ error: 'bad_request' }, 400); }
   // Comprobación para la tarjeta de Inicio y la burbuja: no llama a DeepSeek ni gasta cupo. El servidor dice rol y nivel.
-  if (body && body.ping === true) return json({ ok: true, role: role === 'owner' ? 'owner' : 'empleado', level: accessLevel(role), server_now: (deps.now || Date.now)() });
+  // Rol y sin_rol se revisan ANTES de la clave: en un Worker sin clave el registro del dueño igual se ve. El ping no llama al modelo.
+  const configured = !!env.DEEPSEEK_API_KEY || String(env.ASSISTANT_DEMO || '') === '1';
+  if (body && body.ping === true) return json({ ok: true, role: role === 'owner' ? 'owner' : 'empleado', level: accessLevel(role), configured, owner_bootstrap: ownerBootstrap, server_now: (deps.now || Date.now)() });
+  // Falla cerrado: sin clave no hay chat ni tarjetas, salvo modo demostración explícito (ASSISTANT_DEMO=1, solo prototipo local y pruebas).
+  if (!configured) return json({ error: 'assistant_not_configured', message: 'asistente no configurado' }, 503);
   const parsed = parseChatBody(body);
   if (parsed.error) return json({ error: parsed.error }, parsed.error === 'image_too_large' ? 413 : 400);
   const ctx = sanitizeContext(parsed.context, role);
@@ -549,6 +558,9 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   if (!proposals.length && dropped.length) reply = 'No puedo hacer eso desde el asistente. Hazlo en su pantalla normal.';
   if (!reply && proposals.length) reply = 'Listo. Revisa y pulsa Confirmar.';
   if (!reply) reply = 'No entendí bien. ¿Me lo dices de otra forma?';
+  // Auditoría (A20): una fila por llamada a herramienta. Sin textos ni argumentos.
+  await (deps.audit || auditWrite)(deps.db, [...proposals.map((p) => ({ device_id: auth.principalId, role, tool: AUDIT_TOOL[p.type] || TYPE_TOOL[p.type] || p.type, type: p.type, outcome: 'proposed', card_id: p.id })),
+    ...dropped.map((d) => ({ device_id: auth.principalId, role, tool: d.tool, outcome: 'dropped:' + d.dropped }))]);
   return json({ ok: true, mode, role, server_now: now, reply, proposals, denied: [], dropped: dropped.map((d) => ({ tool: d.tool, reason: d.dropped })), left: quota.left,
     payload_bytes: bytes, usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens || 0, completion_tokens: result.usage.completion_tokens || 0 } : null });
 }

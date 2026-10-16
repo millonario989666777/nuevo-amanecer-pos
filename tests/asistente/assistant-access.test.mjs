@@ -19,7 +19,14 @@ async function setup(t, { log = false } = {}) {
   f.exec("INSERT INTO pos_device_roles(device_id,pos_role,label,created_by,created_at) VALUES('session:emp2','empleado','Caja 3','session:dueno',?)", at);
   const call = (tok, path, body, extra = {}, method = 'POST') => f.fetch('http://localhost' + path, { method, headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json', ...extra }, body: method === 'GET' ? undefined : JSON.stringify(body) });
   assert.equal((await call('tok-dueno', '/auth/owner-pin', { new_pin: PIN })).status, 200);
-  const level = (device, lvl, tok = 'tok-dueno', pin = PIN) => call(tok, '/auth/assistant/employee-access', { device_id: device, level: lvl, pin });
+  let nOp = 0;
+  // Cambio de nivel: PIN -> aprobación de UN uso ligada a este operation_id -> POST con x-owner-approval (no hay PIN suelto en el cuerpo).
+  const level = async (device, lvl, tok = 'tok-dueno', pin = PIN, op = 'lvl-' + (++nOp)) => {
+    if (pin === '') return call(tok, '/auth/assistant/employee-access', { device_id: device, level: lvl, operation_id: op });
+    const a = await call(tok, '/auth/owner-approval', { pin, action: 'assistant.employee_access', operation_id: op });
+    if (a.status >= 300) return a;
+    return call(tok, '/auth/assistant/employee-access', { device_id: device, level: lvl, operation_id: op }, { 'x-owner-approval': (await a.json()).approval_id });
+  };
   const chat = async (tok, text) => { const r = await call(tok, '/auth/assistant/chat', { text, context: { products: [{ id: '00002', nombre: 'Synthetic 00002', precio: 12.34, costo: 0.29, stock: 1 }] } }); return { status: r.status, body: await r.json() }; };
   const confirm = async (tok, p, approval) => { const { confirm_token, ...proposal } = p; const r = await call(tok, '/auth/assistant/confirm', { token: confirm_token, proposal }, approval ? { 'x-owner-approval': approval } : {}); return { status: r.status, body: await r.json() }; };
   const approve = async (tok, action, op, pin = PIN) => { const r = await call(tok, '/auth/owner-approval', { pin, action, operation_id: op }); return { status: r.status, body: await r.json() }; };
@@ -39,7 +46,7 @@ test('apagado por defecto: el empleado recibe 403 assistant_off en chat, ping y 
   const { chat, call } = await setup(t);
   const r = await chat('tok-emp', 'qué falta reponer'); assert.equal(r.status, 403); assert.equal(r.body.error, 'assistant_off');
   const ping = await call('tok-emp', '/auth/assistant/chat', { ping: true }); assert.equal(ping.status, 403);
-  const own = await call('tok-dueno', '/auth/assistant/chat', { ping: true }); assert.deepEqual({ ...(await own.json()), server_now: 0 }, { ok: true, role: 'owner', level: 'dueno', server_now: 0 });
+  const own = await call('tok-dueno', '/auth/assistant/chat', { ping: true }); assert.deepEqual({ ...(await own.json()), server_now: 0 }, { ok: true, role: 'owner', level: 'dueno', configured: true, owner_bootstrap: false, server_now: 0 });
   const conf = await call('tok-emp', '/auth/assistant/confirm', { token: 'x', proposal: {} }); assert.equal(conf.status, 403); assert.equal((await conf.json()).error, 'assistant_off');
 });
 
@@ -147,4 +154,35 @@ test('lista_pedido del empleado: aunque el modelo mande costos, total o inversi�
   assert.deepEqual(Object.keys(p).sort(), ['data', 'fiscal', 'id', 'needsConfirm', 'tipo', 'title', 'type']);
   const txt = JSON.stringify(p); assert.ok(!/4321|999\.11|costo|inversi/i.test(txt), txt);
   assert.ok(p.data.filas.every((x) => x.length === 3));
+});
+
+test('cambio de nivel: el PIN suelto en el cuerpo ya no sirve; un aparato destino inválido NO gasta la aprobación', async (t) => {
+  const { call } = await setup(t);
+  const suelto = await call('tok-dueno', '/auth/assistant/employee-access', { device_id: 'session:emp', level: 'consultas', operation_id: 'op-s', pin: PIN });
+  assert.equal(suelto.status, 403); assert.equal((await suelto.json()).error, 'owner_approval_required');
+  const apr = (await (await call('tok-dueno', '/auth/owner-approval', { pin: PIN, action: 'assistant.employee_access', operation_id: 'op-d' })).json()).approval_id;
+  const malo = await call('tok-dueno', '/auth/assistant/employee-access', { device_id: 'session:dueno', level: 'consultas', operation_id: 'op-d' }, { 'x-owner-approval': apr });
+  assert.equal(malo.status, 409);
+  const bueno = await call('tok-dueno', '/auth/assistant/employee-access', { device_id: 'session:emp', level: 'consultas', operation_id: 'op-d' }, { 'x-owner-approval': apr });
+  assert.equal(bueno.status, 200, 'la misma aprobación sigue sirviendo tras el 409');
+  const otra = await call('tok-dueno', '/auth/assistant/employee-access', { device_id: 'session:emp2', level: 'consultas', operation_id: 'op-d' }, { 'x-owner-approval': apr });
+  assert.equal(otra.status, 403, 'y ya gastada no sirve otra vez');
+});
+
+test('A20 auditoría: una fila por llamada a herramienta y por confirmación; solo el dueño la lee; sin textos, PIN ni DNI', async (t) => {
+  const { f, call, chat, confirm, approve } = await setup(t);
+  const a = await chat('tok-dueno', 'merma de 2 Synthetic 00002 DNI 45678912');
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  const card = a.body.proposals.find((p) => p.confirm_token);
+  const apr = await approve('tok-dueno', 'inventory.adjust', opOf(card));
+  assert.equal((await confirm('tok-dueno', card, apr.body.approval_id)).status, 200);
+  const r = await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET'); const b = await r.json();
+  assert.equal(r.status, 200);
+  assert.ok(b.entries.length >= a.body.proposals.length + 1, JSON.stringify(b.entries));
+  assert.ok(b.entries.some((e) => e.outcome === 'confirmed' && e.operation_id === opOf(card)));
+  assert.ok(b.entries.some((e) => e.outcome === 'proposed' && e.tool === 'proponer_ajuste_stock'));
+  const txt = JSON.stringify(b); assert.ok(!/45678912|4821|merma de/.test(txt), txt);
+  assert.equal((await call('tok-emp', '/auth/assistant/audit', null, {}, 'GET')).status, 403);
+  // y no se ve por /settings
+  const st = await call('tok-dueno', '/settings', null, {}, 'GET'); if (st.status === 200) assert.ok(!JSON.stringify(await st.json()).includes('internal:asst:audit'));
 });
