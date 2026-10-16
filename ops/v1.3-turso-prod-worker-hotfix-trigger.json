@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base 527937732e59e505cd08dcf8773e20a772a1a302: #757 GET /auth/purchases returns truncated flag (LIMIT 301, max 300 rows; additive field). No permissions changes. No schema changes. Rollback to efa91db3 (worker 44, currently live). Web stays at 149 until live check.",
-  "target_commit": "527937732e59e505cd08dcf8773e20a772a1a302",
-  "rollback_ref": "efa91db36951ef4aff73c6c72fb3a46d8923b4a4",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base 4053e562095fef09aa3c7b4ae4141ec207f70fa4: #760 a6-financial rejects payment.create / payment batch on voided IMPORT credits with 409 credit_voided (read-only check, no schema changes). No permissions changes. Rollback to 52793773 (worker 45, currently live). Web stays at 150 until live check.",
+  "target_commit": "4053e562095fef09aa3c7b4ae4141ec207f70fa4",
+  "rollback_ref": "527937732e59e505cd08dcf8773e20a772a1a302",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 45,
-  "optimization": "HISTORIAL_COMPRAS_TRUNCATED_757"
+  "attempt": 46,
+  "optimization": "CREDIT_VOIDED_PAYMENT_GUARD_760"
 }
