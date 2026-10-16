@@ -16,6 +16,8 @@
     'pageCaja',
     'pageGastos',
     'pageProximamente',
+    'pageValorizacion',
+    'pageRotacionAbc',
     'pageConfig'
   ]);
   var MOBILE_SCROLL_PAGES = Object.freeze({
@@ -326,7 +328,7 @@
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
       return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente') || role === 'owner';
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageValorizacion' && pageId !== 'pageRotacionAbc') || role === 'owner';
   }
 
   function renderDrawerItems() {

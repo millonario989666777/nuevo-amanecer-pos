@@ -4,7 +4,7 @@
   var owner = ['owner'], both = ['owner', 'empleado'];
   var SCREENS = {};
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
-  ['pageGastos', 'pageConfig', 'pageProximamente', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
+  ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
   ['expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
@@ -59,7 +59,7 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
-  var FEATURE_ROLES = { 'asistencia-empleados': owner };
+  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
     'credito-cuotas': true,
@@ -92,7 +92,7 @@
     'pedido-a-boleta': true,
     'venta-por-presentacion': true,
     'app-android-nativa': true,
-    'valorizacion-inventario': true,
+    'valorizacion-inventario': false,
     'reporte-arqueo': true,
     'cpe-sin-internet': true,
     'venta-granel': true,
@@ -154,7 +154,7 @@
     'atajos-teclado': true,
     'servicios-recargas': true,
     'reporte-igv': true,
-    'rotacion-abc': true,
+    'rotacion-abc': false,
     'calendario-gastos': true,
     'multi-ruc': true
   };
