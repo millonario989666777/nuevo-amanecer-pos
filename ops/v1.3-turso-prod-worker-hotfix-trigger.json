@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base 8f6891d5ffd7a053b2547c23d2a0a07f24c6be05: #784 reporte de arqueo. No schema changes. Rollback to 0271a75b (worker 50, Cloudflare version f0ea1b54, currently live). Web 160 not deployed yet (waits for live check).",
-  "target_commit": "8f6891d5ffd7a053b2547c23d2a0a07f24c6be05",
-  "rollback_ref": "0271a75b440dfaf3cd7773f1e97c69ccdde9a74e",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base d8f12ddbb561c547ad67a2ad325e625aa5aa5465: #786 cierres de caja solo dueño en el servidor (pos-permissions.js, /auth/cash-closes). No schema changes. Rollback to 8f6891d5 (worker 51, Cloudflare version c529bf97, currently live). Web stays at 160 (161 not deployed yet).",
+  "target_commit": "d8f12ddbb561c547ad67a2ad325e625aa5aa5465",
+  "rollback_ref": "8f6891d5ffd7a053b2547c23d2a0a07f24c6be05",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 51,
-  "optimization": "REPORTE_ARQUEO_784"
+  "attempt": 52,
+  "optimization": "ARQUEO_OWNER_ONLY_SERVER_786"
 }
