@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#722 contraste oscuro Fotos múltiples + título Inventario <390px; #723 filtro Con deuda/Sin deuda/Todos en Clientes; #724 revisión solo-owner de fotos sin coincidencia. Worker 41 ya live.",
-  "retry_attempt": 140,
-  "retry_reason": "Deploy de base 128f07cc (#722, #723, #724, #727). Rollback: ef98793b (build de 139).",
-  "requested_at_utc": "2026-10-16T01:32:17Z",
-  "approved_base": "128f07cc5d779e8126df3e1cc39f1b09be1b8609"
+  "note": "#730 valorización de inventario solo-owner; #731 rotación ABC por categoría solo-owner. Worker 42 ya live.",
+  "retry_attempt": 141,
+  "retry_reason": "Deploy de base 5af8d378 (#730, #731). Rollback: f0efc457549c034fb0526d5b4a772cd20cb2216d (build de 140).",
+  "requested_at_utc": "2026-10-16T02:09:46Z",
+  "approved_base": "5af8d37821bfdbaf846a5cd8b32a57456f325b68"
 }
