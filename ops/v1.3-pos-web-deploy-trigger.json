@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#761 modo oscuro: contraste de la franja de compras (solo color). Worker 46 sin cambios.",
-  "retry_attempt": 152,
-  "retry_reason": "Deploy de base c690090363c229f4d333bce249d01ffe9411d1b6 (#761). Rollback: web 151 f43d0faaabfacde6c0077b085dce523e6aa61321 (merge 4053e562095fef09aa3c7b4ae4141ec207f70fa4).",
-  "requested_at_utc": "2026-10-16T07:23:43Z",
-  "approved_base": "c690090363c229f4d333bce249d01ffe9411d1b6"
+  "note": "#764 compensación de créditos anulados (web) + #766 modo oscuro contraste en crédito de clientes. Worker 47 ya live (live check OK asistente 5).",
+  "retry_attempt": 153,
+  "retry_reason": "Deploy de base e4c1adc6e1c7bf416ac2c35e4e3b198527a01790 (#764 39a0eba4 + #766). Rollback: web 152 4779886113b7cae568c808c584aa3801fa2e6af6 (merge c690090363c229f4d333bce249d01ffe9411d1b6).",
+  "requested_at_utc": "2026-10-16T08:34:57Z",
+  "approved_base": "e4c1adc6e1c7bf416ac2c35e4e3b198527a01790"
 }
