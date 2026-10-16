@@ -159,3 +159,36 @@ test('employee cannot open arqueo; direct rendering exposes nothing and never re
   await expect(page.locator('#pageReporteArqueo [data-ra-controls]')).toBeHidden();
   expect(await page.evaluate(() => (window as any).__raDeniedReads)).toBe(0);
 });
+
+test('owner online reads cash closes from the owner-only server route instead of the local replica', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); const dates = await seed(page);
+  const requests: string[] = [];
+  await page.route('https://permissions.test/auth/cash-closes**', route => {
+    requests.push(route.request().url());
+    const at = new Date(dates.today + 'T12:00:00-05:00').toISOString();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ range: {}, cash_closes: [
+      { session_id: 'srv-1', status: 'CLOSED', opened_at: at, closed_at: at, expected_cents: 5000, counted_cents: 5100, difference_cents: 100,
+        opened_by_name: 'Servidor abrió', closed_by_name: 'Servidor cerró' }] }) });
+  });
+  await page.evaluate(() => (window as any).goPage('pageReporteArqueo'));
+  const screen = page.locator('#pageReporteArqueo');
+  await expect(screen.locator('[data-ra-status]')).toContainText('desde el servidor');
+  await expect(screen.locator('tbody tr')).toHaveCount(1);
+  await expect(screen.locator('tbody')).toContainText('Servidor abrió');
+  await expect(screen.locator('tbody')).not.toContainText('Persona de prueba');
+  expect(requests.length).toBeGreaterThan(0);
+  expect(new URL(requests.at(-1)!).searchParams.get('hasta')).toBe(dates.today);
+});
+
+test('server 403 for the cash-close report shows no data even if the client role is stale', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); await seed(page);
+  await page.route('https://permissions.test/auth/cash-closes**', route =>
+    route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'forbidden_role' }) }));
+  await page.evaluate(() => (window as any).goPage('pageReporteArqueo'));
+  const screen = page.locator('#pageReporteArqueo');
+  await expect(screen.locator('[data-ra-status]')).toContainText('Sin permiso');
+  await expect(screen.locator('[data-ra-content]')).toBeEmpty();
+  await expect(screen.locator('[data-ra-export]')).toBeDisabled();
+});

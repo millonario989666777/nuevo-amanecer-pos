@@ -46,3 +46,15 @@ test('purchase costs use an owner-only action', () => {
   assert.equal(p.canDo('owner', 'purchases.costs.view'), true);
   assert.equal('purchases.costs.view' in p.FEATURE_ROLES, false);
 });
+
+test('cash-close reports require the owner action while operational cash reads remain shared', () => {
+  assert.deepEqual(p.ACTIONS['cash.closes.view'], ['owner']);
+  assert.equal(p.canDo('owner', 'cash.closes.view'), true);
+  for (const role of ['empleado', 'unknown', undefined]) assert.equal(p.canDo(role, 'cash.closes.view'), false);
+  assert.deepEqual(p.API_ROUTES.find(r => r.path === '/auth/cash-closes'), {
+    path: '/auth/cash-closes', methods: ['GET'], roles: ['owner'], action: 'cash.closes.view'
+  });
+  assert.deepEqual(p.routeRoles('/auth/cash-closes', 'GET'), ['owner']);
+  assert.deepEqual(p.routeRoles('/read/canonical/cash-sessions', 'GET'), ['owner', 'empleado']);
+  assert.deepEqual(p.routeRoles('/read/canonical/snapshot', 'GET'), ['owner', 'empleado']);
+});
