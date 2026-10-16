@@ -193,3 +193,38 @@ test('employee cannot open customer history and direct rendering clears customer
   expect(await readState(page)).toBe(before);
   expect(writes).toEqual([]);
 });
+
+for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: headers on one line, numbers right-aligned, readable row cells and full customer label`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageClienteHistorial'); }, dark);
+    const screen = page.locator('#pageClienteHistorial');
+    await expect(screen.locator('h1')).toHaveText('Historial de compras por cliente');
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    const result = await screen.evaluate(node => {
+      const one = (el: Element) => { const s = getComputedStyle(el); return el.getBoundingClientRect().height <= parseFloat(s.lineHeight || '0') * 1.5 + parseFloat(s.paddingTop) + parseFloat(s.paddingBottom) + 2; };
+      const heads = [...node.querySelectorAll('thead th')];
+      const nums = [...node.querySelectorAll('.ch-table .ch-num')];
+      const rowTh = [...node.querySelectorAll('tbody th')].map(el => getComputedStyle(el));
+      const select = node.querySelector<HTMLSelectElement>('[data-ch-customer]')!;
+      const probe = document.createElement('span'); probe.style.font = getComputedStyle(select).font; probe.style.whiteSpace = 'nowrap';
+      probe.textContent = select.selectedOptions[0].textContent; document.body.appendChild(probe);
+      const fits = probe.getBoundingClientRect().width + 40 <= select.clientWidth; probe.remove();
+      return {
+        headsOneLine: heads.every(el => getComputedStyle(el).whiteSpace === 'nowrap' && one(el)),
+        numLabels: nums.map(el => (el.closest('table')!.querySelectorAll('thead th')[(el as HTMLTableCellElement).cellIndex] as HTMLElement).textContent),
+        numsRight: nums.length > 0 && nums.every(el => getComputedStyle(el).textAlign === 'right' && getComputedStyle(el).whiteSpace === 'nowrap'),
+        rowReadable: rowTh.every(s => s.textTransform === 'none' && parseFloat(s.fontSize) >= 14 && s.color === getComputedStyle(node).color),
+        fits
+      };
+    });
+    expect(result.headsOneLine).toBe(true);
+    expect(result.numsRight).toBe(true);
+    expect(new Set(result.numLabels)).toEqual(new Set(['Total', 'Cantidad', 'Importe']));
+    expect(result.rowReadable).toBe(true);
+    expect(result.fits).toBe(true);
+    await noOverflow(page);
+  });
+}

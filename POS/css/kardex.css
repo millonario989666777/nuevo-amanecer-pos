@@ -45,7 +45,7 @@
 #pageKardex .kardex-table td { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 #pageKardex .kardex-table thead th { color: var(--kardex-muted); font-size: 12px; white-space: nowrap; word-break: normal; overflow-wrap: normal; hyphens: none; }
 #pageKardex .kardex-table th:nth-child(3) { width: 20%; }
-#pageKardex .kardex-table .kardex-num { text-align: right; font-variant-numeric: tabular-nums; }
+#pageKardex .kardex-table .kardex-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 #pageKardex .kardex-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* Tema oscuro del Kardex, acotado a su página. */
 body.dark #pageKardex { --kardex-bg: #0f172a; --kardex-surface: #1e293b; --kardex-text: #f8fafc; --kardex-muted: #cbd5e1; --kardex-border: #64748b; color-scheme: dark; }
@@ -56,7 +56,7 @@ body.dark #pageKardex { --kardex-bg: #0f172a; --kardex-surface: #1e293b; --karde
   #pageKardex .kardex-table td { display: block; padding: 0; border: 0; }
   #pageKardex .kardex-table td:nth-child(3) { grid-column: 1 / -1; }
   #pageKardex .kardex-table td::before { content: attr(data-label); display: block; color: var(--kardex-muted); font-size: 12px; }
-  #pageKardex .kardex-table .kardex-num { text-align: left; }
+  #pageKardex .kardex-table .kardex-num { text-align: left; white-space: nowrap; }
 }
 @media (min-width: 600px) {
   #pageKardex { padding: 24px; }
