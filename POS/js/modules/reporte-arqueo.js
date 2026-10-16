@@ -43,19 +43,21 @@
         esperado: cents(s.expected_cents), contado: s.counted_cents == null ? null : cents(s.counted_cents),
         diferencia: s.difference_cents == null ? null : cents(s.difference_cents), timestamp: at.ms };
     }).filter(Boolean).sort(function (a, b) { return b.timestamp - a.timestamp || a.sessionId.localeCompare(b.sessionId); });
-    var totals = { count: rows.length, esperado: 0, contado: 0, diferencia: 0 };
+    var totals = { count: rows.length, esperado: 0, contado: 0, diferencia: 0, sinContar: 0 };
     rows.forEach(function (row) {
+      // Los tres totales suman solo cierres contados: contado − esperado == diferencia.
+      if (row.contado === null) { totals.sinContar += 1; return; }
       totals.esperado += row.esperado;
-      if (row.contado !== null) totals.contado += row.contado;
-      if (row.diferencia !== null) totals.diferencia += row.diferencia;
+      totals.contado += row.contado;
+      totals.diferencia += row.diferencia === null ? row.contado - row.esperado : row.diferencia;
     });
     return { range: { desde: desde, hasta: hasta }, rows: rows, totals: totals };
   }
   function toCsv(report) {
     function cell(value) {
       var valueText = value == null ? '' : String(value);
-      // Mismo guard que ventas-stock: solo el texto puede ser una fórmula.
-      if (typeof value === 'string' && /^[=+@\t\r-]/.test(valueText.replace(/^ +/, ''))) valueText = "'" + valueText;
+      // Guard de ventas-stock más salto de línea inicial: solo el texto puede ser una fórmula.
+      if (typeof value === 'string' && /^[=+@\t\r\n-]/.test(valueText.replace(/^ +/, ''))) valueText = "'" + valueText;
       return /[",\r\n]/.test(valueText) ? '"' + valueText.replace(/"/g, '""') + '"' : valueText;
     }
     function amount(value) { return value === null ? null : value / 100; }
@@ -64,7 +66,7 @@
       lines.push([row.fechaLabel, row.hora, row.openedByName, row.closedByName,
         amount(row.esperado), amount(row.contado), amount(row.diferencia)]);
     });
-    lines.push(['Total', report.totals.count, '', '', amount(report.totals.esperado), amount(report.totals.contado), amount(report.totals.diferencia)]);
+    lines.push(['Total', report.totals.count, report.totals.sinContar ? report.totals.sinContar + ' sin contar' : '', '', amount(report.totals.esperado), amount(report.totals.contado), amount(report.totals.diferencia)]);
     return '\uFEFF' + lines.map(function (line) {
       return line.map(function (value, column) {
         // Mantener los importes como números evita prefijar las diferencias negativas.
@@ -121,6 +123,7 @@
     if (exportButton) exportButton.disabled = false;
     status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · cierres cargados en este dispositivo';
     if (!report.rows.length) content.appendChild(element('p', 'ra-empty', 'No hay cierres de caja para este rango de fechas.'));
+    content.appendChild(element('p', 'ra-scroll-hint', 'Deslizá para ver más →'));
     var wrap = element('div', 'ra-table-wrap'); wrap.tabIndex = 0;
     wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Arqueos de caja por fechas');
     var table = element('table', 'ra-table'); table.appendChild(element('caption', 'ra-sr-only', 'Arqueos de caja y totales del rango'));
@@ -142,7 +145,7 @@
     });
     table.appendChild(body);
     var foot = element('tfoot'), total = element('tr');
-    var label = element('th', '', 'Total · ' + report.totals.count + (report.totals.count === 1 ? ' cierre' : ' cierres'));
+    var label = element('th', '', 'Total · ' + report.totals.count + (report.totals.count === 1 ? ' cierre' : ' cierres') + (report.totals.sinContar ? ' · ' + report.totals.sinContar + ' sin contar' : ''));
     label.scope = 'row'; label.colSpan = 3; total.appendChild(label);
     [money(report.totals.esperado), money(report.totals.contado), difference(report.totals.diferencia)].forEach(function (value) { total.appendChild(element('td', 'ra-num', value)); });
     foot.appendChild(total); table.appendChild(foot); wrap.appendChild(table); content.appendChild(wrap); return true;

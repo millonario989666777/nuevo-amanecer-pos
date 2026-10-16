@@ -34,7 +34,10 @@ test('inclusive Lima close dates, including 23:30 at next-day UTC; OPEN excluded
 test('totals remain in cents, null counts stay null, missing names use No registrado; snapshot or array accepted', () => {
   const api = load(), report = api.buildReport({ cashSessions: sessions }, range);
   assert.equal(JSON.stringify(report), JSON.stringify(api.buildReport(sessions, range)));
-  assert.deepEqual({ ...report.totals }, { count: 3, esperado: 2750, contado: 2500, diferencia: 0 });
+  assert.deepEqual({ ...report.totals }, { count: 3, esperado: 2500, contado: 2500, diferencia: 0, sinContar: 1 }
+  );
+  assert.equal(report.totals.contado - report.totals.esperado, report.totals.diferencia);
+  assert.equal(report.totals.diferencia, report.rows.filter(r => r.contado !== null).reduce((a, r) => a + r.diferencia, 0));
   assert.equal(report.rows[1].contado, null); assert.equal(report.rows[1].diferencia, null);
   assert.equal(report.rows[1].openedByName, 'No registrado'); assert.equal(report.rows[1].closedByName, 'No registrado');
   assert.equal(api.buildReport(undefined, range).totals.count, 0);
@@ -86,23 +89,23 @@ test('CSV header, BOM, CRLF, fixed numeric decimals, missing amounts and Total l
   assert.ok(csv.includes('16/10/2026,23:30,Abrió prueba,Cerró prueba,12.50,13.00,0.50\r\n'));
   assert.ok(csv.includes('10/10/2026,15:00,No registrado,No registrado,2.50,,\r\n'));
   assert.ok(csv.includes('01/10/2026,00:00,Abrió prueba,Cerró prueba,12.50,12.00,-0.50\r\n'));
-  assert.ok(csv.endsWith('Total,3,,,27.50,25.00,0.00\r\n'));
+  assert.ok(csv.endsWith('Total,3,1 sin contar,,25.00,25.00,0.00\r\n'));
   assert.doesNotMatch(csv, /(?<!\r)\n/);
   assert.ok(api.toCsv(api.buildReport([], range)).endsWith('Total,0,,,0.00,0.00,0.00\r\n'));
 });
 test('CSV guards original text including leading spaces, tab and CR, quotes cells, leaves negative numbers unprefixed', () => {
   const api = load();
-  const guarded = [' =1+1', '  @SUM(A1)', '\tabc', '\rabc', '+formula', '-formula', ' =HYPERLINK(1)'];
+  const guarded = [' =1+1', '  @SUM(A1)', '\tabc', '\rabc', '\nabc', '+formula', '-formula', ' =HYPERLINK(1)'];
   const data = guarded.map((name, index) => closed('guard-' + index, '2026-10-16T18:00:00Z', { opened_by_name: name, closed_by_name: 'Texto, "con comillas"\nsegunda línea' }));
   const report = api.buildReport(data, range), csv = api.toCsv(report);
   for (const name of guarded) {
     assert.ok(report.rows.some(row => row.openedByName === name), 'do not trim the original name');
     const protectedText = "'" + name;
-    assert.ok(csv.includes(name === '\rabc' ? '"' + protectedText + '"' : protectedText), JSON.stringify(csv));
+    assert.ok(csv.includes((name === '\rabc' || name === '\nabc') ? '"' + protectedText + '"' : protectedText), JSON.stringify(csv));
   }
   assert.ok(csv.includes('"Texto, ""con comillas""\nsegunda línea"'));
   assert.equal(csv.match(/,12\.50,12\.00,-0\.50\r\n/g).length, guarded.length);
-  assert.ok(csv.endsWith('Total,7,,,87.50,84.00,-3.50\r\n'));
+  assert.ok(csv.endsWith('Total,8,,,100.00,96.00,-4.00\r\n'));
   assert.doesNotMatch(csv, /'-(?:0\.50|3\.50)/);
 });
 
@@ -178,6 +181,9 @@ test('render keeps null amounts as a dash, shows surplus sign and totals even fo
   assert.ok(h.content.textContent.includes('+S/ 0.50 (sobrante)'));
   const body = descendants(h.content).find(node => node.tagName === 'tbody');
   assert.equal(body.children[1].children[4].textContent, '—');
+  const nullFoot = descendants(h.content).find(node => node.tagName === 'tfoot');
+  assert.ok(nullFoot.textContent.startsWith('Total · 3 cierres · 1 sin contar'));
+  assert.ok(h.content.textContent.includes('Deslizá para ver más →'));
   h.desde.value = '2026-10-18'; h.hasta.value = '2026-10-18';
   assert.equal(h.api.render(), true); assert.ok(h.content.textContent.includes('No hay cierres'));
   assert.ok(descendants(h.content).find(node => node.tagName === 'tfoot').textContent.includes('Total · 0 cierres'));

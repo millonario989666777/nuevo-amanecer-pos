@@ -99,8 +99,8 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     await expect(screen.locator('tbody tr').last().locator('td').nth(3)).toHaveText('—');
     await expect(screen.locator('tbody')).not.toContainText('OPEN excluido');
     await expect(screen.locator('tbody')).not.toContainText('Fuera del rango');
-    await expect(screen.locator('tfoot th')).toHaveText('Total · 3 cierres');
-    await expect(screen.locator('tfoot td')).toHaveText(['S/ 27.50', 'S/ 25.00', 'S/ 0.00']);
+    await expect(screen.locator('tfoot th')).toHaveText('Total · 3 cierres · 1 sin contar');
+    await expect(screen.locator('tfoot td')).toHaveText(['S/ 25.00', 'S/ 25.00', 'S/ 0.00']);
     await noOverflow(page);
     await expect(screen).toHaveCSS('background-color', dark ? 'rgb(15, 23, 42)' : 'rgb(248, 250, 252)');
     await expect(screen.locator('.ra-table-wrap')).toHaveCSS('background-color', dark ? 'rgb(30, 41, 59)' : 'rgb(255, 255, 255)');
@@ -131,7 +131,7 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     expect(csv.startsWith('\uFEFFFecha cierre,Hora cierre,Abrió,Cerró,Esperado,Contado,Diferencia\r\n')).toBe(true);
     expect(csv).toContain(",23:30,' =HYPERLINK(1),");
     expect(csv).toContain(',12.50,12.00,-0.50\r\n');
-    expect(csv.endsWith('Total,3,,,27.50,25.00,0.00\r\n')).toBe(true);
+    expect(csv.endsWith('Total,3,1 sin contar,,25.00,25.00,0.00\r\n')).toBe(true);
     await noOverflow(page);
     expect(await readState(page)).toBe(before);
     expect(await storageSnapshot()).toBe(storageBefore);

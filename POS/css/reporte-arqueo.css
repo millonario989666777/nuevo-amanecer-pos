@@ -37,7 +37,9 @@
 #pageReporteArqueo .ra-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* Modo oscuro: colores propios del reporte, siguiendo ventas-stock.css. */
 body.dark #pageReporteArqueo { --ra-bg: #0f172a; --ra-surface: #1e293b; --ra-text: #f8fafc; --ra-muted: #cbd5e1; --ra-border: #64748b; color-scheme: dark; }
+#pageReporteArqueo .ra-scroll-hint { margin: 0 0 6px; text-align: right; font-size: 12px; color: var(--ra-muted); }
 @media (min-width: 600px) {
+  #pageReporteArqueo .ra-scroll-hint { display: none; }
   #pageReporteArqueo { padding: 24px; }
   #pageReporteArqueo .ra-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
 }
