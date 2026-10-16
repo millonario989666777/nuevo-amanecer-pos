@@ -65,7 +65,7 @@
     'reparto-abono-multiples-deudas': true,
     'clonar-venta': true,
     'nota-credito-parcial-compras': true,
-    'clientes-filtro-deuda': true,
+    'clientes-filtro-deuda': false,
     'clientes-dias-credito': true,
     'nota-credito-devolucion-parcial': true,
     'ordenes-compra': true,

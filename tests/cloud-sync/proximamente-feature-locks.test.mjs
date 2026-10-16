@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { activeCanon } from './canon-browser-harness.mjs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-filtro-deuda', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
 
 test('real Worker authenticates then returns feature_locked for every locked registry id without writes', async t => {
   const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
@@ -32,5 +32,20 @@ test('real Worker authenticates then returns feature_locked for every locked reg
   assert.equal(PERMISSIONS.routeRoles('/features/asistencia-empleados', 'GET').includes('empleado'), false, 'role restriction is independent of the lock');
   const missing = await f.fetch('http://localhost/features/' + addedIds[0]);
   assert.equal(missing.status, 401);
+  assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
+});
+
+test('clientes-filtro-deuda is unlocked on client and server (no feature_locked, no writes)', async t => {
+  assert.equal(PERMISSIONS.FEATURE_LOCKS['clientes-filtro-deuda'], false);
+  assert.equal(PERMISSIONS.featureLocked('clientes-filtro-deuda'), false);
+  const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
+  f.addDevice('filter-owner', 'writer', 'active', 'filter-owner-token');
+  const before = f.database.prepare('SELECT * FROM canonical_control').all();
+  for (const method of ['GET', 'POST']) {
+    const response = await f.fetch('http://localhost/features/clientes-filtro-deuda', { method, headers: { authorization: 'Bearer filter-owner-token' } });
+    const body = await response.json();
+    assert.notEqual(body.error, 'feature_locked');
+    assert.equal(response.status, 404);
+  }
   assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
 });
