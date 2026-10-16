@@ -62,6 +62,11 @@
     return String((cr && (cr.status || cr.estado)) || '').toLowerCase();
   }
 
+  // Anulado (anulado:true o status/estado/source_status «anul…»): nunca se cobra ni entra al reparto.
+  function labIsVoided(cr) {
+    return !!(cr && (cr.anulado === true || labCreditStatus(cr) === 'anulado'));
+  }
+
   function labIsCanceled(cr) {
     var status = labCreditStatus(cr);
     return !!(cr && !cr.anulado && status !== 'anulado' && !(typeof _naIsCreditVoided === 'function' && _naIsCreditVoided(cr)) && (status === 'cancelado' || labCreditPending(cr) <= 0.001));
@@ -1104,7 +1109,7 @@ function labCategorySummary(client, category) {
     credits = Array.isArray(credits) ? credits.slice() : [];
     totalCents = Number(totalCents);
     var ordered = credits.filter(function (cr) {
-      return cr && !labIsCanceled(cr) && labCreditPending(cr) > 0.001;
+      return cr && !labIsVoided(cr) && !labIsCanceled(cr) && labCreditPending(cr) > 0.001;
     }).sort(function (a,b) {
       var dateCompare = labBatchCreditDate(a).localeCompare(labBatchCreditDate(b));
       return dateCompare || String(a.id || '').localeCompare(String(b.id || ''));
@@ -1168,7 +1173,7 @@ function labCategorySummary(client, category) {
     var client = labClientById(labClientScreenState.clientId);
     if (!client || labClientScreenState.route !== 'category') return [];
     return labCreditsForCategory(client.id, labClientScreenState.categoryId).filter(function (cr) {
-      return cr && !labIsCanceled(cr) && labCreditPending(cr) > 0.001;
+      return cr && !labIsVoided(cr) && !labIsCanceled(cr) && labCreditPending(cr) > 0.001;
     });
   }
 
@@ -1604,7 +1609,7 @@ function labCreditDisplayMoment(cr, fallbackDate) {
         : '') +
       '<div class="na-v2-credit-actions">' +
         '<button type="button" class="na-receipt-history" data-share-credit="' + labEsc(String(cr.id)) + '">Compartir comprobante</button>' +
-        (!labIsCanceled(cr) && labCreditPending(cr) > 0.001 ? '<button type="button" class="na-v2-pay" onclick="abrirPago(\'' + labEsc(String(cr.id)) + '\')">Registrar pago</button>' : '') +
+        (!labIsVoided(cr) && !labIsCanceled(cr) && labCreditPending(cr) > 0.001 ? '<button type="button" class="na-v2-pay" onclick="abrirPago(\'' + labEsc(String(cr.id)) + '\')">Registrar pago</button>' : '') +
       '</div>' +
     '</div>';
   }
@@ -1651,7 +1656,7 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       '<section class="na-v2-section na-v2-schedule-section"><div class="na-v2-section-title"><span>CRONOGRAMA DE CUOTAS</span><small>' + ins.plan.length + ' cuotas en total</small></div>' +
         labPendingInstallmentsHtml(ins) + '</section>' +
       '<div class="na-v2-credit-actions">' +
-        (!labIsCanceled(cr) && labCreditPending(cr) > 0.001 ? '<button type="button" class="na-v2-pay" onclick="abrirPago(\'' + labEsc(String(cr.id)) + '\')">Registrar pago</button>' : '') +
+        (!labIsVoided(cr) && !labIsCanceled(cr) && labCreditPending(cr) > 0.001 ? '<button type="button" class="na-v2-pay" onclick="abrirPago(\'' + labEsc(String(cr.id)) + '\')">Registrar pago</button>' : '') +
         '<button type="button" class="na-v2-info-btn" aria-label="Información del crédito" onclick="naCanonToggleCreditInfo()">ⓘ</button>' +
       '</div>' +
       labCreditInfoHtml(cr, account) +
