@@ -91,10 +91,11 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     expect(writes).toEqual([]);
     if (width === 390) {
       await page.evaluate(() => (window as any).goMenu());
-      await page.locator('#naMobileMenuToggle').click();
-      const drawerRow = page.locator('#naMobileDrawer [data-page="pageRotacionAbc"]');
-      await expect(drawerRow).toBeVisible();
-      await drawerRow.click();
+      // Acceso por Próximamente (la pantalla no agrega filas al drawer del Inicio).
+      await page.evaluate(() => (window as any).goPage('pageProximamente'));
+      const card = page.locator('#pageProximamente [data-feature-id="rotacion-abc"]');
+      await expect(card).toContainText('Disponible');
+      await card.click();
       await expect(screen).toBeVisible();
       await expect(screen.locator('.abc-summary-card').first()).toContainText('140');
     }

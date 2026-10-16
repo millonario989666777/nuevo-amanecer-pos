@@ -343,7 +343,6 @@
       ['Caja', 'cash', 'pageCaja', 'Abrir, cerrar y movimientos'],
       ['Gastos', 'expense', 'pageGastos', 'Registrar y consultar gastos'],
       ['Próximamente', 'soon', 'pageProximamente', 'Funciones en preparación'],
-      ['Rotación ABC por categoría', 'sales', 'pageRotacionAbc', 'Importe vendido en 30 o 90 días'],
       ['Configuración', 'settings', 'pageConfig', 'Negocio, usuarios y equipos']
     ].forEach(function (item) {
       if (document.getElementById(item[2]) && canShowDrawerPage(item[2])) {
