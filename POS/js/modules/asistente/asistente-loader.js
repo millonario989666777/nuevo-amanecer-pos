@@ -15,7 +15,7 @@
     if (q === '0') { root.localStorage.removeItem('na_asistente_proto'); root.localStorage.removeItem('na_asistente_acc'); }
     on = root.localStorage.getItem('na_asistente_proto') === '1';
   } catch (_) {}
-  if (!on) return;
+  if (!on) { try { root.document.documentElement.classList.remove('na-asst-owner', 'na-asst-pre'); } catch (_) {} return; }
   var loaded = false, asking = false, lastAsk = 0;
   function ls(k, v) { try { if (v === undefined) return root.localStorage.getItem(k); if (v === null) root.localStorage.removeItem(k); else root.localStorage.setItem(k, v); } catch (_) {} return null; }
   // Tarjeta de Inicio del dueño ARRIBA (debajo del saludo, antes de los totales) con alto FIJO: el hueco se reserva en cuanto corre
@@ -29,10 +29,10 @@
   function reserve() {
     var d = root.document, m = d.getElementById('pageMenu'), host = m && m.querySelector('.main-scroll'); if (!host || d.getElementById('naAsstHero')) return;
     var at = host.querySelector(':scope > .quick-stats'), slot = d.createElement('section'); slot.id = 'naAsstHero'; slot.className = 'na-asst-hero'; slot.setAttribute('aria-label', 'Asistente');
-    host.insertBefore(slot, at || host.firstChild); d.documentElement.classList.add('na-asst-owner');
+    host.insertBefore(slot, at || host.firstChild); d.documentElement.classList.add('na-asst-owner'); d.documentElement.classList.remove('na-asst-pre'); // el hueco real reemplaza al margen reservado en <head>
     if (root.performance && root.performance.mark) root.performance.mark('na-asst-slot');
   }
-  function unreserve() { var e = root.document.getElementById('naAsstHero'); if (e) e.remove(); root.document.documentElement.classList.remove('na-asst-owner'); }
+  function unreserve() { var e = root.document.getElementById('naAsstHero'); if (e) e.remove(); root.document.documentElement.classList.remove('na-asst-owner', 'na-asst-pre'); }
   slotCss();
   if (ls('na_asistente_acc') === 'owner') reserve();
   root.NA_ASISTENTE_SLOT = { reserve: reserve, unreserve: unreserve };

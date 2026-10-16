@@ -72,3 +72,17 @@ test('hueco de la tarjeta: si el último ping decía dueño y ahora dice emplead
   const o = run({ status: 200, body: { ok: true, role: 'owner' }, cache: { na_asistente_acc: 'owner' }, slot0: true }); await tick();
   assert.equal(o.slot.removed, false, 'dueño: el hueco queda para la tarjeta');
 });
+
+test('hueco desde el primer pintado: <head> reserva el mismo alto que el hueco real (alto + márgenes + gap de 12 px) solo con dueño guardado', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../../POS/index.html', import.meta.url), 'utf8');
+  const loader = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-loader.js', import.meta.url), 'utf8');
+  const head = html.slice(0, html.indexOf('</head>'));
+  assert.match(head, /localStorage\.getItem\('na_asistente_proto'\)==='1'&&localStorage\.getItem\('na_asistente_acc'\)==='owner'/);
+  // 320+4+16+12, 300+4+18+12, 292+4+18+12
+  for (const [px, q] of [[352, ''], [334, '@media (min-width:700px)'], [326, '@media (min-width:1100px)']]) assert.ok(head.includes((q ? q + '{' : '') + 'html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:' + px + 'px}'), String(px));
+  assert.match(loader, /height:320px;margin:4px 0 16px/); assert.match(loader, /@media \(min-width:700px\)\{#naAsstHero\{height:300px;margin:4px 0 18px\}\}@media \(min-width:1100px\)\{#naAsstHero\{height:292px\}\}/);
+  assert.match(loader, /classList\.remove\('na-asst-pre'\)/, 'el hueco real reemplaza al margen');
+  assert.match(loader, /function unreserve\(\)[^\n]*classList\.remove\('na-asst-owner', 'na-asst-pre'\)/, 'no dueño: se quita todo al instante');
+  assert.equal((html.match(/asistente-loader\.js" defer/g) || []).length, 1);
+});

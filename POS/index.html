@@ -108,6 +108,10 @@
     </style>
 
 <script defer src="js/modules/caja-movimientos-historial.js"></script>
+<!-- Asistente (prototipo aislado, apagado salvo ?asistente=1): si el ÚLTIMO ping dijo «dueño», se reserva el alto de la tarjeta de Inicio
+     desde el primer pintado (no mueve nada). Ese dato guardado SOLO reserva espacio; el cargador pregunta al servidor y lo quita si ya no es dueño. -->
+<style>html.na-asst-owner #naMobileWelcome{display:none!important}html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:352px}@media (min-width:700px){html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:334px}}@media (min-width:1100px){html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:326px}}</style>
+<script>try{if(localStorage.getItem('na_asistente_proto')==='1'&&localStorage.getItem('na_asistente_acc')==='owner'&&!/[?&]asistente=0\b/.test(location.search))document.documentElement.classList.add('na-asst-owner','na-asst-pre')}catch(e){}</script>
 </head>
 <body>
 <aside class="pwa-update-prompt" id="pwaUpdatePrompt" hidden role="dialog" aria-live="polite" aria-label="Nueva versión disponible">
