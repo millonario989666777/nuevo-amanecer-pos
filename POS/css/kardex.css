@@ -64,7 +64,16 @@ body.dark #pageKardex { --kardex-bg: #0f172a; --kardex-surface: #1e293b; --karde
   #pageKardex .kardex-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #pageKardex .kardex-filters label:first-child { grid-column: 1 / -1; }
   #pageKardex .kardex-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* 600–770 px: 2 columnas para que fechas y textos no se corten a mitad de palabra. */
+@media (min-width: 600px) and (max-width: 770px) {
+  #pageKardex .kardex-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 771px) {
   #pageKardex .kardex-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 600px) {
+  #pageKardex .kardex-summary-card :is(span, strong) { overflow-wrap: normal; word-break: normal; hyphens: none; }
 }
 @media (min-width: 1000px) {
   #pageKardex .kardex-filters { grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }

@@ -439,3 +439,29 @@ test('390px card: a balance with «sin costo» wraps inside its card and keeps �
   if (m.labels.some(l => l.label === 'costo estimado')) await expect(balance.getByText('costo estimado', { exact: false })).toBeVisible();
   await noOverflow(page);
 });
+
+for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: Kardex summary cards use 2 columns and never split words`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner'); await seed(page);
+    await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
+    await openCard(page);
+    const screen = page.locator('#pageKardex');
+    await screen.locator('[data-product-id="k-1"]').click();
+    await expect(screen.locator('.kardex-summary-card').first()).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const grids = await screen.locator('.kardex-summary').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).gridTemplateColumns.split(' ').length));
+    expect(grids.length).toBeGreaterThan(0);
+    for (const columns of grids) expect(columns).toBe(2);
+    const values = await screen.locator('.kardex-summary-card :is(span, strong)').evaluateAll(nodes => nodes.map(n => {
+      const s = getComputedStyle(n);
+      return { text: n.textContent, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth, overflowWrap: s.overflowWrap, wordBreak: s.wordBreak };
+    }));
+    expect(values.length).toBeGreaterThan(0);
+    for (const v of values) {
+      expect(v.scrollWidth, v.text!).toBeLessThanOrEqual(v.clientWidth);
+      expect(v.overflowWrap, v.text!).toBe('normal');
+      expect(v.wordBreak, v.text!).toBe('normal');
+    }
+  });
+}

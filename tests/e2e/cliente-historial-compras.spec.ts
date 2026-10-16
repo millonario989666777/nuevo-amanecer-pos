@@ -223,6 +223,12 @@ for (const dark of [false, true]) {
     const sales = screen.locator('[data-ch-table="sales"]');
     await expect(sales.getByRole('columnheader', { name: 'Total', exact: true })).toHaveCSS('text-align', 'right');
     await expect(sales.locator('tbody td[data-label="Total"]').first()).toHaveCSS('text-align', 'right');
+    await expect(screen.locator('.ch-summary')).toHaveCSS('grid-template-columns', /^\S+ \S+$/);
+    for (const v of await screen.locator('.ch-summary-card :is(span, strong)').evaluateAll(nodes => nodes.map(n => ({
+      text: n.textContent, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth, overflowWrap: getComputedStyle(n).overflowWrap })))) {
+      expect(v.scrollWidth, v.text!).toBeLessThanOrEqual(v.clientWidth);
+      expect(v.overflowWrap, v.text!).toBe('normal');
+    }
     expect(result.headsOneLine).toBe(true);
     expect(result.numsRight).toBe(true);
     expect(new Set(result.numLabels)).toEqual(new Set(['Total', 'Cantidad', 'Importe']));

@@ -142,6 +142,29 @@
     // El ticket local usa el id V-000001; una operación UUID no debe ocultarlo.
     return number || documentNumber({ ticket: id }) || documentNumber({ ticket: sale.operation }) || id || text(sale.operation) || 'Sin referencia';
   }
+  // Sin número legible solo queda un UUID: en pantalla «<Tipo> sin número · #abc123».
+  // El CSV usa reference y conserva el id completo.
+  var UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  var KNOWN_KINDS = ['Venta', 'Anulación', 'Compra', 'Ingreso', 'Salida', 'Ajuste', 'Alta de producto'];
+  function referenceLabel(reference, kind, purchaseMatch) {
+    var ref = text(reference), match = ref.match(UUID_RE);
+    if (!match) return ref;
+    var label = purchaseMatch ? 'Compra' : KNOWN_KINDS.indexOf(kind) >= 0 ? kind : '';
+    return (label ? label + ' sin número' : 'Sin número') + ' · #' + match[0].slice(0, 6).toLowerCase();
+  }
+  function purchaseIds(purchases) {
+    var ids = new Set();
+    (Array.isArray(purchases) ? purchases : []).forEach(function (record) {
+      if (record && typeof record === 'object') ['purchase_id', 'purchaseId', 'id', 'operation_id', 'operationId'].forEach(function (field) {
+        var id = text(record[field]); if (id) ids.add(id);
+      });
+    });
+    return ids;
+  }
+  function matchesPurchase(move, ids) {
+    var operationId = text(move.operation_id || move.operationId || move.referenceId);
+    return [text(move.purchase_id || move.purchaseId), operationId, operationId.replace(/:\d+$/, '')].some(function (id) { return id && ids.has(id); });
+  }
   function movementDocument(move, kind, purchaseDocuments, saleDocuments) {
     var direct = documentNumber(move);
     if (direct) return direct;
@@ -185,6 +208,7 @@
     var pid = productId(product), rows = [], seen = new Set(), representedSales = new Set(), skipped = 0;
     var costs = purchaseCosts(options.purchases, pid);
     var purchaseDocuments = documentIndex(options.purchases, ['purchase_id', 'purchaseId', 'id', 'operation_id', 'operationId']);
+    var knownPurchases = purchaseIds(options.purchases);
     var saleDocuments = new Map();
     (Array.isArray(sales) ? sales : []).forEach(function (sale) {
       if (!sale) return;
@@ -200,7 +224,7 @@
       var kind = movementKind(move), saleId = text(move.sale_id || move.saleId || (kind === 'Venta' ? move.referenceId : ''));
       if (kind === 'Venta' && saleId) representedSales.add(saleId);
       rows.push({ id: id || 'movement:' + index, day: at.day, timestamp: at.timestamp, type: kind,
-        reference: movementDocument(move, kind, purchaseDocuments, saleDocuments),
+        reference: movementDocument(move, kind, purchaseDocuments, saleDocuments), purchaseMatch: matchesPurchase(move, knownPurchases),
         delta: round(delta), source: 'movement', entryUnitCost: costs.has(text(move.operation_id || move.operationId || move.referenceId))
           ? costs.get(text(move.operation_id || move.operationId || move.referenceId)) : unitCost(move) });
     });
@@ -429,7 +453,7 @@
     labels.forEach(function (label, index) { var th = element('th', index >= 3 ? 'kardex-num' : '', label); th.scope = 'col'; header.appendChild(th); }); head.appendChild(header);
     report.rows.forEach(function (r) {
       var line = element('tr'); line.setAttribute('data-kardex-row', r.id);
-      var values = [dayLabel(r.day), r.type, r.reference, quantity(r.incoming)];
+      var values = [dayLabel(r.day), r.type, referenceLabel(r.reference, r.type, r.purchaseMatch), quantity(r.incoming)];
       if (showCosts) values.push(movementValue(r, true));
       values.push(quantity(r.outgoing));
       if (showCosts) values.push(movementValue(r, false));
@@ -472,7 +496,7 @@
     ['na:canonical-sale-projection', 'focus'].forEach(function (event) { root.addEventListener(event, update); });
     update();
   }
-  root.NA_KARDEX = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaDay: limaDay, periodRange: periodRange,
+  root.NA_KARDEX = Object.freeze({ referenceLabel: referenceLabel, searchProducts: searchProducts, timestamp: timestamp, limaDay: limaDay, periodRange: periodRange,
     buildLedger: buildLedger, toCsv: toCsv, ownerAllowed: ownerAllowed, costsAllowed: costsAllowed, render: render, init: init });
   if (root.document) {
     if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', init, { once: true }); else init();

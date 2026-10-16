@@ -472,3 +472,48 @@ test('kardex money keeps S/ and the number joined with a non-breaking space; car
   const mobile = css.slice(css.indexOf('@media (max-width: 599px)'), css.indexOf('@media (min-width: 600px)'));
   assert.match(mobile, /\.kardex-num \{[^}]*white-space: normal/);
 });
+
+test('UUID-only documents show «<Tipo> sin número · #xxxxxx» on screen; CSV keeps the full id', async () => {
+  const ing1 = 'dc3bd245-0c1e-4a6b-9f00-111111111111', ing2 = 'aa77bb12-0c1e-4a6b-9f00-222222222222';
+  const pur = '3e4f5a6b-0c1e-4a6b-9f00-333333333333', unk = '9a8b7c6d-0c1e-4a6b-9f00-444444444444';
+  // Etiquetas puras: tipo conocido, compra sin número, tipo desconocido y texto normal sin cambios.
+  assert.equal(api.referenceLabel(ing1, 'Ingreso', false), 'Ingreso sin número · #dc3bd2');
+  assert.equal(api.referenceLabel(pur + ':1', 'Ingreso', true), 'Compra sin número · #3e4f5a');
+  assert.equal(api.referenceLabel(unk, 'MERMA_X', false), 'Sin número · #9a8b7c');
+  assert.equal(api.referenceLabel('F001-000009', 'Compra', false), 'F001-000009');
+  assert.notEqual(api.referenceLabel(ing1, 'Ingreso', false), api.referenceLabel(ing2, 'Ingreso', false));
+
+  const movements = [
+    move('i1', 1, { type: 'ENTRADA', operation_id: ing1, timestamp: '2026-10-15T08:00:00' }),
+    move('i2', 1, { type: 'ENTRADA', operation_id: ing2, timestamp: '2026-10-15T09:00:00' }),
+    move('c1', 1, { type: 'ENTRADA', operation_id: pur + ':1', timestamp: '2026-10-15T10:00:00' }),
+    move('u1', 1, { type: 'MERMA_X', operation_id: unk, timestamp: '2026-10-15T11:00:00' })];
+  const purchases = [{ purchase_id: pur, lines: [{ line_number: 1, product_id: 'p1', unit_cost_cents: 100 }] }];
+  const h = renderHarness({
+    NA_ROLES: { role: 'owner', isOwner: () => true, api: () => Promise.resolve({ purchases }) },
+    inventoryMovements: movements,
+  });
+  h.api.render(); h.nodes['[data-kardex-products]'].children[0].click();
+  await new Promise(done => setImmediate(done));
+  const shown = h.nodes['[data-kardex-content]'].textContent;
+  for (const label of ['Ingreso sin número · #dc3bd2', 'Ingreso sin número · #aa77bb', 'Compra sin número · #3e4f5a', 'Sin número · #9a8b7c'])
+    assert.ok(shown.includes(label), label);
+  assert.doesNotMatch(shown, /[0-9a-f]{8}-[0-9a-f]{4}-/i);
+  const report = api.buildLedger(product, movements, [], { ...options, purchases });
+  const csv = api.toCsv(report);
+  for (const id of [ing1, ing2, pur + ':1', unk]) assert.ok(csv.includes(id), id);
+  assert.doesNotMatch(csv, /sin número/);
+});
+
+test('summary cards: 2 columns from 600 to 770 px, 4 from 771 px, no mid-word breaks; CSS scoped to the Kardex', () => {
+  const css = readFileSync('POS/css/kardex.css', 'utf8');
+  assert.match(css, /@media \(min-width: 600px\) and \(max-width: 770px\) \{\s*#pageKardex \.kardex-summary \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(css, /@media \(min-width: 771px\) \{\s*#pageKardex \.kardex-summary \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); \}/);
+  assert.match(css, /#pageKardex \.kardex-summary-card :is\(span, strong\) \{ overflow-wrap: normal; word-break: normal/);
+  const hist = readFileSync('POS/css/cliente-historial-compras.css', 'utf8');
+  assert.match(hist, /@media \(min-width: 600px\) and \(max-width: 770px\) \{\s*#pageClienteHistorial \.ch-summary \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(hist, /@media \(min-width: 771px\) \{\s*#pageClienteHistorial \.ch-summary \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+  for (const [sheet, scope] of [[css, '#pageKardex'], [hist, '#pageClienteHistorial']])
+    sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{/g, '').split('}').map(r => r.split('{')[0].trim()).filter(Boolean)
+      .forEach(sel => sel.split(/,(?![^(]*\))/).forEach(part => assert.ok(part.trim().includes(scope), part)));
+});

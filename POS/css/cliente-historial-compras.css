@@ -63,5 +63,12 @@ body.dark #pageClienteHistorial { --ch-bg: #0f172a; --ch-surface: #1e293b; --ch-
 @media (min-width: 600px) {
   #pageClienteHistorial { padding: 24px; }
   #pageClienteHistorial .ch-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+  #pageClienteHistorial .ch-summary-card :is(span, strong) { overflow-wrap: normal; word-break: normal; hyphens: none; }
+}
+/* 600–770 px: 2 columnas para no cortar palabras; desde 771 px se mantienen 3. */
+@media (min-width: 600px) and (max-width: 770px) {
+  #pageClienteHistorial .ch-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 771px) {
   #pageClienteHistorial .ch-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
