@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#742 tanda pequeña: fallback solo-dueño, deuda vencida ≤ saldo, nota créditos abiertos, revisión de fotos, VARIOS en ABC. Worker 43 sin cambios (tabla de permisos idéntica).",
-  "retry_attempt": 143,
-  "retry_reason": "Deploy de base 0362a0e9ea6dfcb71caa94765e784218e5fe031f (#742). Rollback: 93543505838237f51b648bb434053050246cfc0e (build de 142).",
-  "requested_at_utc": "2026-10-16T03:54:30Z",
-  "approved_base": "0362a0e9ea6dfcb71caa94765e784218e5fe031f"
+  "note": "#744 lectura de crédito V2 sin mutar créditos ni reconstruir índice. Worker 43 sin cambios (tabla de permisos idéntica).",
+  "retry_attempt": 144,
+  "retry_reason": "Deploy de base 1e8b287ad4d486555840807f425e8cf265907636 (#744). Rollback: 7a446ae8961dca3259ba8d8bc2ab63c5071a13f2 (build de 143).",
+  "requested_at_utc": "2026-10-16T04:15:57Z",
+  "approved_base": "1e8b287ad4d486555840807f425e8cf265907636"
 }
