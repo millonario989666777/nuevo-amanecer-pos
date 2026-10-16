@@ -39,3 +39,10 @@ test('imports and canonical expense reports are owner-only', () => {
 });
 
 test('expense revisions are owner-only on client actions and command routes',()=>{for(const action of ['expense.update','expense.void']){assert.equal(p.canDo('owner',action),true);assert.equal(p.canDo('empleado',action),false);assert.deepEqual(p.routeRoles('/commands/'+action,'POST'),['owner']);}});
+
+test('purchase costs use an owner-only action', () => {
+  assert.deepEqual(p.ACTIONS['purchases.costs.view'], ['owner']);
+  assert.equal(p.canDo('empleado', 'purchases.costs.view'), false);
+  assert.equal(p.canDo('owner', 'purchases.costs.view'), true);
+  assert.equal('purchases.costs.view' in p.FEATURE_ROLES, false);
+});

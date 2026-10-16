@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base d2d9392a67287f92fe3092c5299a5aa9b0885c1c: #772 reporte-ventas-stock unlocked (permissions table: FEATURE_LOCKS/FEATURE_ROLES/SCREENS, owner-only, read-only). No worker code changes. No schema changes. Rollback to 39a0eba4 (worker 47, currently live). Web stays at 155 until live check.",
-  "target_commit": "d2d9392a67287f92fe3092c5299a5aa9b0885c1c",
-  "rollback_ref": "39a0eba4c5519f7b9a62538823e5dbf4e6d47be4",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base 0ebfaeacf7e5c99fef1acc64de29e93f19645f20: #778 historial de compras owner-only (pos-permissions.js: proveedor y costos redactados para no-dueño). No schema changes. Rollback to d2d9392a (worker 48, Cloudflare version 333f1c4d, currently live). Web stays at 156 until live check.",
+  "target_commit": "0ebfaeacf7e5c99fef1acc64de29e93f19645f20",
+  "rollback_ref": "d2d9392a67287f92fe3092c5299a5aa9b0885c1c",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 48,
-  "optimization": "VENTAS_STOCK_772"
+  "attempt": 49,
+  "optimization": "HISTORIAL_COMPRAS_OWNER_ONLY_778"
 }

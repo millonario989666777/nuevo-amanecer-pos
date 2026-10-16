@@ -121,3 +121,120 @@ test('Bot 6 (b) servidor: el estado de una compra a medias dice qué líneas ya 
   assert.equal(st.body.status, 'in_progress');
   assert.deepEqual(st.body.lines.map(l => [l.line_number, l.product_id, l.applied]), [[1, '00003', true], [2, 'NO-EXISTE', false]]);
 });
+
+test('cost redaction is pure, fails closed and preserves owner bytes', async () => {
+  const { redactPurchasesForRole } = await import('../../tools/cloudflare-lab/src/pos-purchases.js');
+  const row = { supplier: 'Sol', total_cost_cents: 300, document_ref: 'F1', lines: [{ quantity: 3, unit_cost_cents: 100, lots: [] }] };
+  for (const payload of [{ purchases: [row], truncated: false }, { purchase: row, lines: row.lines, status: 'in_progress' }]) {
+    const before = JSON.stringify(payload);
+    assert.equal(redactPurchasesForRole(payload, 'owner'), payload);
+    assert.equal(JSON.stringify(redactPurchasesForRole(payload, 'owner')), before);
+    for (const role of ['empleado', undefined, 'unknown']) {
+      const out = redactPurchasesForRole(payload, role), p = out.purchase || out.purchases[0];
+      assert.equal('supplier' in p, false); assert.equal('total_cost_cents' in p, false);
+      for (const l of [...p.lines, ...(out.lines || [])]) assert.equal('unit_cost_cents' in l, false);
+    }
+    assert.equal(JSON.stringify(payload), before);
+  }
+});
+
+test('employee GET hides costs; resume ignores supplier/cost changes but rejects purchase changes', async t => {
+  const f = await setup(t);
+  f.database.exec(read('0030_canonical_stock_lots.sql'));
+  f.addDevice('emp-phone', 'writer', 'active', 'emp-token');
+  f.database.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('emp-phone','empleado','owner-phone','2026-10-13'),('session:emp-phone','empleado','owner-phone','2026-10-13')");
+  const lines = [{ line: 1, product_id: '00003', quantity: 2, unit_cost_cents: 350, lots: [{ lot_code: 'A', expiry_date: '2027-01-01', quantity: 2 }] }, { line: 7, product_id: 'NOPE', quantity: 1, unit_cost_cents: 120 }];
+  assert.equal((await call(f, '/auth/purchases', 'owner-token', purchase(f, 'hidden-1', lines))).status, 409);
+  for (const path of ['/auth/purchases', '/auth/purchases?id=hidden-1']) {
+    const r = await call(f, path, 'emp-token');
+    assert.equal(r.status, 200);
+    assert.doesNotMatch(JSON.stringify(r.body), /"supplier"|"total_cost_cents"|"unit_cost_cents"/);
+    const owner = await call(f, path, 'owner-token');
+    assert.match(JSON.stringify(owner.body), /"supplier":"Distribuidora Sol"/);
+    assert.match(JSON.stringify(owner.body), /"unit_cost_cents":350/);
+  }
+  const body = purchase(f, 'hidden-1', lines.map(({ unit_cost_cents, ...l }) => l));
+  delete body.supplier;
+  const ap = await call(f, '/auth/owner-approval', 'emp-token', { pin: '4821', action: 'inventory.adjust', operation_id: 'hidden-1' });
+  assert.equal(ap.status, 201, JSON.stringify(ap.body));
+  const headers = { 'x-owner-approval': ap.body.approval_id };
+  const q = stockOf(f, '00003');
+  const resumed = await call(f, '/auth/purchases', 'emp-token', body, headers);
+  assert.equal(resumed.status, 409, JSON.stringify(resumed));
+  assert.equal(resumed.body.error, 'purchase_line_failed', JSON.stringify(resumed));
+  assert.equal(resumed.body.detail.error, 'product_not_found');
+  for (const extra of [{ supplier: 'Otro' }, { lines: [{ ...body.lines[0], unit_cost_cents: null }, body.lines[1]] }]) {
+    const r = await call(f, '/auth/purchases', 'emp-token', { ...body, ...extra }, headers);
+    assert.deepEqual(r, resumed);
+  }
+  for (const extra of [
+    { document_ref: 'F001-999' },
+    { lines: [{ ...body.lines[0], quantity: 3 }, body.lines[1]] },
+    { lines: [{ ...body.lines[0], product_id: 'NOPE' }, body.lines[1]] },
+    { lines: [...body.lines, { line: 8, product_id: '00003', quantity: 1, unit_cost_cents: 500 }] },
+    { lines: [{ ...body.lines[0], lots: [{ ...body.lines[0].lots[0], lot_code: 'B' }] }, body.lines[1]] }
+  ]) {
+    const r = await call(f, '/auth/purchases', 'emp-token', { ...body, ...extra }, headers);
+    assert.deepEqual([r.status, r.body.error, r.body.status], [409, 'purchase_payload_mismatch', 'in_progress'], JSON.stringify(r));
+  }
+  assert.equal(stockOf(f, '00003'), q);
+  const ownerMissing = await call(f, '/auth/purchases', 'owner-token', body);
+  assert.equal(ownerMissing.body.error, 'purchase_payload_mismatch');
+});
+
+test('employee retries an in-progress purchase with correct, wrong or null costs/supplier return identical responses', async t => {
+  const f = await setup(t);
+  f.addDevice('emp-phone', 'writer', 'active', 'emp-token');
+  f.database.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('emp-phone','empleado','owner-phone','2026-10-13'),('session:emp-phone','empleado','owner-phone','2026-10-13')");
+  const lines = [{ line: 1, product_id: '00003', quantity: 2, unit_cost_cents: 350 }, { line: 7, product_id: 'NOPE', quantity: 1, unit_cost_cents: 120 }, { line: 9, product_id: 'NOPE', quantity: 1, unit_cost_cents: null }];
+  const body = purchase(f, 'hidden-retries', lines);
+  const first = await call(f, '/auth/purchases', 'owner-token', body);
+  assert.deepEqual([first.status, first.body.error], [409, 'purchase_line_failed']);
+  const state = await call(f, '/auth/purchases?id=hidden-retries', 'owner-token');
+  assert.equal(state.body.status, 'in_progress');
+  assert.deepEqual(state.body.lines.map(l => l.unit_cost_cents), [350, 120, null]);
+  const q = stockOf(f, '00003');
+  const ap = await call(f, '/auth/owner-approval', 'emp-token', { pin: '4821', action: 'inventory.adjust', operation_id: body.operation_id });
+  assert.equal(ap.status, 201, JSON.stringify(ap.body));
+  const headers = { 'x-owner-approval': ap.body.approval_id };
+  const correct = await call(f, '/auth/purchases', 'emp-token', body, headers);
+  const wrong = await call(f, '/auth/purchases', 'emp-token', { ...body, supplier: 'Otro', lines: lines.map(l => ({ ...l, unit_cost_cents: 999 })) }, headers);
+  const nulled = await call(f, '/auth/purchases', 'emp-token', { ...body, supplier: null, lines: lines.map(l => ({ ...l, unit_cost_cents: null })) }, headers);
+  assert.deepEqual([correct.status, correct.body.error, correct.body.detail.error], [409, 'purchase_line_failed', 'product_not_found']);
+  assert.deepEqual(wrong, correct);
+  assert.deepEqual(nulled, correct);
+  assert.equal(stockOf(f, '00003'), q);
+  assert.deepEqual(await call(f, '/auth/purchases?id=hidden-retries', 'owner-token'), state);
+});
+
+test('employee first-time POST preserves the submitted cost when there is no saved claim', async t => {
+  const f = await setup(t);
+  f.addDevice('emp-phone', 'writer', 'active', 'emp-token');
+  f.database.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('emp-phone','empleado','owner-phone','2026-10-13'),('session:emp-phone','empleado','owner-phone','2026-10-13')");
+  const body = purchase(f, 'emp-new-cost', [{ line: 7, product_id: '00003', quantity: 2, unit_cost_cents: 275 }]);
+  assert.equal((await call(f, '/auth/purchases?id=emp-new-cost', 'owner-token')).body.status, 'not_found');
+  const ap = await call(f, '/auth/owner-approval', 'emp-token', { pin: '4821', action: 'inventory.adjust', operation_id: body.operation_id });
+  assert.equal(ap.status, 201, JSON.stringify(ap.body));
+  const created = await call(f, '/auth/purchases', 'emp-token', body, { 'x-owner-approval': ap.body.approval_id });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const saved = await call(f, '/auth/purchases?id=emp-new-cost', 'owner-token');
+  assert.deepEqual([saved.status, saved.body.status], [200, 'applied']);
+  assert.equal(saved.body.lines[0].unit_cost_cents, 275);
+  assert.equal(saved.body.purchase.total_cost_cents, 550);
+});
+
+test('employee POST 201 response omits supplier and total; owner response keeps them', async t => {
+  const f = await setup(t);
+  f.addDevice('emp-phone', 'writer', 'active', 'emp-token');
+  f.database.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('emp-phone','empleado','owner-phone','2026-10-13'),('session:emp-phone','empleado','owner-phone','2026-10-13')");
+  const ap = await call(f, '/auth/owner-approval', 'emp-token', { pin: '4821', action: 'inventory.adjust', operation_id: 'emp-buy-1' });
+  assert.equal(ap.status, 201, JSON.stringify(ap.body));
+  const e = await call(f, '/auth/purchases', 'emp-token', purchase(f, 'emp-buy-1', two()), { 'x-owner-approval': ap.body.approval_id });
+  assert.equal(e.status, 201, JSON.stringify(e.body));
+  assert.equal('supplier' in e.body, false); assert.equal('total_cost_cents' in e.body, false);
+  const o = await call(f, '/auth/purchases', 'owner-token', purchase(f, 'own-buy-1', two()));
+  assert.equal(o.status, 201); assert.equal(o.body.supplier, 'Distribuidora Sol'); assert.equal(o.body.total_cost_cents, 1050);
+  const list = await call(f, '/auth/purchases', 'owner-token');
+  const mine = list.body.purchases.find(p => p.purchase_id === 'emp-buy-1');
+  assert.deepEqual([mine.supplier, mine.total_cost_cents, mine.lines[0].unit_cost_cents], ['Distribuidora Sol', 1050, 350]);
+});
