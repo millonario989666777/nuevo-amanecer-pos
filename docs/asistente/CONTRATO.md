@@ -1,73 +1,86 @@
 # Contrato del asistente (prototipo aislado, rama feature/asistente-aislado)
 
-Estado: prototipo. Apagado por defecto. No se publica ni se despliega.
+Estado: prototipo. Apagado por defecto. No se publica, no se une y no se despliega. Alcance: **solo gestión (modo admin)**: documentos, mercadería, stock, compras y precios. **No vende ni llena carritos.**
+Copia del contrato de pruebas de Bot 5 adaptada a esta rama: `docs/asistente/contrato-asistente-v2.json`.
 
 ## Rutas del Worker
-| Ruta | Método | Roles (tabla única) | Qué hace |
+| Ruta | Método | Roles (tabla `API_ROUTES`) | Qué hace |
 |---|---|---|---|
-| `/auth/assistant/chat` | POST | dueño, empleado | Conversa con DeepSeek y devuelve propuestas. Nunca escribe datos del negocio. |
-| `/auth/assistant/confirm` | POST | dueño, empleado | Gasta el token de UNA propuesta (un solo uso, 5 min). Devuelve el `operation_id`. No escribe datos del negocio. |
+| `/auth/assistant/chat` | POST | dueño, empleado (el servidor revisa el nivel) | Conversa con DeepSeek y devuelve propuestas. Nunca escribe datos del negocio. `{ping:true}` devuelve `{ok, role, level, server_now}` sin llamar al modelo ni gastar cupo. |
+| `/auth/assistant/confirm` | POST | dueño, empleado (nivel revisado OTRA vez) | Gasta el token de UNA tarjeta (un uso, 5 min). Devuelve el `operation_id`. No escribe datos del negocio. |
+| `/auth/assistant/employee-access` | GET, POST | dueño | Lista los aparatos de empleado con su nivel / cambia el nivel (dueño + aprobación estricta). |
+| `/auth/assistant/owner-device` | GET | dueño | Aparatos dueño y pendientes de aprobar. **Bandera `ASSISTANT_OWNER_BOOTSTRAP=1`.** |
+| `/auth/assistant/owner-device/register` | POST | aparato sin fila de rol | «Registrar este teléfono como dueño» `{pin}`. **Bandera.** |
+| `/auth/assistant/owner-device/approve` | POST | dueño | `{device_id, operation_id, decision:"approve"|"reject"}` + `x-owner-approval`. **Bandera.** |
+| `/auth/assistant/owner-device/revoke` | POST | dueño | `{device_id, operation_id}` + `x-owner-approval`. **Bandera.** |
 
-- Las dos responden **404** si el Worker no tiene `ASSISTANT_ENABLED=1` (antes de pedir sesión).
-- **No existen** rutas `/auth/assistant/tool` ni `/auth/assistant/audit`: el modelo no ejecuta herramientas y no hay ruta directa de herramientas. El registro de auditoría queda como siguiente paso (necesita migración aprobada por el dueño).
-- Sesión: `authorizeSession` (Bearer). Rol del asistente = `assistantRole()`: solo es dueño con `pos_device_roles.pos_role='owner'` explícito. Sin fila, sin tabla o con error: **empleado**.
+- Todas responden **404** sin `ASSISTANT_ENABLED=1` (antes de pedir sesión). Las de `owner-device` además responden 404 sin `ASSISTANT_OWNER_BOOTSTRAP=1`.
+- No existen `/auth/assistant/tool` ni `/auth/assistant/audit`: el modelo no ejecuta nada.
+- Sesión: `authorizeSession` (Bearer). Rol y nivel se calculan **en cada pedido** con `assistantAccess(db, auth)` (sin caché en el cliente): `owner` solo con `pos_device_roles.pos_role='owner'` explícito; si no, `empleado:<nivel>` (nivel en `pos_settings`, clave `internal:asst:lvl:<hash del aparato>`, por defecto `off`). Sin tabla o con error: `off`.
 
 ### Variables del Worker
 | Variable | Uso |
 |---|---|
-| `ASSISTANT_ENABLED` | `1` para encender. Cualquier otro valor: 404. |
-| `DEEPSEEK_API_KEY` | Secreto, solo en el Worker. Sin clave el chat responde **503 `assistant_not_configured`** («asistente no configurado»), salvo `ASSISTANT_DEMO=1`. |
-| `ASSISTANT_DEMO` | `1` solo para el prototipo local y las pruebas: sin clave usa respuestas de demostración (`mode:"mock"`). Nunca en un Worker real. |
-| `DEEPSEEK_BASE_URL` | Opcional. Por defecto `https://api.deepseek.com`. Para pruebas: `http://127.0.0.1:4599` (mock de Bot 2). |
-| `ASSISTANT_CONFIRM_SECRET` | Secreto HMAC (16+ caracteres) para firmar tokens. Sin él, no se puede confirmar nada (503). |
-| `ASSISTANT_PER_MINUTE`, `ASSISTANT_PER_DAY`, `ASSISTANT_PHOTOS_PER_MINUTE`, `ASSISTANT_PHOTOS_PER_DAY`, `ASSISTANT_MONTHLY_CHAT_CAP`, `ASSISTANT_MONTHLY_PHOTO_CAP`, `ASSISTANT_CONFIRMS_PER_MINUTE` | Límites (opcionales). |
+| `ASSISTANT_ENABLED` | `1` para encender. Otro valor: 404. |
+| `ASSISTANT_OWNER_BOOTSTRAP` | `1` para las rutas `owner-device`. Necesita el visto bueno del jefe y la migración 0035 (no aplicada). |
+| `DEEPSEEK_API_KEY` | Secreto, solo en el Worker. Sin clave: 503 `assistant_not_configured`, salvo `ASSISTANT_DEMO=1`. |
+| `ASSISTANT_DEMO` | Solo prototipo local y pruebas (respuestas de demostración). Nunca en un Worker real. |
+| `DEEPSEEK_BASE_URL` | Opcional (mock de Bot 2: `http://127.0.0.1:4599`). |
+| `ASSISTANT_CONFIRM_SECRET` | HMAC de los tokens (16+ caracteres). Sin él no se confirma nada (503). |
+| Límites `ASSISTANT_*` | Por minuto (dueño 30, empleado 10), fotos, por día, tope mensual, confirms por minuto. |
 
-Modelo fijo: `deepseek-flash`, `thinking: {type: "disabled"}`, `tool_choice: "auto"`, `max_tokens: 900`, tiempo máximo 25 s.
+Modelo fijo: `deepseek-flash`, `thinking: {type:"disabled"}`, `tool_choice:"auto"`.
 
-### `POST /auth/assistant/chat`
-Pide: `{ "text": "...", "image": "data:image/jpeg;base64,..." (opcional), "history": [{role, content}] (máx. 8), "context": { "screen": "pagePOS", "products": [{id, nombre, precio, stock, costo?}] } }`
-- Solo se aceptan imágenes JPEG, PNG o WebP como data URL, de hasta 2,2 MB.
-- El contexto solo lleva productos. Nunca lleva clientes. Va al modelo en un mensaje aparte `<datos_pos>…</datos_pos>` marcado como solo dato (no en el mensaje system); `<` y `>` se escapan para que un nombre no cierre el bloque. El costo se quita si el rol no puede verlo (`purchases.costs.view`).
-- Antes de llamar al modelo se ocultan DNI (`DNI ****1234`), RUC (`RUC *******1234`), teléfonos y correos, en el texto, el historial y el contexto.
+## Matriz de roles
+| | Dueño | Empleado «Consultas y documentos» | Empleado «Solo consultas» | Empleado «Apagado» (por defecto) / sin rol |
+|---|---|---|---|---|
+| Chat / confirm | sí | sí | sí | **403** `assistant_off` (empleado) / `admin_only` + `reason:"sin_rol"` (aparato sin fila) |
+| Qué ve | tarjeta en Inicio (reemplaza la burbuja ahí) + burbuja flotante en el resto | solo la burbuja flotante con sus atajos | igual | **nada**: el cargador no baja ni un archivo del asistente (0 JS, 0 CSS) |
+| `consultar` | todo: stock, bajo stock, sin costo, ventas, más vendidos, deudas, compras | stock, por reponer, precios de venta (sin costos, márgenes, caja ni deudas) | igual | — |
+| `preparar_documento` | 6 tipos | solo `lista_precios`, `lista_pedido` (sin costos, armadas en el servidor) | **no** | — |
+| `explicar_pasos` | sí | sí | sí | — |
+| Proponer ajuste de stock, precio, compra, producto nuevo | sí, se aplica con su PIN | puede **proponer**; aplicar pide el **PIN del dueño** | igual | — |
+| `Actualizar costo` (tarjeta aparte) | sí, con PIN | no | no | — |
+| Cambiar nivel de empleados / aparatos dueño | sí, con PIN (aprobación estricta) | no | no | — |
 
-Responde: `{ ok, mode: "deepseek"|"mock", role, server_now, reply, proposals: [...], denied: [{tool, message}], dropped: [{tool, reason}], left: {hoy, fotosHoy}, usage }`
-Errores: 400 `bad_request|empty_message|bad_image`, 404 `not_found`, 503 `assistant_not_configured`, 413 `image_too_large|payload_too_large`, 429 `rate_limited|daily_limit|monthly_cap`, 502 `upstream_error`, 503 `upstream_busy`, 504 `upstream_timeout`.
+Revocar es inmediato: confirm vuelve a leer el nivel; una tarjeta emitida antes de apagar responde **403**.
 
-Propuesta (tarjeta): `id` es un UUID que genera el servidor (`crypto.randomUUID()`) y va firmado en el token (`pid`); el cliente nunca lo arma. `{ id, type: "venta"|"compra"|"precio"|"documento"|"pasos", needsConfirm, title, ..., confirm_token }`
+## Herramientas (el modelo solo PROPONE)
+| Herramienta | Tarjeta | Qué pasa al pulsar (pantalla o ruta que ya existe) |
+|---|---|---|
+| `consultar {tipo, producto?, desde?, hasta?}` | `consulta` (solo lectura) | El Worker lee con las lecturas canónicas (`canonicalRead`) y manda al modelo **solo un resumen** (top 10). Medido: primer pedido ~6,8 KB; resumen ≤ 3,2 KB aun con 3.000 productos. |
+| `preparar_documento {tipo, desde?, hasta?, cliente?}` | `documento` | Vista previa imprimible «No es comprobante SUNAT». `tipo`: `inventario_valorizado`, `lista_precios`, `lista_pedido`, `reporte_ventas`, `estado_cuenta`, `resumen_cierre`. Reusa `NA_VALORIZACION`, `NA_REPORTE_ARQUEO`, `NA_CLIENT_CREDIT_ACCOUNTS_V2` (sin cuentas propias). |
+| `proponer_ajuste_stock {product_id, tipo, cantidad, motivo}` | `ajuste` | Abre «Registrar movimiento» (`abrirMovInv`) lleno; guarda con PIN (`ownerGate inventory.adjust`). |
+| `proponer_cambio_precio` | `precio` | Abre la ficha (`editProd`); Guardar → `product.update` (`ownerGate`). |
+| `preparar_compra` / `leer_factura_compra` | `compra` | Abre «Nueva compra» (`NA_PURCHASES.open`) llena; filas fuera de rango bloquean Confirmar. La compra NO cambia el costo: «Actualizar costo» es tarjeta aparte por `product.update` con PIN. |
+| `proponer_producto_nuevo` | `producto` | Abre el formulario de producto lleno; confirm exige dueño + aprobación `product.create`. |
+| `explicar_pasos` | `pasos` | Nada se escribe; «Llévame ahí» navega. |
 
-### `POST /auth/assistant/confirm`
-Pide: `{ "token": "<confirm_token>", "proposal": <la propuesta sin confirm_token> }`
-Tarjetas de dueño (`precio`, `compra`): además la cabecera `x-owner-approval: <approval_id>`. El approval se pide antes con `POST /auth/owner-approval {pin, action, operation_id}` donde `action` es `product.update` (precio) o `inventory.adjust` (compra) y `operation_id` es el `op` del token de ESA tarjeta (el cliente lo lee del token). Confirm verifica que la aprobación sea de este aparato, esta acción y este `operation_id`, y la gasta con `consumeApproval` (un solo uso; el reenvío de la misma tarjeta vuelve a pasar con la misma aprobación).
-Compras (`compra`): las filas con datos fuera de rango llevan `revisar: [...]` (`cantidad` > 1000, `costo` > S/ 2000 o <= 0, `total` de fila > S/ 20000, `costo_raro` = más de 3 veces o menos de 1/3 del costo o precio conocido). Confirm repite esa revisión y responde **422 `review_required` `{rows}`** salvo que el cuerpo traiga `review: { op: <op del token>, accept: [filas], drop: [filas] }` que cubra cada fila marcada. Las filas en `drop` no se devuelven.
-Orden: firma, aparato, rol, parámetros, id y hash; después **ya usada** (devuelve `already_confirmed` con el mismo `operation_id` aunque hayan pasado los 5 min); después vencida (410); después PIN del dueño y revisión.
-Responde 200: `{ ok: true, operation_id: "AST-<24 hex>", type, role, proposal }`. `proposal` es la propuesta verificada contra ESE token (con las filas quitadas); el celular aplica esa y no otra. Si se reenvía el mismo token: `{ ok: true, already_confirmed: true, operation_id: <el mismo> }`.
-Rechazos: 422 `review_required|empty_after_review`, 400 `forbidden_param` (role, pin, approval, token, owner, admin...), 403 `bad_token|other_device|forbidden_role|owner_approval_required` (este último trae `action` y `operation_id`), 409 `proposal_id_mismatch|proposal_changed`, 410 `confirm_expired`, 429 `rate_limited` (5 por minuto por aparato), 503 `confirm_unavailable`.
+**Lista de pedido del empleado:** el servidor la arma y la pasa por lista blanca: la tarjeta solo trae `id, type, needsConfirm, title, tipo, fiscal, data{campos:["producto","stock","cantidad_sugerida"], columnas, filas}`. Costos, totales o inversión que mande el modelo se descartan (probado con los canarios 4321.97 / 999.11). La versión del dueño puede traer costo e inversión.
 
-## Herramientas que el modelo puede PROPONER
-| Herramienta | Tipo de tarjeta | Dueño | Empleado | Acción de permisos | Qué pasa al pulsar Confirmar (función y ruta existentes) |
-|---|---|---|---|---|---|
-| `explicar_pasos` | `pasos` | sí | sí | `assistant.chat` | Nada se escribe. «Llévame ahí» usa `NA_MENU_NAVIGATION.navigate`. |
-| `preparar_venta` | `venta` | sí | sí | `assistant.chat` | `posAdd(id)` llena el carrito. El cobro lo hace la persona con **Cobrar**, que va por `canonical-sale-outbox.js` → `POST /commands/sale.create` con su propio `operation_id`. |
-| `preparar_documento` | `documento` | sí | sí | `assistant.chat` | Vista previa local imprimible, marcada «NO ES COMPROBANTE SUNAT». Sin ruta. |
-| `preparar_compra` | `compra` | sí | **no** | `assistant.purchase.propose` (dueño) | Abre «Nueva compra» (`NA_PURCHASES.open`) llena. Registra la persona con «Registrar compra» → `POST /auth/purchases` (`ownerGate inventory.adjust`, `operation_id` propio de `opFor`). |
-| `leer_factura_compra` | `compra` | sí | **no** | `assistant.purchase.propose` (dueño) | Igual que `preparar_compra`, con las líneas leídas de la foto. |
-| `proponer_cambio_precio` | `precio` | sí | **no** | `assistant.price.propose` (dueño) | Abre la ficha (`editProd`) con el precio nuevo. Se aplica con Guardar → `canonical-product-bridge` → `POST /commands/product.update` (`ownerGate product.update`). |
+## Aprobación estricta (PIN del dueño)
+`POST /auth/owner-approval {pin, action, operation_id}` → `approval_id`. La ruta que la usa la gasta con
+`UPDATE pos_owner_approvals SET used_at=? WHERE approval_id=? AND device_id=? AND action=? AND expires_at>? AND operation_id=? AND used_at IS NULL` y solo vale con `changes===1`.
+Acciones: `inventory.adjust`, `product.update`, `product.create`, `assistant.employee_access`, `assistant.owner_device` (agregadas a `APPROVAL_ACTIONS` en `pos-roles.js`, cambio aditivo).
 
-- La tarjeta de dueño (`compra`, `precio`) pide además el **PIN del dueño**, que va solo a `POST /auth/owner-approval` con el `operation_id` de la tarjeta. Nunca llega al modelo ni al historial. Sin esa aprobación, confirm responde 403 aunque se llame por consola.
-- Hoy el dueño real no tiene fila `owner` en `pos_device_roles`, así que el asistente lo trata como empleado y no le ofrece herramientas de dueño (ver PLAN.md).
-- La misma llamada de herramienta repetida en una respuesta produce una sola tarjeta.
-- Si el modelo pide una herramienta de dueño para un empleado, el Worker la descarta y responde `denied: [{tool, message: "Solo el dueño puede cambiar precios."}]`.
+### `POST /auth/assistant/employee-access`
+`{device_id, operation_id, level:"off"|"consultas"|"consultas_documentos"}` (también `enabled: true→consultas, false→off`) + `x-owner-approval` (`assistant.employee_access`). Respuesta `{ok, device_id, level, logged}`. Se anota en `pos_assistant_access_log` si existe (migración 0034, **no aplicada**).
 
-## Herramientas que NO existen (a propósito)
-Crear producto (`product.create`, el servidor no filtra por rol), importar (`import.stage`, el servidor no filtra por rol), descuentos, anular ventas, reset o respaldo, cajeros, PIN, aparatos, configuración, reportes completos, abrir o cerrar caja, gastos y abonos.
-Un abono futuro tendría que ir por `canonical-credit-payment-bridge.js` (`payment.create`/`payment.batch`), nunca por un camino propio.
+### Aparato del dueño (`owner-device`, detrás de bandera)
+- `register {pin}`: solo un aparato **sin fila**; empleado → 409 `employee_device_cannot_register` (o 403 `forbidden_role` del gate), sin gastar intentos. PIN con el límite por aparato existente (5 fallos → 429, «Demasiados intentos. Espera 15 min.»). Con 0 dueños → `owner` (INSERT atómico). Con dueño → **202** `{pending:true, status:"esperando_aprobacion"}`.
+- `approve {device_id, operation_id, decision}`: `approve` crea la fila owner; `reject` borra el pedido. Ambos piden aprobación estricta `assistant.owner_device`; un PIN suelto no basta.
+- `revoke {device_id, operation_id}`: deja el aparato como `empleado`. El último dueño nunca se quita: **409 `{error:"last_owner", code:"last_owner"}`** (revisado antes de gastar la aprobación y otra vez dentro del UPDATE). La pantalla avisa antes de quitar cualquier aparato dueño.
+- Bitácora `pos_owner_device_log` (migración 0035, **no aplicada**). Sin la tabla: **503 `owner_device_log_missing`**, no se registra nada.
+
+## Confirm
+Pide `{token, proposal}`; tarjetas con PIN además `x-owner-approval` ligada al `op` del token. Orden: firma, aparato, **rol y nivel actuales**, parámetros, id y hash, ya usada (`already_confirmed`, mismo `operation_id`), vencida (410), aprobación, revisión de filas (422 `review_required`). El `id` de cada tarjeta lo crea el servidor (`crypto.randomUUID()`) y va firmado.
+
+## Lo que NO existe (a propósito)
+Ventas o carrito, comprobantes SUNAT, importar, descuentos, anular ventas, reset o respaldo, cajeros, PIN, abrir o cerrar caja, gastos y **abonos** (un abono futuro iría por `canonical-credit-payment-bridge.js`).
 
 ## Cliente
-- Límites de tiempo propios del asistente (AbortController, sin tocar `NA_ROLES.api`): chat 30 s, cada intento de confirm 12 s (2 intentos), PIN 15 s.
-- La cuenta regresiva usa `server_now` para corregir el reloj del celular.
-- Contexto por mensaje: primero los productos que coinciden con lo escrito, tope de unos 2 KB y 25 productos.
-- `asistente-loader.js` está en `PRECACHE_URLS` de `POS/sw.js` y se carga con `defer`.
-- Cargador: `POS/js/modules/asistente/asistente-loader.js`. Solo se activa con `?asistente=1` (y se apaga con `?asistente=0`). Carga los archivos cuando el POS ya abrió y el navegador está libre.
-- Lógica sin pantalla: `asistente-core.js` (`NA_ASISTENTE_CORE`). Pantalla: `asistente-ui.js` (`NA_ASISTENTE`). Estilos: `POS/css/asistente.css`.
-- Estados de la burbuja: `listo`, `concentrado`, `pensando`, `hablando`, `feliz`, `error`, `offline`.
-- Servidor local de prueba: `node tools/asistente-proto/dev-server.mjs 4471` (sirve POS/ y las dos rutas; el rol se simula con el encabezado `x-proto-role`).
+- Cargador `asistente-loader.js` (solo con `?asistente=1`, después de que el POS abrió). `asistente-core.js` (`NA_ASISTENTE_CORE`), `asistente-ui.js` (`NA_ASISTENTE`), `POS/css/asistente.css` (sin imágenes: burbuja 100 % CSS).
+- Cargador: antes de bajar el asistente hace UN ping (`POST /auth/assistant/chat {"ping":true}`, cuerpo de 13 bytes, sin modelo ni cupo). Solo con 200 (dueño o empleado encendido) o 403 `reason:"sin_rol"` carga `asistente.css`, `asistente-core.js` y `asistente-ui.js`. Empleado en Apagado: 0 archivos, su POS arranca igual que hoy (prueba `assistant-loader.test.mjs` y medición en navegador). Sin internet solo carga si el último ping dijo dueño (`localStorage na_asistente_acc`). Vuelve a preguntar al volver a la app (máx. cada 30 s).
+- Inicio: tarjeta **solo para el dueño**, después de que el servidor lo confirma; va debajo del contenido que ya existe, así no mueve nada. Sin internet: «Asistente no disponible sin internet.»; el resto de Inicio sigue igual. Burbuja flotante abajo a la derecha sin tapar nada; en Inicio la reemplaza la tarjeta. El menú desplegable del celular (Inicio, Punto de Venta, Ventas, Inventario, Clientes, Caja, Gastos, Configuración) no se tocó.
+- Configuración > Personal y seguridad > Aparatos conectados: selector de 3 niveles por aparato de empleado (se guarda solo, pide PIN), aparatos dueño con «Quitar» (aviso previo) y «Pendiente de aprobar» con Aprobar/Rechazar. En un teléfono sin rol: «Registrar este teléfono como dueño».
+- Servidor local: `node tools/asistente-proto/dev-server.mjs 4471` (rol simulado con `x-proto-role`: dueño, `empleado`, `sinrol`; nivel con `x-proto-level`; PIN `0000` simula PIN incorrecto).

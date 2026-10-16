@@ -118,7 +118,7 @@
 
   // ---------- Red ----------
   function creds() { try { var c = JSON.parse(root.localStorage.getItem('na_cloud_sync_credentials') || 'null'); return c && c.endpoint && c.token ? c : null; } catch (_) { return null; } }
-  function protoRole() { try { return root.localStorage.getItem('na_asistente_proto_role') === 'empleado' ? 'empleado' : null; } catch (_) { return null; } }
+  function protoRole() { try { var r = root.localStorage.getItem('na_asistente_proto_role'); return r === 'empleado' || r === 'sinrol' ? r : null; } catch (_) { return null; } }
   function protoLevel() { try { return root.localStorage.getItem('na_asistente_proto_level') || ''; } catch (_) { return ''; } }
   // Para la puerta de ejecución: rol y nivel según el SERVIDOR (último ping), no el rol guardado del POS.
   function roles() {
@@ -131,7 +131,7 @@
     var c = creds(), url = path, h = Object.assign({ 'content-type': 'application/json' }, headers || {});
     var init = { method: 'POST', cache: 'no-store', body: JSON.stringify(body) };
     if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
-    else if (protoRole()) { h['x-proto-role'] = 'empleado'; if (protoLevel()) h['x-proto-level'] = protoLevel(); }
+    else if (protoRole()) { h['x-proto-role'] = protoRole(); if (protoLevel()) h['x-proto-level'] = protoLevel(); }
     init.headers = h;
     var r = await C.request(root.fetch.bind(root), url, init, ms || C.TIMEOUTS.chat);
     var d = r.data || {}; if (!r.ok) { d.error = d.error || 'HTTP_' + r.status; d.status = r.status; }
@@ -423,12 +423,14 @@
     pinging = post('/auth/assistant/chat', { ping: true }, null, 8000).then(function (d) {
       if (d && d.ok) { access = { role: d.role === 'owner' ? 'owner' : 'empleado', level: d.level }; adminOff = false; }
       else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) { access = null; }
+      noRole = !!(d && d.reason === 'sin_rol');
+      try { if (d && d.ok) root.localStorage.setItem('na_asistente_acc', d.role === 'owner' ? 'owner' : 'on'); else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) root.localStorage.removeItem('na_asistente_acc'); } catch (_) {}
       return access;
     }, function () { return access; }).then(function (a) {
       pinging = null;
       if (isAdmin()) { if (!doc.querySelector('.na-asst-root')) mount(); else syncPanelForAccess(); }
       else if (panelEl && !panelEl.hidden) closePanel();
-      renderHero(); if (rootEl) applyPause(); decorateConfig();
+      renderHero(); if (rootEl) applyPause(); decorateConfig(); decorateRegister();
       return a;
     });
     return pinging;
@@ -446,14 +448,18 @@
   // Solo se dibuja cuando el SERVIDOR confirmó el permiso. A un empleado sin permiso no se le dibuja nada (ni espacio).
   // Va al FINAL de Inicio: no empuja ni mueve lo que ya está. Sin internet: «Asistente no disponible sin internet»
   // solo si este aparato ya fue confirmado como dueño o el rol guardado del POS es dueño; el resto de Inicio sigue igual.
-  var heroEl = null;
-  function cachedOwner() { var R = root.NA_ROLES; return !!(R && R.role === 'owner'); }
+  var heroEl = null, noRole = false;
+  // Último rol que confirmó el servidor (lo guarda el cargador): solo 'owner' muestra la tarjeta sin internet.
+  function cachedOwner() { try { return root.localStorage.getItem('na_asistente_acc') === 'owner'; } catch (_) { return false; } }
   function renderHero() {
     var menu = doc.getElementById('pageMenu'); if (!menu) return;
     var off = root.navigator.onLine === false;
-    var mode = isAdmin() ? (off ? 'offline' : isOwnerAccess() ? 'owner' : 'emp') : (off && cachedOwner() && !adminOff ? 'offline' : null);
+    // Solo el dueño tiene tarjeta en Inicio (la tarjeta reemplaza a la burbuja). El empleado con nivel encendido ve solo la burbuja con sus atajos.
+    var mode = isOwnerAccess() ? (off ? 'offline' : 'owner') : (off && cachedOwner() && !adminOff ? 'offline' : null);
     if (!mode) { if (heroEl) { heroEl.remove(); heroEl = null; } return; }
-    if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.setAttribute('aria-label', 'Asistente'); menu.appendChild(heroEl); }
+    if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.setAttribute('aria-label', 'Asistente');
+      // Al final de la columna que se desplaza de Inicio (no en la grilla del menú): no mueve nada de lo que ya está.
+      (menu.querySelector('.main-scroll') || menu).appendChild(heroEl); }
     if (heroEl.dataset.mode === mode && heroEl.dataset.lvl === String(access && access.level)) return;
     heroEl.dataset.mode = mode; heroEl.dataset.lvl = String(access && access.level);
     // Estilo de las maquetas v2 de Bot 4: píldora, título, subtítulo, la MISMA burbuja CSS (con brillo y órbita), campo con onda de voz y 3 chips.
@@ -493,9 +499,100 @@
   function decorateOne(host) {
     var box = el('div', 'na-asst-acc'); box.innerHTML = '<h4>Asistente en aparatos de empleado</h4><p class="na-asst-acc-n">Apagado por defecto. Al cambiar se pide tu PIN y se guarda solo. Cualquier cambio de stock, precio o compra que proponga el asistente igual necesita tu PIN.</p><div class="na-asst-acc-l">Cargando…</div>';
     host.appendChild(box);
+    decorateOwners(host, box);
     get(ACCESS_PATH).then(function (d) { paintAccess(box, d); }, function () { box.querySelector('.na-asst-acc-l').textContent = 'No se pudo cargar. Revisa internet.'; });
   }
   var ACCESS_PATH = '/auth/assistant/employee-access';
+
+  // ---------- Aparatos de dueño y «Pendiente de aprobar» (maquetas v2). Solo si el servidor tiene ASSISTANT_OWNER_BOOTSTRAP=1;
+  // si la ruta responde 404 no se muestra nada. Aprobar, rechazar y quitar piden PIN -> aprobación estricta 'assistant.owner_device'.
+  var OWNER_DEV_PATH = '/auth/assistant/owner-device';
+  function newOp(prefix) { return prefix + '-' + (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); }
+  function pinMsg(e) { e = String(e || ''); return /locked/.test(e) ? 'Demasiados intentos. Espera 15 min.' : /pin/.test(e) ? 'PIN incorrecto.' : ''; }
+  // Pide el PIN (ventana de PIN del POS; en el prototipo local, prompt), saca una aprobación de UN uso para esta operación y llama run(op, approvalId).
+  function withApproval(title, action, run) {
+    var save = async function (pin) {
+      var op = newOp('ODV'), apr = await post('/auth/owner-approval', { pin: pin, action: action, operation_id: op }, null, 15000);
+      if (!apr || !apr.approval_id) { var ea = String(apr && apr.error || ''); return { msg: pinMsg(ea) || 'No se pudo verificar el PIN.', stop: !/pin_invalid/.test(ea) }; }
+      var r = await run(op, apr.approval_id); return r && r.ok ? { ok: true } : { msg: (r && r.msg) || 'No se pudo guardar.', stop: true };
+    };
+    var R = root.NA_ROLES;
+    if (R && typeof R.askPin === 'function' && creds()) return R.askPin(title, 'Escribe tu PIN de dueño.', save);
+    var pin = root.prompt ? root.prompt(title + ' — PIN del dueño') : ''; if (!pin) return Promise.resolve(false);
+    return save(pin).then(function (r) { return r.ok ? true : (r.msg || false); });
+  }
+  var PHONE_SVG = '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M11 18h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  var TABLET_SVG = '<svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  function devIcon(label) { return /tablet|caja|pc|laptop/i.test(label || '') ? TABLET_SVG : PHONE_SVG; }
+  function decorateOwners(host, before) {
+    var box = el('div', 'na-asst-own'); box.hidden = true; host.insertBefore(box, before);
+    var paint = function () {
+      get(OWNER_DEV_PATH).then(function (d) {
+        if (!d || !d.owners) { box.hidden = true; return; }
+        box.hidden = false;
+        var own = d.owners.map(function (o) {
+          return '<div class="na-asst-own-r" data-dev="' + C.esc(o.device_id) + '"><span class="ic" aria-hidden="true">' + devIcon(o.label) + '</span><div><strong>' + C.esc(o.label || 'Aparato de dueño') +
+            (o.this_device ? ' <em>Este teléfono</em>' : '') + '</strong><small class="st" role="status">' + (o.last_seen_at ? 'Último uso: ' + C.esc(String(o.last_seen_at).slice(0, 16).replace('T', ' ')) : '') + '</small></div>' +
+            '<button type="button" class="na-asst-quitar" data-quitar="1">Quitar</button></div>'; }).join('');
+        var pend = (d.pending || []).map(function (p) {
+          return '<div class="na-asst-own-r pend" data-dev="' + C.esc(p.device_id) + '"><span class="ic" aria-hidden="true">' + PHONE_SVG + '</span><div><strong>' + C.esc(p.label || 'Teléfono nuevo') + '</strong><small class="st" role="status">Pidió ser dueño: ' + C.esc(String(p.requested_at || '').slice(0, 16).replace('T', ' ')) + '</small></div></div>' +
+            '<div class="na-asst-own-a" data-dev="' + C.esc(p.device_id) + '"><button type="button" class="na-asst-ok" data-decision="approve">Aprobar</button><button type="button" class="na-asst-no" data-decision="reject">Rechazar</button></div>'; }).join('');
+        box.innerHTML = '<h4>Aparatos de dueño (' + d.owners.length + ')</h4>' + own +
+          '<p class="na-asst-own-w">Un teléfono nuevo de dueño se aprueba solo desde un teléfono de dueño que ya esté en esta lista.</p>' +
+          (pend ? '<h4>Pendiente de aprobar (' + d.pending.length + ')</h4>' + pend : '');
+      }, function () { box.hidden = true; });
+    };
+    box.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var row = b.closest('[data-dev]'), dev = row && row.dataset.dev; if (!dev) return;
+      var stEl = (b.closest('.na-asst-own-a') ? b.closest('.na-asst-own-a').previousElementSibling : row).querySelector('.st');
+      if (b.dataset.quitar) {
+        // Aviso antes de quitar cualquier aparato dueño. El servidor nunca deja quitar el último (409 last_owner).
+        var only = box.querySelectorAll('[data-quitar]').length <= 1;
+        if (only) { stEl.textContent = 'Es el único aparato dueño. Registra otro antes de quitarlo.'; return; }
+        if (root.confirm && !root.confirm('¿Quitar este aparato como dueño? Deja de ver el asistente de gestión y de aprobar cambios. Puedes volver a registrarlo después.')) return;
+        withApproval('Quitar aparato de dueño', 'assistant.owner_device', async function (op, apr) {
+          var r = await post(OWNER_DEV_PATH + '/revoke', { device_id: dev, operation_id: op }, { 'x-owner-approval': apr }, 15000);
+          if (r && r.ok) { paint(); return { ok: true }; }
+          return { msg: r && (r.code === 'last_owner' || r.error === 'last_owner') ? 'Es el único aparato dueño. Registra otro antes de quitarlo.' : 'No se pudo quitar.' };
+        }).then(function (ok) { if (ok !== true) stEl.textContent = typeof ok === 'string' ? ok : 'Sin cambios.'; });
+        return;
+      }
+      var dec = b.dataset.decision; if (!dec) return;
+      withApproval(dec === 'approve' ? 'Aprobar teléfono de dueño' : 'Rechazar teléfono', 'assistant.owner_device', async function (op, apr) {
+        var r = await post(OWNER_DEV_PATH + '/approve', { device_id: dev, operation_id: op, decision: dec }, { 'x-owner-approval': apr }, 15000);
+        if (r && r.ok) { paint(); return { ok: true }; } return { msg: 'No se pudo guardar.' };
+      }).then(function (ok) { if (ok !== true) stEl.textContent = typeof ok === 'string' ? ok : 'Sin cambios.'; });
+    };
+    paint();
+  }
+
+  // ---------- «Registrar este teléfono como dueño»: solo en un aparato SIN rol (el POS lo trata como dueño pero el asistente no),
+  // nunca automático: botón + PIN. Si ya hay dueño queda «esperando aprobación». El servidor decide todo (bandera, 0 dueños, límite de PIN).
+  function decorateRegister() {
+    if (!noRole || isOwnerAccess() || root.navigator.onLine === false) return;
+    doc.querySelectorAll('#naDevList').forEach(function (list) {
+      var host = list.parentElement; if (!host || host.querySelector('.na-asst-reg')) return;
+      var box = el('div', 'na-asst-reg');
+      box.innerHTML = '<h4>Registrar este teléfono como dueño</h4><p>Hazlo solo en el teléfono del dueño. Escribe tu PIN de dueño. El PIN no se guarda en el teléfono.</p>' +
+        '<label>Escribe tu PIN de dueño<input type="password" inputmode="numeric" autocomplete="off" maxlength="8"></label><p class="st" role="status"></p>' +
+        '<button type="button" class="na-asst-ok">Registrar este teléfono como dueño</button>' +
+        '<p class="na-asst-own-w">Si ya hay un teléfono de dueño, este quedará esperando hasta que lo apruebes desde ese teléfono.</p>';
+      host.insertBefore(box, host.firstChild);
+      var inp = box.querySelector('input'), btn = box.querySelector('button'), st = box.querySelector('.st');
+      btn.onclick = async function () {
+        var pin = inp.value.trim(); inp.value = ''; if (!pin) { st.textContent = 'Escribe tu PIN de dueño.'; return; }
+        btn.disabled = true; var r = await post(OWNER_DEV_PATH + '/register', { pin: pin }, null, 15000);
+        if (r && r.ok) { st.textContent = 'Listo: este teléfono es de dueño.'; box.dataset.state = 'ok'; refreshAccess(); return; }
+        if (r && r.pending) { st.textContent = 'Esperando aprobación desde el teléfono del dueño.'; box.dataset.state = 'pend'; return; }
+        var e = String(r && r.error || '');
+        if (/locked|too_many/.test(e) || (r && r.locked_until)) { st.textContent = 'Demasiados intentos. Espera 15 min.'; inp.disabled = true; inp.placeholder = 'Bloqueado'; box.dataset.state = 'lock'; return; }
+        if (/employee/.test(e)) { st.textContent = 'Este teléfono ya es de empleado y no puede pasar a dueño así.'; box.dataset.state = 'emp'; return; }
+        btn.disabled = false; st.textContent = /pin/.test(e) ? 'PIN incorrecto.' + (r.attempts_left != null ? ' Te quedan ' + r.attempts_left + ' intentos.' : '') : r && r.error === 'not_found' ? 'Esta opción todavía no está activa en el servidor.' : 'No se pudo registrar.';
+      };
+    });
+  }
+
   function paintAccess(box, d) {
     var l = box.querySelector('.na-asst-acc-l');
     if (!d || !d.devices) { l.textContent = (d && d.error === 'admin_only') ? 'Solo el aparato del dueño puede cambiar esto.' : 'No se pudo cargar.'; return; }
@@ -533,7 +630,7 @@
   async function get(path) {
     var c = creds(), url = path, h = {};
     if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; }
-    else if (protoRole()) h['x-proto-role'] = 'empleado';
+    else if (protoRole()) h['x-proto-role'] = protoRole();
     var r = await C.request(root.fetch.bind(root), url, c ? { method: 'GET', headers: h, cache: 'no-store', credentials: 'omit', redirect: 'error' } : { method: 'GET', headers: h, cache: 'no-store' }, 10000);
     var d = r.data || {}; if (!r.ok) d.error = d.error || 'HTTP_' + r.status; return d;
   }
@@ -585,7 +682,7 @@
     root.addEventListener('online', refreshAccess);
     root.addEventListener('offline', function () { renderHero(); });
     doc.addEventListener('visibilitychange', function () { if (!doc.hidden) refreshAccess(); });
-    var tick = 0; function check() { if (tick) return; tick = setTimeout(function () { tick = 0; if (!doc.hidden) { renderHero(); decorateConfig(); } }, 250); }
+    var tick = 0; function check() { if (tick) return; tick = setTimeout(function () { tick = 0; if (!doc.hidden) { renderHero(); decorateConfig(); decorateRegister(); } }, 250); }
     try { new MutationObserver(check).observe(doc.body, { childList: true, subtree: true }); } catch (_) {}
     var menu = doc.getElementById('pageMenu');
     try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) refreshAccess(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}

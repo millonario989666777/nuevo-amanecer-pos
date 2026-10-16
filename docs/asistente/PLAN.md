@@ -1,46 +1,30 @@
-# Asistente "Burbuja" dentro del punto de venta (prototipo aislado)
+# Asistente "Burbuja" para el modo admin del punto de venta (prototipo aislado)
 
 Rama: `feature/asistente-aislado` (sale de `feature/v1.3-mobile-cloud`). No se unió a nada, no se publicó, no se desplegó y no se tocó producción. Todo se probó en esta máquina con datos inventados.
 
-## 1. Qué hace
-- Una burbuja verde con ojos grandes flota en la pantalla. Nunca tapa el botón Cobrar ni el carrito (celular, tablet y PC). Se esconde sola cuando se abre una ventana del POS.
-- Al tocarla se abre un chat en español, con letra grande y botones grandes.
-- La persona puede escribir o mandar una foto (por ejemplo, la factura de un proveedor). La foto se achica en el celular antes de enviarse.
-- El asistente puede:
-  - Explicar pasos ("¿cómo abro la caja?") y llevar a la pantalla correcta.
-  - Preparar una venta: llena el carrito. El cobro lo sigue haciendo la persona con Cobrar, igual que hoy.
-  - Preparar una compra o leer la foto de una factura: abre "Nueva compra" ya llena para revisar. Solo dueño.
-  - Proponer un cambio de precio: abre la ficha del producto con el precio nuevo. Solo dueño.
-  - Hacer una vista previa de documento (nota de venta, cotización, lista de precios). No es comprobante SUNAT y lo dice en la hoja.
-- Nada se hace solo. Cada acción sale como una tarjeta con "Confirmar". La tarjeta vence en 5 minutos, se usa una sola vez y las de dueño piden el PIN del dueño. El servidor exige ese PIN: la aprobación queda ligada al número de operación de esa tarjeta y se gasta al confirmar, así que no se puede saltar desde la consola del navegador.
-- Si el aparato es de empleado y pide algo de dueño, la respuesta es "Solo el dueño puede cambiar precios."
-- Sin internet la burbuja se pone gris y dice "Asistente no disponible sin internet".
-- Estados de la burbuja: Listo, Concentrado, Pensando, Hablando, Feliz, Error y Sin internet. Las animaciones bajan de calidad solas en celulares lentos, con batería baja o si el usuario pidió menos movimiento, y se pausan si la pestaña no se ve.
+## 1. Qué hace (cambio de alcance del jefe: solo gestión, nada de ventas)
+- Ayuda al **dueño** a gestionar: stock, compras, precios y documentos. No vende ni llena carritos.
+- Puede: consultar (stock, por reponer, productos sin costo, ventas, más vendidos, deudas, compras), proponer ajustes de stock, cambios de precio, compras (también desde la foto de la factura), productos nuevos, y preparar documentos internos (inventario valorizado, lista de precios, lista de pedido, reporte de ventas, estado de cuenta, resumen de cierre). Ningún documento es comprobante SUNAT.
+- Nada se hace solo: cada acción es una tarjeta con «Confirmar», vence en 5 minutos, se usa una vez y pide el PIN del dueño. Al confirmar se abre la pantalla que el POS ya tiene (movimiento de stock, ficha, nueva compra, nuevo producto) y se guarda por su ruta de siempre, con `ownerGate`/PIN. El asistente no tiene caminos de escritura propios.
+- Para preguntas, el Worker manda al modelo solo un resumen (top 10), nunca el inventario completo. Medido: primer pedido ~6,8 KB; resumen de la consulta ≤ 3,2 KB incluso con 3.000 productos.
 
-## 2. Cómo está armado
-- En el POS (archivos nuevos, se cargan solo con `?asistente=1` y después de que el POS ya abrió):
-  - `POS/js/modules/asistente/asistente-loader.js`: decide si se carga.
-  - `POS/js/modules/asistente/asistente-core.js`: quita datos sensibles, arma el contexto y controla que nada se ejecute sin Confirmar.
-  - `POS/js/modules/asistente/asistente-ui.js` y `POS/css/asistente.css`: burbuja, chat y tarjetas.
-- En el Worker:
-  - `tools/cloudflare-lab/src/pos-assistant.js`: rutas `POST /auth/assistant/chat` y `POST /auth/assistant/confirm`.
-  - Apagado por defecto: sin `ASSISTANT_ENABLED=1` responde 404.
-  - La clave de DeepSeek vive solo en el Worker (`DEEPSEEK_API_KEY`). Sin clave responde "asistente no configurado" (503). El modo demostración solo se enciende a propósito con `ASSISTANT_DEMO=1`, para el prototipo local y las pruebas.
-  - Modelo `deepseek-flash`, sin modo "pensar", con herramientas. La dirección se puede cambiar con `DEEPSEEK_BASE_URL` (así se probó con el mock de Bot 2).
-- Seguridad:
-  - El rol lo decide el servidor. Para el asistente, un aparato sin fila de rol cuenta como empleado.
-  - Cada propuesta lleva un número único que crea el servidor y va firmado. Si el celular manda otro número, se rechaza.
-  - Los nombres de productos van al modelo en un bloque aparte marcado como solo dato, no junto a las reglas.
-  - Cada rol solo recibe sus herramientas. El empleado nunca ve las de dueño.
-  - Se rechazan parámetros como role, pin, approval o token.
-  - Antes de llamar al modelo se ocultan DNI, RUC, teléfonos, correos, PIN, claves y tokens.
-  - El texto del chat y la foto se tratan como datos, nunca como órdenes.
-  - Confirmar solo gasta el token y devuelve un `operation_id` fijo. Si se toca dos veces o se corta la señal, se devuelve el mismo número y no se duplica nada.
-  - Lo que de verdad guarda datos son las funciones que el POS ya tiene: Cobrar con su cola de ventas, "Registrar compra" con PIN del dueño, y la ficha del producto con PIN del dueño.
-- No hay herramientas para crear productos, importar, descuentos, anular ventas, reset o respaldo, cajeros, reportes completos ni abonos.
-- El detalle exacto está en `docs/asistente/CONTRATO.md` de la rama.
+## 2. Quién lo ve
+- **Dueño** (aparato con fila `owner`): tarjeta en Inicio «Puedo ayudarte con stock, compras, precios y documentos.» (en Inicio reemplaza a la burbuja) y burbuja flotante en el resto, abajo a la derecha sin tapar nada. Nunca sobre Cobrar.
+- **Empleados**, por aparato, 3 niveles que elige el dueño en Configuración > Personal y seguridad > Aparatos conectados (se guarda solo y pide el PIN del dueño):
+  - **Apagado** (por defecto): no ve nada y su teléfono **no baja ningún archivo del asistente** (el cargador pregunta primero al servidor con un ping de 13 bytes). Su POS arranca igual que hoy.
+  - **Solo consultas**: burbuja con atajos; stock, qué falta reponer, cómo se hace algo y precios de venta. Sin costos, márgenes, caja ni deudas.
+  - **Consultas y documentos**: además Lista de precios y Lista de pedido, sin costos (el servidor arma las filas y solo deja producto, stock y cantidad sugerida).
+  - Un empleado puede **proponer** un ajuste, precio o compra, pero aplicarlo pide el PIN del dueño.
+  - El servidor revisa el nivel en cada mensaje y en cada confirmación: apagar es inmediato, incluso con una tarjeta ya abierta.
+- La navegación del celular (menú desplegable) no se tocó.
 
-## 3. Costos
+## 3. Cómo está armado
+- POS (solo con `?asistente=1`, después de que el POS abrió): `asistente-loader.js` (ping primero), `asistente-core.js`, `asistente-ui.js`, `POS/css/asistente.css` (todo CSS, sin imágenes).
+- Worker: `pos-assistant.js` (chat y confirm), `pos-assistant-queries.js` (consultas con lecturas canónicas), `pos-assistant-access.js` (niveles), `pos-owner-device.js` (registro del dueño, detrás de bandera). Todo apagado sin `ASSISTANT_ENABLED=1`.
+- Aprobación del dueño estricta en todos lados: `UPDATE ... WHERE ... operation_id=? AND used_at IS NULL` y vale solo con `changes===1`.
+- Detalle exacto: `docs/asistente/CONTRATO.md`.
+
+## Costos
 Precios oficiales de DeepSeek para `deepseek-flash`, revisados hoy, por millón de tokens:
 
 | | Horario barato | Horario normal |
@@ -60,28 +44,30 @@ El número que se manejaba antes (8 a 15 USD al mes) queda como techo prudente. 
 
 Importante: DeepSeek procesa los datos en servidores en China. Por eso el prototipo no manda nombres de clientes, DNI completos, teléfonos, correos, PIN ni claves. Solo manda el nombre, precio y stock de los productos, y el costo solo si el aparato es del dueño.
 
-## 4. Riesgos
-- Privacidad: los datos van a China. Mitigado con el filtro de datos, pero una foto puede traer datos de clientes escritos. Conviene avisar a los usuarios que no fotografíen documentos de clientes.
-- El modelo se equivoca: puede leer mal una factura o entender mal un pedido. Mitigado porque todo pasa por una tarjeta y por la pantalla normal del POS, donde la persona revisa antes de guardar.
-- Inyección (un texto o foto que intenta dar órdenes): probado con el mock de Bot 2 y la suite de Bot 5. No se ejecutó nada no permitido.
-- Costo: si alguien abusa, los límites por aparato (por minuto y por día) y el tope mensual lo frenan.
-- Dependencia de internet y de DeepSeek: sin internet o si DeepSeek falla, el asistente dice que no está disponible y el POS sigue funcionando igual.
-- Velocidad del POS: el asistente se carga después de que el POS abrió y solo si se activa. Las animaciones bajan de calidad solas.
-- El dueño hoy aparece como empleado para el asistente. Ningún código crea la fila "owner" en la tabla de roles de aparatos: solo se crean filas de empleado al vincular una caja. El resto del POS trata "sin fila" como dueño, pero el asistente, por seguridad, lo trata como empleado. Resultado: el dueño real no ve las herramientas de dueño (precios y compras) en el asistente. No se tocó ningún dato de roles. El arreglo, que necesita la aprobación del dueño, sería una forma aprobada de marcar su aparato como "owner" (por ejemplo, un paso en Configuración que pida su PIN y guarde esa fila), o una migración que lo haga una sola vez.
-- Falta un registro de auditoría en el servidor. Hacerlo necesita una migración de base de datos, y eso requiere aprobación del dueño.
+## 4. Riesgos y huecos conocidos
+- **Privacidad**: DeepSeek procesa en China. Solo van resúmenes de productos; DNI, RUC, teléfonos y correos se ocultan antes. Una foto puede traer datos escritos: avisar que no fotografíen documentos de clientes.
+- **El modelo se equivoca**: todo pasa por una tarjeta y por la pantalla normal del POS, con filas raras marcadas en rojo que bloquean Confirmar.
+- **Hueco de raíz (heredado, no del asistente): registrar una compra NO actualiza el costo del producto.** El asistente no lo arregla por su cuenta: muestra «Costo actual S/ X → factura S/ Y» y ofrece «Actualizar costo» como tarjeta aparte por `product.update` con PIN. El arreglo de fondo en `/auth/purchases` queda para el jefe.
+- **Pendientes heredados de Reportes** (se anotan también al pie de los documentos): el cierre de caja no separa bien efectivo de digital en todos los casos, y por el hueco anterior el inventario valorizado puede usar costos viejos.
+- **El dueño real hoy no tiene fila `owner`**: el POS trata «sin fila» como dueño, el asistente no. Por eso existe el registro del dueño (abajo). Mientras no se active, el teléfono sin rol solo ve «Registrar este teléfono como dueño» (en el prototipo local se simula el dueño).
+- **Inicio del dueño**: la tarjeta va debajo del contenido que ya existe para no mover nada (las maquetas la ponen arriba; arriba movería la pantalla porque el asistente carga después del POS).
 
-- Arranque con la app instalada y mala señal (hallazgo de Bot 3, fuera del asistente, NO se arregló porque el POS está congelado): varios archivos que no son del asistente se piden a la red en cada arranque porque no están en la lista de precarga del service worker. Por ejemplo `pos-permissions.js`, `runtime-config.js`, `theme-state.js` y `cash-perf-probe.js`. Con señal colgada pueden demorar el arranque. Es un arreglo aparte, para cuando el dueño lo apruebe. El cargador del asistente sí se agregó a esa lista y se carga con `defer`.
+## 5. Cambios que necesitan el visto bueno del jefe (no aplicados en ningún lado)
+1. **`product.create` en el servidor del POS** (commit aparte `f5b3587c`): pasa por `ownerGate` (dueño, o PIN del dueño ligado al `operation_id`). Hoy cualquier aparato puede crear productos.
+2. **Registro del aparato del dueño** (`pos-owner-device.js`, detrás de `ASSISTANT_OWNER_BOOTSTRAP=1`, commit aparte): botón explícito «Registrar este teléfono como dueño» con PIN; solo en un teléfono sin fila; con 0 dueños queda dueño, si ya hay uno queda «esperando aprobación» y el dueño lo aprueba o rechaza desde su teléfono con PIN; límite de PIN por aparato (5 fallos → 15 min); un empleado nunca sube a dueño; nunca se quita el último dueño (409 `last_owner`).
+3. **Migraciones escritas y NO aplicadas** (antes de aplicarlas: copia de respaldo en R2 y OK del jefe):
+   - `0034_pos_assistant_access_log.sql`: bitácora de cambios de nivel de empleados. Sin la tabla los cambios funcionan pero no quedan anotados (`logged:false`).
+   - `0035_pos_owner_device_log.sql`: bitácora del registro de dueños. Sin la tabla las rutas de dueño fallan cerrado (503): no se registra nada sin bitácora.
+4. Acciones nuevas en `APPROVAL_ACTIONS` (`pos-roles.js`, aditivo): `assistant.employee_access`, `assistant.owner_device`.
 
-## 5. Siguientes pasos
-1. Que el dueño lo pruebe en un celular de la tienda con el servidor local y datos inventados.
-2. Decidir si se acepta que los datos pasen por China. Si no, se puede cambiar de proveedor sin rehacer el POS.
-3. Si se aprueba: crear la tabla de auditoría (necesita aprobación del dueño para la migración).
+## 6. Siguientes pasos
+1. Que el dueño lo pruebe con el servidor local y datos inventados.
+2. Decidir si se acepta que los datos pasen por China.
+3. Decidir los 4 puntos de la sección 5.
 4. Probar con una clave real de DeepSeek en un entorno de prueba con tope de gasto bajo.
-5. Más adelante, si se quiere, sumar abonos, siempre por el camino que ya existe (`canonical-credit-payment-bridge`).
-6. Solo después de todo eso, pensar en un PR en borrador para revisión. Nada a producción sin aprobación.
+5. Abonos: no hay herramienta a propósito; si se quiere, irían por `canonical-credit-payment-bridge`.
+6. Recién después, un PR en borrador para revisión. Nada a producción sin aprobación.
 
-## 6. Dónde ver las pruebas
-- Capturas: `/workspace/asistente-proto/shots/` (390x844, 768 y 1280x800, tema verde y nocturno).
-- Videos: `/workspace/asistente-proto/asistente-estados-390.mp4` y `asistente-estados-1280.mp4` (también en .webm).
-- Pruebas automáticas: `tests/asistente/` en la rama (45 pruebas, todas pasan).
-- Suite de permisos de Bot 5 (versión actualizada, contrato `contrato-bot5-adaptado.json`) sobre 0b6fb5fd: 39 pasan, 1 brecha que ya estaba en la rama base (L07), 1 no aplica (no hay abono a propósito), 6 informativas, 1 pendiente (interfaz). Tres fallan: A20 (falta la tabla de auditoría, necesita migración aprobada), R01 (la prueba manda el PIN como la interfaz vieja, sin operation_id; la interfaz nueva sí lo manda y la prueba de punta a punta pasa) y R07 (el mock de Bot 5 aún no tiene el escenario `dos_ventas`; el caso de dos tarjetas está cubierto en `tests/asistente/`).
+## 7. Dónde ver las pruebas
+- Pruebas automáticas: `tests/asistente/` (85 pruebas, todas pasan), incluye niveles de empleado, revocación inmediata, lista de pedido sin costos, registro del dueño, último dueño y el cargador (empleado en Apagado = 0 archivos).
+- Capturas: `/workspace/asistente-proto/shots-admin/` (390, 768 y 1280; verde, nocturno y azul).

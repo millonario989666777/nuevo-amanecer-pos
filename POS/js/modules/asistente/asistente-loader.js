@@ -1,22 +1,51 @@
 /* Asistente (PROTOTIPO AISLADO): cargador apagado por defecto.
    Solo se activa con ?asistente=1 (queda guardado en este aparato) y se apaga con ?asistente=0.
-   Carga los archivos DESPUÉS de que el POS terminó de abrir y el navegador está libre: no afecta el arranque. */
+   Antes de bajar NADA del asistente pregunta al servidor si este aparato lo tiene (POST /auth/assistant/chat {ping:true}, ~100 bytes,
+   sin modelo ni cupo). Solo si la respuesta es «sí» (dueño o empleado con nivel encendido) o «aparato sin rol» (para mostrar
+   «Registrar este teléfono como dueño») carga asistente.css, asistente-core.js y asistente-ui.js.
+   Empleado en Apagado (por defecto): 0 archivos del asistente; su POS arranca igual que hoy.
+   Sin internet: se usa lo último que dijo el servidor (solo para que el dueño vea «Asistente no disponible sin internet»).
+   Todo pasa DESPUÉS de que el POS abrió y el navegador está libre. */
 (function (root) {
   'use strict';
   var on = false;
   try {
     var q = new URLSearchParams(root.location.search).get('asistente');
     if (q === '1') root.localStorage.setItem('na_asistente_proto', '1');
-    if (q === '0') root.localStorage.removeItem('na_asistente_proto');
+    if (q === '0') { root.localStorage.removeItem('na_asistente_proto'); root.localStorage.removeItem('na_asistente_acc'); }
     on = root.localStorage.getItem('na_asistente_proto') === '1';
   } catch (_) {}
   if (!on) return;
+  var loaded = false, asking = false, lastAsk = 0;
+  function ls(k, v) { try { if (v === undefined) return root.localStorage.getItem(k); if (v === null) root.localStorage.removeItem(k); else root.localStorage.setItem(k, v); } catch (_) {} return null; }
   function load() {
+    if (loaded) return; loaded = true;
     var d = root.document, l = d.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/asistente.css'; d.head.appendChild(l);
     var a = d.createElement('script'); a.src = 'js/modules/asistente/asistente-core.js';
     a.onload = function () { var b = d.createElement('script'); b.src = 'js/modules/asistente/asistente-ui.js'; d.body.appendChild(b); };
     d.body.appendChild(a);
   }
-  function idle() { if (root.requestIdleCallback) root.requestIdleCallback(load, { timeout: 2500 }); else setTimeout(load, 800); }
+  // Mismo pedido que usa la UI: endpoint y Bearer de la sesión del POS, sin cookies. En el prototipo local, rol simulado.
+  function ask() {
+    if (loaded || asking || Date.now() - lastAsk < 30000) return; asking = true; lastAsk = Date.now();
+    if (root.navigator && root.navigator.onLine === false) { asking = false; if (ls('na_asistente_acc') === 'owner') load(); return; }
+    var url = '/auth/assistant/chat', h = { 'content-type': 'application/json' }, init = { method: 'POST', cache: 'no-store', body: '{"ping":true}' };
+    var c = null; try { c = JSON.parse(ls('na_cloud_sync_credentials') || 'null'); } catch (_) {}
+    if (c && c.endpoint && c.token) { url = String(c.endpoint).replace(/\/+$/, '') + url; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
+    else { var pr = ls('na_asistente_proto_role'), pl = ls('na_asistente_proto_level'); if (pr === 'empleado' || pr === 'sinrol') h['x-proto-role'] = pr; if (pl) h['x-proto-level'] = pl; }
+    init.headers = h;
+    var ctl = root.AbortController ? new root.AbortController() : null, t = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : 0; if (ctl) init.signal = ctl.signal;
+    root.fetch(url, init).then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { st: r.status, d: d || {} }; }); }).then(function (x) {
+      clearTimeout(t); asking = false;
+      if (x.st === 200 && x.d.ok) { ls('na_asistente_acc', x.d.role === 'owner' ? 'owner' : 'on'); load(); return; }
+      if (x.st === 403 && x.d.reason === 'sin_rol') { ls('na_asistente_acc', null); load(); return; }
+      if (x.st === 401 || x.st === 403 || x.st === 404) ls('na_asistente_acc', null); // apagado: no se baja nada
+    }, function () { clearTimeout(t); asking = false; if (ls('na_asistente_acc') === 'owner') load(); });
+  }
+  root.NA_ASISTENTE_LOADER = { ask: ask, loaded: function () { return loaded; } };
+  function idle() { if (root.requestIdleCallback) root.requestIdleCallback(ask, { timeout: 2500 }); else setTimeout(ask, 800); }
   if (root.document.readyState === 'complete') idle(); else root.addEventListener('load', idle, { once: true });
+  // Si el dueño lo enciende con la app abierta: se vuelve a preguntar al volver a la app (máx. una vez cada 30 s).
+  root.document.addEventListener('visibilitychange', function () { if (!root.document.hidden) ask(); });
+  root.addEventListener('online', ask);
 })(window);

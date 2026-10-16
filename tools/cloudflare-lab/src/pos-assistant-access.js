@@ -46,7 +46,7 @@ async function isOwnerDevice(db, auth) {
   try { const r = await db.prepare('SELECT pos_role FROM pos_device_roles WHERE device_id=?1').bind(String(auth.principalId)).first(); return r?.pos_role === 'owner' && auth.posRole === 'owner'; } catch { return false; }
 }
 // Mismo consumo estricto que las tarjetas: UPDATE ... operation_id=? AND used_at IS NULL, válido solo con changes===1.
-async function verifyOwnerApproval(db, deviceId, approvalId, action, operationId) {
+export async function verifyOwnerApproval(db, deviceId, approvalId, action, operationId) {
   if (!approvalId || approvalId.length > 80 || !operationId) return false;
   const t = new Date().toISOString();
   try { const r = await db.prepare(STRICT_APPROVAL_SQL).bind(t, approvalId, String(deviceId || ''), action, t, operationId).run(); return Number(r?.meta?.changes) === 1; } catch { return false; }

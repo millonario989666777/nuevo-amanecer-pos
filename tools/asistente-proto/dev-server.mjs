@@ -28,6 +28,8 @@ const demoApprovals = new Map();
 // Aparatos de empleado inventados para la pantalla de Configuración del prototipo.
 const PROTO_DEVICES = [{ device_id: 'proto-emp-1', label: 'Caja 2' }, { device_id: 'proto-emp-2', label: 'Celular de Rosa' }];
 const protoLevels = new Map(PROTO_DEVICES.map((d) => [d.device_id, 'off']));
+let protoOwners = [{ device_id: 'proto-device-owner', label: 'Celular de María', this_device: true, last_seen_at: '2026-10-16T08:42:00' }, { device_id: 'proto-tablet', label: 'Tablet de caja', last_seen_at: '2026-10-15T19:10:00' }];
+let protoPending = [{ device_id: 'proto-new', label: 'Teléfono nuevo', requested_at: '2026-10-16T09:05:00' }], regFails = 0;
 async function demoVerify(id, action, op) { const a = demoApprovals.get(id); if (!a || a.action !== action || a.op !== op || a.used) return false; a.used = op; return true; }
 
 http.createServer(async (req, res) => {
@@ -46,11 +48,44 @@ http.createServer(async (req, res) => {
       const request = new Request(url, { method: req.method, headers: req.headers, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined });
       // Empleado: el nivel sale del encabezado x-proto-level (pruebas) o de lo que el dueño guardó aquí para «Caja 2».
       const lvl = ['off', 'consultas', 'consultas_documentos'].includes(req.headers['x-proto-level']) ? req.headers['x-proto-level'] : protoLevels.get('proto-emp-1');
-      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado:' + lvl : 'owner';
+      const sinRol = req.headers['x-proto-role'] === 'sinrol'; // aparato sin fila de rol: el POS lo trata como dueño, el asistente no
+      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado:' + lvl : sinRol ? 'empleado:off' : 'owner';
       const route = url.pathname === '/auth/assistant/chat' ? assistantChatRoute : assistantConfirmRoute;
       // En el Worker real el rol sale de la sesión (assistantRole); aquí se simula con el encabezado.
-      const out = await route(request, env, { principalId: 'proto-device-' + role.split(':')[0], posRole: role === 'owner' ? 'owner' : 'empleado' }, json, { store, reader, resolveRole: async () => role, verifyApproval: demoVerify });
+      const out = await route(request, env, { principalId: 'proto-device-' + role.split(':')[0], posRole: role === 'owner' || sinRol ? 'owner' : 'empleado' }, json, { store, reader, resolveRole: async () => role, verifyApproval: demoVerify });
       res.writeHead(out.status, { 'content-type': 'application/json' }); res.end(await out.text()); return;
+    }
+    // Aparatos de dueño (en memoria; en el Worker real: pos-owner-device.js detrás de ASSISTANT_OWNER_BOOTSTRAP=1).
+    if (url.pathname.startsWith('/auth/assistant/owner-device')) {
+      const send = (st, o) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+      const chunks = []; for await (const c of req) chunks.push(c); let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {}
+      const who = req.headers['x-proto-role'];
+      if (url.pathname.endsWith('/register')) {
+        if (who === 'empleado') return send(409, { error: 'employee_device_cannot_register' });
+        if (who !== 'sinrol') return send(409, { error: 'already_owner' });
+        if (regFails >= 5) return send(429, { error: 'owner_pin_locked', locked_until: new Date(Date.now() + 900000).toISOString(), message: 'Demasiados intentos. Espera 15 min.' });
+        if (!/^\d{4,8}$/.test(String(b.pin || '')) || String(b.pin) === '0000') { regFails++; return send(regFails >= 5 ? 429 : 403, regFails >= 5 ? { error: 'owner_pin_locked', message: 'Demasiados intentos. Espera 15 min.' } : { error: 'owner_pin_invalid', attempts_left: 5 - regFails }); }
+        if (!protoPending.find((x) => x.device_id === 'proto-device-sinrol')) protoPending.push({ device_id: 'proto-device-sinrol', label: 'Este teléfono', requested_at: new Date().toISOString() });
+        return send(202, { ok: false, pending: true, status: 'esperando_aprobacion' });
+      }
+      if (who === 'empleado' || who === 'sinrol') return send(403, { error: 'owner_device_required' });
+      if (req.method === 'GET') return send(200, { owners: protoOwners, pending: protoPending });
+      const ok = await demoVerify(String(req.headers['x-owner-approval'] || ''), 'assistant.owner_device', String(b.operation_id || ''));
+      if (url.pathname.endsWith('/revoke')) {
+        if (!protoOwners.find((o) => o.device_id === b.device_id)) return send(409, { error: 'not_owner' });
+        if (protoOwners.length <= 1) return send(409, { error: 'last_owner', code: 'last_owner' });
+        if (!ok) return send(403, { error: 'owner_approval_required' });
+        protoOwners = protoOwners.filter((o) => o.device_id !== b.device_id); return send(200, { ok: true });
+      }
+      if (url.pathname.endsWith('/approve')) {
+        const p = protoPending.find((x) => x.device_id === b.device_id); if (!p) return send(409, { error: 'not_pending' });
+        if (!['approve', 'reject'].includes(b.decision || 'approve')) return send(400, { error: 'bad_decision' });
+        if (!ok) return send(403, { error: 'owner_approval_required' });
+        protoPending = protoPending.filter((x) => x !== p);
+        if ((b.decision || 'approve') === 'approve') protoOwners.push({ device_id: p.device_id, label: p.label, created_at: new Date().toISOString(), last_seen_at: null });
+        return send(200, { ok: true });
+      }
+      return send(404, { error: 'not_found' });
     }
     // Nivel del asistente por aparato de empleado (en memoria; en el Worker real: pos-assistant-access.js con PIN real).
     if (url.pathname === '/auth/assistant/employee-access') {

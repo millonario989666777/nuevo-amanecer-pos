@@ -472,7 +472,8 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   // Falla cerrado: sin clave no hay tarjetas, salvo modo demostración explícito (ASSISTANT_DEMO=1, solo prototipo local y pruebas).
   if (!env.DEEPSEEK_API_KEY && String(env.ASSISTANT_DEMO || '') !== '1') return json({ error: 'assistant_not_configured', message: 'asistente no configurado' }, 503);
   const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth);
-  if (!accessOn(role)) return json(offBody(role), 403);
+  // Aparato sin fila de rol (el POS lo trata como dueño, el asistente no): se avisa para mostrar «Registrar este teléfono como dueño».
+  if (!accessOn(role)) return json({ ...offBody(role), ...(auth?.posRole === 'owner' ? { reason: 'sin_rol' } : {}) }, 403);
   const len = Number(request.headers.get('content-length') || 0);
   if (len > ASSISTANT_LIMITS.maxBodyBytes) return json({ error: 'payload_too_large' }, 413);
   let raw; try { raw = await request.text(); } catch { return json({ error: 'bad_request' }, 400); }

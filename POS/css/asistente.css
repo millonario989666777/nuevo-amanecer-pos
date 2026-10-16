@@ -225,7 +225,7 @@ html[data-na-theme="azul"] .na-asst-head-t small{color:#dbeafe}
 /* ---- Tarjeta en Inicio (solo con permiso confirmado por el servidor; al final de Inicio, no mueve nada) ---- */
 /* ---------- Inicio: tarjeta del asistente (maquetas v2 de Bot 4). Solo CSS, sin imágenes. Solo se animan transform y opacity. */
 .na-asst-hero{--hbg:linear-gradient(135deg,#fff 0%,#f1f9f4 50%,#ddf1e5 100%);--hbd:#c9e5d4;--hsh:0 10px 28px rgba(21,128,61,.14);--hglow:rgba(34,197,94,.38);--hring:rgba(21,128,61,.55);--hcard:rgba(255,255,255,.85);--hcardtx:#15803d;--hpill:rgba(255,255,255,.8);--hpilltx:#0f5132;--hin:#fff;--htx:#0f2a1b;--hmu:#3f5a4a;--hpr:#15803d;--hprtx:#fff;--hwbg:#fff4e0;--hwtx:#7a3d00;
-  position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 128px;column-gap:6px;align-items:center;margin:14px 12px 18px;padding:16px;border-radius:22px;background:var(--hbg);border:1px solid var(--hbd);box-shadow:var(--hsh);color:var(--htx);contain:layout paint}
+  position:relative;overflow:hidden;flex:none;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) 128px;column-gap:6px;align-items:center;margin:14px 12px 18px;padding:16px;border-radius:22px;background:var(--hbg);border:1px solid var(--hbd);box-shadow:var(--hsh);color:var(--htx);contain:layout paint}
 body.dark .na-asst-hero{--hbg:linear-gradient(135deg,#17301f 0%,#112219 55%,#0c1913 100%);--hbd:#2c4a37;--hsh:0 10px 30px rgba(0,0,0,.45);--hglow:rgba(34,197,94,.3);--hring:rgba(134,239,172,.6);--hcard:rgba(26,43,34,.85);--hcardtx:#86efac;--hpill:rgba(10,18,14,.55);--hpilltx:#a7f3c0;--hin:#0f1b15;--htx:#ecfdf3;--hmu:#b7d3c2;--hpr:#22c55e;--hprtx:#052e16;--hwbg:#3a2a10;--hwtx:#fde2b0}
 html[data-na-theme="azul"] body:not(.dark) .na-asst-hero{--hbg:linear-gradient(135deg,#fff 0%,#f1f5fd 50%,#dfe8fb 100%);--hbd:#cdd7ee;--hsh:0 10px 28px rgba(29,78,216,.12);--hring:rgba(29,78,216,.5);--hcardtx:#1d4ed8;--hpilltx:#1e3a8a;--htx:#0f1e3d;--hmu:#3b4a6b;--hpr:#1d4ed8}
 .na-asst-hero-t,.na-asst-hero .h-in,.na-asst-hero .h-chips,.na-asst-hero .h-off{position:relative;z-index:1;min-width:0}
@@ -275,3 +275,31 @@ html[data-na-theme="azul"] body:not(.dark) .na-asst-hero{--hbg:linear-gradient(1
 body.dark .na-asst-acc-n{color:#94a3b8}body.dark .na-asst-acc-r{border-color:#334155}body.dark .na-asst-seg span{background:#0f172a;color:#e2e8f0}body.dark .na-asst-seg{border-color:#334155}
 html[data-na-theme="azul"] .na-asst-seg input:checked+span{background:#1e40af}
 @media (max-width:480px){.na-asst-seg span{padding:9px 8px;font-size:12px}}
+/* ---------- Configuración: aparatos de dueño, pendiente de aprobar y registro (maquetas v2) */
+.na-asst-own,.na-asst-reg{margin:14px 0;padding:14px;border:1px solid #d7e5dc;border-radius:16px;background:#fff;color:#0f2a1b}
+.na-asst-own h4,.na-asst-reg h4{margin:0 0 8px;font-size:16px}
+.na-asst-own h4+h4{margin-top:14px}
+.na-asst-own-r{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #e6efe9}
+.na-asst-own-r>div{flex:1;min-width:0}.na-asst-own-r strong{display:block;font-size:15px}.na-asst-own-r small{display:block;color:#4b6355;font-size:13px}
+.na-asst-own-r em{display:inline-block;white-space:nowrap;font-style:normal;font-size:11px;font-weight:700;background:#dcfce7;color:#14532d;border-radius:999px;padding:2px 8px;margin-left:4px}
+.na-asst-own-r .ic{flex:none;width:36px;height:36px;border-radius:10px;background:#f0fdf4;color:#15803d;display:flex;align-items:center;justify-content:center;font-size:18px}
+.na-asst-quitar,.na-asst-no{min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid #dc2626;background:#fff;color:#b91c1c;font-weight:700;cursor:pointer}
+.na-asst-own-a{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 0}
+.na-asst-own-a .na-asst-ok,.na-asst-reg .na-asst-ok{min-height:44px;border-radius:12px;border:0;background:#15803d;color:#fff;font-weight:700;cursor:pointer}
+.na-asst-own-w{margin:10px 0 0;padding:10px 12px;border-radius:12px;background:#fff4e0;color:#7a3d00;font-size:13px;font-weight:600;line-height:1.35}
+.na-asst-reg p{margin:0 0 10px;color:#4b6355;font-size:14px;line-height:1.4}
+.na-asst-reg label{display:block;font-weight:700;font-size:14px;margin-bottom:10px}
+.na-asst-reg input{display:block;width:100%;box-sizing:border-box;margin-top:6px;height:48px;border:1px solid #c9d8ce;border-radius:12px;padding:0 12px;font-size:18px;letter-spacing:.3em;background:#f7fbf8;color:inherit}
+.na-asst-reg input:disabled{letter-spacing:normal;background:#eef1ef}
+.na-asst-reg .na-asst-ok{width:100%}.na-asst-reg .na-asst-ok:disabled{background:#e5e7eb;color:#374151;border:1px solid #9ca3af}
+.na-asst-reg .st:empty{display:none}
+.na-asst-reg[data-state="lock"] .st,.na-asst-reg[data-state="emp"] .st{padding:10px 12px;border-radius:12px;background:#fee2e2;color:#991b1b;font-weight:700}
+.na-asst-reg[data-state="pend"] .st,.na-asst-reg[data-state="ok"] .st{padding:10px 12px;border-radius:12px;background:#dcfce7;color:#14532d;font-weight:700}
+body.dark .na-asst-own,body.dark .na-asst-reg{background:#112219;border-color:#2c4a37;color:#ecfdf3}
+body.dark .na-asst-own-r{border-color:#22392b}body.dark .na-asst-own-r small,body.dark .na-asst-reg p{color:#b7d3c2}
+body.dark .na-asst-own-r .ic{background:#17301f;color:#86efac}
+body.dark .na-asst-quitar,body.dark .na-asst-no{background:transparent;color:#fca5a5;border-color:#f87171}
+body.dark .na-asst-own-a .na-asst-ok,body.dark .na-asst-reg .na-asst-ok{background:#22c55e;color:#052e16}
+body.dark .na-asst-own-w{background:#3a2a10;color:#fde2b0}
+body.dark .na-asst-reg input{background:#0f1b15;border-color:#2c4a37}
+.main-scroll>.na-asst-hero{margin:16px 0 20px}
