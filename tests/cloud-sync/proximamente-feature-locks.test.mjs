@@ -50,6 +50,10 @@ test('valorizacion-inventario is unlocked on client and server; owner-only featu
     const employee = await f.fetch('http://localhost/features/valorizacion-inventario', { method, headers: { authorization: 'Bearer unlock-employee-token' } });
     assert.equal(employee.status, 403);
     assert.equal((await employee.json()).error, 'forbidden_role');
+  }
+  assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
+});
+
 test('clientes-filtro-deuda is unlocked on client and server (no feature_locked, no writes)', async t => {
   assert.equal(PERMISSIONS.FEATURE_LOCKS['clientes-filtro-deuda'], false);
   assert.equal(PERMISSIONS.featureLocked('clientes-filtro-deuda'), false);
