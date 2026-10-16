@@ -1122,3 +1122,10 @@ body.dark #pageClientes .na-client-account-screen .na-v2-module-icon{background:
   overflow:hidden;
   text-overflow:ellipsis;
 }
+
+/* Hotfix post-#749: la columna del nombre ocupa el espacio libre del encabezado y el monto
+   conserva su ancho; así la elipsis solo aparece cuando el nombre de verdad no entra
+   (antes la identidad medía lo justo y el max-width:88% del h2 recortaba «MISAEL» a «MIS…»). */
+#pageClientes .na-v2-client-head>.na-v2-client-identity{flex:1 1 auto;min-width:0}
+#pageClientes .na-v2-client-head>.na-v2-head-money{flex:0 0 auto}
+#pageClientes .na-v2-client-head h2{min-width:0}
