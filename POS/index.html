@@ -87,6 +87,7 @@
     <link rel="stylesheet" href="css/sales-reports.css">
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
+    <link rel="stylesheet" href="css/historial-compras.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
       // The mobile enhancement must never leave a usable home permanently hidden.
@@ -379,6 +380,29 @@
 <div class="page" id="pageProximamente">
     <h1>Próximamente</h1>
     <div class="na-prox-grid" id="naProximamenteGrid"></div>
+</div>
+
+<div class="page" id="pageHistorialCompras">
+  <div class="hc-shell">
+    <h1>Historial de compras por producto</h1>
+    <p class="hc-note">Consulta de solo lectura · Solo dueño · Fechas en hora de Lima</p>
+    <p class="hc-denied" data-hc-denied role="alert">Sin permiso. Pídele acceso al dueño.</p>
+    <section data-hc-content hidden aria-label="Consultar compras por producto">
+      <label class="hc-search-label" for="hcProductSearch">Buscar producto</label>
+      <input
+        class="hc-search"
+        id="hcProductSearch"
+        type="search"
+        data-hc-search
+        autocomplete="off"
+        placeholder="Nombre o código del producto"
+      >
+      <div class="hc-products" data-hc-products role="group" aria-label="Productos encontrados"></div>
+      <p class="hc-note" data-hc-status role="status" aria-live="polite"></p>
+      <button class="hc-retry" type="button" data-hc-retry hidden>Volver a intentar</button>
+      <section data-hc-result aria-live="polite" aria-label="Historial y resumen del producto"></section>
+    </section>
+  </div>
 </div>
 
 <div class="page" id="pageValorizacion">
@@ -1119,6 +1143,7 @@
 <script src="js/modules/proximamente.js"></script>
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
+<script src="js/inventory/historial-compras.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>
 <script src="js/config/pos-reviews-client.js"></script>
