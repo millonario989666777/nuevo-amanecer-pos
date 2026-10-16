@@ -109,6 +109,8 @@ const PRECACHE_URLS = [
   './js/legacy-inline/inline-12.js',
   './js/products/image-batch.js',
   './js/products/zip-reader.js',
+  './css/codigos-duplicados.css',
+  './js/inventory/codigos-duplicados.js',
   './js/products/image-sync.js',
   './js/legacy-inline/inline-13.js',
   './js/modules/ticket/secure-print.js',

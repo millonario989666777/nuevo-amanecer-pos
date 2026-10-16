@@ -10,6 +10,7 @@
   var ALLOWED_PAGES = Object.freeze([
     'pagePOS',
     'pageInventario',
+    'pageCodigosDuplicados',
     'pageVentas',
     'pageClientes',
     'pageCaja',
