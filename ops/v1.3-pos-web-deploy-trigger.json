@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#757 historial de compras: aviso de 300 según flag truncated del servidor. Worker 45 ya live (live check OK asistente 5).",
-  "retry_attempt": 150,
-  "retry_reason": "Deploy de base 527937732e59e505cd08dcf8773e20a772a1a302 (#757). Rollback: web 149 ac1e754f85f42c5ffcd1a86aec9d7345803d9ead (merge 689bc59fc050f90913d5a79e50034dd8cecba958).",
-  "requested_at_utc": "2026-10-16T06:27:12Z",
-  "approved_base": "527937732e59e505cd08dcf8773e20a772a1a302"
+  "note": "#760 créditos anulados: guardas de abono en la web (sigue a #752). Worker 46 ya live (live check OK asistente 5).",
+  "retry_attempt": 151,
+  "retry_reason": "Deploy de base 4053e562095fef09aa3c7b4ae4141ec207f70fa4 (#760). Rollback: web 150 2c9c63fff18a53707373983c41ba56d54a81469a (merge 527937732e59e505cd08dcf8773e20a772a1a302).",
+  "requested_at_utc": "2026-10-16T07:08:44Z",
+  "approved_base": "4053e562095fef09aa3c7b4ae4141ec207f70fa4"
 }
