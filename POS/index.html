@@ -89,6 +89,7 @@
     <link rel="stylesheet" href="css/sales-reports.css">
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
+    <link rel="stylesheet" href="css/clientes-frecuencia.css">
     <link rel="stylesheet" href="css/cliente-historial-compras.css">
     <link rel="stylesheet" href="css/kardex.css">
     <link rel="stylesheet" href="css/ventas-stock.css">
@@ -532,6 +533,31 @@
     <p class="abc-method">ABC se calcula dentro de cada categoría: A reúne los primeros productos hasta alcanzar el 80% del importe; B continúa hasta el 95%; C reúne el resto. El producto que alcanza cada corte cierra esa clase. Los productos sin ventas son C. Importe = precio vendido × cantidad, como en Reportes. Se excluyen ventas anuladas.</p>
     <p class="abc-status" data-abc-status role="status" aria-live="polite"></p>
     <div data-abc-content></div>
+  </div>
+</div>
+
+<div class="page" id="pageClientesFrecuencia" aria-labelledby="clientesFrecuenciaTitle">
+  <div class="cf-shell">
+    <header>
+      <h1 id="clientesFrecuenciaTitle">Frecuencia de compra del cliente</h1>
+      <p class="cf-description">Consulta cada cuánto compran tus clientes y quiénes podrían volver.</p>
+    </header>
+    <div class="cf-controls" data-cf-controls hidden>
+      <label>Período
+        <select data-cf-period aria-label="Período">
+          <option value="90" selected>Últimos 90 días</option>
+          <option value="180">Últimos 180 días</option>
+          <option value="365">Últimos 365 días</option>
+        </select>
+      </label>
+      <label>Buscar cliente
+        <input type="search" data-cf-search aria-label="Buscar cliente" placeholder="Nombre del cliente" autocomplete="off">
+      </label>
+      <button type="button" data-cf-refresh>Actualizar reporte</button>
+    </div>
+    <p class="cf-method">Cada (días) es el promedio entre compras del período, en días calendario de Lima. Al día: no supera ese promedio. Por volver: lo supera. Inactivo: supera el doble o lleva más de 60 días sin comprar. Una sola compra: aún no hay promedio (si supera 60 días, es Inactivo). Se cuentan también compras del mismo día. Se excluyen ventas anuladas y sin cliente. Importe = precio vendido × cantidad, como en Reportes.</p>
+    <p class="cf-status" data-cf-status role="status" aria-live="polite"></p>
+    <div data-cf-content></div>
   </div>
 </div>
 
@@ -1264,6 +1290,7 @@
 <script src="js/modules/proximamente.js"></script>
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
+<script src="js/modules/clientes-frecuencia.js"></script>
 <script src="js/modules/cliente-historial-compras.js"></script>
 <script src="js/modules/kardex.js"></script>
 <script src="js/modules/ventas-stock.js"></script>
