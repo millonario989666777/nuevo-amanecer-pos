@@ -12,6 +12,7 @@
     'pageInventario',
     'pageVentas',
     'pageClientes',
+    'pageReporteDeuda',
     'pageCaja',
     'pageGastos',
     'pageProximamente',

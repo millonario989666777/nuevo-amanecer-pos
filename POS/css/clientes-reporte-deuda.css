@@ -1,0 +1,94 @@
+/* Solo Reporte de deuda; Venta, Inicio y la lista de Clientes conservan sus estilos. */
+#pageReporteDeuda {
+  --rd-surface: #fff;
+  --rd-background: #f4f7fa;
+  --rd-text: #172b3a;
+  --rd-muted: #526574;
+  --rd-border: #d9e3ea;
+  --rd-accent: #0f766e;
+  --rd-danger: #b42318;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--rd-background);
+  color: var(--rd-text);
+  padding: 16px 12px calc(28px + env(safe-area-inset-bottom));
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+#pageReporteDeuda *,
+#pageReporteDeuda *::before,
+#pageReporteDeuda *::after { box-sizing: border-box; }
+#pageReporteDeuda [hidden] { display: none !important; }
+#pageReporteDeuda .rd-header,
+#pageReporteDeuda .rd-toolbar,
+#pageReporteDeuda .rd-content,
+#pageReporteDeuda .rd-status { width: 100%; max-width: 1200px; margin: 0 auto; flex-shrink: 0; }
+#pageReporteDeuda h1 { margin: 0 0 6px; font-size: 24px; line-height: 1.25; }
+#pageReporteDeuda .rd-header p { margin: 0; color: var(--rd-muted); }
+#pageReporteDeuda .rd-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+#pageReporteDeuda .rd-toolbar label { display: grid; gap: 4px; font-weight: 700; min-width: 0; flex: 1 1 200px; }
+#pageReporteDeuda .rd-toolbar select,
+#pageReporteDeuda .rd-back {
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--rd-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--rd-surface);
+  color: var(--rd-text);
+  font: inherit;
+}
+#pageReporteDeuda .rd-toolbar select { width: 100%; }
+#pageReporteDeuda .rd-back { cursor: pointer; }
+#pageReporteDeuda .rd-status { color: var(--rd-muted); white-space: normal; overflow-wrap: anywhere; }
+#pageReporteDeuda .rd-status:empty { display: none; }
+#pageReporteDeuda .rd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#pageReporteDeuda .rd-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--rd-border);
+  border-radius: 14px;
+  background: var(--rd-surface);
+  color: var(--rd-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#pageReporteDeuda .rd-cell { min-width: 0; display: grid; gap: 3px; white-space: normal; }
+#pageReporteDeuda .rd-label { font-size: 12px; color: var(--rd-muted); line-height: 1.4; }
+#pageReporteDeuda .rd-value { font-size: 15px; line-height: 1.4; white-space: normal; }
+#pageReporteDeuda .rd-client .rd-value { font-size: 17px; }
+#pageReporteDeuda .rd-balance .rd-value { color: var(--rd-accent); font-variant-numeric: tabular-nums; }
+#pageReporteDeuda .rd-overdue .rd-value { color: var(--rd-danger); }
+#pageReporteDeuda .rd-row:hover { border-color: var(--rd-accent); }
+#pageReporteDeuda button:focus-visible,
+#pageReporteDeuda select:focus-visible { outline: 3px solid var(--rd-accent); outline-offset: 3px; }
+#pageReporteDeuda .rd-footer { display: flex; flex-wrap: wrap; gap: 16px 32px; margin-top: 16px; padding: 16px; border: 1px solid var(--rd-border); border-radius: 14px; background: var(--rd-surface); }
+#pageReporteDeuda .rd-footer > div { display: grid; gap: 4px; min-width: 0; }
+#pageReporteDeuda .rd-footer span { color: var(--rd-muted); }
+#pageReporteDeuda .rd-footer strong { font-size: 20px; overflow-wrap: anywhere; }
+body.dark #pageReporteDeuda {
+  --rd-surface: #182634;
+  --rd-background: #101a25;
+  --rd-text: #eef4f8;
+  --rd-muted: #b6c5d0;
+  --rd-border: #344857;
+  --rd-accent: #5eead4;
+  --rd-danger: #fda4a4;
+  color-scheme: dark;
+}
+@media (min-width: 600px) {
+  #pageReporteDeuda { padding-left: 20px; padding-right: 20px; }
+  #pageReporteDeuda .rd-row { grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }
+  #pageReporteDeuda .rd-toolbar label { flex: 0 1 300px; }
+}
+@media (min-width: 1000px) {
+  #pageReporteDeuda .rd-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 1fr); }
+}
