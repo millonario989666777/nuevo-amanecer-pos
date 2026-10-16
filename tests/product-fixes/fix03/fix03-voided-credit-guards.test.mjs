@@ -109,3 +109,43 @@ test('anulado:true sigue bloqueado como antes', async () => {
   assert.match(sb.toastText(), /No se pueden registrar pagos en un crédito anulado/);
   assert.deepEqual(state(sb), before);
 });
+
+// inline-04 reemplaza calcularScoreCredito en la app (su versión ya usa el helper desde #752); aquí se ejecuta la de inline-02 tal cual.
+const inline02 = readFileSync(new URL('../../../POS/js/legacy-inline/inline-02.js', import.meta.url), 'utf8');
+const score02 = inline02.match(/^calcularScoreCredito=(function\(clienteId\)\{.*\};)$/m)[1].slice(0, -1);
+test('calcularScoreCredito (inline-02): un anulado por estado con abonos no suma puntualidad; LIVE/RECONCILED sí', async () => {
+  const sb = createPosSandbox();
+  sb.seed();
+  sb.run('var __score02=' + score02 + ';');
+  sb.seedData('clientes', [{ id:2002, nombre:'Cliente Puntaje', color:1, totalCompras:1000 }]);
+  const score = patch => {
+    sb.run(`creditos.length=0;creditos.push(${JSON.stringify({ id:9001, cliId:2002, clienteId:2002, monto:100, pagado:20, saldo:80, fecha:'2026-09-01', vence:'2099-12-31', status:'vigente', estado:'vigente', anulado:false, pagos:[], items:[] })});Object.assign(creditos[0], ${JSON.stringify(patch)});`);
+    return json(sb, '__score02(2002)');
+  };
+  sb.run('creditos.length=0;');
+  const empty = json(sb, '__score02(2002)');
+  for (const patch of [{ status:'ANULADO' }, { estado:'anulada', status:'vigente' }, { source_status:'ANULADO' }, { anulado:true }]) {
+    assert.deepEqual(score(patch), empty, JSON.stringify(patch));
+  }
+  const plain = score({});
+  assert.notDeepEqual(plain, empty, 'un crédito vigente con abonos sí cambia el puntaje');
+  for (const patch of [{ status:'LIVE' }, { status:'RECONCILED', estado:'RECONCILED' }, { estado:'no anulado' }]) {
+    assert.deepEqual(score(patch), plain, JSON.stringify(patch));
+  }
+});
+
+test('render antiguo _naCreditCardHtml / _naCreditDetailHtml (inline-02): anulado sin botón de pago; vigente igual que antes', async () => {
+  const sb = createPosSandbox();
+  sb.seed();
+  const base = { id:9101, cliId:1, clienteId:1, desc:'Crédito render', monto:100, pagado:20, saldo:80, fecha:'2026-09-01', vence:'2099-12-31', status:'vigente', estado:'vigente', anulado:false, pagos:[], items:[] };
+  const html = (patch, fn) => { sb.run(`creditos.length=0;creditos.push(Object.assign(${JSON.stringify(base)}, ${JSON.stringify(patch)}));`); return json(sb, `${fn}(creditos[0])`); };
+  for (const patch of [{ status:'ANULADO' }, { source_status:'anulado' }, { estado:'Anulada', status:'vigente' }]) {
+    const card = html(patch, '_naCreditCardHtml'), detail = html(patch, '_naCreditDetailHtml');
+    assert.match(card, /Crédito anulado/); assert.match(card, /cs-m/);
+    assert.doesNotMatch(card, /btn-pago-cr/); assert.doesNotMatch(detail, /abrirPago/);
+  }
+  for (const patch of [{}, { status:'LIVE' }, { estado:'no anulado' }]) {
+    assert.match(html(patch, '_naCreditCardHtml'), /btn-pago-cr/, JSON.stringify(patch));
+    assert.match(html(patch, '_naCreditDetailHtml'), /abrirPago/, JSON.stringify(patch));
+  }
+});
