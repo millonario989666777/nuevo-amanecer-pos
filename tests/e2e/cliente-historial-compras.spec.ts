@@ -153,6 +153,26 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
   });
 }
 
+test('owner sees every sales and products table cell at 650px', async ({ page }) => {
+  await page.setViewportSize({ width: 650, height: 900 });
+  await rolePage(page, 'owner');
+  await seed(page);
+  await page.evaluate(() => (window as any).goPage('pageClienteHistorial'));
+  const screen = page.locator('#pageClienteHistorial');
+  await expect(screen).toBeVisible();
+  await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+  await expect(screen.locator('.ch-table')).toHaveCount(2);
+  for (const [kind, rows] of [['sales', 2], ['products', 1]] as const) {
+    const table = screen.locator(`.ch-table[data-ch-table="${kind}"]`);
+    await expect(table).toBeVisible();
+    await expect(table.locator('tbody tr')).toHaveCount(rows);
+    for (const cell of await table.locator('th, td').all()) {
+      await expect(cell).toBeVisible();
+      expect(await cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+    }
+  }
+});
+
 test('employee cannot open customer history and direct rendering clears customer details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado');

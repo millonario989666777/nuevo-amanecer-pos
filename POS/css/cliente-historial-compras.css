@@ -32,6 +32,7 @@
 #pageClienteHistorial .ch-summary-card strong { display: block; font-size: 22px; overflow-wrap: anywhere; }
 #pageClienteHistorial .ch-section { margin-bottom: 20px; padding: 16px; border: 1px solid var(--ch-border); border-radius: 14px; background: var(--ch-surface); min-width: 0; }
 #pageClienteHistorial .ch-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+#pageClienteHistorial .ch-table :is(th, td) { display: table-cell; }
 #pageClienteHistorial .ch-table th, #pageClienteHistorial .ch-table td { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ch-border); white-space: normal; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
 #pageClienteHistorial .ch-table thead th { font-size: 12px; color: var(--ch-muted); }
 #pageClienteHistorial .ch-table[data-ch-table="products"] th:first-child { width: 50%; }
