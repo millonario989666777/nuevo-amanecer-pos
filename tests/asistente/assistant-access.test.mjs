@@ -74,7 +74,8 @@ test('Solo consultas: stock y por reponer sí; costos, ventas, deudas y document
   for (const q of ['productos sin costo', 'ventas de hoy', '¿quién me debe?', 'compras recientes']) {
     const r = await chat('tok-emp', q); assert.equal(r.status, 200, q); assert.ok(!r.body.proposals.some((p) => p.type === 'consulta'), q);
   }
-  const doc = await chat('tok-emp', 'imprime la lista de precios'); assert.ok(!doc.body.proposals.some((p) => p.type === 'documento'));
+  const doc = await chat('tok-emp', 'imprime la lista de precios'); assert.ok(!(doc.body.proposals || []).some((p) => p.type === 'documento'));
+  assert.equal(doc.status, 403, 'R25: «consultas» no tiene documentos -> 403 para todo el pedido'); assert.equal(doc.body.error, 'forbidden_document');
   assert.ok(!JSON.stringify(low.body).includes('0.29'), 'sin costos');
   // Propuesta de cambio: el empleado no la ejecuta sin el PIN del dueño.
   const card = (await chat('tok-emp', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card);
@@ -185,5 +186,26 @@ test('A20 auditoría: una fila por llamada a herramienta y por confirmación; so
   const txt = JSON.stringify(b); assert.ok(!/45678912|4821|merma de/.test(txt), txt);
   assert.equal((await call('tok-emp', '/auth/assistant/audit', null, {}, 'GET')).status, 403);
   // y no se ve por /settings
-  const st = await call('tok-dueno', '/settings', null, {}, 'GET'); if (st.status === 200) assert.ok(!JSON.stringify(await st.json()).includes('internal:asst:audit'));
+  const st = await call('tok-dueno', '/settings', null, {}, 'GET'); assert.equal(st.status, 200); assert.ok(!JSON.stringify(await st.json()).includes('internal:'), '/settings nunca devuelve claves internas');
+  assert.equal(b.keep, 300); assert.equal(typeof b.write_errors, 'number');
+});
+
+test('A20: tope de 300 filas; un error al anotar no rompe el chat, avisa con console.warn sin datos y se cuenta en write_errors', async (t) => {
+  const { f, call, chat } = await setup(t);
+  const { auditWrite, AUDIT_KEEP, auditStats } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  assert.equal(AUDIT_KEEP, 300);
+  const rows = Array.from({ length: 40 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', tool: 'consultar', outcome: 'proposed', card_id: 'c' + i }));
+  for (let k = 0; k < 9; k++) await auditWrite(f.env.nuevo_amanecer_lab, rows);
+  assert.equal(f.all("SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'")[0].n, 300);
+  // base que falla: no lanza, avisa y cuenta
+  const warns = []; const orig = console.warn; console.warn = (...a) => warns.push(a.join(' '));
+  const before = auditStats().write_errors;
+  try { assert.equal(await auditWrite({ prepare: () => ({ bind: () => ({}) }), batch: async () => { throw new Error('D1_ERROR: disk full key=internal:asst:audit:secreto DNI 45678912'); } }, rows), 0); }
+  finally { console.warn = orig; }
+  assert.equal(auditStats().write_errors, before + 1); assert.equal(warns.length, 1);
+  assert.ok(!/45678912|secreto|internal:asst/.test(warns[0]), warns[0]);
+  // el chat sigue funcionando y el dueño ve el contador
+  assert.equal((await chat('tok-dueno', '¿qué me falta reponer?')).status, 200);
+  const g = await (await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET')).json();
+  assert.ok(g.write_errors >= 1); assert.ok(g.last_write_error_at);
 });

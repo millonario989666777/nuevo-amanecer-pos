@@ -118,3 +118,11 @@ test('UI: over_limit marca filas «Fuera del límite» sin «Está bien»; el mo
   assert.match(ui, /l\.limite && l\.limite\.length \? '<div class="flag-t">Fuera del límite: /);
   assert.match(ui, /var pre = C\.precheck \? C\.precheck\(p, deps\) : null;\n\s*if \(pre\)[^\n]*return; }\n\s*if \(pinEl && !approvals\[p\.id\]\)/, 'la revisión va ANTES del PIN');
 });
+
+test('R25 (Bot 5): empleado en «consultas» que pide CUALQUIER documento -> 403 forbidden_document para todo el pedido', async () => {
+  const emp = { principalId: 'session:emp', posRole: 'empleado' };
+  for (const tipo of ['lista_precios', 'inventario_valorizado']) {
+    const r = await chat([tool('preparar_documento', { tipo }), tool('consultar', { tipo: 'bajo_stock' }, 'c2')], { auth: emp, role: 'empleado:consultas' });
+    assert.equal(r.status, 403, tipo); assert.equal(r.body.error, 'forbidden_document'); assert.equal(r.body.proposals, undefined, 'no viaja ninguna tarjeta');
+  }
+});

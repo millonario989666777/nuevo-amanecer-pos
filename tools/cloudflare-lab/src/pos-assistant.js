@@ -231,7 +231,8 @@ export function toProposal(call, role, ctx, n) {
   if (typeof args === 'string') { try { args = JSON.parse(args); } catch { return { dropped: 'bad_arguments', tool: name }; } }
   if (!args || typeof args !== 'object') return { dropped: 'bad_arguments', tool: name };
   if (!TOOL_DEFS.some((t) => t.name === name)) return { dropped: 'unknown_tool', tool: name };
-  if (!toolAllowed(role, name)) return { dropped: 'forbidden_role', tool: name };
+  // Documento sin permiso de documentos (empleado en «consultas»): mismo motivo que un tipo solo del dueño -> 403 forbidden_document para todo el pedido.
+  if (!toolAllowed(role, name)) return { dropped: name === 'preparar_documento' && role !== 'owner' ? 'forbidden_document' : 'forbidden_role', tool: name };
   if (hasForbiddenParam(args)) return { dropped: 'forbidden_param', tool: name };
   const idx = productIndex(ctx), id = `p${n}-${name}`;
   if (name === 'explicar_pasos') {
