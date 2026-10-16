@@ -131,6 +131,8 @@ const PRECACHE_URLS = [
   './js/motion/feedback-motion.js',
   './js/motion/cart-motion.js',
   './js/modules/client-credit-accounts-v2.js',
+  './css/clientes-reporte-deuda.css',
+  './js/modules/clientes-reporte-deuda.js',
   './js/compat/legacy-globals.js',
   './js/app.js',
   './js/canon-pos-reference-ui.js',
