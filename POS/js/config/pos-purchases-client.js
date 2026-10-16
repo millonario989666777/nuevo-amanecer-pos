@@ -11,6 +11,7 @@
   function cloud() { try { return !!(root.NuevoAmanecerCanonical && root.NuevoAmanecerCanonical.enabled()); } catch (_) { return false; } }
   function toast(m, k) { try { root.toast(m, k || 'error'); } catch (_) {} }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function ownerAllowed() { try { return !!root.NA_PERMISSIONS.canDo(root.NA_ROLES.role, 'purchases.costs.view'); } catch (_) { return false; } }
   function money(c) { var n = Number(c || 0) / 100; try { return root.fmt(n); } catch (_) { return 'S/ ' + n.toFixed(2); } }
   function products() { try { return Array.isArray(productos) ? productos : []; } catch (_) { return []; } } // eslint-disable-line no-undef
   var ERR = {
@@ -129,8 +130,8 @@
           var desc = function (a) { return a.map(function (l) { return nameOf(l.product_id) + ' +' + l.quantity; }).join(', ') || 'ninguna'; };
           return { stop: 'La compra anterior quedó a medias. Ya sumaron stock: ' + desc(done) + '. Faltan: ' + desc(miss) +
             '. Para no duplicar, termínala con «Terminar compra anterior» (solo suma lo que falta). Esta compra NO se registró.',
-            finish: { id: id, lines: old.map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
-              meta: { supplier: (st.purchase && st.purchase.supplier) || '', documentRef: (st.purchase && st.purchase.document_ref) || '' } } };
+            finish: { id: id, lines: old.map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), ...('unit_cost_cents' in l ? { unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) } : {}),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
+              meta: { ...(st.purchase && 'supplier' in st.purchase ? { supplier: st.purchase.supplier || '' } : {}), documentRef: (st.purchase && st.purchase.document_ref) || '' } } };
         }
         half++; m[id].noted = true;
       }
@@ -217,8 +218,8 @@
   // Terminar una compra incompleta desde el Historial: MISMO id y mismas líneas guardadas en el servidor;
   // el servidor salta las líneas que ya sumaron stock (idempotente).
   function historyFinishArgs(row) {
-    return { id: String(row.purchase_id), lines: (row.lines || []).map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
-      meta: { supplier: row.supplier || '', documentRef: row.document_ref || '' } };
+    return { id: String(row.purchase_id), lines: (row.lines || []).map(function (l) { return { line: Number(l.line_number), product_id: String(l.product_id), quantity: Number(l.quantity), ...('unit_cost_cents' in l ? { unit_cost_cents: l.unit_cost_cents == null ? null : Number(l.unit_cost_cents) } : {}),...(l.lots&&l.lots.length?{lots:l.lots}:{}) }; }),
+      meta: { ...('supplier' in row ? { supplier: row.supplier || '' } : {}), documentRef: row.document_ref || '' } };
   }
   async function finishPurchase(row) {
     var a = historyFinishArgs(row);
@@ -245,15 +246,15 @@
     try {
       var out = await root.NA_ROLES.api('/auth/purchases');
       var byId = {}; products().forEach(function (p) { byId[String(p.id)] = p.nombre || p.name || p.id; });
-      var rows = out.purchases || [];
+      var rows = out.purchases || [], costs = ownerAllowed();
       var lock = '<i class="na-ic na-ic-lock" aria-hidden="true"></i>';
-      var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + (l.lots?l.lots.map(function(r){return '<small>Lote '+esc(r.lot_code)+' · vence '+esc(root.NA_STOCK_LOTS.displayDate(r.expiry_date))+' · '+esc(r.quantity)+'</small>';}).join(''):'') + '</span><span>' + esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) + '</span></div>'; }).join(''); };
+      var detail = function (p) { return (p.lines || []).map(function (l) { return '<div class="na-pur-row"><span>' + esc(byId[l.product_id] || l.product_id) + (l.lots?l.lots.map(function(r){return '<small>Lote '+esc(r.lot_code)+' · vence '+esc(root.NA_STOCK_LOTS.displayDate(r.expiry_date))+' · '+esc(r.quantity)+'</small>';}).join(''):'') + '</span><span>' + (costs ? esc(l.quantity) + ' × ' + (l.unit_cost_cents == null ? 'sin costo' : money(l.unit_cost_cents)) : 'x ' + esc(l.quantity)) + '</span></div>'; }).join(''); };
       list.innerHTML = rows.length ? rows.map(function (p) {
-        var head = '<strong>' + esc(p.supplier || 'Sin proveedor') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + ' · ' + money(p.total_cost_cents);
+        var head = '<strong>' + esc(costs ? p.supplier || 'Sin proveedor' : 'Compra') + '</strong> · ' + esc((p.created_at || '').slice(0, 10)) + (costs ? ' · ' + money(p.total_cost_cents) : '');
         if (p.status === 'en_curso') {
           // Incompleta: fila ámbar con los botones SIEMPRE visibles (fuera del detalle plegado).
-          return '<div class="na-pur-item na-pur-open" data-id="' + esc(p.purchase_id) + '"><div class="na-pur-open-head"><strong>' + esc(p.supplier || 'Sin proveedor') + '</strong>' + (p.document_ref ? ' <small>' + esc(p.document_ref) + '</small>' : '') + '</div>' +
-            '<div class="na-pur-open-sub">' + money(p.total_cost_cents) + ' · ' + esc((p.created_at || '').slice(0, 10)) + ' · <em>Incompleta</em></div>' +
+          return '<div class="na-pur-item na-pur-open" data-id="' + esc(p.purchase_id) + '"><div class="na-pur-open-head"><strong>' + esc(costs ? p.supplier || 'Sin proveedor' : 'Compra') + '</strong>' + (p.document_ref ? ' <small>' + esc(p.document_ref) + '</small>' : '') + '</div>' +
+            '<div class="na-pur-open-sub">' + (costs ? money(p.total_cost_cents) + ' · ' : '') + esc((p.created_at || '').slice(0, 10)) + ' · <em>Incompleta</em></div>' +
             '<div class="na-pur-open-actions"><button type="button" class="na-pur-finish-h">Terminar compra</button><button type="button" class="na-pur-partial-h">' + lock + ' Cerrar como parcial</button></div>' +
             '<input class="na-pur-reason" type="text" maxlength="300" placeholder="Motivo (obligatorio)" hidden><div class="na-pur-err" role="status" hidden></div>' +
             '<details><summary>Ver líneas</summary>' + detail(p) + '</details></div>';
