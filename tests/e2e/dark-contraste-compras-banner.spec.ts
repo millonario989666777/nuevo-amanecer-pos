@@ -59,11 +59,26 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
   for (const [name, s] of Object.entries(dark)) expect(s.ratio, `${name}: ${s.fg} sobre ${s.bg}`).toBeGreaterThanOrEqual(4.5);
   // El botón OCR ya no es el gris nativo claro.
   expect(dark.ocr.bg).not.toBe('rgb(239, 239, 239)');
-  // Solo color: las cajas en oscuro son las mismas medidas antes del cambio (x, y, ancho, alto a 390px).
-  expect(dark.menu.box).toEqual([23, 17, 22, 22]);
-  expect(dark.total.box).toEqual([31, 563, 328, 19]);
-  expect(dark.ocr.box).toEqual([31, 200, 102, 19]);
-  expect(dark.banner.box).toEqual([10, 8, 316, 16]);
+  // Solo color: se quitan del CSSOM las reglas nuevas de theme-dark.css y las cajas deben ser las mismas.
+  const removed = await page.evaluate(() => {
+    let n = 0;
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (!/theme-dark\.css/.test(sheet.href || '')) continue;
+      const rules = sheet.cssRules;
+      for (let i = rules.length - 1; i >= 0; i--) {
+        const sel = (rules[i] as CSSStyleRule).selectorText || '';
+        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); n++; }
+      }
+    }
+    return n;
+  });
+  expect(removed).toBe(4);
+  const before = await measureAll(page);
+  // El ícono del menú no tiene reglas nuevas; en esta segunda medición la franja ya está visible y lo desplaza (bug de posición aparte).
+  for (const k of ['total', 'ocr', 'banner'] as const) expect(dark[k].box, k).toEqual(before[k].box);
+  // Y sin esas reglas vuelve el problema (la prueba detecta el arreglo).
+  expect(before.total.ratio).toBeLessThan(4.5);
+  expect(before.ocr.bg).toBe('rgb(239, 239, 239)');
 });
 
 test('modo claro 390px: colores idénticos a los de antes del cambio', async ({ page }) => {
