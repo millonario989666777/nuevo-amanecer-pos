@@ -6,7 +6,7 @@
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
   ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'pageVentasStock', 'pageReporteArqueo', 'pageHistorialCompras', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
-  ['purchases.costs.view', 'expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
+  ['cash.closes.view', 'purchases.costs.view', 'expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
   SCREENS['pageReporteDeuda'] = owner;
   SCREENS['pageCodigosDuplicados'] = owner;
@@ -19,6 +19,7 @@
     { path: '/auth/reviews', methods: ['GET'], roles: both },
     { path: '/auth/reviews/resolve', methods: ['POST'], roles: owner, action: 'reviews.resolve' },
     { path: '/auth/me', methods: ['GET'], roles: both },
+    { path: '/auth/cash-closes', methods: ['GET'], roles: owner, action: 'cash.closes.view' },
     { path: '/auth/owner-pin', methods: ['POST'], roles: owner, action: 'owner-pin.set' },
     { path: '/auth/owner-approval', methods: ['POST'], roles: both },
     { path: '/auth/pairing-code', methods: ['POST'], roles: owner, action: 'pairing-code.create' },

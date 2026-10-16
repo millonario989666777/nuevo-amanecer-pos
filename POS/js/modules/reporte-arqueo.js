@@ -1,9 +1,10 @@
-/* Arqueo de caja por fechas: proyección de solo lectura de la réplica canónica local. */
+/* Arqueo de caja por fechas: servidor para el dueño, réplica local sin conexión. */
 (function (root) {
   'use strict';
 
   var PAGE_ID = 'pageReporteArqueo';
   var DAY_MS = 86400000;
+  var renderVersion = 0, renderedReport = null;
   function text(value) { return String(value == null ? '' : value); }
   function cents(value) { var n = Number(value); return Number.isSafeInteger(n) ? n : 0; }
   function validDay(value) {
@@ -34,6 +35,8 @@
     var hasta = options.hasta === undefined ? defaults.hasta : validDay(text(options.hasta));
     if (!desde || !hasta) throw new RangeError('Selecciona fechas válidas para el reporte.');
     if (desde > hasta) throw new RangeError('La fecha Desde no puede ser posterior a Hasta.');
+    if ((Date.parse(hasta + 'T00:00:00Z') - Date.parse(desde + 'T00:00:00Z')) / DAY_MS + 1 > 366)
+      throw new RangeError('Selecciona un rango de hasta 366 días.');
     var source = Array.isArray(sessions) ? sessions : sessions && sessions.cashSessions;
     var rows = (Array.isArray(source) ? source : []).filter(function (s) { return s && s.status === 'CLOSED'; }).map(function (s) {
       var closed = lima(s.closed_at), at = closed || lima(s.opened_at);
@@ -89,9 +92,7 @@
     var desde = page.querySelector('[data-ra-desde]'), hasta = page.querySelector('[data-ra-hasta]');
     return { desde: desde ? desde.value : undefined, hasta: hasta ? hasta.value : undefined };
   }
-  function currentReport(page) {
-    var options = rangeOptions(page);
-    buildReport([], options); // Validar antes de leer la réplica.
+  function localReport(options) {
     var client = root.NuevoAmanecerCanonical;
     return buildReport(client && typeof client.snapshot === 'function' ? client.snapshot() : {}, options);
   }
@@ -104,7 +105,9 @@
     var wrap = page.querySelector('.ra-table-wrap'), hint = page.querySelector('.ra-scroll-hint');
     if (hint) hint.hidden = !wrap || !(wrap.scrollWidth > wrap.clientWidth + 1);
   }
-  function render() {
+  async function render() {
+    var version = ++renderVersion;
+    renderedReport = null;
     var page = root.document && root.document.getElementById(PAGE_ID);
     if (!page) return false;
     var content = page.querySelector('[data-ra-content]'), status = page.querySelector('[data-ra-status]');
@@ -122,11 +125,45 @@
         input.__naArqueoDefaultSet = true;
       }
     });
-    var report;
-    try { report = currentReport(page); }
+    var report, options, fromServer = false, truncated = false;
+    try { options = buildReport([], rangeOptions(page)).range; }
+    catch (error) { status.textContent = error.message; return false; }
+    function current() {
+      if (version !== renderVersion) return false;
+      if (!ownerAllowed()) { render(); return false; }
+      var selected = rangeOptions(page);
+      return (selected.desde === undefined || selected.desde === options.desde) && (selected.hasta === undefined || selected.hasta === options.hasta);
+    }
+    try {
+      if (root.navigator && root.navigator.onLine && root.NA_ROLES && typeof root.NA_ROLES.api === 'function') {
+        status.textContent = 'Cargando cierres desde el servidor…';
+        try {
+          var response = await root.NA_ROLES.api('/auth/cash-closes?desde=' + encodeURIComponent(options.desde) + '&hasta=' + encodeURIComponent(options.hasta));
+          if (!current()) return false;
+          // Servidor sin tablas de caja (ready:false) o respuesta inesperada: se usa la réplica local del dueño.
+          if (response && Array.isArray(response.cash_closes) && response.ready !== false) {
+            report = buildReport(response.cash_closes, options);
+            fromServer = true;
+            truncated = response.truncated === true;
+          } else report = localReport(options);
+        } catch (error) {
+          if (!current()) return false;
+          if (error.status === 403) { status.textContent = 'Sin permiso. Pídele acceso al dueño.'; return false; }
+          if (error.status) { status.textContent = 'No se pudo cargar el reporte desde el servidor.'; return false; }
+          report = localReport(options);
+        }
+      } else report = localReport(options);
+    }
     catch (error) { status.textContent = error instanceof RangeError ? error.message : 'No se pudo leer el reporte de este dispositivo.'; return false; }
+    if (!current()) return false;
+    renderedReport = report;
     if (exportButton) exportButton.disabled = false;
-    status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · cierres cargados en este dispositivo';
+    status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · ' + (fromServer ? 'desde el servidor' : 'cierres cargados en este dispositivo');
+    if (truncated) {
+      var notice = element('p', 'ra-truncated', 'Atención: el servidor devolvió solo los ' + report.rows.length + ' cierres más recientes de este rango. Los totales están incompletos; elegí un rango de fechas más corto.');
+      notice.setAttribute('role', 'alert'); notice.setAttribute('data-ra-truncated', '');
+      content.appendChild(notice);
+    }
     if (!report.rows.length) content.appendChild(element('p', 'ra-empty', 'No hay cierres de caja para este rango de fechas.'));
     var hint = element('p', 'ra-scroll-hint', 'Desliza para ver más →'); hint.hidden = true;
     content.appendChild(hint);
@@ -169,11 +206,15 @@
     page.addEventListener('input', update);
     root.addEventListener('resize', function () { updateScrollHint(page); });
     var exportButton = page.querySelector('[data-ra-export]');
-    if (exportButton) exportButton.addEventListener('click', function () {
+    if (exportButton) exportButton.addEventListener('click', async function () {
       if (!ownerAllowed()) { render(); return; }
-      if (!render()) return;
-      var report;
-      try { report = currentReport(page); } catch (_) { return; }
+      if (exportButton.disabled) return;
+      var options = rangeOptions(page), report = renderedReport;
+      if (!report || options.desde !== report.range.desde || options.hasta !== report.range.hasta) {
+        if (!await render()) return;
+        report = renderedReport;
+      }
+      if (!ownerAllowed() || !report) return;
       var url = root.URL.createObjectURL(new root.Blob([toCsv(report)], { type: 'text/csv;charset=utf-8' }));
       var link = element('a'); link.href = url;
       link.download = 'arqueo-caja-' + report.range.desde + '-a-' + report.range.hasta + '.csv';

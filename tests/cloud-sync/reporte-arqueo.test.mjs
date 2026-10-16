@@ -153,31 +153,31 @@ test('shared client/Worker policy unlocks arqueo only for owner and rejects unkn
     assert.deepEqual(Array.from(permissions.routeRoles('/features/reporte-arqueo', method)), ['owner']);
   }
 });
-test('owner render uses safe text and tfoot; employee clears populated data before reading the replica', () => {
+test('owner render uses safe text and tfoot; employee clears populated data before reading the replica', async () => {
   const h = harness(); h.desde.value = range.desde; h.hasta.value = range.hasta;
   assert.equal(h.ctx.module.exports, h.api); assert.ok(Object.isFrozen(h.api));
-  assert.equal(h.api.render(), true); assert.ok(h.content.textContent.includes('<img onerror=unsafe>'));
+  assert.equal(await h.api.render(), true); assert.ok(h.content.textContent.includes('<img onerror=unsafe>'));
   assert.ok(h.content.textContent.includes('-S/ 0.50 (faltante)'));
   const foot = descendants(h.content).find(node => node.tagName === 'tfoot');
   assert.equal(foot.textContent, 'Total · 1 cierreS/ 12.50S/ 12.00-S/ 0.50 (faltante)');
   assert.equal(h.controls.hidden, false);
   const reads = h.reads(); h.owner(false);
   Object.defineProperty(h.ctx, 'NuevoAmanecerCanonical', { get() { throw new Error('unauthorized read'); } });
-  assert.equal(h.api.render(), false); assert.equal(h.reads(), reads); assert.equal(h.content.children.length, 0);
+  assert.equal(await h.api.render(), false); assert.equal(h.reads(), reads); assert.equal(h.content.children.length, 0);
   assert.equal(h.status.textContent, 'Sin permiso. Pídele acceso al dueño.'); assert.equal(h.controls.hidden, true);
 });
-test('owner gate also fails closed for missing roles or denied screen permissions', () => {
+test('owner gate also fails closed for missing roles or denied screen permissions', async () => {
   for (const missing of ['NA_ROLES', 'NA_PERMISSIONS']) {
     const h = harness(); delete h.ctx[missing];
-    assert.equal(h.api.render(), false); assert.equal(h.reads(), 0); assert.equal(h.content.children.length, 0);
+    assert.equal(await h.api.render(), false); assert.equal(h.reads(), 0); assert.equal(h.content.children.length, 0);
   }
   const h = harness(); h.screenAllowed(false);
-  assert.equal(h.api.render(), false); assert.equal(h.reads(), 0);
+  assert.equal(await h.api.render(), false); assert.equal(h.reads(), 0);
 });
-test('render keeps null amounts as a dash, shows surplus sign and totals even for an empty range', () => {
+test('render keeps null amounts as a dash, shows surplus sign and totals even for an empty range', async () => {
   const h = harness(); h.desde.value = range.desde; h.hasta.value = range.hasta;
   h.ctx.NuevoAmanecerCanonical.snapshot = () => ({ cashSessions: sessions });
-  assert.equal(h.api.render(), true);
+  assert.equal(await h.api.render(), true);
   assert.ok(h.content.textContent.includes('+S/ 0.50 (sobrante)'));
   const body = descendants(h.content).find(node => node.tagName === 'tbody');
   assert.equal(body.children[1].children[4].textContent, '—');
@@ -185,24 +185,114 @@ test('render keeps null amounts as a dash, shows surplus sign and totals even fo
   assert.ok(nullFoot.textContent.startsWith('Total · 3 cierres · 1 sin contar'));
   assert.ok(h.content.textContent.includes('Desliza para ver más →'));
   h.desde.value = '2026-10-18'; h.hasta.value = '2026-10-18';
-  assert.equal(h.api.render(), true); assert.ok(h.content.textContent.includes('No hay cierres'));
+  assert.equal(await h.api.render(), true); assert.ok(h.content.textContent.includes('No hay cierres'));
   assert.ok(descendants(h.content).find(node => node.tagName === 'tfoot').textContent.includes('Total · 0 cierres'));
 });
-test('invalid range clears previous rows, disables export and does not read the replica; can recover', () => {
-  const h = harness(); h.desde.value = range.desde; h.hasta.value = range.hasta; h.api.render();
+test('invalid range clears previous rows, disables export and does not read the replica; can recover', async () => {
+  const h = harness(); h.desde.value = range.desde; h.hasta.value = range.hasta; await h.api.render();
   const reads = h.reads(); h.desde.value = '2026-10-17';
-  assert.equal(h.api.render(), false); assert.equal(h.content.children.length, 0);
+  assert.equal(await h.api.render(), false); assert.equal(h.content.children.length, 0);
   assert.match(h.status.textContent, /Desde no puede ser posterior a Hasta/);
   assert.equal(h.button.disabled, true); assert.equal(h.reads(), reads);
-  h.desde.value = ''; assert.equal(h.api.render(), false); assert.match(h.status.textContent, /fechas válidas/);
-  h.desde.value = range.desde; assert.equal(h.api.render(), true); assert.equal(h.button.disabled, false);
+  h.desde.value = ''; assert.equal(await h.api.render(), false); assert.match(h.status.textContent, /fechas válidas/);
+  h.desde.value = range.desde; assert.equal(await h.api.render(), true); assert.equal(h.button.disabled, false);
 });
-test('CSV download uses range filename; revoked owner clears content and cannot download', () => {
+test('CSV download uses range filename; revoked owner clears content and cannot download', async () => {
   const h = harness(); h.initialize(); h.desde.value = range.desde; h.hasta.value = range.hasta;
-  h.api.render(); h.button.events.click();
+  await h.api.render(); await h.button.events.click();
   assert.deepEqual(h.downloads, ['arqueo-caja-2026-10-01-a-2026-10-16.csv']);
   assert.ok(h.blobs[0].startsWith('\uFEFFFecha cierre'));
   h.owner(false); h.events['na:role']();
   assert.equal(h.content.children.length, 0); assert.equal(h.controls.hidden, true);
   h.button.events.click(); assert.equal(h.downloads.length, 1);
+});
+
+function online(h, api) { h.ctx.navigator = { onLine: true }; h.ctx.NA_ROLES.api = api; }
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+test('online owner renders server closes and exports the displayed server rows without reading local data', async () => {
+  const h = harness(), calls = []; h.initialize(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+  online(h, async path => { calls.push(path); return { cash_closes: [closed('server', '2026-10-16T18:00:00Z', { opened_by_name: 'Servidor prueba' })] }; });
+  assert.equal(await h.api.render(), true);
+  assert.deepEqual(calls, ['/auth/cash-closes?desde=2026-10-01&hasta=2026-10-16']);
+  assert.equal(h.reads(), 0); assert.match(h.content.textContent, /Servidor prueba/);
+  assert.match(h.status.textContent, /desde el servidor$/); assert.equal(h.button.disabled, false);
+  await h.button.events.click();
+  assert.equal(calls.length, 1); assert.equal(h.reads(), 0);
+  assert.match(h.blobs[0], /Servidor prueba/); assert.doesNotMatch(h.blobs[0], /img onerror/);
+});
+test('network failure falls back locally only for owner; offline owner skips server requests', async () => {
+  const h = harness(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+  let calls = 0;
+  online(h, async () => { calls++; throw new TypeError('Failed to fetch'); });
+  assert.equal(await h.api.render(), true); assert.equal(h.reads(), 1);
+  assert.match(h.status.textContent, /cierres cargados en este dispositivo$/);
+  h.ctx.navigator.onLine = false;
+  assert.equal(await h.api.render(), true); assert.equal(calls, 1); assert.equal(h.reads(), 2);
+  h.owner(false);
+  assert.equal(await h.api.render(), false); assert.equal(h.reads(), 2); assert.equal(calls, 1);
+});
+test('server 403 clears previous data and disables export without local fallback; other HTTP errors also fail closed', async () => {
+  const h = harness(); h.initialize(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+  await h.api.render(); const reads = h.reads();
+  online(h, async () => { throw Object.assign(new Error('forbidden_role'), { status: 403 }); });
+  assert.equal(await h.api.render(), false); assert.equal(h.reads(), reads);
+  assert.equal(h.content.children.length, 0); assert.equal(h.button.disabled, true);
+  assert.equal(h.status.textContent, 'Sin permiso. Pídele acceso al dueño.');
+  await h.button.events.click(); assert.equal(h.downloads.length, 0);
+  for (const status of [401, 400, 500]) {
+    online(h, async () => { throw Object.assign(new Error('http'), { status }); });
+    assert.equal(await h.api.render(), false); assert.equal(h.reads(), reads);
+    assert.equal(h.content.children.length, 0); assert.equal(h.button.disabled, true);
+  }
+});
+test('stale success or failure cannot overwrite the newest range, export or status', async () => {
+  for (const failure of [false, true]) {
+    const h = harness(), first = deferred(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+    online(h, path => path.includes('hasta=2026-10-16') ? first.promise : Promise.resolve({
+      cash_closes: [closed('latest', '2026-10-15T18:00:00Z', { opened_by_name: 'Rango nuevo' })] }));
+    const pending = h.api.render(); assert.equal(h.button.disabled, true);
+    h.hasta.value = '2026-10-15'; assert.equal(await h.api.render(), true);
+    if (failure) first.reject(Object.assign(new Error('forbidden_role'), { status: 403 }));
+    else first.resolve({ cash_closes: [closed('stale', '2026-10-16T18:00:00Z', { opened_by_name: 'Rango viejo' })] });
+    assert.equal(await pending, false);
+    assert.match(h.content.textContent, /Rango nuevo/); assert.doesNotMatch(h.content.textContent, /Rango viejo/);
+    assert.match(h.status.textContent, /15\/10\/2026.*desde el servidor/);
+    assert.equal(h.button.disabled, false); assert.equal(h.reads(), 0);
+  }
+});
+test('role revoked during fetch clears data and prevents both server and local results from rendering', async () => {
+  for (const failure of [false, true]) {
+    const h = harness(), request = deferred(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+    online(h, () => request.promise);
+    const pending = h.api.render(); h.owner(false);
+    if (failure) request.reject(new TypeError('Failed to fetch'));
+    else request.resolve({ cash_closes: sessions });
+    assert.equal(await pending, false); assert.equal(h.reads(), 0);
+    assert.equal(h.content.children.length, 0); assert.equal(h.controls.hidden, true);
+    assert.equal(h.button.disabled, true); assert.equal(h.status.textContent, 'Sin permiso. Pídele acceso al dueño.');
+  }
+});
+test('overlong range invalidates pending requests before local reads or server fetches', async () => {
+  const h = harness(); h.desde.value = '2024-01-01'; h.hasta.value = '2025-01-01';
+  online(h, async () => { throw new Error('must not fetch an invalid range'); });
+  assert.equal(await h.api.render(), false); assert.equal(h.reads(), 0);
+  assert.match(h.status.textContent, /hasta 366 días/); assert.equal(h.button.disabled, true);
+});
+test('server truncated:true shows a visible incomplete-totals notice; truncated:false does not', async () => {
+  for (const truncated of [true, false, undefined]) {
+    const h = harness(); h.initialize(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+    online(h, async () => ({ truncated, cash_closes: [closed('server', '2026-10-16T18:00:00Z')] }));
+    assert.equal(await h.api.render(), true);
+    const notice = descendants(h.content).find(node => node.className === 'ra-truncated');
+    if (truncated === true) {
+      assert.ok(notice, 'notice must be rendered');
+      assert.equal(notice.attrs.role, 'alert'); assert.equal(notice.hidden, false);
+      assert.match(notice.textContent, /totales están incompletos/);
+      assert.match(notice.textContent, /solo los 1 cierres más recientes/);
+    } else assert.equal(notice, undefined);
+  }
 });
