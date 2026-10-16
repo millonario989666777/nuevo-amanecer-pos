@@ -49,3 +49,4 @@ body.dark #pageValorizacion { --val-bg: #0f172a; --val-surface: #1e293b; --val-t
   #pageValorizacion .val-content { padding: 20px 24px 40px; }
   #pageValorizacion .val-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+#pageValorizacion th, #pageValorizacion td, #pageValorizacion caption { white-space: normal; word-break: break-word; }

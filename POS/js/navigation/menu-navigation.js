@@ -339,7 +339,6 @@
       ['Nueva venta', 'sale', 'pagePOS', 'Punto de venta'],
       ['Ventas', 'sales', 'pageVentas', 'Historial y comprobantes'],
       ['Inventario', 'stock', 'pageInventario', 'Productos, stock e ingresos'],
-      ['Valorización de inventario', 'stock', 'pageValorizacion', 'Valor al costo y de venta · Solo dueño'],
       ['Clientes', 'search', 'pageClientes', 'Saldos, créditos y abonos'],
       ['Caja', 'cash', 'pageCaja', 'Abrir, cerrar y movimientos'],
       ['Gastos', 'expense', 'pageGastos', 'Registrar y consultar gastos'],

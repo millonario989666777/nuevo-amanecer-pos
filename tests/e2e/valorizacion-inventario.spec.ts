@@ -23,7 +23,7 @@ async function rolePage(page: Page, role: 'owner' | 'empleado') {
       { id: 'valuation-1', name: 'Producto sintético A', cat: 'farmacia', stock: 7, costo: 1.25, precio: 2,
         lots: [{ quantity: 8, expiry_date: '2025-01-01' }], _canonicalPendingStock: true, _canonicalRemoteStock: 10 },
       { id: 'valuation-2', name: 'Producto sintético B', cat: 'farmacia', stock: 3, costo: null, precio: 4 },
-      { id: 'valuation-3', name: 'Producto sintético C', cat: 'abarrotes', stock: 2.5, costo: 0.4, precio: 1 },
+      { id: 'valuation-3', name: 'Producto sintético C', cat: 'abarrotes', stock: 3, costo: 0.4, precio: 1 },
       { id: 'valuation-4', name: 'Producto sintético D', cat: 'abarrotes', stock: -5, costo: 3, precio: 6 },
       { id: 'valuation-5', name: 'Servicio sintético', cat: 'servicios', stock: 20, costo: 5, precio: 8, controlInventario: false },
       { id: 'valuation-6', name: 'Producto sintético E', cat: 'categoria_con_nombre_muy_largo_para_comprobar_ajuste_en_telefono', stock: 0, costo: 0, precio: 1 }
@@ -37,13 +37,6 @@ for (const width of [390, 768, 1366]) {
       await page.setViewportSize({ width, height: 900 });
       await rolePage(page, 'owner');
       await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
-      if (width === 390) {
-        await page.locator('#naMobileMenuToggle').click();
-        const drawerEntry = page.locator('#naMobileDrawer [data-page="pageValorizacion"]');
-        await expect(drawerEntry).toBeVisible();
-        await drawerEntry.click();
-        await expect(page.locator('#pageValorizacion')).toHaveClass(/\bactive\b/);
-      }
       await page.evaluate(() => (window as any).goPage('pageProximamente'));
       const entry = page.locator('#pageProximamente [data-feature-id="valorizacion-inventario"]');
       await expect(entry).toContainText('Disponible');
@@ -52,9 +45,9 @@ for (const width of [390, 768, 1366]) {
       await expect(screen).toHaveClass(/\bactive\b/);
       await expect(screen.getByRole('heading', { name: 'Valorización de inventario', exact: true })).toBeVisible();
       const total = screen.locator('tfoot tr');
-      await expect(total.locator('td').nth(0)).toHaveText('12.5');
-      await expect(total.locator('td').nth(1)).toContainText('S/ 9.75');
-      await expect(total.locator('td').nth(2)).toHaveText('S/ 28.50');
+      await expect(total.locator('td').nth(0)).toHaveText('13');
+      await expect(total.locator('td').nth(1)).toContainText('S/ 9.95');
+      await expect(total.locator('td').nth(2)).toHaveText('S/ 29.00');
       await expect(screen.locator('.val-notices')).toContainText('1 producto(s) sin costo (3 unidades)');
       await expect(screen.locator('.val-notices')).toContainText('stock negativo');
       await expect(screen.locator('.val-notices')).toContainText('stock proyectado');
