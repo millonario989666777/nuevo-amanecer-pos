@@ -8,6 +8,8 @@
   var ACTIONS = {};
   ['expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
+  SCREENS['pageReporteDeuda'] = owner;
+  SCREENS['pageCodigosDuplicados'] = owner;
   var SYNC_ENTITIES = {};
   ['products','sales','sale_items','customers','credits','credit_payments','cash_closures','inventory_movements'].forEach(function (id) { SYNC_ENTITIES[id] = 'sync.write'; });
   SYNC_ENTITIES.expenses = 'cash.expense';

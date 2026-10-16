@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima, OK asistente 2 and asistente 4) deploy of base 5af8d378: #730 valorizacion-inventario and #731 rotacion-abc unlocked in FEATURE_LOCKS/FEATURE_ROLES (owner-only, read by server). No schema changes. Rollback to 128f07cc (worker 41, currently live).",
-  "target_commit": "5af8d37821bfdbaf846a5cd8b32a57456f325b68",
-  "rollback_ref": "128f07cc5d779e8126df3e1cc39f1b09be1b8609",
+  "authorization_context": "Owner authorized (2026-10-15 Lima; asistente 2 code OK, asistente 4 LOCAL OK, asistente 3 OK) deploy of base b0976d74: #734 rotacion-abc name fix, #735 clientes reporte de deuda (owner, read-only), #736 codigos duplicados (read-only); permissions table changes (SCREENS). No schema changes. Rollback to 5af8d378 (worker 42, currently live).",
+  "target_commit": "b0976d74c4de06ba9a8f8d2499238160198d8247",
+  "rollback_ref": "5af8d37821bfdbaf846a5cd8b32a57456f325b68",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 42,
-  "optimization": "VALORIZACION_ROTACION_730_731"
+  "attempt": 43,
+  "optimization": "REPORTE_DEUDA_CODIGOS_DUP_734_736"
 }

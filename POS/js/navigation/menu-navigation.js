@@ -10,8 +10,10 @@
   var ALLOWED_PAGES = Object.freeze([
     'pagePOS',
     'pageInventario',
+    'pageCodigosDuplicados',
     'pageVentas',
     'pageClientes',
+    'pageReporteDeuda',
     'pageCaja',
     'pageGastos',
     'pageProximamente',
@@ -328,7 +330,7 @@
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
       return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageValorizacion' && pageId !== 'pageRotacionAbc' && pageId !== 'pageHistorialCompras') || role === 'owner';
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageValorizacion' && pageId !== 'pageRotacionAbc' && pageId !== 'pageReporteDeuda' && pageId !== 'pageCodigosDuplicados' && pageId !== 'pageHistorialCompras') || role === 'owner';
   }
 
   function renderDrawerItems() {

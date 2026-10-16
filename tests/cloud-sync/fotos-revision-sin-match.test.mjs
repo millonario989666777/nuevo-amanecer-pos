@@ -122,3 +122,24 @@ test('foto confirmada por ID prevalece frente a la importación local anterior',
   f.ctx.NuevoAmanecerImageSync.hasImage=()=>true;f.ctx.NuevoAmanecerImageSync.source=()=>image;
   assert.equal(f.api.source(f.ctx.productos[0]),image);
 });
+test('na:role usa la misma condición de rol que open(): empleado cierra; otros roles solo limpian la revisión',async()=>{
+  const modal=f=>f.doc.getElementById('productImageBatchModal');
+  const emp=await fixture();assert.equal(modal(emp).style.display,'flex');
+  emp.ctx.NA_ROLES.role='empleado';emp.events['na:role']();
+  assert.equal(modal(emp).style.display,'none');assert.equal(emp.doc.getElementById('productImageBatchReview').hidden,true);
+  for(const change of [ctx=>{ctx.NA_ROLES.isOwner=()=>false;},ctx=>{ctx.NA_PERMISSIONS.canDo=()=>false;},ctx=>{ctx.NA_ROLES.role='unknown';}]){
+    const f=await fixture(),confirm=f.node('image-review-confirm');change(f.ctx);
+    // open() permitiría abrir con este rol: el modal sigue abierto, pero la revisión solo-owner se limpia y bloquea.
+    f.events['na:role']();assert.equal(modal(f).style.display,'flex');
+    assert.equal(f.doc.getElementById('productImageBatchReview').hidden,true);
+    await confirm.fire('click');assert.equal(f.calls.length,0);
+  }
+  const locked=await fixture();locked.ctx.isModuleLocked=()=>true;locked.events['na:role']();assert.equal(modal(locked).style.display,'none');
+});
+test('source() consulta la foto del servidor una sola vez por producto',async()=>{
+  const f=await fixture();let calls=0;
+  f.ctx.NuevoAmanecerImageSync.hasImage=()=>true;f.ctx.NuevoAmanecerImageSync.source=()=>{calls++;return null;};
+  assert.equal(f.api.source(f.ctx.productos[1]),null);assert.equal(calls,1);
+  calls=0;f.ctx.NuevoAmanecerImageSync.hasImage=()=>false;
+  assert.equal(f.api.source(f.ctx.productos[1]),null);assert.equal(calls,1,'sin foto confirmada, una consulta de respaldo');
+});

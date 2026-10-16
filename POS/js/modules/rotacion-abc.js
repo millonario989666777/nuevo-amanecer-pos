@@ -40,6 +40,21 @@
     var from = new Date(new Date(to + 'T00:00:00Z').getTime() - (count - 1) * DAY_MS);
     return { days: count, from: from.toISOString().slice(0, 10), to: to };
   }
+  // Código visible: SKU o código de barras corto. Nunca el id interno (p. ej. 'GENERIC:…').
+  function shortCode(item) {
+    var generic = item.generic_line && typeof item.generic_line === 'object' ? item.generic_line.code : null;
+    var candidates = [item.sku, item.barcode, item.codigo, item.codigoAlternativo, item.codigoIngresado, generic];
+    for (var i = 0; i < candidates.length; i++) {
+      var value = text(candidates[i]);
+      if (value && value.length <= 24 && !/^generic:/i.test(value)) return value;
+    }
+    return '';
+  }
+  // Segunda línea para filas 'VARIOS' sin código: prefijo corto del id sin 'GENERIC:'.
+  function visibleId(id) {
+    var value = text(id).replace(/^generic:/i, '').replace(/[^0-9a-z-]/gi, '');
+    return value ? 'ID ' + value.slice(0, 8) : '';
+  }
   function identity(item) {
     var id = item.id != null ? item.id : item.productoId;
     if (id != null && text(id)) return { key: 'id:' + text(id), id: text(id) };
@@ -70,7 +85,10 @@
     var range = periodRange(options.days, options.now);
     var catalog = new Map(), bySku = new Map(), rows = new Map();
     function createRow(item, ref) {
-      return { key: ref.key, id: ref.id, name: text(item.name != null ? item.name : item.nombre) || 'Producto',
+      var code = shortCode(item);
+      var name = text(item.name != null ? item.name : item.nombre) || code || 'Producto sin nombre';
+      if (!code && /^varios$/i.test(name)) code = visibleId(ref.id);
+      return { key: ref.key, id: ref.id, code: code, name: name,
         category: categoryKey(item.cat || item.categoria), revenueRaw: 0, transactions: 0 };
     }
     (Array.isArray(products) ? products : []).forEach(function (product) {
@@ -196,7 +214,7 @@
       group.rows.forEach(function (row) {
         var line = element('tr'); line.setAttribute('data-abc-class', row.abc);
         var name = element('th', 'abc-product', row.name); name.scope = 'row';
-        if (row.id) name.appendChild(element('small', '', row.id));
+        if (row.code) name.appendChild(element('small', '', row.code));
         line.appendChild(name);
         var abc = element('td'); abc.setAttribute('data-label', 'Clase');
         abc.appendChild(element('span', 'abc-badge abc-' + row.abc.toLowerCase(), row.abc));
