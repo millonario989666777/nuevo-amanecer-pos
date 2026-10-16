@@ -92,6 +92,11 @@ test('d) la ficha muestra ANULADO, no suma al saldo y conserva el historial de p
   await expect(detail).toContainText('ANULADO');
   await expect(detail).toContainText('Historial completo de pagos (1)');
   await expect(detail).toContainText('20.00');
+  await expect(detail).toContainText('Saldo anulado');
+  await expect(detail).not.toContainText('Saldo pendiente');
+  const struck = detail.locator('strong.credit-saldo-anulado');
+  await expect(struck).toHaveCount(1);
+  expect(await struck.evaluate(el => getComputedStyle(el).textDecorationLine)).toContain('line-through');
   await expect(detail).not.toContainText('Registrar pago');
   await expect(detail).not.toContainText('Revertir pago');
   expect(await page.evaluate(() => (window as any).eval('creditos[1].pagos.length'))).toBe(1);

@@ -163,6 +163,10 @@
   function describePendingFailure(error) {
     var pending = pendingRecord();
     var code = clean(error && error.message);
+    // Lote rechazado por un crédito anulado: mismo aviso que el pago individual.
+    if (pending && pending.command === 'payment.batch' && !pending.invalid && clean(pending.last_error) === 'credit_voided') {
+      return FRIENDLY_REJECTIONS.credit_voided + ' No se registró ningún abono del cobro múltiple.';
+    }
     if (pending && pending.command === 'payment.create' && !pending.invalid) {
       if (pending.last_error) {
         var friendly = FRIENDLY_REJECTIONS[clean(pending.last_error)];
@@ -180,7 +184,10 @@
   // need a second tap. Unknown errors and lost ACKs keep the pending operation.
   async function releaseDefinitiveRejection(client) {
     var pending = pendingRecord();
-    if (!pending || pending.command !== 'payment.create' || pending.invalid || !FRIENDLY_REJECTIONS[clean(pending.last_error)]) return false;
+    // Pago individual: cualquier rechazo definitivo conocido. Lote (cobro múltiple): solo credit_voided, igual que el individual.
+    var single = pending && pending.command === 'payment.create' && FRIENDLY_REJECTIONS[clean(pending.last_error)];
+    var batchVoided = pending && pending.command === 'payment.batch' && clean(pending.last_error) === 'credit_voided';
+    if (!pending || pending.invalid || !(single || batchVoided)) return false;
     if (!client || typeof client.discardRejectedPayment !== 'function') return false;
     try {
       if (!await client.discardRejectedPayment()) return false;
@@ -662,7 +669,9 @@
           await client.retryPending();
           await refreshCanonical();
         } catch (error) {
-          return batchFailure(describePendingFailure(error), requestedCents, [], 'CANONICAL_PENDING_RECOVERY_FAILED');
+          var recoveryWhy = describePendingFailure(error);
+          await releaseDefinitiveRejection(client);
+          return batchFailure(recoveryWhy, requestedCents, [], 'CANONICAL_PENDING_RECOVERY_FAILED');
         } finally {
           busy = false;
         }
@@ -743,8 +752,9 @@
             return batchFailure('Existe una operación pendiente sin confirmar. Reintenta esa operación antes de continuar; no vuelvas a ingresar el total.',
               requestedCents, fastCompleted, 'BATCH_PENDING_UNRESOLVED');
           }
-          return batchFailure(describePendingFailure(new Error(clean(batchResult && batchResult.error) || 'CANONICAL_FINANCIAL_REJECTED')),
-            requestedCents, fastCompleted, 'BATCH_PAYMENT_REJECTED');
+          var batchWhy = describePendingFailure(new Error(clean(batchResult && batchResult.error) || 'CANONICAL_FINANCIAL_REJECTED'));
+          await releaseDefinitiveRejection(client);
+          return batchFailure(batchWhy, requestedCents, fastCompleted, 'BATCH_PAYMENT_REJECTED');
         }
 
         notify('Cobro múltiple CANON CONFIRMADO: S/ ' + (requestedCents / 100).toFixed(2) +
@@ -761,7 +771,9 @@
           remaining_cents:0
         };
       } catch (error) {
-        return batchFailure(describePendingFailure(error), requestedCents, fastCompleted, 'BATCH_PAYMENT_REJECTED');
+        var batchError = describePendingFailure(error);
+        await releaseDefinitiveRejection(client);
+        return batchFailure(batchError, requestedCents, fastCompleted, 'BATCH_PAYMENT_REJECTED');
       } finally {
         busy = false;
       }

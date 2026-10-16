@@ -412,6 +412,7 @@
         .credit-detail-box{border:1px solid var(--border);border-radius:10px;padding:10px;background:#f8fafc}
         .credit-detail-box span{display:block;font-size:10px;color:var(--slate);font-weight:800;text-transform:uppercase}
         .credit-detail-box strong{display:block;margin-top:4px;font-size:14px;color:var(--dark);word-break:break-word}
+        .credit-detail-box strong.credit-saldo-anulado{text-decoration:line-through}
         .credit-detail-section{border:1px solid var(--border);border-radius:11px;background:var(--white);padding:11px;margin-top:10px}
         .credit-detail-section h4{font-size:12px;font-weight:900;color:var(--dark);margin:0 0 8px}
         .credit-detail-item{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}

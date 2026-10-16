@@ -112,3 +112,71 @@ test('payment.batch: control con el importado VIGENTE + LIVE → 201 y ambos sal
   assert.equal(r.status, 201, JSON.stringify(await r.clone().json()));
   assert.deepEqual([balance(f, live), balance(f, CREDIT)], [b0[0] - 100, b0[1] - 150]);
 });
+
+// ── compensation.create (anular abono) y adjustment.create ─────────────────────────────────────────────
+function compensation(f, compensates, extra = {}) {
+  const c = f.control();
+  return { operation_id:randomUUID(), promotion_id:c.active_promotion_id, client_contract:'a6-gate-c-v1', authority_epoch:c.authority_epoch,
+    expected_control_revision:c.revision, created_at:new Date().toISOString(), reason:'Prueba de anulación', compensates_operation_id:compensates,
+    expected_credit_revision:f.sql('SELECT revision FROM canonical_credit_balances WHERE credit_id=?', CREDIT).revision, credit_id:CREDIT, ...extra };
+}
+const compensations = f => f.sql("SELECT COUNT(*) n FROM canonical_financial_events WHERE event_type='COMPENSATION'").n;
+async function paidCredit(f) {
+  const body = payment(f, CREDIT, 100);
+  assert.equal((await post(f, 'payment.create', body)).status, 201);
+  return body.operation_id;
+}
+
+for (const value of ['ANULADO', 'anulado', ' Anulada ']) {
+  test(`compensation.create: anular un abono de un crédito importado con source_status ${JSON.stringify(value)} → 409 credit_voided`, async (t) => {
+    const f = await activeCanon(t, { migrations:LIVE });
+    await device(f, { token:TOKEN, deviceId:'device-a' });
+    const paid = await paidCredit(f);
+    setSource(f, value);
+    const b0 = balance(f, CREDIT);
+    const r = await post(f, 'compensation.create', compensation(f, paid));
+    assert.equal(r.status, 409);
+    assert.deepEqual(await r.json(), { error:'credit_voided', credit_id:CREDIT });
+    assert.equal(balance(f, CREDIT), b0);
+    assert.equal(compensations(f), 0);
+  });
+}
+
+for (const value of ['VIGENTE', 'no anulado', null]) {
+  test(`compensation.create: control source_status ${JSON.stringify(value)} → 201 y el saldo se restaura como siempre`, async (t) => {
+    const f = await activeCanon(t, { migrations:LIVE });
+    await device(f, { token:TOKEN, deviceId:'device-a' });
+    const b0 = balance(f, CREDIT);
+    const paid = await paidCredit(f);
+    setSource(f, value);
+    const r = await post(f, 'compensation.create', compensation(f, paid));
+    assert.equal(r.status, 201, JSON.stringify(await r.clone().json()));
+    assert.equal(balance(f, CREDIT), b0);
+    assert.equal(compensations(f), 1);
+  });
+}
+
+test('compensation.create: el replay idempotente de una anulación hecha antes va antes del rechazo', async (t) => {
+  const f = await activeCanon(t, { migrations:LIVE });
+  await device(f, { token:TOKEN, deviceId:'device-a' });
+  const paid = await paidCredit(f);
+  const body = compensation(f, paid);
+  assert.equal((await post(f, 'compensation.create', body)).status, 201);
+  setSource(f, 'ANULADO');
+  const again = await post(f, 'compensation.create', body);
+  assert.equal(again.status, 200);
+  assert.equal((await again.json()).status, 'already_processed');
+  assert.equal(compensations(f), 1);
+});
+
+test('adjustment.create no lleva crédito: credit_id es un campo no permitido (400), así que no puede tocar un anulado', async (t) => {
+  const f = await activeCanon(t, { migrations:LIVE });
+  await device(f, { token:TOKEN, deviceId:'device-a' });
+  setSource(f, 'ANULADO');
+  const c = f.control();
+  const r = await post(f, 'adjustment.create', { operation_id:randomUUID(), promotion_id:c.active_promotion_id, client_contract:'a6-gate-c-v1',
+    authority_epoch:c.authority_epoch, expected_control_revision:c.revision, created_at:new Date().toISOString(), session_id:'S-1',
+    expected_session_revision:0, amount_cents:100, reason:'Ajuste', credit_id:CREDIT });
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error, 'unexpected_field');
+});

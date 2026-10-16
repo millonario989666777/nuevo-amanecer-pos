@@ -143,9 +143,11 @@ test('render antiguo _naCreditCardHtml / _naCreditDetailHtml (inline-02): anulad
     const card = html(patch, '_naCreditCardHtml'), detail = html(patch, '_naCreditDetailHtml');
     assert.match(card, /Crédito anulado/); assert.match(card, /cs-m/);
     assert.doesNotMatch(card, /btn-pago-cr/); assert.doesNotMatch(detail, /abrirPago/);
+    assert.match(detail, /<span>Saldo anulado<\/span><strong class="credit-saldo-anulado">/); assert.doesNotMatch(detail, /Saldo pendiente/);
   }
   for (const patch of [{}, { status:'LIVE' }, { estado:'no anulado' }]) {
     assert.match(html(patch, '_naCreditCardHtml'), /btn-pago-cr/, JSON.stringify(patch));
     assert.match(html(patch, '_naCreditDetailHtml'), /abrirPago/, JSON.stringify(patch));
+    assert.match(html(patch, '_naCreditDetailHtml'), /<span>Saldo pendiente<\/span><strong>/); assert.doesNotMatch(html(patch, '_naCreditDetailHtml'), /Saldo anulado|credit-saldo-anulado/);
   }
 });
