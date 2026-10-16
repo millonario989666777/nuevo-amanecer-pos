@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#764 compensación de créditos anulados (web) + #766 modo oscuro contraste en crédito de clientes. Worker 47 ya live (live check OK asistente 5).",
-  "retry_attempt": 153,
-  "retry_reason": "Deploy de base e4c1adc6e1c7bf416ac2c35e4e3b198527a01790 (#764 39a0eba4 + #766). Rollback: web 152 4779886113b7cae568c808c584aa3801fa2e6af6 (merge c690090363c229f4d333bce249d01ffe9411d1b6).",
-  "requested_at_utc": "2026-10-16T08:34:57Z",
-  "approved_base": "e4c1adc6e1c7bf416ac2c35e4e3b198527a01790"
+  "note": "#769 dos cambios chicos: modo oscuro y franja de estado canónico. Worker 47 sin cambios.",
+  "retry_attempt": 154,
+  "retry_reason": "Deploy de base 1241caee90302be83e84731fe371718ffc4e94aa (#769). Rollback: web 153 2e2756dc0036ef37eed0f9be25b88b2cc5efca64 (merge e4c1adc6e1c7bf416ac2c35e4e3b198527a01790).",
+  "requested_at_utc": "2026-10-16T09:17:38Z",
+  "approved_base": "1241caee90302be83e84731fe371718ffc4e94aa"
 }
