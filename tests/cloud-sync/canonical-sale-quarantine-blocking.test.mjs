@@ -29,7 +29,7 @@ test('quarantined sale keeps payment and expense working, blocks only the close,
  assert.ok(credit);
  await d.api.createPayment({credit_id:credit.credit_id,amount_cents:100,payment_method:'efectivo'});
  await d.api.refresh();
- await d.api.createExpense({amount_cents:100,concept:'Synthetic expense',category:'otros',payment_method:'efectivo',expense_date:new Date().toISOString().slice(0,10)});
+ await d.api.createExpense({amount_cents:100,concept:'Synthetic expense',category:'otros',payment_method:'efectivo',expense_date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'})});
  d.el('cajContado').value='1100';
  assert.equal(await d.context.cerrarCaja(),false,'close of this cash waits for reconciliation');
  assert.ok(d.el('cajCloseStatus').textContent.includes('Venta pendiente: '+entry.intent.sale_id));
