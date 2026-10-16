@@ -7,13 +7,16 @@
   --cd-accent: #076d69;
   background: var(--cd-bg);
   color: var(--cd-text);
-  padding: 16px;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
   min-width: 0;
+  min-height: 0;
+  max-width: 100%;
   overflow: auto;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 #pageCodigosDuplicados * { box-sizing: border-box; min-width: 0; }
+#pageCodigosDuplicados > * { flex-shrink: 0; }
 #pageCodigosDuplicados [hidden] { display: none !important; }
 #pageCodigosDuplicados .cd-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 #pageCodigosDuplicados h1 { margin: 0; font-size: clamp(22px, 3vw, 28px); flex: 1 1 220px; color: inherit; }
@@ -31,6 +34,8 @@
 #pageCodigosDuplicados dd { margin: 0; font-weight: 700; }
 #pageCodigosDuplicados .cd-button { min-height: 44px; max-width: 100%; padding: 10px 14px; border: 1px solid var(--cd-accent); border-radius: 9px; background: var(--cd-surface); color: var(--cd-accent); font: inherit; font-weight: 700; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
 #pageCodigosDuplicados .cd-button:focus-visible { outline: 3px solid var(--cd-accent); outline-offset: 3px; }
+#pageInventario [data-codigos-duplicados] { min-height: 44px; white-space: normal; }
+#pageInventario [data-codigos-duplicados]:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
 /* La regla global de tablas usa nowrap. Mantener cualquier tabla futura acotada. */
 #pageCodigosDuplicados table { width: 100%; table-layout: fixed; }
 #pageCodigosDuplicados th, #pageCodigosDuplicados td { white-space: normal !important; overflow-wrap: anywhere; }
@@ -43,7 +48,7 @@ body.dark #pageCodigosDuplicados {
   --cd-accent: #81ddd3;
 }
 @media (min-width: 768px) {
-  #pageCodigosDuplicados { padding: 24px; }
+  #pageCodigosDuplicados { padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); }
   #pageCodigosDuplicados .cd-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #pageCodigosDuplicados .cd-product + .cd-product { border-top: 0; padding-top: 0; border-left: 1px solid var(--cd-border); padding-left: 16px; }
 }

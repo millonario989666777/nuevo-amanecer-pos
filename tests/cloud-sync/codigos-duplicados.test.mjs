@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { PERMISSIONS as serverPolicy } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
 const source = readFileSync(new URL('../../POS/js/inventory/codigos-duplicados.js', import.meta.url), 'utf8');
 const policy = readFileSync(new URL('../../POS/js/config/pos-permissions.js', import.meta.url), 'utf8');
@@ -115,48 +116,61 @@ test('política compartida cliente/servidor default-deny ya limita la pantalla a
     assert.equal(context.NA_PERMISSIONS.canAccessScreen(role, 'pageCodigosDuplicados'), role === 'owner');
   }
   assert.deepEqual(plain(context.NA_PERMISSIONS.routeRoles('/no-listed-duplicate-codes', 'POST')), ['owner']);
+  for (const role of ['owner', 'empleado', 'unknown', undefined]) {
+    assert.equal(serverPolicy.canAccessScreen(role, 'pageCodigosDuplicados'), role === 'owner');
+    assert.equal(serverPolicy.routeRoles('/auth/unlisted-duplicate-codes', 'GET').includes(role), role === 'owner');
+  }
 });
 
 // DOM mínimo para probar contratos de eventos/permisos sin lanzar navegador.
 function domHarness({ role = 'owner', confirmed = true, lateMenu = false } = {}) {
   class Node {
     constructor(tag = 'div') { this.tag = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.events = {}; this.hidden = false; this.textContent = ''; this.classes = new Set(); }
-    get classList() { return { contains: value => this.classes.has(value) }; }
+    get classList() { return { contains: value => this.classes.has(value), add: value => this.classes.add(value),
+      remove: (...values) => values.forEach(value => this.classes.delete(value)),
+      toggle: (value, on) => on ? this.classes.add(value) : this.classes.delete(value) }; }
     set className(value) { this.classes = new Set(value.split(' ')); }
     append(...nodes) { for (const node of nodes) { if (node.tag === '#fragment') this.append(...node.children); else { node.parent = this; this.children.push(node); } } }
     replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); }
     setAttribute(key, value) { this.attributes[key] = value; }
     addEventListener(name, callback) { this.events[name] = callback; }
+    focus() { document.activeElement = this; }
     querySelectorAll(selector) {
       const key = selector.match(/^\[data-(.*)\]$/)?.[1]?.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      return this.children.flatMap(node => [ ...(key && key in node.dataset ? [node] : []), ...node.querySelectorAll(selector) ]);
+      return this.children.flatMap(node => [ ...((key && key in node.dataset) || node.tag === selector ? [node] : []), ...node.querySelectorAll(selector) ]);
     }
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   }
-  const page = new Node(), list = new Node(), status = new Node(), intro = new Node(), back = new Node('button'), refresh = new Node('button'), menu = new Node();
+  const page = new Node(), heading = new Node('h1'), list = new Node(), status = new Node(), intro = new Node(), back = new Node('button'), refresh = new Node('button'), menu = new Node();
+  const inventory = new Node();
   page.className = 'page';
   list.dataset.cdList = ''; status.dataset.cdStatus = ''; intro.dataset.cdOwner = '';
   back.dataset.cdBack = ''; refresh.dataset.cdRefresh = ''; refresh.dataset.cdOwner = '';
-  page.append(list, status, intro, back, refresh);
+  page.append(heading, list, status, intro, back, refresh);
+  const summary = new Node('summary');
   let available = !lateMenu;
-  const observers = [], events = {}, opened = [], edits = [];
-  const document = { readyState: 'complete', body: new Node('body'), createElement: tag => new Node(tag), createDocumentFragment: () => new Node('#fragment'),
-    getElementById: id => id === 'pageCodigosDuplicados' ? page : null,
-    querySelector: selector => selector === '#pageInventario .inv-secondary-menu' && available ? menu : null };
+  const observers = [], events = {}, opened = [], edits = [], navigated = [];
+  const document = { readyState: 'complete', activeElement: null, documentElement: new Node('html'), body: new Node('body'), createElement: tag => new Node(tag), createDocumentFragment: () => new Node('#fragment'),
+    querySelectorAll: () => [page, inventory],
+    getElementById: id => id === 'pageCodigosDuplicados' ? page : id === 'pageInventario' ? inventory : null,
+    querySelector: selector => selector === '#pageInventario .inv-secondary-menu' && available ? menu : selector === '#pageInventario .inv-secondary > summary' ? summary : null };
   const context = { document, productos: [product(1, { barcode: '123' }), product(2, { barcode: '123' })], ventas: [],
     NA_ROLES: { role, isOwner: () => confirmed && context.NA_ROLES.role === 'owner' },
-    NA_MENU_NAVIGATION: { navigate: id => { opened.push(id); return true; } }, editProd: id => edits.push(id),
+    // Navegación estándar de la app: se registra y activa la página (el guardado de estado de UI es normal).
+    NA_MENU_NAVIGATION: { navigate(id) { navigated.push(id); [page, inventory].forEach(n => n.classList.remove('active')); (id === 'pageCodigosDuplicados' ? page : inventory).classList.add('active'); return true; } },
+    goPage() { throw Error('usar NA_MENU_NAVIGATION'); },
+    editProd: id => edits.push(id),
     addEventListener: (event, callback) => { events[event] = callback; }, setTimeout: callback => callback(),
     MutationObserver: class { constructor(callback) { this.callback = callback; observers.push(this); } observe(target) { this.target = target; this.connected = true; } disconnect() { this.connected = false; } },
     localStorage: { setItem() { throw Error('No debe persistir'); } }, saveAllData() { throw Error('No debe guardar'); },
     fetch() { throw Error('No debe llamar API'); } };
   const { api: a } = api(context);
-  return { a, context, page, list, status, intro, back, refresh, menu, observers, events, opened, edits,
+  return { a, context, page, inventory, heading, list, status, intro, back, refresh, menu, summary, observers, events, opened, edits,
     createMenu() { available = true; observers.filter(o => o.connected && o.target === document.body).forEach(o => o.callback()); } };
 }
 
-test('espera a Más opciones, inserta solo una entrada, navega y abre editProd sin guardar', () => {
+test('espera a Más opciones y navega con la navegación estándar sin tocar catálogo ni ventas', () => {
   const h = domHarness({ lateMenu: true });
   assert.equal(h.menu.children.length, 0);
   h.createMenu();
@@ -166,14 +180,15 @@ test('espera a Más opciones, inserta solo una entrada, navega y abre editProd s
   assert.equal(h.observers.find(o => o.target === h.context.document.body).connected, false);
   const before = JSON.stringify({ products: h.context.productos, sales: h.context.ventas });
   h.menu.children[0].events.click();
-  assert.deepEqual(h.opened, ['pageCodigosDuplicados']);
+  assert.equal(h.page.classList.contains('active'), true);
   assert.match(h.status.textContent, /1 par/);
   assert.equal(h.list.children.length, 1);
   assert.equal(h.a.openProduct('1'), true);
   assert.deepEqual(h.edits, [1], 'ID conserva el tipo que exige editProd');
   assert.equal(h.a.openProduct('missing'), false);
   h.back.events.click();
-  assert.deepEqual(h.opened, ['pageCodigosDuplicados', 'pageInventario']);
+  assert.equal(h.inventory.classList.contains('active'), true);
+  assert.equal(h.page.classList.contains('active'), false);
   assert.equal(JSON.stringify({ products: h.context.productos, sales: h.context.ventas }), before);
 });
 
@@ -221,9 +236,137 @@ test('revocación borra filas y entrada; actualiza la consulta al activar o refr
   h.observers.find(o => o.target === h.page).callback();
   assert.equal(h.list.children.length, 1);
   h.events['na:canonical-updated']();
+  h.context.ventas = [sale('receipt', '2026-10-12', [1], { source: 'CANONICAL_RECEIPT' })];
+  h.events['na:canonical-sale-projection']();
+  assert.equal(h.list.children[0].children[1].children[0].children[1].children[1].children[1].textContent, '12/10/2026');
   h.context.NA_ROLES.role = 'empleado'; h.events['na:role']();
   assert.equal(h.menu.children.length, 0);
   assert.equal(h.list.children.length, 0);
   assert.equal(h.intro.hidden, true);
   assert.equal(h.status.textContent, 'Sin permiso');
+});
+
+test('resuelve productoId local y product_id CANON sin confundir el ID de la línea', () => {
+  const { api: a } = api();
+  const catalog = [product(1, { product_id: 'CANON-A', barcode: '123' }), product(2, { barcode: '123' })];
+  for (const item of [{ id: 1 }, { id: 2, productoId: '1' }, { id: 2, product_id: 'CANON-A' }]) {
+    const rows = a.listPairs(catalog, [sale('synthetic', '2026-10-12', [], { items: [item] })]);
+    assert.deepEqual(plain(rows[0].products.map(p => p.lastSaleDate)), ['2026-10-12', null]);
+  }
+  const rows = a.listPairs(catalog, [sale('unresolved', '2026-10-15', [], { items: [{ id: 2, product_id: 'unknown' }] })]);
+  assert.deepEqual(plain(rows[0].products.map(p => p.lastSaleDate)), [null, null]);
+});
+
+test('pendientes, no confirmadas y revisión nunca sustituyen una última venta confirmada', () => {
+  const { api: a } = api();
+  const catalog = freeze([product(1, { barcode: '123' }), product(2, { barcode: '123' })]);
+  for (const extra of [{ pending: true }, { confirmed: false }, { pendingSync: true },
+    { status: 'PENDING_SYNC' }, { estado: ' pendiente ' }, { source: 'CANONICAL_OUTBOX' },
+    { naReview: true }, { canonicalReview: true }, { status: 'ANULADA' }]) {
+    const sales = freeze([sale('confirmed', '2026-10-10', [1]), sale('pending', '2026-10-15', [1, 2], extra)]);
+    const before = JSON.stringify(sales);
+    assert.deepEqual(plain(a.listPairs(catalog, sales)[0].products.map(p => p.lastSaleDate)), ['2026-10-10', null]);
+    assert.equal(JSON.stringify(sales), before);
+  }
+  const receipt = sale('receipt', '2026-10-12', [2], { source: 'CANONICAL_RECEIPT', canonicalReceiptProjection: true });
+  assert.equal(a.listPairs(catalog, [receipt])[0].products[1].lastSaleDate, '2026-10-12');
+});
+
+test('fecha con zona no normaliza días/horas inválidos; acepta created_at y años bisiestos', () => {
+  const { api: a } = api();
+  const catalog = [product(1, { barcode: '123' }), product(2, { barcode: '123' })];
+  for (const timestamp of ['2026-02-30T10:00:00Z', '2026-02-29T00:00:00-05:00',
+    '2026-10-12T24:00:00Z', '2026-10-12T10:60:00Z', '2026-13-01T00:00:00Z']) {
+    assert.equal(a.listPairs(catalog, [sale('invalid', '', [1], { timestamp })])[0].products[0].lastSaleDate, null);
+    assert.equal(a.listPairs(catalog, [sale('fallback', '2026-10-10', [1], { timestamp })])[0].products[0].lastSaleDate, '2026-10-10');
+  }
+  assert.equal(a.listPairs(catalog, [sale('leap', '', [1], { timestamp: '2024-02-29T04:30:00Z' })])[0].products[0].lastSaleDate, '2024-02-28');
+  assert.equal(a.listPairs(catalog, [sale('created', '', [1], { created_at: '2026-10-14T04:30:00Z' })])[0].products[0].lastSaleDate, '2026-10-13');
+});
+
+test('apertura y refresco conservan un foco útil para teclado, incluso al desaparecer el par', () => {
+  const h = domHarness();
+  h.a.open();
+  assert.equal(h.context.document.activeElement, h.heading);
+  assert.equal(h.heading.attributes.tabindex, '-1');
+  const oldButton = h.list.querySelector('[data-cd-product]');
+  oldButton.focus();
+  h.a.render();
+  const replacement = h.context.document.activeElement;
+  assert.notEqual(replacement, oldButton);
+  assert.equal(replacement, h.list.querySelector('[data-cd-product]'));
+  h.context.productos[1].activo = false;
+  h.a.render();
+  assert.equal(h.context.document.activeElement, h.refresh);
+  h.back.events.click();
+  assert.equal(h.context.document.activeElement, h.summary); // «Más opciones»: el botón está dentro de <details> cerrado
+});
+
+test('sigue el binding léxico de productos y ventas, igual que el runtime real', () => {
+  const catalog = [product(1, { barcode: '123' }), product(2, { barcode: '123' })];
+  const h = domHarness();
+  const liveContext = vm.createContext(h.context);
+  vm.runInContext(`let productos=${JSON.stringify(catalog)}; let ventas=${JSON.stringify([sale('synthetic', '2026-10-12', [1])])};`, liveContext);
+  h.context.productos = []; h.context.ventas = [];
+  vm.runInContext(source, liveContext);
+  liveContext.NA_CODIGOS_DUPLICADOS.render();
+  assert.equal(h.list.children.length, 1);
+  assert.equal(h.list.children[0].children[1].children[0].children[1].children[1].children[1].textContent, '12/10/2026');
+});
+
+test('los códigos coinciden con el plan real de image-batch, con ceros y mayúsculas intactos', () => {
+  const context = vm.createContext({});
+  vm.runInContext(readFileSync(new URL('../../POS/js/products/image-batch.js', import.meta.url), 'utf8'), context);
+  const { api: a } = api();
+  const catalog = [product(1, { sku: ' 00012 ', barcode: 'AbC', codigosAlternativos: ['077'], codigoAlternativo: 'OLD' }),
+    product(2, { sku: 'OLD', barcode: '077', codigosAlternativos: ['00012', 'AbC'] }),
+    product(3, { sku: '12', barcode: 'abc' })];
+  const pairs = a.listPairs(catalog);
+  const entries = ['00012', 'AbC', '077', 'OLD', '12', 'abc'].map(code => ({ codes: [code], image: 'data:image/png;base64,iVBORw0KGgo=' }));
+  const rows = context.NuevoAmanecerImageBatch.plan(entries, catalog, []);
+  for (const row of rows) {
+    assert.equal(row.status === 'ambiguous', pairs.some(pair => pair.code === row.entry.codes[0]));
+  }
+});
+
+test('identidad CANON sin id local muestra datos pero no ofrece un botón inoperante', () => {
+  const h = domHarness();
+  delete h.context.productos[0].id;
+  h.context.productos[0].product_id = 'CANON-ONLY';
+  h.a.render();
+  assert.equal(h.list.querySelectorAll('[data-cd-product]').length, 1);
+  assert.equal(h.a.openProduct('CANON-ONLY'), false);
+});
+
+test('editProd real y su wrapper abren el formulario sin guardar y restauran la imagen', () => {
+  // Ejecutar el cuerpo real y el wrapper F12; solo las utilidades DOM se
+  // sustituyen. No sustituir editProd ni su restauración de la imagen.
+  const read = file => readFileSync(new URL('../../POS/js/legacy-inline/' + file, import.meta.url), 'utf8');
+  const base = read('inline-01.js').match(/^function editProd\(id\).*$/m)[0];
+  const wrapper = read('inline-08.js').match(/^editProd=function\(id,\.\.\.args\).*$/m)[0];
+  const h = domHarness();
+  const fields = new Map();
+  h.context.document.getElementById = id => {
+    if (id === 'pageCodigosDuplicados') return h.page;
+    if (!fields.has(id)) fields.set(id, h.context.document.createElement('div'));
+    return fields.get(id);
+  };
+  Object.assign(h.context, { invEditId: null, imagenProducto: null, _naProductAltCodes: () => [],
+    renderAltBarcodeFields() {}, toggleProductCodeFields() {}, renderCategorySelects() {},
+    toggleNewCategoryField() {}, setProductInventoryControl() {}, calcMargen() {},
+    _naEffectiveExpiry: p => p.venc, _naProductFormState() {}, _naF12SetMode() {},
+    _naF12InferMode: () => 'image', _naF12RenderVisual() {} });
+  const image = 'data:image/png;base64,synthetic';
+  h.context.productos[0].imagen = image;
+  const before = JSON.stringify({ products: h.context.productos, sales: h.context.ventas });
+  const context = vm.createContext(h.context);
+  vm.runInContext(base + '\nconst _naF12BaseEditProd=editProd;\n' + wrapper, context);
+  assert.equal(h.a.openProduct(1), true);
+  assert.equal(fields.get('pNombre').value, h.context.productos[0].name);
+  assert.equal(fields.get('mProd').classList.contains('open'), true);
+  assert.equal(h.context.imagenProducto, image);
+  assert.equal(JSON.stringify({ products: h.context.productos, sales: h.context.ventas }), before);
+  h.context.renderCategorySelects = () => { throw Error('synthetic DOM failure'); };
+  assert.throws(() => h.a.openProduct(1), /synthetic DOM failure/);
+  assert.equal(h.context.productos[0].imagen, image, 'finally también restaura si falla la apertura');
 });
