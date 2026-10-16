@@ -12,6 +12,7 @@
   var SYNC_ENTITIES = {};
   ['products','sales','sale_items','customers','credits','credit_payments','cash_closures','inventory_movements'].forEach(function (id) { SYNC_ENTITIES[id] = 'sync.write'; });
   SYNC_ENTITIES.expenses = 'cash.expense';
+  SCREENS['pageCodigosDuplicados'] = owner;
   SYNC_ENTITIES.cash_movements = 'cash.expense';
   var API_ROUTES = [
     { path: '/features/:id', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], roles: both },

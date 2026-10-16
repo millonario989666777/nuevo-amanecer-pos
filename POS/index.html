@@ -77,6 +77,7 @@
     <noscript><link rel="stylesheet" href="css/experience-v2/animations/notifications.css"></noscript>
     <link rel="stylesheet" href="css/canon-desktop-dashboard.css">
     <link rel="stylesheet" href="css/mobile-inventory.css">
+    <link rel="stylesheet" href="css/codigos-duplicados.css">
     <link rel="stylesheet" href="css/stock-lots.css">
     <link id="naMobileHomeBaseStyles" rel="stylesheet" href="css/canon-mobile-home.css">
     <link rel="stylesheet" href="css/canon-ux-fixes.css">
@@ -284,6 +285,17 @@
     </div>
     </div>
     <div class="table-wrap"><div class="table-card"><table><thead><tr><th>Producto</th><th>Cat.</th><th>Precio</th><th>Vencimiento</th><th>Stock</th><th>Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>
+</div>
+
+<div class="page" id="pageCodigosDuplicados">
+    <header class="cd-header">
+        <h1>Códigos duplicados</h1>
+        <button class="cd-button" type="button" data-cd-back>Volver a Inventario</button>
+        <button class="cd-button" type="button" data-cd-refresh data-cd-owner hidden>Actualizar lista</button>
+    </header>
+    <p class="cd-intro" data-cd-owner hidden>Las fotos de esos códigos no se asignan solas porque el código pertenece a más de un producto. Se corrige editando el producto y revisando sus códigos. Esta lista es de solo lectura.</p>
+    <p class="cd-status" data-cd-status role="status" aria-live="polite"></p>
+    <div class="cd-list" data-cd-list></div>
 </div>
 
 <!-- CLIENTES -->
@@ -1108,6 +1120,7 @@
 
 <script src="js/legacy-inline/inline-18.js"></script>
 <script src="js/navigation/menu-navigation.js"></script>
+<script src="js/inventory/codigos-duplicados.js"></script>
 <script src="js/motion/core.js"></script>
 <script src="js/motion/page-transitions.js"></script>
 <script src="js/motion/scroll-motion.js"></script>
