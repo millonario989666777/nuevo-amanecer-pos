@@ -16,6 +16,7 @@ import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js'
 import { PRODUCT_IMAGE_PATHS, productImagesRoute } from './pos-product-images.js';
 import { saleNoteRoute, recordMetaRoute } from './pos-sale-notes.js';
 import { purchasesRoute, closePartialRoute } from './pos-purchases.js';
+import { redactKardexCostsForRole } from './pos-kardex-costs.js';
 import { cashClosesRoute } from './pos-cash-closes.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
@@ -61,7 +62,16 @@ export default {
       }
       if (isA6Path(url.pathname)) {
         if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }), isRead);
-        return cors(await handleA6(request, url, env, { json, authorizeRead: authorizePermissionRead, authorizeSession }), isRead);
+        // El kardex usa catálogo y movimientos de estas lecturas. El rol viene
+        // de la sesión validada, nunca de parámetros enviados por el cliente.
+        let readRole;
+        const readJson = isRead ? (payload, ...args) => json(redactKardexCostsForRole(payload, readRole), ...args) : json;
+        const readSession = isRead ? async (...args) => {
+          const auth = await authorizeSession(...args);
+          if (!(auth instanceof Response)) readRole = auth.posRole;
+          return auth;
+        } : authorizeSession;
+        return cors(await handleA6(request, url, env, { json: readJson, authorizeRead: authorizePermissionRead, authorizeSession: readSession }), isRead);
       }
       if (request.method === 'OPTIONS' && (url.pathname === '/health' || url.pathname.startsWith('/auth/') || url.pathname === '/settings' || url.pathname.startsWith('/commands/') || url.pathname.startsWith('/imports/') || url.pathname.startsWith('/sync/operations') || url.pathname.startsWith('/read/'))) {
         return cors(new Response(null, { status: 204 }), isRead);
