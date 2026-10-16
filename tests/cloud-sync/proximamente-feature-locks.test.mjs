@@ -37,7 +37,7 @@ test('real Worker authenticates then returns feature_locked for every locked reg
   assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
 });
 
-for (const id of ['valorizacion-inventario', 'rotacion-abc', 'reporte-ventas-stock', 'historial-compras-producto']) {
+for (const id of ['valorizacion-inventario', 'rotacion-abc', 'reporte-ventas-stock', 'reporte-arqueo', 'historial-compras-producto']) {
   test(`${id} is unlocked on client and server; owner-only feature route, no writes`, async t => {
     assert.equal(PERMISSIONS.FEATURE_LOCKS[id], false);
     assert.equal(PERMISSIONS.featureLocked(id), false);

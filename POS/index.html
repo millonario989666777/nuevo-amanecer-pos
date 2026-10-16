@@ -90,6 +90,7 @@
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
     <link rel="stylesheet" href="css/ventas-stock.css">
+    <link rel="stylesheet" href="css/reporte-arqueo.css">
     <link rel="stylesheet" href="css/historial-compras.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
@@ -438,6 +439,19 @@
     <p class="vs-method">Cobertura = stock ÷ promedio diario vendido. Reponer: cobertura &lt; 7 días o stock ≤ mínimo (con stock y mínimo positivos). Se excluyen ventas anuladas. Los productos fuera del catálogo figuran sin control.</p>
     <p class="vs-status" data-vs-status role="status" aria-live="polite"></p>
     <div data-vs-content></div>
+  </div>
+</div>
+<div class="page" id="pageReporteArqueo" aria-labelledby="reporteArqueoTitle">
+  <div class="ra-shell">
+    <header><h1 id="reporteArqueoTitle">Reporte de arqueo de caja por fechas</h1>
+      <p class="ra-description">Consulta y descarga los cierres de caja de un rango de fechas. Solo lectura, con fechas y horas de Lima.</p></header>
+    <div class="ra-controls" data-ra-controls hidden>
+      <label>Desde<input type="date" data-ra-desde aria-label="Desde"></label>
+      <label>Hasta<input type="date" data-ra-hasta aria-label="Hasta"></label>
+      <button type="button" data-ra-export>Exportar CSV</button>
+    </div>
+    <p class="ra-status" data-ra-status role="status" aria-live="polite"></p>
+    <div data-ra-content></div>
   </div>
 </div>
 <div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
@@ -1196,6 +1210,7 @@
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
 <script src="js/modules/ventas-stock.js"></script>
+<script src="js/modules/reporte-arqueo.js"></script>
 <script src="js/inventory/historial-compras.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>

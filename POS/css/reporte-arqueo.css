@@ -1,0 +1,45 @@
+#pageReporteArqueo {
+  --ra-bg: #f8fafc;
+  --ra-surface: #fff;
+  --ra-text: #0f172a;
+  --ra-muted: #475569;
+  --ra-border: #cbd5e1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--ra-text);
+  background: var(--ra-bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#pageReporteArqueo *, #pageReporteArqueo *::before, #pageReporteArqueo *::after { box-sizing: border-box; }
+#pageReporteArqueo [hidden] { display: none !important; }
+#pageReporteArqueo .ra-shell { width: 100%; max-width: 1120px; min-width: 0; margin: 0 auto; }
+#pageReporteArqueo h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; overflow-wrap: anywhere; }
+#pageReporteArqueo .ra-description, #pageReporteArqueo .ra-status { color: var(--ra-muted); }
+#pageReporteArqueo p { margin: 0 0 16px; overflow-wrap: anywhere; }
+#pageReporteArqueo .ra-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0 12px; }
+#pageReporteArqueo label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+#pageReporteArqueo input, #pageReporteArqueo button { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--ra-border); border-radius: 10px; font: inherit; color: var(--ra-text); background: var(--ra-surface); }
+#pageReporteArqueo button { cursor: pointer; font-weight: 700; }
+#pageReporteArqueo button:disabled { cursor: default; opacity: .6; }
+#pageReporteArqueo :is(input, button, .ra-table-wrap):focus-visible { outline: 3px solid #0d9488; outline-offset: 3px; }
+#pageReporteArqueo .ra-empty { padding: 16px; background: var(--ra-surface); border: 1px solid var(--ra-border); border-radius: 12px; }
+#pageReporteArqueo .ra-table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; border: 1px solid var(--ra-border); border-radius: 12px; background: var(--ra-surface); }
+#pageReporteArqueo .ra-table { width: 100%; min-width: 720px; border-collapse: collapse; table-layout: fixed; color: var(--ra-text); }
+#pageReporteArqueo .ra-table th, #pageReporteArqueo .ra-table td, #pageReporteArqueo .ra-table tr:hover td { min-width: 0; padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ra-border); white-space: normal; overflow-wrap: anywhere; word-break: break-word; color: var(--ra-text); }
+#pageReporteArqueo .ra-table thead th { font-size: 12px; color: var(--ra-muted); }
+#pageReporteArqueo .ra-table small { display: block; font-size: 12px; color: var(--ra-muted); font-weight: 400; }
+#pageReporteArqueo .ra-table .ra-num { text-align: right; font-variant-numeric: tabular-nums; }
+#pageReporteArqueo .ra-table tfoot { font-weight: 700; background: var(--ra-bg); }
+#pageReporteArqueo .ra-table tfoot :is(th, td) { border-bottom: 0; }
+#pageReporteArqueo .ra-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Modo oscuro: colores propios del reporte, siguiendo ventas-stock.css. */
+body.dark #pageReporteArqueo { --ra-bg: #0f172a; --ra-surface: #1e293b; --ra-text: #f8fafc; --ra-muted: #cbd5e1; --ra-border: #64748b; color-scheme: dark; }
+#pageReporteArqueo .ra-scroll-hint { margin: 0 0 6px; text-align: right; font-size: 12px; color: var(--ra-muted); }
+@media (min-width: 600px) {
+  #pageReporteArqueo .ra-scroll-hint { display: none; }
+  #pageReporteArqueo { padding: 24px; }
+  #pageReporteArqueo .ra-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+}
