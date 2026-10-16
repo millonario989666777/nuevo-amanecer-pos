@@ -807,3 +807,14 @@ body.dark #mMovInv .mov-type-btn.entrada.active {
   body.dark #mProd .mbody,
   body.dark #mProd .mbtns {background-color:var(--na-dk-surface)!important}
 }
+
+/* Clientes, modo oscuro (visual en vivo web 151): las cabeceras destacadas (cuenta «Créditos pequeños», detalle «VENTA …»)
+   y la cuota vencida quedaban con fondo blanco y texto claro. Solo color: sin cambios de tamaño ni posición. */
+body.dark #pageClientes .na-v2-subhead {background:linear-gradient(135deg,#0f3b3f 0%,#142a3b 100%);border-top-color:rgba(45,212,191,.28);border-right-color:rgba(45,212,191,.28);border-bottom-color:rgba(45,212,191,.28)}
+body.dark #pageClientes .na-v2-subhead small {color:#cbd5e1}
+body.dark #pageClientes .na-v2-subhead .na-v2-eyebrow,
+body.dark #pageClientes .na-v2-subhead .na-v2-category-balance strong {color:#5eead4}
+body.dark #pageClientes .na-v2-installment.na-v2-installment-overdue {background:#2a0f14;border-color:#7f1d1d}
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-copy small {color:#fecdd3}
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-index,
+body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-status {background-color:#7f1d1d;color:#fecaca;border-color:#b91c1c}
