@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized deploy of #717 (OK asistente 2 code, asistente 4 tests): owner-only image storage usage in /auth/product-images manifest. No schema changes. Rollback to 83bea74d (worker 39, currently live).",
-  "target_commit": "408ed443da3720b8af8fdcf8a2cbbe4de4e69e16",
-  "rollback_ref": "83bea74dc366b8775eaea121e36106c70875592f",
+  "authorization_context": "Owner authorized (2026-10-15 Lima) retry of worker 41: base 128f07cc (#722, #723 clientes-filtro-deuda unlocked in FEATURE_LOCKS, #724, #727 tests-only Lima date fix). First attempt stopped at the test gate (UTC-date test), nothing deployed. No schema changes. Rollback to 408ed443 (worker 40, currently live).",
+  "target_commit": "128f07cc5d779e8126df3e1cc39f1b09be1b8609",
+  "rollback_ref": "408ed443da3720b8af8fdcf8a2cbbe4de4e69e16",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 40,
-  "optimization": "IMAGES_FOLLOWUP_717"
+  "attempt": 41,
+  "optimization": "CLIENTES_FILTRO_DEUDA_723"
 }

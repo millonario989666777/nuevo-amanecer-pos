@@ -1,0 +1,27 @@
+/* Dynamically loaded by Fotos múltiples; isolated from Venta and Inicio. */
+#productImageBatchModal .modal{overflow-x:hidden}
+#productImageBatchReview[hidden]{display:none!important}
+#productImageBatchReview{margin-top:16px;color:#0f172a}
+#productImageBatchReview h3{font-size:17px;margin:0 0 8px}
+#productImageBatchReview p{margin:6px 0;overflow-wrap:anywhere}
+#productImageBatchReview .image-review-list{display:grid;gap:12px}
+#productImageBatchReview .image-review-card{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc}
+#productImageBatchReview .image-review-photo{width:64px;height:64px;object-fit:contain;border-radius:8px;background:#fff}
+#productImageBatchReview .image-review-content{min-width:0}
+#productImageBatchReview .image-review-filename{display:block;overflow-wrap:anywhere}
+#productImageBatchReview label{display:block;margin:12px 0 6px;font-size:13px}
+#productImageBatchReview .image-review-search{width:100%;min-width:0;box-sizing:border-box;min-height:44px;font-size:16px;background:#fff;color:#0f172a;border:1px solid #94a3b8;border-radius:8px;padding:8px}
+#productImageBatchReview button{width:100%;min-height:44px;height:auto;box-sizing:border-box;padding:10px;border-radius:8px;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+#productImageBatchReview button:disabled{opacity:.55;cursor:default}
+#productImageBatchReview .image-review-results{display:grid;gap:6px;max-height:240px;overflow:auto;margin-top:6px}
+#productImageBatchReview .image-review-option{text-align:left;border:1px solid #94a3b8;background:#fff;color:#0f172a}
+#productImageBatchReview .image-review-feedback{color:#9f1239}
+#productImageBatchReview :is(button,input):focus-visible{outline:3px solid #0d9488;outline-offset:2px}
+body.dark #productImageBatchReview{color:#e2e8f0}
+body.dark #productImageBatchReview .image-review-card{background:#0f172a;border-color:#475569}
+body.dark #productImageBatchReview :is(.image-review-search,.image-review-option){background:#1e293b;color:#f1f5f9;border-color:#64748b}
+body.dark #productImageBatchReview .image-review-feedback{color:#fda4af}
+@media(min-width:768px){
+ #productImageBatchReview .image-review-card{grid-template-columns:80px minmax(0,1fr);gap:16px;padding:16px}
+ #productImageBatchReview .image-review-photo{width:80px;height:80px}
+}

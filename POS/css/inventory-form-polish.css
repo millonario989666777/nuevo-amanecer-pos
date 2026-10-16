@@ -31,3 +31,11 @@ body.dark #pageInventario .inv-secondary-menu{background:#1e293b;border-color:#3
 #productImageBatchModal .mbtns{position:sticky;bottom:0;background:inherit;padding-top:10px!important;z-index:1}
 #productImageBatchModal .modal{background:#fff}
 body.dark #productImageBatchModal .modal{background:#1e293b}
+
+/* Inventario < 390 px: el título se recorta con «…» en vez de quedar debajo de «Compras». Sin cambios desde 390 px. */
+@media(max-width:389px){#pageInventario .top-mod-bar .top-mod-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+/* Fotos múltiples en modo oscuro: ✕ y botones secundarios legibles. */
+body.dark #productImageBatchModal .btn-close-m{background:#0f172a!important;color:#f8fafc!important;border:1px solid rgba(255,255,255,.6)!important;opacity:1!important}
+body.dark #productImageBatchModal .mbtn-cancel{background:#334155!important;color:#f8fafc!important;border:1px solid #64748b!important}
+body.dark #productImageBatchModal .mbtn-cancel:hover{background:#475569!important}
+body.dark #productImageBatchModal .mbody,body.dark #productImageBatchModal .mbody label,body.dark #productImageBatchModal th{color:#e2e8f0}
