@@ -9,7 +9,7 @@
   var doc = root.document, C = root.NA_ASISTENTE_CORE;
   if (!doc || !C || root.NA_ASISTENTE) return;
   var ASSET = 'assets/asistente/';
-  var history = [], state = 'idle', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
+  var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
 
   // ---------- Personaje ----------
   function bits() { var a = ''; for (var i = 0; i < 16; i++) { for (var k = 0; k < 18; k++) a += Math.random() > .5 ? '1' : '0'; a += '<br>'; } return a; }
@@ -17,7 +17,7 @@
     var orbit = '', conf = '', colors = ['#22c55e', '#facc15', '#38bdf8', '#f472b6', '#a3e635'];
     for (var i = 0; i < 12; i++) orbit += '<i style="transform:translate(-50%,-50%) rotate(' + (i * 30) + 'deg) translateY(calc(var(--asst-size) * -.62)) rotate(-' + (i * 30) + 'deg)">' + (i % 3 ? (i % 2) : '01') + '</i>';
     for (var j = 0; j < 10; j++) { var a = j / 10 * Math.PI * 2; conf += '<b style="--dx:' + Math.round(Math.cos(a) * 46) + 'px;--dy:' + Math.round(Math.sin(a) * 46 - 18) + 'px;background:' + colors[j % 5] + '"></b>'; }
-    return '<div class="na-asst-char" data-state="idle" data-q="high"><div class="na-asst-shadow"></div><div class="na-asst-hop"><div class="na-asst-squash">' +
+    return '<div class="na-asst-char" data-state="listo" data-q="high"><div class="na-asst-shadow"></div><div class="na-asst-hop"><div class="na-asst-squash">' +
       '<div class="na-asst-orbit" aria-hidden="true">' + orbit + '</div>' +
       '<div class="na-asst-sphere"><div class="na-asst-bits"><div>' + bits() + bits() + '</div></div>' +
       '<svg class="na-asst-face" viewBox="0 0 100 100" aria-hidden="true"><defs>' +
@@ -30,9 +30,10 @@
       '<path class="m m-smile" d="M43 66 Q50 72 57 66" fill="none" stroke="#052e16" stroke-width="2.6" stroke-linecap="round"/>' +
       '<g class="m m-open"><path d="M40 64 Q50 82 60 64 Z" fill="#7f1d1d" stroke="#052e16" stroke-width="1.5"/><ellipse cx="50" cy="73" rx="5.5" ry="3.2" fill="#fb7185"/></g>' +
       '<ellipse class="m m-talk" cx="50" cy="69" rx="6" ry="5" fill="#7f1d1d" stroke="#052e16" stroke-width="1.5"/>' +
-      '<path class="m m-worry" d="M42 72 Q50 65 58 72" fill="none" stroke="#052e16" stroke-width="2.6" stroke-linecap="round"/></svg>' +
-      '<div class="na-asst-gloss"></div><div class="na-asst-gloss2"></div><div class="na-asst-rim"></div></div></div></div>' +
-      '<div class="na-asst-confetti">' + conf + '</div><div class="na-asst-badge" aria-hidden="true"></div></div>';
+      '<path class="m m-worry" d="M42 72 Q50 65 58 72" fill="none" stroke="#052e16" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<circle class="m m-o" cx="53" cy="69" r="3.2" fill="none" stroke="#052e16" stroke-width="2.2"/></svg>' +
+      '<div class="na-asst-tint"></div><div class="na-asst-gloss"></div><div class="na-asst-gloss2"></div><div class="na-asst-rim"></div></div></div></div>' +
+      '<div class="na-asst-dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="na-asst-confetti">' + conf + '</div><div class="na-asst-badge" aria-hidden="true"></div></div>';
   }
   function eye(s, cx) {
     return '<g clip-path="url(#naAsstEye' + s + ')"><ellipse cx="' + cx + '" cy="45" rx="13.5" ry="15.5" fill="#f8fafc"/>' +
@@ -43,13 +44,13 @@
   }
 
   // ---------- Estados y calidad ----------
-  var LABELS = { idle: '', happy: '¡Hola!', thinking: 'Concentrado…', talking: 'Hablando', error: 'Algo falló', done: '¡Listo!' };
+  var LABELS = { listo: '', concentrado: 'Concentrado…', pensando: 'Pensando…', hablando: 'Hablando', feliz: '¡Listo!', error: 'Algo falló', offline: 'Sin internet' };
   function chars() { return doc.querySelectorAll('.na-asst-char'); }
   function setState(s, ms) {
     state = s; clearTimeout(stateTimer);
-    chars().forEach(function (c) { c.dataset.state = s; var b = c.querySelector('.na-asst-badge'); if (b) b.textContent = s === 'error' ? '!' : s === 'done' ? '✓' : ''; });
+    chars().forEach(function (c) { c.dataset.state = s; var b = c.querySelector('.na-asst-badge'); if (b) b.textContent = s === 'error' ? '!' : s === 'feliz' ? '✓' : ''; });
     if (rootEl) { rootEl.dataset.state = s; tagEl.textContent = LABELS[s] || ''; }
-    if (ms) stateTimer = setTimeout(function () { setState('idle'); }, ms);
+    if (ms) stateTimer = setTimeout(function () { setState(root.navigator.onLine === false ? 'offline' : 'listo'); }, ms);
   }
   function computeQuality() {
     try { if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return 'off'; } catch (_) {}
@@ -74,7 +75,12 @@
   }
   // Pausa: pestaña oculta o una ventana del POS abierta (cobro, compra, ficha): nunca compite con Cobrar.
   function busyPos() { return !!doc.querySelector('.modal-overlay.open, #naPurchaseDialog, .na-pin-overlay'); }
-  function applyPause() { var p = doc.hidden || (busyPos() && panelEl && panelEl.hidden) ? '1' : '0'; chars().forEach(function (c) { c.dataset.paused = p; }); }
+  // Con una ventana del POS abierta (cobro, ficha, compra) la burbuja se oculta: nunca tapa sus botones.
+  function applyPause() {
+    var busyNow = busyPos() && panelEl && panelEl.hidden, p = doc.hidden || busyNow ? '1' : '0';
+    chars().forEach(function (c) { c.dataset.paused = p; });
+    if (rootEl) rootEl.style.visibility = busyNow ? 'hidden' : '';
+  }
 
   // ---------- Posición: nunca tapar Cobrar ni el carrito ----------
   function visible(el) { if (!el) return null; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' ? r : null; }
@@ -182,8 +188,24 @@
     var note = { venta: 'Al confirmar, los productos van al carrito. El cobro lo haces tú con Cobrar.', compra: 'Al confirmar, se abre «Nueva compra» llena. El stock sube solo cuando pulses «Registrar compra».',
       precio: 'Al confirmar, se abre la ficha del producto con el precio nuevo. Se aplica cuando pulses Guardar.', documento: 'Documento interno de prueba. NO es comprobante SUNAT.' }[p.type];
     var head = p.type === 'compra' && (p.proveedor || p.documento) ? '<div class="note">' + E([p.proveedor, p.documento, p.fecha].filter(Boolean).join(' · ')) + '</div>' : '';
-    return '<h4>' + E(p.title) + '</h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div><div class="res" aria-live="polite"></div>' +
-      '<div class="acts"><button type="button" class="na-asst-no" data-no>Cancelar</button><button type="button" class="na-asst-ok" data-ok>Confirmar</button></div>';
+    var owner = OWNER_TYPES.indexOf(p.type) >= 0;
+    return '<h4>' + E(p.title) + (owner ? '<span class="pill">Solo dueño</span>' : '') + '</h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div>' +
+      '<div class="meta"><span>Vence en <b data-left>5:00</b></span><span>Se usa una sola vez</span></div>' +
+      (owner ? '<div class="na-asst-pin"><label>Escribe tu PIN de dueño</label><input type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN del dueño"></div>' : '') +
+      '<div class="res" aria-live="polite"></div>' +
+      '<div class="acts"><button type="button" class="na-asst-ok" data-ok>Confirmar</button><button type="button" class="na-asst-no" data-no>Cancelar</button></div>';
+  }
+  var OWNER_TYPES = ['precio', 'compra'];
+  function tokenExp(p) { try { var b = String(p.confirm_token || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)).exp || 0; } catch (_) { return 0; } }
+  function addDenied(d) { var c = el('div', 'na-asst-card denied'); c.innerHTML = '<h4>No permitido</h4><div>' + C.esc(d.message) + '</div><div class="note">El asistente no puede hacerlo por ti. Pídeselo al dueño.</div>'; msgsEl.appendChild(c); scrollEnd(); }
+  // PIN del dueño: va SOLO al servidor (/auth/owner-approval), nunca al modelo ni al historial.
+  async function verifyOwnerPin(pin, p) {
+    if (!/^\d{4,8}$/.test(pin)) return { ok: false, msg: 'El PIN debe tener de 4 a 8 dígitos.' };
+    if (creds() && root.NA_ROLES && root.NA_ROLES.api) {
+      try { await root.NA_ROLES.api('/auth/owner-approval', { pin: pin, action: p.type === 'precio' ? 'product.update' : 'inventory.adjust', operation_id: null }); return { ok: true }; }
+      catch (e) { return { ok: false, msg: root.NA_ROLES.message ? root.NA_ROLES.message(e) : 'PIN incorrecto.' }; }
+    }
+    return { ok: true, demo: true }; // prueba local sin servidor de roles
   }
   function addCard(p) {
     gate.add(p);
@@ -191,12 +213,24 @@
     var res = c.querySelector('.res');
     var go = c.querySelector('[data-go]'); if (go) go.onclick = function () { gate.execute(p.id, { confirmed: true }).then(function () { closePanel(); }); };
     var no = c.querySelector('[data-no]'); if (no) no.onclick = function () { gate.cancel(p.id); c.dataset.st = 'cancelled'; res.textContent = 'Cancelado. No se hizo nada.'; };
-    var ok = c.querySelector('[data-ok]');
-    if (ok) ok.onclick = function () {
-      ok.disabled = true; no.disabled = true; ok.textContent = 'Confirmando…';
+    var ok = c.querySelector('[data-ok]'), left = c.querySelector('[data-left]'), pinEl = c.querySelector('.na-asst-pin input');
+    var exp = tokenExp(p), timer = null;
+    function tick() {
+      if (!left) return; var ms = exp - Date.now(); if (!exp) { left.textContent = '-'; return; }
+      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(p.id); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; } left.textContent = '0:00'; return; }
+      var sec = Math.ceil(ms / 1000); left.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+    if (left && p.needsConfirm) { tick(); timer = setInterval(function () { if (c.dataset.st !== 'pending') { clearInterval(timer); return; } tick(); }, 1000); }
+    if (ok) ok.onclick = async function () {
+      if (c.dataset.st !== 'pending') return;
+      ok.disabled = true; no.disabled = true; ok.textContent = 'Confirmando…'; setState('concentrado');
+      if (pinEl) {
+        var v = await verifyOwnerPin(pinEl.value.trim(), p); pinEl.value = '';
+        if (!v.ok) { res.textContent = v.msg; ok.disabled = false; no.disabled = false; ok.textContent = 'Confirmar'; setState('error', 2000); return; }
+      }
       gate.execute(p.id, { confirmed: true }).then(function (r) {
         res.textContent = r.msg; c.dataset.st = gate.state(p.id) || 'pending';
-        if (r.ok) { setState('done', 2600); if (p.type !== 'documento') setTimeout(closePanel, 1400); }
+        if (r.ok) { setState('feliz', 2600); if (p.type !== 'documento') setTimeout(closePanel, 1400); }
         else { setState('error', 2600); if (c.dataset.st === 'pending') { ok.disabled = false; no.disabled = false; ok.textContent = 'Confirmar'; } }
       });
     };
@@ -207,10 +241,11 @@
     upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', unauthorized: 'Este aparato no tiene sesión.' };
   async function send(text, image) {
     if (busy) return;
-    if (root.navigator.onLine === false) { offline(true); addMsg('sys', 'Asistente no disponible sin internet'); setState('error', 2000); return; }
+    if (root.navigator.onLine === false) { offline(true); addMsg('sys', 'Asistente no disponible sin internet'); setState('offline'); return; }
     text = String(text || '').trim(); if (!text && !image) return;
-    addMsg('u', text || 'Foto', image); inputEl.value = ''; busy = true; sendBtn.disabled = true; photoBtn.disabled = true; setState('thinking');
-    var thinking = addMsg('a', 'Concentrado…'); thinking.classList.add('na-asst-thinking');
+    var chips = panelEl.querySelector('.na-asst-chips'); if (chips) chips.hidden = true; // menos desplazamiento tras el primer mensaje
+    addMsg('u', text || 'Foto', image); inputEl.value = ''; busy = true; sendBtn.disabled = true; photoBtn.disabled = true; setState(image ? 'concentrado' : 'pensando');
+    var thinking = addMsg('a', image ? 'Concentrado… leyendo la foto' : 'Pensando…'); thinking.classList.add('na-asst-thinking');
     var screen = (doc.querySelector('.page.active') || {}).id || null;
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
@@ -219,8 +254,9 @@
       if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
+      (d.denied || []).forEach(addDenied);
       (d.proposals || []).forEach(addCard);
-      setState('talking', Math.min(4000, 900 + d.reply.length * 25));
+      setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
     } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
     finally { busy = false; sendBtn.disabled = root.navigator.onLine === false; photoBtn.disabled = root.navigator.onLine === false; }
   }
@@ -240,17 +276,17 @@
       img.src = url;
     });
   }
-  function offline(on) { offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on && state !== 'error') setState('error', 1800); }
+  function offline(on) { offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on) setState('offline'); else if (state === 'offline') setState('listo'); }
   function openPanel() {
     panelEl.hidden = false; rootEl.hidden = true; place(); applyPause();
     if (!msgsEl.children.length) addMsg('a', '¡Hola! Soy Burbuja. Te ayudo a vender, registrar compras, leer fotos de facturas, preparar documentos y explicarte el sistema. Nada se hace sin que pulses Confirmar.');
-    offline(root.navigator.onLine === false); setState('happy', 1300); measureFrames();
+    offline(root.navigator.onLine === false); setState('feliz', 1300); measureFrames();
     setTimeout(function () { try { inputEl.focus({ preventScroll: true }); } catch (_) {} }, 50);
   }
   function closePanel() { panelEl.hidden = true; rootEl.hidden = false; place(); applyPause(); }
 
   function mount() {
-    rootEl = el('div', 'na-asst-root'); rootEl.dataset.state = 'idle';
+    rootEl = el('div', 'na-asst-root'); rootEl.dataset.state = 'listo';
     rootEl.innerHTML = '<span class="na-asst-tag" aria-hidden="true"></span><button type="button" class="na-asst-bubble" aria-label="Abrir asistente Burbuja">' + charHtml() + '</button>';
     tagEl = rootEl.querySelector('.na-asst-tag');
     panelEl = el('section', 'na-asst-panel'); panelEl.hidden = true; panelEl.setAttribute('role', 'dialog'); panelEl.setAttribute('aria-label', 'Asistente Burbuja');
@@ -270,12 +306,17 @@
     fileEl.onchange = function () { var f = fileEl.files && fileEl.files[0]; fileEl.value = ''; if (!f) return;
       compress(f).then(function (img) { send(inputEl.value || 'Lee esta factura de compra', img); }).catch(function () { addMsg('a', 'No pude abrir esa foto.'); setState('error', 2000); }); };
     panelEl.querySelector('.na-asst-chips').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; if (b.hasAttribute('data-photo')) fileEl.click(); else send(b.dataset.q); });
-    root.addEventListener('online', function () { offline(false); setState('idle'); });
+    root.addEventListener('online', function () { offline(false); });
     root.addEventListener('offline', function () { offline(true); });
     doc.addEventListener('visibilitychange', applyPause);
     root.addEventListener('resize', place);
     setInterval(function () { place(); applyPause(); }, 1000);
-    applyQuality(); watchBattery(); place(); applyPause(); setState('idle');
+    // Recolocar enseguida al cambiar de pantalla o abrir/cerrar ventanas (sin esperar el segundo).
+    var raf = 0; function soon() { if (raf) return; raf = root.requestAnimationFrame(function () { raf = 0; place(); applyPause(); }); }
+    try { var mo = new MutationObserver(soon); doc.querySelectorAll('.page, .modal-overlay, #cartDrawer').forEach(function (n) { mo.observe(n, { attributes: true, attributeFilter: ['class'] }); });
+      new MutationObserver(soon).observe(doc.body, { childList: true }); } catch (_) {}
+    doc.addEventListener('click', soon, true);
+    applyQuality(); watchBattery(); place(); applyPause(); setState(root.navigator.onLine === false ? 'offline' : 'listo');
     setTimeout(measureFrames, 1500);
   }
 

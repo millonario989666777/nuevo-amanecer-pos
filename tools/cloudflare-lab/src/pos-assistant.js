@@ -390,6 +390,9 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   if (!proposals.length && dropped.some((d) => d.dropped === 'forbidden_role' || d.dropped === 'forbidden_param')) reply = 'Eso solo lo puede hacer el dueño. Pídeselo, o hazlo en su pantalla normal con el PIN del dueño.';
   if (!reply && proposals.length) reply = 'Listo. Revisa y pulsa Confirmar.';
   if (!reply) reply = 'No entendí bien. ¿Me lo dices de otra forma?';
-  return json({ ok: true, mode, role, reply, proposals, dropped: dropped.map((d) => ({ tool: d.tool, reason: d.dropped })), left: quota.left,
+  const DENIED_MSG = { proponer_cambio_precio: 'Solo el dueño puede cambiar precios.', preparar_compra: 'Solo el dueño puede registrar compras.', leer_factura_compra: 'Solo el dueño puede registrar compras desde una foto.' };
+  const denied = dropped.filter((d) => d.dropped === 'forbidden_role' && DENIED_MSG[d.tool]).map((d) => ({ tool: d.tool, message: DENIED_MSG[d.tool] }));
+  if (!proposals.length && denied.length) reply = denied[0].message + ' Pídeselo al dueño.';
+  return json({ ok: true, mode, role, reply, proposals, denied, dropped: dropped.map((d) => ({ tool: d.tool, reason: d.dropped })), left: quota.left,
     usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens || 0, completion_tokens: result.usage.completion_tokens || 0 } : null });
 }
