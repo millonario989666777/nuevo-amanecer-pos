@@ -18,6 +18,8 @@ const PRECACHE_URLS = [
   './js/modules/proximamente-registry.js',
   './css/valorizacion-inventario.css',
   './js/modules/valorizacion-inventario.js',
+  './css/rotacion-abc.css',
+  './js/modules/rotacion-abc.js',
   './css/layout.css',
   './css/components.css',
   './css/responsive.css',

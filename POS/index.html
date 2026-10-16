@@ -86,6 +86,7 @@
     <link rel="stylesheet" href="css/theme-dark.css">
     <link rel="stylesheet" href="css/sales-reports.css">
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
+    <link rel="stylesheet" href="css/rotacion-abc.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
       // The mobile enhancement must never leave a usable home permanently hidden.
@@ -380,7 +381,6 @@
     <div class="na-prox-grid" id="naProximamenteGrid"></div>
 </div>
 
-<!-- GASTOS -->
 <div class="page" id="pageValorizacion">
     <header class="val-header">
         <div class="val-heading">
@@ -394,6 +394,34 @@
         <div data-valorizacion-report></div>
     </div>
 </div>
+
+<div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
+  <div class="abc-shell">
+    <header>
+      <h1 id="rotacionAbcTitle">Rotación ABC por categoría</h1>
+      <p class="abc-description">Identifica los productos que concentran el importe vendido de cada categoría.</p>
+    </header>
+    <div class="abc-controls" data-abc-controls hidden>
+      <label>Período
+        <select data-abc-period aria-label="Período">
+          <option value="30" selected>Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+        </select>
+      </label>
+      <label>Categoría
+        <select data-abc-category aria-label="Categoría">
+          <option value="*">Todas las categorías</option>
+        </select>
+      </label>
+      <button type="button" data-abc-refresh>Actualizar reporte</button>
+    </div>
+    <p class="abc-method">ABC se calcula dentro de cada categoría: A reúne los primeros productos hasta alcanzar el 80% del importe; B continúa hasta el 95%; C reúne el resto. El producto que alcanza cada corte cierra esa clase. Los productos sin ventas son C. Importe = precio vendido × cantidad, como en Reportes. Se excluyen ventas anuladas.</p>
+    <p class="abc-status" data-abc-status role="status" aria-live="polite"></p>
+    <div data-abc-content></div>
+  </div>
+</div>
+
+<!-- GASTOS -->
 <div class="page" id="pageGastos">
     <div class="page-chrome">
     <div class="top-mod-bar"><span class="top-mod-title na-li-host"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg> Gastos y Egresos</span><button class="top-btn-nuevo" onclick="abrirModalGasto()">+ Gasto</button></div>
@@ -1090,6 +1118,7 @@
 <script src="js/canon-desktop-dashboard.js"></script>
 <script src="js/modules/proximamente.js"></script>
 <script src="js/modules/valorizacion-inventario.js"></script>
+<script src="js/modules/rotacion-abc.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>
 <script src="js/config/pos-reviews-client.js"></script>
