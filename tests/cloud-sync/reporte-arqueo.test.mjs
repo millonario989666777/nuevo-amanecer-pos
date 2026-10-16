@@ -183,7 +183,7 @@ test('render keeps null amounts as a dash, shows surplus sign and totals even fo
   assert.equal(body.children[1].children[4].textContent, '—');
   const nullFoot = descendants(h.content).find(node => node.tagName === 'tfoot');
   assert.ok(nullFoot.textContent.startsWith('Total · 3 cierres · 1 sin contar'));
-  assert.ok(h.content.textContent.includes('Deslizá para ver más →'));
+  assert.ok(h.content.textContent.includes('Desliza para ver más →'));
   h.desde.value = '2026-10-18'; h.hasta.value = '2026-10-18';
   assert.equal(await h.api.render(), true); assert.ok(h.content.textContent.includes('No hay cierres'));
   assert.ok(descendants(h.content).find(node => node.tagName === 'tfoot').textContent.includes('Total · 0 cierres'));

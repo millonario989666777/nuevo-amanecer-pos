@@ -65,6 +65,31 @@ async function noOverflow(page: Page) {
     .every(cell => cell.scrollWidth <= cell.clientWidth + 1))).toBe(true);
 }
 
+for (const width of [390, 768, 1366]) test(`arqueo ${width}px: las 6 columnas y cada total del pie alineado bajo su columna; sin contar fuera de los totales`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await rolePage(page, 'owner'); await seed(page);
+  await page.evaluate(() => { document.body.classList.add('dark'); (window as any).goPage('pageProximamente'); });
+  await page.locator('[data-feature-id="reporte-arqueo"]').click();
+  const screen = page.locator('#pageReporteArqueo'); await expect(screen.locator('tbody tr')).toHaveCount(3);
+  // 3 cierres, 1 sin contar (esperado S/ 2.50): los totales suman solo los 2 contados.
+  await expect(screen.locator('tfoot th')).toHaveText('Total · 3 cierres · 1 sin contar');
+  await expect(screen.locator('tfoot td')).toHaveText(['S/ 25.00', 'S/ 25.00', 'S/ 0.00']);
+  await screen.locator('.ra-table-wrap').evaluate(w => { w.scrollLeft = w.scrollWidth; });
+  const boxes = await screen.evaluate(n => {
+    const x = (e: Element) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, w: b.width }; };
+    return { head: [...n.querySelectorAll('thead th')].map(x), body: [...n.querySelectorAll('tbody tr:first-child > *')].map(x), foot: [...n.querySelectorAll('tfoot td')].map(x) };
+  });
+  expect(boxes.head).toHaveLength(6);
+  for (const cell of [...boxes.head, ...boxes.body]) expect(cell.w).toBeGreaterThan(0);
+  boxes.foot.forEach((cell, i) => {
+    expect(Math.abs(cell.l - boxes.head[3 + i].l)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.r - boxes.head[3 + i].r)).toBeLessThanOrEqual(1);
+  });
+  const diferencia = screen.locator('tfoot td').last();
+  await expect(diferencia).toBeVisible(); await expect(diferencia).toBeInViewport({ ratio: 1 });
+  await expect(screen.locator('tbody tr').nth(1).locator('td').last()).toHaveClass(/ra-faltante/);
+});
+
 for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
   test(`owner arqueo ${width}px ${dark ? 'dark' : 'light'}: local rows, totals, guarded CSV, no writes`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
