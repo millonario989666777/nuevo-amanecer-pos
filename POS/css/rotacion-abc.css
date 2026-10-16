@@ -59,7 +59,8 @@ body.dark #pageRotacionAbc .abc-c { color: #f1f5f9; background: #475569; }
 }
 @media (min-width: 600px) {
   #pageRotacionAbc { padding: 24px; }
-  #pageRotacionAbc .abc-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: end; }
+  /* El período nunca se recorta («Últimos 30 días»): su columna mide al menos su contenido. */
+  #pageRotacionAbc .abc-controls { grid-template-columns: minmax(max-content, 1fr) minmax(0, 2fr) auto; align-items: end; }
   #pageRotacionAbc .abc-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 #pageRotacionAbc .abc-table th, #pageRotacionAbc .abc-table td { white-space: normal; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
