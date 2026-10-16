@@ -153,3 +153,26 @@ test('pagos en cola: pending=null no descuenta nada; un lote pendiente que liqui
   assert.equal(JSON.stringify(queued), queueBefore, 'la cola no se modifica');
   assert.equal(snapshot(h), before, 'ni los créditos ni sus pagos');
 });
+
+test('índice fresco: un crédito anulado no aparece en solo lectura (lista ni saldo) y coincide con la ruta normal', () => {
+  const h = realV2();
+  Object.assign(h.ctx, dataset());
+  // Crédito anulado con saldo pendiente: si se colara, sumaría 60 a la deuda del cliente 2.
+  h.ctx.creditos.push(credit(24, 2, 40, 0, { anulado:true, status:'anulado', estado:'anulado' }));
+  h.run('_naEnsureClientCreditIndex(true)');
+  assert.equal(h.run('_naClientCreditIndexFresh()'), true);
+  const before = snapshot(h);
+  const ids = plain(h.run('_naClientCreditsReadOnly(2)')).map(cr => String(cr.id));
+  assert.deepEqual(ids, ['21', '22']);
+  const s = plain(h.api.summarizeClient(h.ctx.clientes[1], true));
+  for (const list of [s.all, s.active, s.closed]) assert.ok(!list.some(cr => ['23', '24'].includes(String(cr.id))));
+  assert.equal(s.debt, 25.25);
+  assert.equal(h.api.debtFilter.effectiveBalance(s, null), 25.25);
+  const row = plain(h.report.buildReport([h.ctx.clientes[1]], h.api, null, 'saldo')).rows[0];
+  assert.deepEqual([row.balance, row.openCredits], [25.25, 1]);
+  assert.equal(snapshot(h), before, 'solo lectura no toca los créditos');
+  const rw = realV2(); Object.assign(rw.ctx, dataset());
+  rw.ctx.creditos.push(credit(24, 2, 40, 0, { anulado:true, status:'anulado', estado:'anulado' }));
+  assert.deepEqual(plain(balances(h, true))[1], plain(balances(rw, false))[1]);
+  assert.deepEqual(plain(rw.run('_naClientCreditsFast(2)')).map(cr => String(cr.id)), ids);
+});
