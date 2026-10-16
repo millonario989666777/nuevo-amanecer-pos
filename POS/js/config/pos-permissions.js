@@ -61,7 +61,7 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
-  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner, 'lotes-multiples-fefo': owner, 'stock-negativo-configurable': owner, 'app-pedidos-marca-propia': owner, 'cambiar-clave-usuarios': owner, 'conversion-masiva-documentos': owner, 'vendedor-en-venta': owner, 'comentarios-venta': owner, 'despacho-productos': owner, 'cliente-historial-compras': owner, 'vendedor-por-cliente': owner, 'consulta-dni-ruc': owner, 'edicion-masiva-productos': owner, 'marcas-productos': owner, 'subcategorias-atributos': owner, 'produccion-recetas': owner, 'registro-sanitario': owner, 'numero-serie-producto': owner, 'tipos-movimiento-inventario': owner, 'conciliacion-bancaria': owner, 'historial-exportaciones': owner, 'catalogo-reportes': owner, 'importar-proveedores': owner, 'periodo-contable-percepcion': owner, 'desbloquear-usuario': owner, 'detraccion-retencion': owner };
+  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner, 'lotes-multiples-fefo': owner, 'stock-negativo-configurable': owner, 'app-pedidos-marca-propia': owner, 'cambiar-clave-usuarios': owner, 'conversion-masiva-documentos': owner, 'vendedor-en-venta': owner, 'comentarios-venta': owner, 'despacho-productos': owner, 'cliente-historial-compras': owner, 'vendedor-por-cliente': owner, 'consulta-dni-ruc': owner, 'edicion-masiva-productos': owner, 'marcas-productos': owner, 'subcategorias-atributos': owner, 'produccion-recetas': owner, 'registro-sanitario': owner, 'numero-serie-producto': owner, 'tipos-movimiento-inventario': owner, 'conciliacion-bancaria': owner, 'historial-exportaciones': owner, 'catalogo-reportes': owner, 'importar-proveedores': owner, 'periodo-contable-percepcion': owner, 'desbloquear-usuario': owner, 'detraccion-retencion': owner, 'historial-precios-producto': owner, 'canales-venta': owner, 'estado-recepcion-compras': owner, 'adjuntos-proveedor': owner, 'dashboard-compras': owner, 'recargo-servicio': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
     'credito-cuotas': true,
@@ -91,6 +91,12 @@
     'periodo-contable-percepcion': true,
     'desbloquear-usuario': true,
     'detraccion-retencion': true,
+    'historial-precios-producto': true,
+    'canales-venta': true,
+    'estado-recepcion-compras': true,
+    'adjuntos-proveedor': true,
+    'dashboard-compras': true,
+    'recargo-servicio': true,
 
     'clonar-venta': true,
     'nota-credito-parcial-compras': true,
