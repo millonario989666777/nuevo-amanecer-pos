@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#778 historial de compras owner-only: empleados sin costos, totales ni proveedor (servidor + UI). Worker 49 ya live (Cloudflare 774b76aa, live check OK).",
-  "retry_attempt": 158,
-  "retry_reason": "Deploy de base 0ebfaeacf7e5c99fef1acc64de29e93f19645f20 (#778). Rollback: web 157 14e02cd70a6120add57cc5656ac3240a70c13236 (merge 944234148e5edb0f171ef9ac40cbebe628892a7d).",
-  "requested_at_utc": "2026-10-16T14:26:00Z",
-  "approved_base": "0ebfaeacf7e5c99fef1acc64de29e93f19645f20"
+  "note": "#779 followups-156: promedio <0.1, chip nowrap, OCR, contraste oscuro, Asistente virtual locked. Worker 50 ya live (Cloudflare f0ea1b54, live check OK).",
+  "retry_attempt": 159,
+  "retry_reason": "Deploy de base 0271a75b440dfaf3cd7773f1e97c69ccdde9a74e (#779). Rollback: web 158 5e9c361770d0abc31335de66c11ea7c2e643000d (merge 0ebfaeacf7e5c99fef1acc64de29e93f19645f20).",
+  "requested_at_utc": "2026-10-16T15:07:55Z",
+  "approved_base": "0271a75b440dfaf3cd7773f1e97c69ccdde9a74e"
 }
