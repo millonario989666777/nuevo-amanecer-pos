@@ -7,7 +7,7 @@ const source = readFileSync('POS/js/modules/proximamente.js', 'utf8');
 const registrySource = readFileSync('POS/js/modules/proximamente-registry.js', 'utf8');
 const permissionsSource = readFileSync('POS/js/config/pos-permissions.js', 'utf8');
 const indexHtml = readFileSync('POS/index.html', 'utf8');
-const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'clientes-filtro-deuda': 'pageClientes' };
+const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'clientes-filtro-deuda': 'pageClientes', 'valorizacion-inventario': 'pageValorizacion' };
 const MODULES = ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras'];
 
 function loaded() {
