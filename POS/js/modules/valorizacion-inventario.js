@@ -61,6 +61,8 @@
       row.units = unitsRound(row.units + stock);
       if (p._canonicalPendingStock) row.pendingStockProducts++;
       var cost = amount(p.costo, parse), price = amount(p.precio, parse);
+      // La normalización del catálogo convierte un costo ausente en 0: costo 0 = «sin costo», nunca suma 0 en silencio.
+      if (cost === 0) cost = null;
       if (cost === null) { row.noCostProducts++; row.noCostUnits = unitsRound(row.noCostUnits + stock); }
       else row.costValue += stock * cost;
       if (price === null) row.noPriceProducts++;

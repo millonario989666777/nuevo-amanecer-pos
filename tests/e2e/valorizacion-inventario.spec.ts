@@ -48,7 +48,7 @@ for (const width of [390, 768, 1366]) {
       await expect(total.locator('td').nth(0)).toHaveText('13');
       await expect(total.locator('td').nth(1)).toContainText('S/ 9.95');
       await expect(total.locator('td').nth(2)).toHaveText('S/ 29.00');
-      await expect(screen.locator('.val-notices')).toContainText('1 producto(s) sin costo (3 unidades)');
+      await expect(screen.locator('.val-notices')).toContainText('2 producto(s) sin costo (3 unidades)');
       await expect(screen.locator('.val-notices')).toContainText('stock negativo');
       await expect(screen.locator('.val-notices')).toContainText('stock proyectado');
       await expect(screen.locator('.val-notices')).toContainText('sin control de inventario excluidos');
