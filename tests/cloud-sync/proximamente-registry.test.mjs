@@ -24,7 +24,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
   assert.equal(api.list().length, 0, 'nothing built until load()');
   await api.load();
   const ids = api.list().map(f => f.id);
-  assert.equal(ids.length, 97);
+  assert.equal(ids.length, 122);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(api.list().map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.equal(JSON.stringify(Object.keys(P.FEATURE_LOCKS).sort()), JSON.stringify(ids.slice().sort()), 'every registry id has exactly one server lock entry');
@@ -44,7 +44,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
     }
   }
   const prioritized = api.list().filter(f => f.priority);
-  assert.equal(prioritized.length, 45);
+  assert.equal(prioritized.length, 70);
   assert.deepEqual(Array.from(api.list().filter(f=>f.uncertain).map(f=>f.id)).sort(), 'app-android-nativa cpe-sin-internet venta-granel gaveta-dinero comprobante-por-correo app-almaceneros equipos-pos shopify-woocommerce bandeja-multicanal plan-distribuidor multi-ruc balanza calendario-gastos gasto-a-cuenta tipo-cierre firma-digital sunat-comprobantes'.split(' ').sort());
   for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito', 'compras', 'stock-lotes-fefo']) assert.equal(api.get(id), undefined, id + ' already exists in the POS');
 });
@@ -206,7 +206,7 @@ test('configuration shortcut lives in the owner-only Configuración nav', () => 
   assert.match(v9, /var go = t\.closest\('#na9Nav \[data-go\]'\); if \(go\) \{ if \(canEdit\(\) && typeof root\.goPage === 'function'\) root\.goPage\(go\.dataset\.go\); return; \}/);
 });
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual', 'lotes-multiples-fefo', 'stock-negativo-configurable', 'app-pedidos-marca-propia', 'cambiar-clave-usuarios', 'conversion-masiva-documentos', 'vendedor-en-venta', 'comentarios-venta', 'despacho-productos', 'cliente-historial-compras', 'vendedor-por-cliente', 'consulta-dni-ruc', 'edicion-masiva-productos', 'marcas-productos', 'subcategorias-atributos', 'produccion-recetas', 'registro-sanitario', 'numero-serie-producto', 'tipos-movimiento-inventario', 'conciliacion-bancaria', 'historial-exportaciones', 'catalogo-reportes', 'importar-proveedores', 'periodo-contable-percepcion', 'desbloquear-usuario', 'detraccion-retencion'];
 test('new candidates stay locked and attendance keeps its owner policy when unlocked', async () => {
   const c = loaded(); await c.NA_PROXIMAMENTE.load();
   for (const id of addedIds) {

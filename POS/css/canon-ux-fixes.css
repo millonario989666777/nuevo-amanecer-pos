@@ -286,7 +286,7 @@ body.dark .na-pin-detail{color:#cbd5e1}
   body.dark #pageInventario .ss.green,body.dark #pageInventario .ss.green *{color:#86efac!important}
   body.dark #pageInventario .btn-act.btn-ent{color:#86efac!important}
   body.dark #pageInventario .btn-act.btn-edt{background:#334155!important;color:#e2e8f0!important}
-  body.dark #pageInventario .top-btn-nuevo{background:color-mix(in srgb,var(--teal,#00a99d) 45%,#000)!important;color:#fff!important}
+  body.dark #pageInventario .top-btn-nuevo:not(.na-pur-btn):not([onclick^="abrirModalProd"]){background:color-mix(in srgb,var(--teal,#00a99d) 45%,#000)!important;color:#fff!important}
   body.dark #pagePOS .cat-btn:not(.active){color:#cbd5e1!important}
   body.dark #pagePOS .p-img{color:#e2e8f0}
   body.dark #pagePOS .cart-empty{background:#1e293b!important;color:#cbd5e1!important}
@@ -317,6 +317,7 @@ body.dark .na-pin-detail{color:#cbd5e1}
   #mCli .fi,#mCli select,#mCli .mbtn,#mCli .btn-close-m,.na-pur-head input,.na-pur-line input,.na-pur-box button,.na-review-actions button,.na-review-close,.na-sale-note input,.na-ds-actions button{min-height:44px}
   #mCli .btn-close-m{min-width:44px}
 }
+.na-pur-box .na-pur-hist,.na-pur-box .na-pur-cancel{min-height:44px}
 /* Nocturno: Nueva compra y Descuento ya no salen blancas (todas las pantallas). */
 body.dark .na-review-box,body.dark .na-ds-sheet{background:#0f172a;color:#e2e8f0;border:1px solid #334155}
 body.dark .na-review-row{border-top-color:#334155}

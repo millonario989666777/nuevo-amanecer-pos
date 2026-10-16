@@ -99,6 +99,11 @@
   function difference(value) {
     return value === null ? '—' : (value > 0 ? '+' : '') + money(value) + (value > 0 ? ' (sobrante)' : value < 0 ? ' (faltante)' : '');
   }
+  function diffClass(value) { return 'ra-num' + (value > 0 ? ' ra-sobrante' : value < 0 ? ' ra-faltante' : ''); }
+  function updateScrollHint(page) {
+    var wrap = page.querySelector('.ra-table-wrap'), hint = page.querySelector('.ra-scroll-hint');
+    if (hint) hint.hidden = !wrap || !(wrap.scrollWidth > wrap.clientWidth + 1);
+  }
   function render() {
     var page = root.document && root.document.getElementById(PAGE_ID);
     if (!page) return false;
@@ -123,7 +128,8 @@
     if (exportButton) exportButton.disabled = false;
     status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · cierres cargados en este dispositivo';
     if (!report.rows.length) content.appendChild(element('p', 'ra-empty', 'No hay cierres de caja para este rango de fechas.'));
-    content.appendChild(element('p', 'ra-scroll-hint', 'Deslizá para ver más →'));
+    var hint = element('p', 'ra-scroll-hint', 'Desliza para ver más →'); hint.hidden = true;
+    content.appendChild(hint);
     var wrap = element('div', 'ra-table-wrap'); wrap.tabIndex = 0;
     wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Arqueos de caja por fechas');
     var table = element('table', 'ra-table'); table.appendChild(element('caption', 'ra-sr-only', 'Arqueos de caja y totales del rango'));
@@ -140,15 +146,19 @@
       line.appendChild(element('td', '', row.openedByName)); line.appendChild(element('td', '', row.closedByName));
       line.appendChild(element('td', 'ra-num', money(row.esperado)));
       line.appendChild(element('td', 'ra-num', row.contado === null ? '—' : money(row.contado)));
-      line.appendChild(element('td', 'ra-num', difference(row.diferencia)));
+      line.appendChild(element('td', diffClass(row.diferencia), difference(row.diferencia)));
       body.appendChild(line);
     });
     table.appendChild(body);
     var foot = element('tfoot'), total = element('tr');
     var label = element('th', '', 'Total · ' + report.totals.count + (report.totals.count === 1 ? ' cierre' : ' cierres') + (report.totals.sinContar ? ' · ' + report.totals.sinContar + ' sin contar' : ''));
     label.scope = 'row'; label.colSpan = 3; total.appendChild(label);
-    [money(report.totals.esperado), money(report.totals.contado), difference(report.totals.diferencia)].forEach(function (value) { total.appendChild(element('td', 'ra-num', value)); });
-    foot.appendChild(total); table.appendChild(foot); wrap.appendChild(table); content.appendChild(wrap); return true;
+    [money(report.totals.esperado), money(report.totals.contado)].forEach(function (value) { total.appendChild(element('td', 'ra-num', value)); });
+    total.appendChild(element('td', diffClass(report.totals.diferencia), difference(report.totals.diferencia)));
+    foot.appendChild(total); table.appendChild(foot); wrap.appendChild(table); content.appendChild(wrap);
+    if (typeof root.requestAnimationFrame === 'function') root.requestAnimationFrame(function () { updateScrollHint(page); });
+    else updateScrollHint(page);
+    return true;
   }
   function init() {
     var page = root.document.getElementById(PAGE_ID);
@@ -157,6 +167,7 @@
     function update() { if (page.classList.contains('active')) render(); }
     page.addEventListener('change', update);
     page.addEventListener('input', update);
+    root.addEventListener('resize', function () { updateScrollHint(page); });
     var exportButton = page.querySelector('[data-ra-export]');
     if (exportButton) exportButton.addEventListener('click', function () {
       if (!ownerAllowed()) { render(); return; }

@@ -885,3 +885,8 @@ body.dark .vkpi.amber .vkpi-val { color: #fbbf24; }
 body.dark #cajContent span[style*="color: rgb(21, 128, 61)"] { color: #4ade80 !important; }
 body.dark #pageInventario .top-btn-nuevo:is(.na-pur-btn,[onclick^="abrirModalProd"]) { background-color: #c2410c; }
 /* ==== end fix/followups-156 ==== */
+
+/* ==== fix/pulido-159 ==== */
+body.dark #pageClientes .ss.amber .ss-num{color:#fcd34d}
+body.dark #mMasterPermissions .btn-close-m{color:#f8fafc;background-color:#1e293b;border:1px solid rgba(255,255,255,.6)}
+/* ==== end fix/pulido-159 ==== */

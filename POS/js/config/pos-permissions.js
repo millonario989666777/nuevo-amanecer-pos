@@ -60,11 +60,37 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
-  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner };
+  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner, 'lotes-multiples-fefo': owner, 'stock-negativo-configurable': owner, 'app-pedidos-marca-propia': owner, 'cambiar-clave-usuarios': owner, 'conversion-masiva-documentos': owner, 'vendedor-en-venta': owner, 'comentarios-venta': owner, 'despacho-productos': owner, 'cliente-historial-compras': owner, 'vendedor-por-cliente': owner, 'consulta-dni-ruc': owner, 'edicion-masiva-productos': owner, 'marcas-productos': owner, 'subcategorias-atributos': owner, 'produccion-recetas': owner, 'registro-sanitario': owner, 'numero-serie-producto': owner, 'tipos-movimiento-inventario': owner, 'conciliacion-bancaria': owner, 'historial-exportaciones': owner, 'catalogo-reportes': owner, 'importar-proveedores': owner, 'periodo-contable-percepcion': owner, 'desbloquear-usuario': owner, 'detraccion-retencion': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
     'credito-cuotas': true,
     'reparto-abono-multiples-deudas': true,
+    'lotes-multiples-fefo': true,
+    'stock-negativo-configurable': true,
+    'app-pedidos-marca-propia': true,
+    'cambiar-clave-usuarios': true,
+    'conversion-masiva-documentos': true,
+    'vendedor-en-venta': true,
+    'comentarios-venta': true,
+    'despacho-productos': true,
+    'cliente-historial-compras': true,
+    'vendedor-por-cliente': true,
+    'consulta-dni-ruc': true,
+    'edicion-masiva-productos': true,
+    'marcas-productos': true,
+    'subcategorias-atributos': true,
+    'produccion-recetas': true,
+    'registro-sanitario': true,
+    'numero-serie-producto': true,
+    'tipos-movimiento-inventario': true,
+    'conciliacion-bancaria': true,
+    'historial-exportaciones': true,
+    'catalogo-reportes': true,
+    'importar-proveedores': true,
+    'periodo-contable-percepcion': true,
+    'desbloquear-usuario': true,
+    'detraccion-retencion': true,
+
     'clonar-venta': true,
     'nota-credito-parcial-compras': true,
     'clientes-filtro-deuda': false,
