@@ -58,6 +58,7 @@
     if (typeof _naSyncCreditStatus === 'function') {
       try { _naSyncCreditStatus(cr); } catch {}
     }
+    if (typeof _naIsCreditVoided === 'function' && _naIsCreditVoided(cr)) return 'anulado';
     return String((cr && (cr.status || cr.estado)) || '').toLowerCase();
   }
 

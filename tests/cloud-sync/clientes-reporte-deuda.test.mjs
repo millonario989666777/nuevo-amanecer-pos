@@ -242,7 +242,7 @@ function realV2() {
   ctx.window = ctx;
   vm.createContext(ctx);
   // Usa las funciones legacy reales, incluido el índice que normaliza in situ.
-  const status = legacySource.slice(legacySource.indexOf('const _naSyncCreditStatus='), legacySource.indexOf('// NUEVO FASE 6'));
+  const status = legacySource.slice(legacySource.indexOf('function _naIsCreditVoided('), legacySource.indexOf('// NUEVO FASE 6'));
   const outstanding = legacySource.match(/function _naCreditOutstanding\(cr\)\{[^\n]+/)[0];
   const index = legacySource.slice(legacySource.indexOf('let _naClientCreditIndexRef='), legacySource.indexOf('statusCli=function'));
   vm.runInContext(status + '\n' + outstanding + '\n' + index, ctx);

@@ -16,7 +16,7 @@ function realV2() {
     _naNumber:(value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback };
   ctx.window = ctx;
   vm.createContext(ctx);
-  const status = legacy.slice(legacy.indexOf('const _naSyncCreditStatus='), legacy.indexOf('// NUEVO FASE 6'));
+  const status = legacy.slice(legacy.indexOf('function _naIsCreditVoided('), legacy.indexOf('// NUEVO FASE 6'));
   const outstanding = legacy.match(/function _naCreditOutstanding\(cr\)\{[^\n]+/)[0];
   const index = legacy.slice(legacy.indexOf('let _naClientCreditIndexRef='), legacy.indexOf('statusCli=function'));
   vm.runInContext(status + '\n' + outstanding + '\n' + index, ctx);
@@ -79,10 +79,12 @@ test('saldos de solo lectura idénticos a la ruta normal (que reconstruye y norm
   const rw = realV2(); Object.assign(rw.ctx, dataset());
   const readOnly = plain(balances(ro, true)), normal = plain(balances(rw, false));
   assert.deepEqual(readOnly, normal);
-  assert.deepEqual(readOnly.map(r => r.debt), [90, 25.25, 10, 70]);
+  // El crédito 41 (cliente 4) tiene status/estado 'anulado' sin anulado:true. Antes _naSyncCreditStatus lo
+  // reescribía a vigente y sumaba 70; ahora _naIsCreditVoided lo reconoce como anulado: deuda 0 y fuera del reporte.
+  assert.deepEqual(readOnly.map(r => r.debt), [90, 25.25, 10, 0]);
   const report = plain(ro.report.buildReport(ro.ctx.clientes, ro.api, null, 'saldo'));
-  assert.deepEqual(report.rows.map(r => [r.clientId, r.balance, r.openCredits]), [[1, 90, 2], [4, 70, 1], [2, 25.25, 1], [3, 10, 1]]);
-  assert.equal(report.total, 195.25);
+  assert.deepEqual(report.rows.map(r => [r.clientId, r.balance, r.openCredits]), [[1, 90, 2], [2, 25.25, 1], [3, 10, 1]]);
+  assert.equal(report.total, 125.25);
 });
 
 test('después de registrar un pago (escritura sobre el objeto vivo), la ficha y el filtro muestran el mismo saldo', () => {
@@ -102,4 +104,44 @@ test('después de registrar un pago (escritura sobre el objeto vivo), la ficha y
   const before = snapshot(h);
   assert.equal(h.api.debtFilter.filter([{ client:c1, summary:h.api.summarizeClient(c1, true) }], 'con-deuda', null).length, 1);
   assert.equal(snapshot(h), before);
+});
+
+const VOID_VARIANTS = [['status', 'anulado'], ['status', 'ANULADO'], ['estado', 'anulado'], ['estado', 'ANULADO'],
+  ['source_status', 'anulado'], ['source_status', 'ANULADO'], ['status', ' Anulado ']];
+for (const [field, value] of VOID_VARIANTS) {
+  test(`${field}=${JSON.stringify(value)} sin anulado:true cuenta como anulado en ficha, filtro, reporte e índice; el original no cambia`, () => {
+    const make = () => {
+      const extra = { status:'vigente', estado:'vigente', anulado:false }; extra[field] = value;
+      return { clientes:[client(5, 'Sintético Cinco')], creditos:[credit(51, 5, 80, 10, extra), credit(52, 5, 20, 5)] };
+    };
+    const h = realV2(); Object.assign(h.ctx, make());
+    const original = JSON.stringify(h.ctx.creditos[0]);
+    assert.equal(h.run('_naIsCreditVoided(creditos[0])'), true);
+    assert.equal(h.run('_naSyncCreditStatus(creditos[0])'), 'anulado');
+    assert.equal(JSON.stringify(h.ctx.creditos[0]), original, 'el estado del original no se pisa');
+    for (const fresh of [false, true]) {
+      if (fresh) h.run('_naEnsureClientCreditIndex(true)');
+      const s = plain(h.api.summarizeClient(h.ctx.clientes[0], true));
+      assert.equal(s.debt, 15);
+      assert.ok(![...s.all, ...s.active, ...s.closed].some(cr => String(cr.id) === '51'));
+      assert.equal(h.api.debtFilter.effectiveBalance(s, null), 15);
+      const row = plain(h.report.buildReport(h.ctx.clientes, h.api, null, 'saldo')).rows[0];
+      assert.deepEqual([row.balance, row.openCredits], [15, 1]);
+    }
+    assert.equal(h.api.summarizeClient(h.ctx.clientes[0], false).debt, 15);
+    assert.deepEqual(plain(h.run('_naClientCreditsFast(5)')).map(cr => String(cr.id)), ['52']);
+    assert.equal(h.run('_naClientDebtFast(5)'), 15);
+    assert.equal(JSON.stringify(h.ctx.creditos[0]), original, 'ni el índice ni la ficha modifican el anulado');
+    const rw = realV2(); Object.assign(rw.ctx, make());
+    assert.deepEqual(plain(balances(h, true)), plain(balances(rw, false)));
+  });
+}
+
+test('créditos no anulados: mismos saldos que antes del cambio (incluye "anulada", "cancelado" y textos parecidos)', () => {
+  const h = realV2();
+  Object.assign(h.ctx, { clientes:[client(6, 'Sintético Seis')], creditos:[credit(61, 6, 50, 0, { status:'anulada' }), credit(62, 6, 30, 10, { source_status:'vigente' }),
+    credit(63, 6, 40, 40), credit(64, 6, 25, 0, { estado:'no anulado' })] });
+  assert.deepEqual(h.ctx.creditos.map(cr => h.run(`_naIsCreditVoided(creditos.find(c => c.id === ${cr.id}))`)), [false, false, false, false]);
+  assert.equal(h.api.summarizeClient(h.ctx.clientes[0], true).debt, 95);
+  assert.equal(h.api.summarizeClient(h.ctx.clientes[0], false).debt, 95);
 });
