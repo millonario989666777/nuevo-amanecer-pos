@@ -79,9 +79,9 @@ test('hueco desde el primer pintado: <head> reserva el mismo alto que el hueco r
   const loader = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-loader.js', import.meta.url), 'utf8');
   const head = html.slice(0, html.indexOf('</head>'));
   assert.match(head, /localStorage\.getItem\('na_asistente_proto'\)==='1'&&localStorage\.getItem\('na_asistente_acc'\)==='owner'/);
-  // 320+4+16+12, 300+4+18+12, 292+4+18+12
-  for (const [px, q] of [[352, ''], [334, '@media (min-width:700px)'], [326, '@media (min-width:1100px)']]) assert.ok(head.includes((q ? q + '{' : '') + 'html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:' + px + 'px}'), String(px));
-  assert.match(loader, /height:320px;margin:4px 0 16px/); assert.match(loader, /@media \(min-width:700px\)\{#naAsstHero\{height:300px;margin:4px 0 18px\}\}@media \(min-width:1100px\)\{#naAsstHero\{height:292px\}\}/);
+  // 321+4+16+12 (<380), 272+4+16+12 (380-699, Bot 4), 364+4+18+12, 280+4+18+12 (alto real de la tarjeta por tramo)
+  for (const [px, q] of [[353, ''], [304, '@media (min-width:380px) and (max-width:699px)'], [398, '@media (min-width:700px)'], [314, '@media (min-width:1100px)']]) assert.ok(head.includes((q ? q + '{' : '') + 'html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:' + px + 'px}'), String(px));
+  assert.match(loader, /height:321px;margin:4px 0 16px/); assert.match(loader, /@media \(min-width:380px\) and \(max-width:699px\)\{#naAsstHero\{height:272px\}\}@media \(min-width:700px\)\{#naAsstHero\{height:364px;margin:4px 0 18px\}\}@media \(min-width:1100px\)\{#naAsstHero\{height:280px\}\}/);
   assert.match(loader, /classList\.remove\('na-asst-pre'\)/, 'el hueco real reemplaza al margen');
   assert.match(loader, /function release\(\)[^\n]*classList\.remove\('na-asst-owner', 'na-asst-pre'\)/, 'al liberar se quita todo');
   assert.equal((html.match(/asistente-loader\.js" defer/g) || []).length, 1);
@@ -142,6 +142,25 @@ test('el aviso neutro tiene el MISMO alto que la tarjeta (regla #naAsstHero) y l
   assert.match(SRC, /#naAsstHero\.na-asst-gone\{display:flex/); assert.ok(!/#naAsstHero\.na-asst-gone\{[^}]*height/.test(SRC), 'no cambia el alto');
   const ui = readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
   assert.match(ui, /if \(Sx && Sx\.unreserve\) Sx\.unreserve\(\)/);
-  assert.match(ui, /var IDLE_MS = 9000/); assert.match(ui, /root\.addEventListener\('scroll', hold, \{ passive: true, capture: true \}\)/);
+  assert.match(ui, /var IDLE_MS = 9000/); assert.match(ui, /root\.addEventListener\('scroll', function \(e\) \{ var t = e && e\.target; if \(t && t\.nodeType === 1 && panelEl && panelEl\.contains\(t\)\) return; hold\(\); \}, \{ passive: true, capture: true \}\)/);
   assert.match(ui, /thinking\.remove\(\); wake\(\);/);
+});
+
+test('revisión Bot 4 sobre 1b87710d: relleno del contenedor que se desplaza, pausa propia de la tarjeta y del panel, primera visita sin salto, textos', () => {
+  const ui = readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../../POS/css/asistente.css', import.meta.url), 'utf8');
+  // 1) Clientes: se rellena también el contenedor interno que se desplaza (#cliList o el que esté bajo la burbuja)
+  assert.match(ui, /function scrollersIn\(pg, b\)/); assert.match(ui, /elementsFromPoint/); assert.match(ui, /#cliList/);
+  // 2) la tarjeta de Inicio usa SU IntersectionObserver (no el de la burbuja)
+  assert.match(ui, /function watchHero\(\)/); assert.match(ui, /var hp = doc\.hidden \|\| heroOff/); assert.doesNotMatch(ui, /var hp = [^;]*offscreen/);
+  // 3) la cara del panel abierto no depende de la burbuja oculta: wake() la despierta
+  assert.match(ui, /var pp = doc\.hidden \|\| !panelEl \|\| panelEl\.hidden \|\| rest/); assert.match(ui, /panelEl\.contains\(c\) \? pp/);
+  // 4) primera visita con Inicio a la vista: no se inserta arriba (se espera a salir de Inicio o al próximo arranque)
+  assert.match(ui, /menu\.classList\.contains\('active'\) && menu\.offsetParent !== null\) \{ heroDeferred = true; return; \}/);
+  assert.match(ui, /else if \(heroDeferred\) renderHero\(\)/);
+  // 5) textos: singular/plural, tarjeta hecha sin «Vence en», PIN apagado y visible tras el 410
+  assert.match(ui, /' Te queda 1 intento\.'/); assert.match(css, /\.na-asst-card\[data-st="done"\] \.meta\{display:none\}/);
+  assert.match(ui, /if \(pinBox\) pinBox\.hidden = false;/); assert.match(ui, /pinBox\.hidden = c\.dataset\.st !== 'expired' && !!approvals/);
+  // 6) 380-699: atajos en una fila con texto corto
+  assert.match(css, /@media \(min-width:380px\) and \(max-width:699px\)\{#naAsstHero \.h-chips\{flex-wrap:nowrap/);
 });

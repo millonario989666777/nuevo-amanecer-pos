@@ -310,8 +310,7 @@ body.dark .na-asst-reg input{background:#0f1b15;border-color:#2c4a37}
 /* Inicio arriba con alto fijo (el alto y el margen los pone el cargador en #naAsstHero): el contenido se acomoda para caber siempre. */
 #naAsstHero.na-asst-hero{margin-left:0;margin-right:0;max-width:none;align-content:start}
 #naAsstHero .na-asst-hero-t p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-#naAsstHero .h-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
-#naAsstHero .h-chips::-webkit-scrollbar{display:none}
+#naAsstHero .h-chips{flex-wrap:wrap;align-content:flex-start;overflow:visible}
 #naAsstHero .h-chip{flex:none;white-space:nowrap}
 @media (max-width:699px){#naAsstHero.na-asst-hero{padding:14px 14px 12px;grid-template-columns:minmax(0,1fr) 112px}#naAsstHero h2{font-size:21px;margin:8px 0 4px}#naAsstHero .na-asst-hero-v{width:112px;height:124px}
   #naAsstHero .h-glow,#naAsstHero .h-ring{width:130px;height:130px;margin:-65px 0 0 -65px}#naAsstHero .h-bb{--asst-size:72px;width:72px;height:72px;margin:-40px 0 0 -36px}#naAsstHero .c1{left:-4px;top:22px}#naAsstHero .c2{right:-6px;top:76px}
@@ -339,3 +338,23 @@ body.dark .na-asst-quitar:disabled{border-color:#475569;color:#cbd5e1;background
 /* Tarjeta de Inicio: brillo e iconos descansan con la burbuja; sin movimiento si el sistema lo pide. */
 .na-asst-hero[data-paused="1"] .h-glow,.na-asst-hero[data-paused="1"] .h-card{animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){.na-asst-hero .h-glow,.na-asst-hero .h-card,.na-asst-dots i{animation:none!important}.na-asst-dots i{opacity:.7}}
+/* ---- Inicio: alto reservado = alto real (sin franja vacía) ----
+   El cargador reserva un alto FIJO por tramo antes de pintar. Para que ese alto sea exacto, el contenido tiene el MISMO número
+   de líneas en todo el tramo: título y texto con ancho tope (siempre 2 líneas en celular y tableta, 1 en PC) y atajos que se
+   acomodan en 2 filas en celular y tableta y en 1 fila en PC (nunca cortados). Las alturas están en asistente-loader.js e index.html. */
+#naAsstHero h2{max-width:9em}
+#naAsstHero .na-asst-hero-t p{max-width:210px;-webkit-line-clamp:2}
+#naAsstHero .h-chips{max-width:330px}
+@media (max-width:389px){#naAsstHero.na-asst-hero{grid-template-columns:minmax(0,1fr) 88px}#naAsstHero .na-asst-hero-v{width:88px}
+  #naAsstHero .h-glow,#naAsstHero .h-ring{width:110px;height:110px;margin:-55px 0 0 -55px}#naAsstHero .h-bb{--asst-size:60px;width:60px;height:60px;margin:-34px 0 0 -30px}#naAsstHero .c1{left:-6px}#naAsstHero .c2{right:-8px}}
+@media (min-width:700px){#naAsstHero h2{max-width:10em}#naAsstHero .na-asst-hero-t p{max-width:300px}#naAsstHero .h-chips{max-width:440px}}
+@media (min-width:1100px){#naAsstHero.na-asst-hero{grid-template-columns:minmax(0,1fr) 280px}#naAsstHero .na-asst-hero-v{width:280px}
+  #naAsstHero h2{max-width:none;white-space:nowrap}#naAsstHero .na-asst-hero-t p{max-width:none;-webkit-line-clamp:1}#naAsstHero .h-chips{max-width:none;flex-wrap:nowrap}}
+@media (max-width:359px){#naAsstHero .h-chips{gap:6px}#naAsstHero .h-chip{font-size:13px;padding:6px 10px}}
+/* ---- Revisión Bot 4 sobre 1b87710d ---- */
+/* Celular 380-699: alto fijo 272 px (valor probado por Bot 4) con los 3 atajos en UNA fila, textos cortos y sin cortes. */
+#naAsstHero .h-chip .hs{display:none}
+@media (min-width:380px) and (max-width:699px){#naAsstHero .h-chips{flex-wrap:nowrap;max-width:none}#naAsstHero .h-chip{padding:8px 12px}
+  #naAsstHero .h-chip .hl{display:none}#naAsstHero .h-chip .hs{display:inline}#naAsstHero.na-asst-hero{padding-bottom:15px}}
+/* Tarjeta hecha: ya no muestra «Vence en». */
+.na-asst-card[data-st="done"] .meta{display:none}

@@ -152,3 +152,18 @@ test('confirm: 429 y 403 de rol se anotan AGRUPADOS; los demás rechazos, uno po
   assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate]), [['rejected:owner_approval_required', false], ['rejected:rate_limited', true], ['rejected:assistant_off', true]]);
   assert.ok(rows.every((r) => r.device_id === OWN.principalId));
 });
+
+test('chat: 429 y 403 de rol se anotan AGRUPADOS (src chat); los demás rechazos, uno por uno; nunca el texto', async () => {
+  const rows = []; const audit = async (_db, r) => { rows.push(...r); };
+  const send = (body, extra = {}) => assistantChatRoute(new Request('https://w.test/auth/assistant/chat', { method: 'POST', body: JSON.stringify(body) }), { ...ENV, ...(extra.env || {}) }, OWN, jsonR,
+    { store: createMemoryUsageStore(), resolveRole: async () => extra.role || 'owner', fetch: fakeDS([tool('preparar_documento', { tipo: 'inventario_valorizado' })]), reader, audit });
+  assert.equal((await send({ text: 'PIN 4821' }, { role: 'empleado:off' })).status, 403);
+  assert.equal((await send({ text: 'PIN 4821' }, { role: 'sin_rol' })).status, 403);
+  assert.equal((await send({ text: 'PIN 4821' }, { env: { ASSISTANT_PER_MINUTE: '0' } })).status, 429);
+  assert.equal((await send({ text: 'inventario valorizado' }, { role: 'empleado:consultas_documentos' })).status, 403);
+  assert.equal((await send({ text: '' })).status, 400);
+  assert.equal((await send({ text: 'hola' }, { env: { ASSISTANT_ENABLED: '0' } })).status, 404);
+  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate, r.src]), [['rejected:assistant_off', true, 'chat'], ['rejected:admin_only', true, 'chat'],
+    ['rejected:rate_limited', true, 'chat'], ['rejected:forbidden_document', true, 'chat'], ['rejected:empty_message', false, 'chat']]);
+  assert.ok(!/4821|inventario valorizado|hola/.test(JSON.stringify(rows)));
+});

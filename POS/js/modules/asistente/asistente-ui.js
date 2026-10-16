@@ -13,7 +13,7 @@
   if (!doc || !C || root.NA_ASISTENTE) return;
   var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
   var clockOffset = 0;
-  var IDLE_MS = 9000, HOLD_MS = 700, holding = false, holdTimer = null, idleTimer = null, sleeping = false, offscreen = false, adminOff = false;
+  var IDLE_MS = 9000, HOLD_MS = 700, holding = false, holdTimer = null, idleTimer = null, sleeping = false, offscreen = false, heroOff = true, heroIO = null, heroDeferred = false, adminOff = false;
   // Pantallas de gestión donde vive la burbuja. Nunca Venta (pagePOS) ni Caja (pageCaja).
   var ADMIN_PAGES = ['pageMenu', 'pageInventario', 'pageVentas', 'pageClientes', 'pageGastos', 'pageConfig', 'pageHistorialCompras', 'pageValorizacion', 'pageReporteDeuda', 'pageKardex', 'pageVentasStock', 'pageRotacionAbc', 'pageReporteArqueo', 'pageCodigosDuplicados'];
   // access: lo último que dijo el servidor ({ role: 'owner' | 'empleado', level }). null = todavía no se sabe.
@@ -70,7 +70,14 @@
   // Batería: tras ~20 s quieta en Listo (panel cerrado) las animaciones infinitas se pausan. Tocar o cambiar de estado las reanuda.
   // Al desplazar la pantalla o escribir, las animaciones se detienen y vuelven tras un momento quieto (menos trabajo mientras la persona usa el POS).
   function hold() { if (!holding) { holding = true; applyPause(); } clearTimeout(holdTimer); holdTimer = setTimeout(function () { holding = false; applyPause(); }, HOLD_MS); }
-  function wake() { sleeping = false; clearTimeout(idleTimer); idleTimer = setTimeout(function () { if (state === 'listo' && (!panelEl || panelEl.hidden)) { sleeping = true; applyPause(); } }, IDLE_MS); applyPause(); }
+  // Despertar gana sobre la pausa por escribir (llegó la respuesta: la cara que se ve se anima).
+  function wake() { sleeping = false; if (holding) { holding = false; clearTimeout(holdTimer); } clearTimeout(idleTimer); idleTimer = setTimeout(function () { if (state === 'listo' && (!panelEl || panelEl.hidden)) { sleeping = true; applyPause(); } }, IDLE_MS); applyPause(); }
+  // La tarjeta de Inicio tiene su propio observador de visibilidad (no usa el de la burbuja, que en Inicio está oculta).
+  function watchHero() {
+    if (!heroEl || heroEl._naIO) return; heroEl._naIO = true;
+    try { if (heroIO) heroIO.disconnect(); heroIO = new IntersectionObserver(function (es) { heroOff = !es[es.length - 1].isIntersecting; applyPause(); }); heroIO.observe(heroEl); }
+    catch (_) { heroOff = false; }
+  }
   function computeQuality() {
     try { if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return 'off'; } catch (_) {}
     var n = root.navigator || {}, weak = (n.hardwareConcurrency && n.hardwareConcurrency <= 4) || (n.deviceMemory && n.deviceMemory <= 2);
@@ -96,9 +103,13 @@
   function busyPos() { return !!doc.querySelector('.modal-overlay.open, #naPurchaseDialog, .na-pin-overlay'); }
   // Con una ventana del POS abierta (cobro, ficha, compra) la burbuja se oculta: nunca tapa sus botones.
   function applyPause() {
-    var busyNow = busyPos() && panelEl && panelEl.hidden, p = doc.hidden || busyNow || offscreen || holding || (sleeping && state === 'listo') ? '1' : '0';
-    chars().forEach(function (c) { if (c.dataset.paused !== p) c.dataset.paused = p; });
-    var hp = doc.hidden || offscreen || holding || (sleeping && state === 'listo') || busyNow ? '1' : '0'; // la tarjeta de Inicio descansa igual que la burbuja
+    var busyNow = busyPos() && panelEl && panelEl.hidden, rest = holding || (sleeping && state === 'listo');
+    // Cada cara descansa según SU propia visibilidad (Bot 4): la burbuja con su IntersectionObserver, la tarjeta de Inicio con el suyo
+    // y la cara del panel abierto solo por pestaña oculta o reposo. Así wake() siempre despierta la cara que se ve.
+    var p = doc.hidden || busyNow || offscreen || rest ? '1' : '0';
+    var hp = doc.hidden || heroOff || rest || busyNow ? '1' : '0';
+    var pp = doc.hidden || !panelEl || panelEl.hidden || rest ? '1' : '0';
+    chars().forEach(function (c) { var v = panelEl && panelEl.contains(c) ? pp : heroEl && heroEl.contains(c) ? hp : p; if (c.dataset.paused !== v) c.dataset.paused = v; });
     if (heroEl && heroEl.dataset.paused !== hp) heroEl.dataset.paused = hp;
     if (rootEl && rootEl.dataset.paused !== p) rootEl.dataset.paused = p;
     if (rootEl) rootEl.style.visibility = busyNow ? 'hidden' : '';
@@ -111,14 +122,28 @@
   function visible(el) { if (!el) return null; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' ? r : null; }
   // Espacio abajo en TODA página donde se ve la burbuja: la última fila o la última opción siempre se pueden subir por encima de ella.
   // Solo agrega relleno inferior a la página activa si el suyo no alcanza; al salir de la página se devuelve el valor original.
-  var padded = null;
+  // Si la lista se desplaza DENTRO de la página (Clientes: #cliList), se rellena también ese contenedor (Bot 4, 360 px).
+  var padded = [];
+  function unpad(e) { var o = e.dataset.naAsstPb || ''; e.style.removeProperty('padding-bottom'); if (o) e.style.paddingBottom = o; delete e.dataset.naAsstPb; }
+  function scrollable(e) { var cs = getComputedStyle(e); return /(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 1; }
+  function scrollersIn(pg, b) {
+    var out = [], seen = [];
+    function up(n) { for (; n && n !== pg && pg.contains(n); n = n.parentElement) if (seen.indexOf(n) < 0) { seen.push(n); if (scrollable(n)) { out.push(n); return; } } }
+    try { if (b && doc.elementsFromPoint) doc.elementsFromPoint(b.left + b.width / 2, b.top + b.height / 2).forEach(function (n) { if (!rootEl.contains(n)) up(n); }); } catch (_) {}
+    Array.prototype.forEach.call(pg.querySelectorAll('#cliList, .cli-list, .inv-list, .table-wrap'), function (n) { if (out.indexOf(n) < 0 && n.offsetParent && scrollable(n)) out.push(n); });
+    return out;
+  }
+  function padOne(e, need) { if (e.dataset.naAsstPb != null) return; if (parseFloat(getComputedStyle(e).paddingBottom) >= need) return;
+    e.dataset.naAsstPb = e.style.paddingBottom || ''; e.style.setProperty('padding-bottom', need + 'px', 'important'); padded.push(e); } // el POS fija el suyo con !important
   function padPage(bottom) {
     var pg = doc.querySelector('.page.active'), shown = rootEl && rootEl.style.display !== 'none' && !rootEl.hidden && bottom > 0;
-    if (padded && (padded !== pg || !shown)) { var o = padded.dataset.naAsstPb || ''; padded.style.removeProperty('padding-bottom'); if (o) padded.style.paddingBottom = o; delete padded.dataset.naAsstPb; padded = null; }
-    if (!pg || !shown || padded === pg) return;
-    var b = rootEl.querySelector('.na-asst-bubble'), h = b ? b.getBoundingClientRect().height : 72, need = Math.round(h + bottom + 24);
-    if (parseFloat(getComputedStyle(pg).paddingBottom) >= need) return;
-    pg.dataset.naAsstPb = pg.style.paddingBottom || ''; pg.style.setProperty('padding-bottom', need + 'px', 'important'); padded = pg; // el POS fija el suyo con !important
+    padded = padded.filter(function (e) { if (!shown || !pg || !pg.contains(e) && e !== pg || !e.isConnected) { unpad(e); return false; } return true; });
+    if (!pg || !shown) return;
+    var bEl = rootEl.querySelector('.na-asst-bubble'), br = bEl ? bEl.getBoundingClientRect() : null, h = br ? br.height : 72, need = Math.round(h + bottom + 24);
+    padOne(pg, need);
+    var vh = root.innerHeight;
+    // Contenedor interno: su borde de abajo puede quedar por encima del borde de la pantalla; solo se rellena lo que tapa la burbuja.
+    scrollersIn(pg, br).forEach(function (e) { var gap = Math.max(0, vh - e.getBoundingClientRect().bottom); padOne(e, Math.max(0, need - gap)); });
   }
   function place() {
     if (!rootEl) return;
@@ -355,7 +380,7 @@
     function syncOk() { if (!ok || c.dataset.st !== 'pending') return; var n = pendingRows(); ok.disabled = n > 0; ok.textContent = n > 0 ? 'Revisa ' + n + (n === 1 ? ' fila' : ' filas') : (c.dataset.btn || 'Confirmar'); }
     var again = c.querySelector('[data-again]'), pinBox = c.querySelector('.na-asst-pin');
     // Con una aprobación vigente para ESTA tarjeta (422/429/corte) se reenvía igual, sin volver a pedir el PIN.
-    function syncPin() { if (pinBox) pinBox.hidden = !!approvals[p.id]; }
+    function syncPin() { if (pinBox) pinBox.hidden = c.dataset.st !== 'expired' && !!approvals[p.id]; }
     // 422: el servidor dice qué filas faltan revisar; se marcan en rojo «Revisa este dato» (aunque el celular no las hubiera marcado).
     function markRows(idx, limit) {
       var trs = c.querySelectorAll('table tr');
@@ -388,6 +413,7 @@
       c.dataset.st = 'expired'; if (timer) clearInterval(timer); if (left) left.textContent = '0:00';
       res.textContent = 'Esta propuesta venció. Pídela otra vez.';
       if (ok) { ok.textContent = 'Venció'; ok.disabled = true; } if (no) no.disabled = true; if (pinEl) { pinEl.value = ''; pinEl.disabled = true; }
+      if (pinBox) pinBox.hidden = false; // tras el 410 el PIN se ve APAGADO, no desaparece
       if (again) { again.hidden = false; again.disabled = false; }
     }
     function tick() {
@@ -537,9 +563,14 @@
       if (heroEl || doc.getElementById('naAsstHero')) { if (Sx && Sx.unreserve) Sx.unreserve(); else { var hx = heroEl || doc.getElementById('naAsstHero'); if (hx) hx.remove(); doc.documentElement.classList.remove('na-asst-owner'); } }
       heroEl = null; return;
     }
-    if (!heroEl) { // sin hueco reservado (primera vez de este dueño en este aparato): se agrega arriba una sola vez; desde el próximo arranque ya está reservado
+    if (!heroEl) { // sin hueco reservado (primera vez de este dueño en este aparato)
+      // Inicio a la vista: meter la tarjeta arriba empujaría todo (CLS 0,14-0,22). Se espera: mientras tanto se ve la burbuja, y la
+      // tarjeta entra al salir de Inicio (sin nada visible que mover) o en el próximo arranque (el <head> ya reserva su alto).
+      if (menu.classList.contains('active') && menu.offsetParent !== null) { heroDeferred = true; return; }
+      heroDeferred = false;
       var S = root.NA_ASISTENTE_SLOT; if (S) S.reserve(); heroEl = doc.getElementById('naAsstHero');
       if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.id = 'naAsstHero'; heroEl.setAttribute('aria-label', 'Asistente'); var host = menu.querySelector('.main-scroll') || menu; host.insertBefore(heroEl, host.querySelector(':scope > .quick-stats') || host.firstChild); } }
+    watchHero();
     if (heroEl.dataset.mode === mode && heroEl.dataset.lvl === String(access && access.level)) return;
     heroEl.dataset.mode = mode; heroEl.dataset.lvl = String(access && access.level);
     // Estilo de las maquetas v2 de Bot 4: píldora, título, subtítulo, la MISMA burbuja CSS (con brillo y órbita), campo con onda de voz y 3 chips.
@@ -550,7 +581,8 @@
     var DOC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M7 3h7l4 4v14H7zM10 12h5M10 16h5"/></svg>';
     var BOX = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg>';
     var emp = mode === 'emp', docs = emp && access.level === 'consultas_documentos';
-    var chips = mode === 'owner' ? [['Qué me falta reponer', '¿Qué me falta reponer?'], ['Leer factura', null, 'photo'], ['Inventario valorizado', 'Imprime el inventario valorizado']]
+    // 4.º dato: texto corto para el celular de 380-699 px, donde los 3 atajos van en UNA fila sin cortarse (alto fijo de 272 px).
+    var chips = mode === 'owner' ? [['Qué me falta reponer', '¿Qué me falta reponer?', null, 'Por reponer'], ['Leer factura', null, 'photo'], ['Inventario valorizado', 'Imprime el inventario valorizado', null, 'Inventario']]
       : docs ? [['Qué falta reponer', '¿Qué falta reponer?'], ['Lista de precios', 'Imprime la lista de precios'], ['Lista de pedido', 'Arma la lista de pedido para el proveedor']]
       : [['Qué falta reponer', '¿Qué falta reponer?'], ['Cómo se hace algo', '¿Cómo registro una compra?']];
     var vis = emp ? '' : '<div class="na-asst-hero-v" aria-hidden="true"><span class="h-glow"></span><span class="h-ring back"></span><span class="h-bb">' + charHtml() + '</span><span class="h-ring front"></span>' +
@@ -559,7 +591,8 @@
       (emp ? (docs ? 'Puedo ayudarte con stock, precios de venta y listas para imprimir.' : 'Puedo ayudarte con stock y precios de venta.') : 'Puedo ayudarte con stock, compras, precios y documentos.') + '</p></div>';
     if (mode === 'offline') heroEl.innerHTML = txt + vis + '<p class="h-off" role="status">Asistente no disponible sin internet. El resto de Inicio funciona normal.</p>';
     else heroEl.innerHTML = txt + vis + '<form class="h-in" autocomplete="off"><span class="h-wave">' + WAVE + '</span><input type="text" enterkeyhint="send" maxlength="500" aria-label="Pregúntale al asistente" placeholder="¿Qué deseas hacer hoy?"><button type="submit" class="h-send" aria-label="Enviar">' + SEND + '</button></form>' +
-      '<div class="h-chips">' + chips.map(function (c) { return '<button type="button" class="h-chip"' + (c[1] ? ' data-hero-q="' + C.esc(c[1]) + '"' : '') + (c[2] ? ' data-hero-photo="1"' : '') + '>' + C.esc(c[0]) + '</button>'; }).join('') + '</div>';
+      '<div class="h-chips">' + chips.map(function (c) { return '<button type="button" class="h-chip"' + (c[3] ? ' aria-label="' + C.esc(c[0]) + '"' : '') + (c[1] ? ' data-hero-q="' + C.esc(c[1]) + '"' : '') + (c[2] ? ' data-hero-photo="1"' : '') + '>' +
+        (c[3] ? '<span class="hl">' + C.esc(c[0]) + '</span><span class="hs" aria-hidden="true">' + C.esc(c[3]) + '</span>' : C.esc(c[0])) + '</button>'; }).join('') + '</div>';
     heroEl.classList.toggle('emp', emp); heroEl.classList.toggle('off', mode === 'offline');
     if (!emp) { var ch = heroEl.querySelector('.na-asst-char'); if (ch) { ch.dataset.state = state; ch.dataset.paused = rootEl ? rootEl.dataset.paused || '0' : '0'; } }
     var form = heroEl.querySelector('.h-in');
@@ -681,7 +714,7 @@
         var e = String(r && r.error || '');
         if (/locked|too_many/.test(e) || (r && r.locked_until)) { st.textContent = 'Demasiados intentos. Espera 15 min.'; inp.disabled = true; inp.placeholder = 'Bloqueado'; box.dataset.state = 'lock'; return; }
         if (/employee/.test(e)) { st.textContent = 'Este teléfono ya es de empleado y no puede pasar a dueño así.'; box.dataset.state = 'emp'; return; }
-        btn.disabled = false; st.textContent = /pin/.test(e) ? 'PIN incorrecto.' + (r.attempts_left != null ? ' Te quedan ' + r.attempts_left + ' intentos.' : '') : r && r.error === 'not_found' ? 'Esta opción todavía no está activa en el servidor.' : 'No se pudo registrar.';
+        btn.disabled = false; st.textContent = /pin/.test(e) ? 'PIN incorrecto.' + (r.attempts_left != null ? (Number(r.attempts_left) === 1 ? ' Te queda 1 intento.' : ' Te quedan ' + r.attempts_left + ' intentos.') : '') : r && r.error === 'not_found' ? 'Esta opción todavía no está activa en el servidor.' : 'No se pudo registrar.';
       };
     });
   }
@@ -755,7 +788,7 @@
     root.addEventListener('online', function () { offline(false); });
     root.addEventListener('offline', function () { offline(true); });
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) applyPause(); else wake(); });
-    root.addEventListener('scroll', hold, { passive: true, capture: true });
+    root.addEventListener('scroll', function (e) { var t = e && e.target; if (t && t.nodeType === 1 && panelEl && panelEl.contains(t)) return; hold(); }, { passive: true, capture: true }); // el autodesplazamiento del chat no pausa la cara del panel
     doc.addEventListener('input', function (e) { if (e.target && e.target.closest && e.target.closest('.na-asst-panel, .na-asst-hero')) hold(); }, true);
     shownFor = access ? access.role + ':' + access.level : '';
     rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
@@ -780,7 +813,7 @@
     var tick = 0; function check() { if (tick) return; tick = setTimeout(function () { tick = 0; if (!doc.hidden) { renderHero(); decorateConfig(); decorateRegister(); } }, 250); }
     try { new MutationObserver(check).observe(doc.body, { childList: true, subtree: true }); } catch (_) {}
     var menu = doc.getElementById('pageMenu');
-    try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) refreshAccess(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}
+    try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) refreshAccess(); else if (heroDeferred) renderHero(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}
   }
   root.NA_ASISTENTE = { open: function () { if (panelEl) openPanel(); }, close: function () { if (panelEl) closePanel(); }, setState: setState, send: send, _gate: gate, _deps: deps, get quality() { return quality; }, place: place, refreshAccess: refreshAccess, get access() { return access; } };
   function later() { (root.requestIdleCallback || function (f) { setTimeout(f, 300); })(boot, { timeout: 2500 }); }

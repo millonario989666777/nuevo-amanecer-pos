@@ -183,12 +183,15 @@ const overLimitMessage = (o, lineas) => [
 // Productos que NO controlan inventario: ni compra ni ajuste de stock desde el asistente (Bot 2).
 export const NO_STOCK_TEXT = (n) => '«' + n + '» no controla inventario: el asistente no prepara compras ni ajustes de stock para ese producto.';
 // Mapa id -> controla (false = sin control). Base del servidor primero; si no hay, lo que mandó el aparato.
-export async function stockControlMap(reader, ctx) {
+// Con `ids` y un lector que sabe buscar por id, se leen SOLO esos productos (sin recorrer el catálogo ni la lista cortada a 5000).
+export async function stockControlMap(reader, ctx, ids) {
   const m = new Map();
   for (const p of (ctx?.products || [])) if (p.controla === false) m.set(String(p.id), false);
-  if (reader && typeof reader.products === 'function') { try { for (const p of await reader.products()) m.set(String(p.id), !!p.controla); } catch { /* sin base: queda lo del aparato */ } }
+  if (reader && ids && typeof reader.productsById === 'function') { try { for (const [id, p] of await reader.productsById(ids)) m.set(id, !!p.controla); } catch { /* sin base: queda lo del aparato; el confirm vuelve a mirar y falla cerrado */ } }
+  else if (reader && typeof reader.products === 'function') { try { for (const p of await reader.products()) m.set(String(p.id), !!p.controla); } catch { /* sin base: queda lo del aparato */ } }
   return m;
 }
+export const proposalProductIds = (proposals) => [...new Set(proposals.flatMap((p) => p.type === 'ajuste' ? [p.product_id] : p.type === 'compra' ? (p.lineas || []).map((l) => l.product_id) : []).filter(Boolean).map(String))];
 // Quita filas/tarjetas de productos sin control de inventario. Devuelve los nombres omitidos (para el mensaje).
 export function applyStockControl(proposals, dropped, map) {
   const skipped = [];
@@ -443,8 +446,8 @@ export async function verifyOwnerApproval(db, deviceId, approvalId, action, oper
   } catch { return false; }
 }
 
-// Confirmaciones RECHAZADAS también quedan en la bitácora (Bots 3/5). 429 y 403 de rol se AGRUPAN (una fila por aparato, minuto y
-// resultado con count) para que un aparato insistiendo no llene el registro; el resto, una fila por rechazo en su propio cajón.
+// Confirmaciones RECHAZADAS también quedan en la bitácora (Bots 3/5). Dueño: 429 y 403 de rol agrupados (oa), el resto uno por uno (or).
+// Cualquier otro aparato: TODO rechazo agrupado por aparato, minuto y motivo (a). Así nada de otro teléfono saca filas del dueño.
 export async function assistantConfirmRoute(request, env, auth, json, deps = {}) {
   const ctx = {}; let rej = null;
   const jr = (data, status = 200) => { if (status >= 400) rej = { error: data && data.error, status }; return json(data, status); };
@@ -459,12 +462,13 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
 async function confirmCore(request, env, auth, json, deps, ctx) {
   if (String(env?.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  // Rol y nivel se leen del servidor en CADA confirmación (sin caché): quitar el permiso aplica al instante. Va ANTES de leer el
+  // cuerpo: así hasta un 400 o un bad_token queda en el cajón correcto de la bitácora (dueño u otro aparato).
+  const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth); ctx.role = role;
+  if (!accessOn(role)) return json(offBody(role), 403);
   const secret = env.ASSISTANT_CONFIRM_SECRET;
   if (!secret || String(secret).length < 16) return json({ error: 'confirm_unavailable' }, 503);
   let body; try { body = JSON.parse((await request.text()).slice(0, 200000)); } catch { return json({ error: 'bad_request' }, 400); }
-  // Rol y nivel se leen del servidor en CADA confirmación (sin caché): quitar el permiso aplica al instante.
-  const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth); ctx.role = role;
-  if (!accessOn(role)) return json(offBody(role), 403);
   const tok = await readConfirmToken(body?.token, secret);
   if (!tok) return json({ error: 'bad_token' }, 403);
   ctx.tok = tok;
@@ -509,18 +513,24 @@ async function confirmCore(request, env, auth, json, deps, ctx) {
   if (tok.t === 'ajuste' && !(Number(applied.cantidad) > 0 && Number(applied.cantidad) <= PURCHASE_HARD_LIMITS.maxQty)) return json({ error: 'over_limit', rows: [], limits: PURCHASE_HARD_LIMITS, message: 'La cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.' }, 422);
   // Control de inventario: se vuelve a mirar en la base del servidor (pudo cambiar después de la tarjeta).
   if (tok.t === 'ajuste' || tok.t === 'compra') {
-    // Falla CERRADO: sin base, lectura caída o lista incompleta (cortada) que no trae el producto -> no se confirma.
+    // Falla CERRADO: sin base o consulta caída -> 503; id que no existe -> 409 product_missing. Se buscan SOLO los ids de la tarjeta.
     const rd = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
     const lines = tok.t === 'ajuste' ? [applied] : applied.lineas;
     const ids = lines.filter((l) => l.product_id).map((l) => String(l.product_id));
     if (ids.length) {
       const unavailable = () => json({ error: 'stock_check_unavailable', message: 'No pude revisar el inventario ahora. Inténtalo en un momento.' }, 503);
-      if (!rd || typeof rd.products !== 'function') return unavailable();
-      let list; try { list = await rd.products(); } catch { return unavailable(); }
-      if (!Array.isArray(list)) return unavailable();
-      const byId = new Map(list.map((p) => [String(p.id), p]));
+      let byId, truncated = false;
+      if (rd && typeof rd.productsById === 'function') { // solo los ids de la tarjeta (tramos de <= 50); sin tope de catálogo
+        try { byId = await rd.productsById(ids); } catch { return unavailable(); }
+        if (!(byId instanceof Map)) return unavailable();
+      } else {
+        if (!rd || typeof rd.products !== 'function') return unavailable();
+        let list; try { list = await rd.products(); } catch { return unavailable(); }
+        if (!Array.isArray(list)) return unavailable();
+        byId = new Map(list.map((p) => [String(p.id), p])); truncated = !!list.truncated;
+      }
       const missing = ids.filter((id) => !byId.has(id));
-      if (missing.length && list.truncated) return unavailable();
+      if (missing.length && truncated) return unavailable();
       if (missing.length) return json({ error: 'product_missing', message: 'Ese producto ya no está en el inventario. Pide la tarjeta de nuevo.' }, 409);
       const bad = lines.filter((l) => l.product_id && byId.get(String(l.product_id)).controla === false).map((l) => l.nombre);
       if (bad.length) return json({ error: 'sin_control_stock', nombres: bad, message: bad.map(NO_STOCK_TEXT).join(' ') }, 409);
@@ -563,10 +573,25 @@ export function parseChatBody(body) {
   return { text, image, history, context: body.context };
 }
 
+// Chat RECHAZADO también queda en la bitácora, igual que el confirm (el rol se resuelve ANTES de leer el cuerpo): dueño -> 429 y
+// 403 de rol agrupados (oa), el resto uno por uno (or); cualquier otro aparato -> todo agrupado por aparato, minuto y motivo (a).
+// Nunca se guarda el texto del mensaje, la foto, el PIN ni secretos: solo aparato, rol y motivo.
 export async function assistantChatRoute(request, env, auth, json, deps = {}) {
+  const ctx = {}; let rej = null;
+  const jr = (data, status = 200) => { if (status >= 400) rej = { error: data && data.error, status }; return json(data, status); };
+  const res = await chatCore(request, env, auth, jr, deps, ctx);
+  if (rej && rej.error && rej.status !== 404 && rej.status !== 405) {
+    const aggregate = rej.status === 429 || (rej.status === 403 && isAggregated(rej.error));
+    await (deps.audit || auditWrite)(deps.db, [{ device_id: auth?.principalId, role: ctx.role ? String(ctx.role) : null, tool: 'chat', src: 'chat',
+      outcome: 'rejected:' + String(rej.error).slice(0, 40), aggregate }]);
+  }
+  return res;
+}
+async function chatCore(request, env, auth, json, deps, ctxOut) {
   if (String(env?.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth);
+  ctxOut.role = role;
   // Aparato sin fila de rol (el POS lo trata como dueño, el asistente no): se avisa para mostrar «Registrar este teléfono como dueño».
   const ownerBootstrap = String(env?.ASSISTANT_OWNER_BOOTSTRAP || '') === '1';
   if (!accessOn(role)) return json({ ...offBody(role), ...(auth?.posRole === 'owner' ? { reason: 'sin_rol', owner_bootstrap: ownerBootstrap } : {}) }, 403);
@@ -609,13 +634,13 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   // Sin control de inventario: fuera antes de firmar (y se vuelve a mirar al confirmar).
   let noStock = [];
   if (proposals.some((p) => p.type === 'ajuste' || p.type === 'compra') || dropped.some((d) => d.dropped === 'sin_control_stock')) {
-    noStock = [...dropped.filter((d) => d.dropped === 'sin_control_stock' && d.nombre).map((d) => d.nombre), ...applyStockControl(proposals, dropped, await stockControlMap(reader, ctx))];
+    noStock = [...dropped.filter((d) => d.dropped === 'sin_control_stock' && d.nombre).map((d) => d.nombre), ...applyStockControl(proposals, dropped, await stockControlMap(reader, ctx, proposalProductIds(proposals)))];
   }
   const overNames = dropped.filter((d) => d.dropped === 'over_limit' && d.nombre).map((d) => d.nombre);
   for (const p of proposals.slice()) if (p.type === 'compra' && role === 'owner') proposals.push(...costProposals(p));
   // Empleado que pide un documento solo del dueño: 403 (no 200 con la tarjeta descartada).
+  // La bitácora la escribe assistantChatRoute (agrupada por aparato y minuto), así un empleado insistiendo no llena el cajón r.
   if (role !== 'owner' && dropped.some((d) => d.dropped === 'forbidden_document')) {
-    await (deps.audit || auditWrite)(deps.db, dropped.map((d) => ({ device_id: auth.principalId, role, tool: d.tool, outcome: 'dropped:' + d.dropped })));
     return json({ error: 'forbidden_document', message: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', allowed: EMPLOYEE_DOC_TYPES }, 403);
   }
   // Consultas: el Worker lee su base (solo lectura) y manda al modelo SOLO un resumen chico, nunca el inventario completo.

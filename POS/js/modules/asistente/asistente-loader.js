@@ -19,10 +19,11 @@
   var loaded = false, asking = false, lastAsk = 0;
   function ls(k, v) { try { if (v === undefined) return root.localStorage.getItem(k); if (v === null) root.localStorage.removeItem(k); else root.localStorage.setItem(k, v); } catch (_) {} return null; }
   // Tarjeta de Inicio del dueño ARRIBA (debajo del saludo, antes de los totales) con alto FIJO: el hueco se reserva en cuanto corre
-  // este archivo SOLO si el último ping dijo «dueño». Empleado o sin dato: no se reserva nada. Las alturas viven solo aquí.
-  var SLOT_CSS = '#naAsstHero{box-sizing:border-box;flex:none;height:320px;margin:4px 0 16px;border-radius:22px;overflow:hidden;contain:strict}' +
+  // este archivo SOLO si el último ping dijo «dueño». Empleado o sin dato: no se reserva nada. Las alturas viven aquí y en el margen de
+  // <head> (index.html): 321 (<380) / 272 (380-699, valor de Bot 4) / 364 (tableta) / 280 (PC) = alto REAL de la tarjeta (asistente.css fija las líneas por tramo).
+  var SLOT_CSS = '#naAsstHero{box-sizing:border-box;flex:none;height:321px;margin:4px 0 16px;border-radius:22px;overflow:hidden;contain:strict}' +
     '#naAsstHero:empty{background:rgba(34,197,94,.07);border:1px solid rgba(21,128,61,.18)}' +
-    '@media (min-width:700px){#naAsstHero{height:300px;margin:4px 0 18px}}@media (min-width:1100px){#naAsstHero{height:292px}}' +
+    '@media (min-width:380px) and (max-width:699px){#naAsstHero{height:272px}}@media (min-width:700px){#naAsstHero{height:364px;margin:4px 0 18px}}@media (min-width:1100px){#naAsstHero{height:280px}}' +
     // La tarjeta va en lugar de «Hola, ¿qué quieres hacer hoy?» del celular (como en las maquetas v2); el resto de Inicio no cambia.
     'html.na-asst-owner #naMobileWelcome{display:none!important}' +
     '#naAsstHero.na-asst-gone{display:flex;align-items:center;justify-content:center;padding:16px;background:#f1f5f9;border:1px solid #e2e8f0;color:#334155;font-size:15px;text-align:center}' +

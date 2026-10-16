@@ -87,3 +87,9 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 ## 7. Dónde ver las pruebas
 - Pruebas automáticas: `tests/asistente/` (85 pruebas, todas pasan), incluye niveles de empleado, revocación inmediata, lista de pedido sin costos, registro del dueño, último dueño y el cargador (empleado en Apagado = 0 archivos).
 - Capturas: `/workspace/asistente-proto/shots-admin/` (390, 768 y 1280; verde, nocturno y azul).
+
+## Sobre 1b87710d (revisión de Bots 2, 3, 4 y 5) — pendiente de decisión del jefe
+- **Primera visita a Inicio (Bot 3/Bot 4):** la tarjeta ya no entra arriba con Inicio a la vista (era CLS 0,14-0,22). Mientras tanto se ve la burbuja; la tarjeta entra al salir de Inicio o en el próximo arranque (el `<head>` ya reserva su alto). La idea de Bot 3 de guardar el rol al iniciar sesión, para que la PRIMERA vez ya esté reservado, necesita tocar el inicio de sesión del POS (el ping del asistente corre después del primer pintado). No se hizo porque el núcleo está congelado: queda como sugerencia para el jefe.
+- **GET /settings del núcleo (Bot 3):** `pos-roles.js` lista con `key NOT LIKE 'internal:%'`, que recorre toda `pos_settings`. El asistente ya usa rangos por clave (`key >= p AND key < p+1`) en su bitácora y en el registro de aparatos de dueño. Sugerencia para el jefe: el mismo cambio en GET /settings (no se tocó: POS congelado).
+- **Tarjetas de compra:** el chat sigue limitando cada compra a 30 filas; el confirm ya revisa cualquier cantidad de productos en tramos de 50 ids.
+- **Compras del POS** (`/auth/purchases`): siguen sin tope propio (pendiente de antes).

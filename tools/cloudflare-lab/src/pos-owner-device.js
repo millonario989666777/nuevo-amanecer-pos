@@ -17,6 +17,7 @@
 //   - El aparato es siempre el de la sesión: rol o aparato en cabeceras o cuerpo se ignoran.
 //   - Cada registro, pedido, aprobación, rechazo y revocación se anota en pos_owner_device_log. Sin esa tabla (migración 0035,
 //     NO aplicada) las rutas fallan cerrado (503): no se registra nada sin bitácora.
+import { prefixRange } from './pos-assistant-audit.js';
 import { sha256Hex } from './a5-import-core.js';
 import { verifyOwnerPin } from './pos-roles.js';
 
@@ -39,7 +40,8 @@ function logStmtFor(db) {
 async function runBatch(db, stmts) { if (typeof db.batch === 'function') return db.batch(stmts); const out = []; for (const st of stmts) out.push(await st.run()); return out; }
 const changes = (r) => Number(r?.meta?.changes ?? r?.changes ?? 0);
 async function pending(db) {
-  const rows = (await db.prepare('SELECT key,value_json FROM pos_settings WHERE key LIKE ?1').bind(PREFIX + '%').all())?.results || [];
+  // Rango por clave primaria (no LIKE): no recorre toda pos_settings (Bot 3).
+  const rows = (await db.prepare('SELECT key,value_json FROM pos_settings WHERE key >= ?1 AND key < ?2').bind(...prefixRange(PREFIX)).all())?.results || [];
   return rows.map((r) => { try { return { key: r.key, ...JSON.parse(r.value_json) }; } catch { return null; } }).filter((x) => x && x.device_id && x.exp > Date.now());
 }
 

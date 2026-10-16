@@ -187,10 +187,10 @@ test('A20 auditoría: una fila por llamada a herramienta y por confirmación; so
   assert.equal((await call('tok-emp', '/auth/assistant/audit', null, {}, 'GET')).status, 403);
   // y no se ve por /settings
   const st = await call('tok-dueno', '/settings', null, {}, 'GET'); assert.equal(st.status, 200); assert.ok(!JSON.stringify(await st.json()).includes('internal:'), '/settings nunca devuelve claves internas');
-  assert.equal(b.keep, 1000); assert.deepEqual(b.caps, { o: 1000, r: 300, a: 300 }); assert.equal(typeof b.write_errors, 'number');
+  assert.equal(b.keep, 1000); assert.deepEqual(b.caps, { o: 1000, or: 300, oa: 100, r: 300, a: 300 }); assert.equal(typeof b.write_errors, 'number');
 });
 
-test('A20: cajones con tope propio (dueño 1000, rechazos 300, agrupados 300): un empleado inundando NO saca filas del dueño', async (t) => {
+test('A20: cajones con tope propio (dueño 1000, empleados 300, agrupados 300): un empleado inundando NO saca filas del dueño', async (t) => {
   const { f } = await setup(t);
   const { auditWrite, AUDIT_CAPS } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
   const db = f.env.nuevo_amanecer_lab;
@@ -201,11 +201,11 @@ test('A20: cajones con tope propio (dueño 1000, rechazos 300, agrupados 300): u
   for (let k = 0; k < 5; k++) await auditWrite(db, Array.from({ length: 100 }, (_, i) => ({ device_id: 'session:emp', role: 'empleado:consultas', outcome: i % 2 ? 'rejected:rate_limited' : 'rejected:forbidden_role', aggregate: true })));
   assert.equal(cnt('o'), 40, 'las 40 filas del dueño siguen todas');
   assert.equal(cnt('r'), AUDIT_CAPS.r, 'el ruido del empleado se recorta en SU cajón');
-  // agrupados: una fila por aparato, minuto y resultado con count (no 500 filas)
+  // TODO rechazo de un aparato que no es dueño se agrupa: una fila por aparato, minuto y resultado con count (no 800 filas)
   const agg = f.all("SELECT value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:a:%'").map((r) => JSON.parse(r.value_json));
-  assert.ok(agg.length <= 4, JSON.stringify(agg.length));
-  assert.equal(agg.reduce((n, a) => n + a.count, 0), 500);
-  assert.deepEqual([...new Set(agg.map((a) => a.outcome))].sort(), ['rejected:forbidden_role', 'rejected:rate_limited']);
+  assert.ok(agg.length <= 6, JSON.stringify(agg.length));
+  assert.equal(agg.reduce((n, a) => n + a.count, 0), 500 + 9 * 34); // 34 de cada 100 son review_required
+  assert.deepEqual([...new Set(agg.map((a) => a.outcome))].sort(), ['rejected:forbidden_role', 'rejected:rate_limited', 'rejected:review_required']);
   assert.ok(f.all("SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'").every((r) => r.key.length <= 60), 'claves de 60 caracteres o menos');
 });
 
@@ -226,4 +226,180 @@ test('A20: confirm rechazado queda anotado (422/403 sueltos; 429 agrupados); fal
   assert.equal((await chat('tok-dueno', '¿qué me falta reponer?')).status, 200);
   const g2 = await (await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET')).json();
   assert.ok(g2.write_errors >= 1); assert.ok(g2.last_write_error_at);
+});
+
+test('A20 chat: rechazos del chat de otros aparatos TODOS agrupados (403 de rol, assistant_off, 429, 400) y una inundación NO saca filas del dueño', async (t) => {
+  const { f, call, chat, level } = await setup(t);
+  const { auditWrite, AUDIT_CAPS } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  const cnt = (b) => f.all(`SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%'`)[0].n;
+  const ownerRows = () => f.all("SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:o:%' ORDER BY key").map((r) => r.key);
+  await auditWrite(f.env.nuevo_amanecer_lab, Array.from({ length: 40 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', tool: 'proponer_ajuste_stock', outcome: i % 2 ? 'confirmed' : 'proposed', card_id: 'o' + i })));
+  assert.equal((await chat('tok-dueno', 'merma de 2 Synthetic 00003')).status, 200);
+  const before = ownerRows(); assert.ok(before.length > 40);
+  const SECRET = 'PIN 4821 DNI 45678912 clave-secreta';
+  // 1) empleado apagado: 403 assistant_off (chat y ping) -> agrupado
+  for (let i = 0; i < 150; i++) assert.equal((await chat('tok-emp', SECRET + ' ' + i)).status, 403);
+  for (let i = 0; i < 30; i++) assert.equal((await call('tok-emp', '/auth/assistant/chat', { ping: true })).status, 403);
+  // 2) empleado en «consultas» pidiendo documentos: 403 forbidden_document -> agrupado
+  assert.equal((await level('session:emp2', 'consultas')).status, 200);
+  Object.assign(f.env, { ASSISTANT_PER_MINUTE: '1000', ASSISTANT_PER_DAY: '1000' }); // el cupo se gasta antes del 403 de documento
+  for (let i = 0; i < 20; i++) assert.equal((await chat('tok-emp2', 'imprime la lista de precios ' + SECRET)).status, 403);
+  // 3) cuerpo malo / foto mala / vacío: suelto al cajón r (pasa su tope de 300 y se recorta solo ahí)
+  for (let i = 0; i < 160; i++) assert.equal((await call('tok-emp2', '/auth/assistant/chat', { text: SECRET, image: 'no-es-foto-' + i })).status, 400);
+  for (let i = 0; i < 160; i++) assert.equal((await call('tok-emp2', '/auth/assistant/chat', { text: '' })).status, 400);
+  // 4) 429: el aparato pasa su cupo por minuto -> agrupado por resultado
+  f.env.ASSISTANT_PER_MINUTE = '0';
+  for (let i = 0; i < 120; i++) assert.equal((await chat('tok-emp2', '¿qué me falta? ' + SECRET)).status, 429);
+  delete f.env.ASSISTANT_PER_MINUTE; delete f.env.ASSISTANT_PER_DAY;
+  assert.deepEqual(ownerRows(), before, 'ninguna fila del dueño se borró');
+  assert.equal(cnt('r'), 0, 'los rechazos de otro aparato nunca van sueltos');
+  const agg = f.all("SELECT key, value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:a:%'").map((r) => ({ key: r.key, ...JSON.parse(r.value_json) }));
+  const by = (o) => agg.filter((a) => a.outcome === o).reduce((n, a) => n + a.count, 0);
+  assert.equal(by('rejected:assistant_off'), 180); assert.equal(by('rejected:forbidden_document'), 20); assert.equal(by('rejected:rate_limited'), 120);
+  assert.equal(by('rejected:bad_image'), 160); assert.equal(by('rejected:empty_message'), 160);
+  assert.ok(agg.length <= 12, 'una fila por aparato, minuto y resultado: ' + agg.length);
+  assert.ok(agg.every((a) => a.src === 'chat' && a.tool === 'chat' && /:c[a-z_]+$/.test(a.key)));
+  const all = JSON.stringify(f.all("SELECT key, value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'"));
+  assert.ok(!/PIN 4821|45678912|clave-secreta|no-es-foto|lista de precios|me falta/.test(all), 'sin texto del mensaje, PIN ni secretos'); // «4821» suelto puede salir en un hash o una hora
+  assert.ok(f.all("SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'").every((r) => r.key.length <= 60));
+  // el dueño lo lee; el empleado no
+  const g = await (await call('tok-dueno', '/auth/assistant/audit?limit=500', null, {}, 'GET')).json();
+  assert.ok(g.entries.some((e) => e.outcome === 'rejected:rate_limited' && e.src === 'chat'));
+  assert.equal((await call('tok-emp2', '/auth/assistant/audit', null, {}, 'GET')).status, 403);
+});
+
+// ---- Bot 2 sobre 1b87710d: el control de inventario lee SOLO los ids de la tarjeta (sin tope de 5000) ----
+// Catálogo grande SOLO en la base de prueba en memoria: se apaga el candado de candidato sellado y las FK para copiar filas.
+function bigCatalog(f, total) {
+  for (const r of f.all("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='products' AND sql LIKE '%INSERT ON products%'")) f.database.exec('DROP TRIGGER ' + r.name);
+  f.database.exec('PRAGMA foreign_keys=OFF');
+  const cols = f.all('PRAGMA table_info(products)').map((c) => c.name);
+  const sel = cols.map((c) => c === 'product_id' ? "printf('%05d', n)" : c === 'name' ? "'Synthetic ' || printf('%05d', n)" : c === 'source_row' ? '100000 + n' : c === 'source_key' ? "printf('%05d', n)"
+    : c === 'tracks_inventory' ? 'CASE WHEN n % 7 = 0 THEN 0 ELSE 1 END' : c).join(',');
+  f.database.exec(`WITH RECURSIVE s(n) AS (SELECT 28 UNION ALL SELECT n + 1 FROM s WHERE n < ${total - 1})
+    INSERT INTO products(${cols.join(',')}) SELECT ${sel} FROM s, (SELECT * FROM products WHERE product_id='00001')`);
+}
+function countingDb(db, seen) {
+  return new Proxy(db, { get(t, k) { if (k !== 'prepare') { const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; }
+    return (sql) => { const st = t.prepare(sql); if (/product_id IN \(/.test(sql)) { const n = (sql.match(/IN \(([^)]*)\)/) || ['', ''])[1].split(',').length; seen.push(n); }
+      if (/\/read\/canonical|FROM \(\s*SELECT 'I:'/.test(sql)) seen.push('catalogo'); return st; }; } });
+}
+
+test('Bot 2: con 5300 productos, el #5200 confirma 200 leyendo solo su id; sin control -> 409; id inexistente -> 409 product_missing', async (t) => {
+  const { f, call, approve } = await setup(t);
+  bigCatalog(f, 5300);
+  assert.equal(f.all('SELECT COUNT(*) n FROM products')[0].n, 5300);
+  const chatWith = async (prod) => { const r = await call('tok-dueno', '/auth/assistant/chat', { text: 'merma de 2 ' + prod.nombre, context: { products: [{ ...prod, precio: 5, costo: 1, stock: 10 }] } }); return { status: r.status, body: await r.json() }; };
+  const confirmCard = async (card) => { const { confirm_token, ...proposal } = card; const apr = await approve('tok-dueno', 'inventory.adjust', opOf(card));
+    const r = await call('tok-dueno', '/auth/assistant/confirm', { token: confirm_token, proposal }, { 'x-owner-approval': apr.body.approval_id }); return { status: r.status, body: await r.json() }; };
+  const a = await chatWith({ id: '05200', nombre: 'Synthetic 05200' }); assert.equal(a.status, 200, JSON.stringify(a.body));
+  const card = a.body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card, JSON.stringify(a.body));
+  const ok = await confirmCard(card); assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  // sin control de inventario (#5201): el chat ya no ofrece la tarjeta (consulta por id, no la lista cortada)
+  const nc = await chatWith({ id: '05201', nombre: 'Synthetic 05201' }); assert.ok(!nc.body.proposals.some((p) => p.type === 'ajuste'), JSON.stringify(nc.body));
+  assert.match(nc.body.reply, /no controla inventario/);
+  // id que no existe en la base: la tarjeta sale (dato del aparato) pero el confirm responde 409 product_missing
+  const gone = await chatWith({ id: '09999', nombre: 'Synthetic 09999' }); const gc = gone.body.proposals.find((p) => p.type === 'ajuste'); assert.ok(gc);
+  const r = await confirmCard(gc); assert.equal(r.status, 409); assert.equal(r.body.error, 'product_missing');
+});
+
+test('Bot 2/Bot 3: tarjeta de 125 productos -> 3 consultas IN de <= 50 ids, sin leer el catálogo, confirma 200', async (t) => {
+  const { f } = await setup(t);
+  bigCatalog(f, 300);
+  const { assistantConfirmRoute, issueConfirmToken, createMemoryUsageStore } = await import('../../tools/cloudflare-lab/src/pos-assistant.js');
+  const { canonicalReader, PRODUCT_ID_CHUNK } = await import('../../tools/cloudflare-lab/src/pos-assistant-queries.js');
+  assert.equal(PRODUCT_ID_CHUNK, 50);
+  const ids = Array.from({ length: 300 }, (_, i) => String(i).padStart(5, '0')).filter((id) => Number(id) % 7 !== 0 && Number(id) % 2 === 1).slice(0, 125);
+  assert.equal(ids.length, 125);
+  // Las tarjetas del chat llegan hasta 30 filas; aquí se firma directo una de 125 para probar los tramos.
+  const proposal = { id: 'big-1', type: 'compra', needsConfirm: true, requiresRole: 'owner', title: 'Registrar compra', proveedor: 'Dist', lineas: ids.map((id) => ({ product_id: id, nombre: 'Synthetic ' + id, cantidad: 1, costo_unitario: 1 })) };
+  const env = { ASSISTANT_ENABLED: '1', ASSISTANT_CONFIRM_SECRET: 'secreto-de-prueba-0123456789abcdef' }, auth = { principalId: 'session:dueno', posRole: 'owner' };
+  const token = await issueConfirmToken(proposal, 'owner', auth, env.ASSISTANT_CONFIRM_SECRET, Date.now());
+  const seen = []; const reader = canonicalReader(countingDb(f.env.nuevo_amanecer_lab, seen));
+  const jsonR = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json' } });
+  const res = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token, proposal }) }), env, auth, jsonR,
+    { store: createMemoryUsageStore(), resolveRole: async () => 'owner', verifyApproval: async () => true, reader, audit: async () => {} });
+  const body = await res.json(); assert.equal(res.status, 200, JSON.stringify(body)); assert.equal(body.proposal.lineas.length, 125);
+  assert.deepEqual(seen, [50, 50, 25], 'tres tramos de 50/50/25 ids y ninguna lectura del catálogo');
+  // un id que falta entre los 125 -> 409 product_missing; consulta que falla -> 503 sin gastar nada
+  const p2 = { ...proposal, id: 'big-2', lineas: [...proposal.lineas.slice(0, 124), { product_id: '77777', nombre: 'No existe', cantidad: 1, costo_unitario: 1 }] };
+  const t2 = await issueConfirmToken(p2, 'owner', auth, env.ASSISTANT_CONFIRM_SECRET, Date.now()); let spent = 0;
+  const r2 = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token: t2, proposal: p2 }) }), env, auth, jsonR,
+    { store: createMemoryUsageStore(), resolveRole: async () => 'owner', verifyApproval: async () => { spent++; return true; }, reader: canonicalReader(f.env.nuevo_amanecer_lab), audit: async () => {} });
+  assert.equal(r2.status, 409); assert.equal((await r2.json()).error, 'product_missing'); assert.equal(spent, 0);
+  const broken = new Proxy(f.env.nuevo_amanecer_lab, { get(t, k) { if (k === 'prepare') return (sql) => { if (/product_id IN \(/.test(sql)) throw new Error('D1_ERROR: caída'); return t.prepare(sql); }; const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; } });
+  const r3 = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token, proposal }) }), env, auth, jsonR,
+    { store: createMemoryUsageStore(), resolveRole: async () => 'owner', verifyApproval: async () => { spent++; return true; }, reader: canonicalReader(broken), audit: async () => {} });
+  assert.equal(r3.status, 503); assert.equal((await r3.json()).error, 'stock_check_unavailable'); assert.equal(spent, 0);
+});
+
+test('Bot 2: GET de la bitácora muestra PRIMERO las filas del dueño aunque haya inundación; ?grupo=o|r|a filtra; grupo malo 400', async (t) => {
+  const { f, call } = await setup(t);
+  const { auditWrite } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  const db = f.env.nuevo_amanecer_lab;
+  await auditWrite(db, Array.from({ length: 180 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', tool: 'proponer_ajuste_stock', outcome: 'proposed', card_id: 'o' + i })));
+  for (let k = 0; k < 4; k++) await auditWrite(db, Array.from({ length: 100 }, (_, i) => ({ device_id: 'session:emp', role: 'empleado:consultas', tool: 'consultar', outcome: 'proposed', card_id: 'r' + k + i })));
+  // 320 grupos en minutos distintos (claves a: escritas a mano con minuto distinto)
+  for (let m = 0; m < 320; m++) f.exec("INSERT INTO pos_settings(key,value_json,revision,updated_at,updated_by) VALUES(?,?,1,?,'x')", 'internal:asst:audit:a:' + (29000000 + m) + ':abcdef0123:krate_limited', JSON.stringify({ at: new Date().toISOString(), last_at: new Date(Date.now() + 1000).toISOString(), outcome: 'rejected:rate_limited', count: 3 }), new Date().toISOString());
+  const g = await (await call('tok-dueno', '/auth/assistant/audit?limit=500', null, {}, 'GET')).json();
+  assert.equal(g.entries.filter((e) => e.outcome === 'proposed').length, 180, 'las 180 del dueño se ven por defecto');
+  assert.ok(g.entries.slice(0, 180).every((e) => e.grupo === 'o'), 'y van primero');
+  assert.equal(g.entries.length, 500); assert.equal(g.grupos.o, 180); assert.equal(g.grupos.r, 300); assert.equal(g.grupos.a, 320);
+  const r = await (await call('tok-dueno', '/auth/assistant/audit?grupo=r&limit=500', null, {}, 'GET')).json();
+  assert.equal(r.entries.length, 300); assert.ok(r.entries.every((e) => e.grupo === 'r')); assert.equal(r.grupo, 'r');
+  const a = await (await call('tok-dueno', '/auth/assistant/audit?grupo=a&limit=50', null, {}, 'GET')).json(); assert.equal(a.entries.length, 50); assert.ok(a.entries.every((e) => e.grupo === 'a'));
+  assert.equal((await call('tok-dueno', '/auth/assistant/audit?grupo=x', null, {}, 'GET')).status, 400);
+  assert.equal((await call('tok-emp', '/auth/assistant/audit?grupo=o', null, {}, 'GET')).status, 403);
+});
+
+test('Bot 5: rechazos del DUEÑO en su propio cajón (or); bad_token y bad_request de otros aparatos (empleado y sin rol) van agrupados y no los sacan', async (t) => {
+  const { f, call, chat, level } = await setup(t);
+  const { AUDIT_CAPS } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  f.addDevice('sinrol', 'writer', 'active', 'tok-sinrol');
+  const cnt = (b) => f.all(`SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%'`)[0].n;
+  const keys = (b) => f.all(`SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%' ORDER BY key`).map((r) => r.key);
+  const raw = (tok, path, body) => f.fetch('http://localhost' + path, { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json' }, body });
+  // rechazos del dueño: confirm sin aprobación, token malo y cuerpo malo (uno por uno, cajón or)
+  const card = (await chat('tok-dueno', 'merma de 2 Synthetic 00003')).body.proposals.find((p) => p.confirm_token); const { confirm_token, ...proposal } = card;
+  assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: confirm_token, proposal })).status, 403);
+  assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: 'malo', proposal })).status, 403);
+  assert.equal((await raw('tok-dueno', '/auth/assistant/confirm', '{no es json')).status, 400);
+  assert.equal((await raw('tok-dueno', '/auth/assistant/chat', '{no es json')).status, 400);
+  const ownerRej = keys('or'); assert.equal(ownerRej.length, 4, JSON.stringify(ownerRej));
+  const ownerOut = f.all("SELECT value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:or:%'").map((r) => JSON.parse(r.value_json).outcome).sort();
+  assert.deepEqual(ownerOut, ['rejected:bad_request', 'rejected:bad_request', 'rejected:bad_token', 'rejected:owner_approval_required']);
+  // diluvio de otros aparatos: empleado con nivel (llega a leer el token) y teléfono sin rol (se corta en el rol, antes del cuerpo)
+  assert.equal((await level('session:emp', 'consultas')).status, 200);
+  for (let i = 0; i < 200; i++) assert.equal((await call('tok-emp', '/auth/assistant/confirm', { token: 'x' + i, proposal: {} })).status, 403);
+  for (let i = 0; i < 200; i++) assert.equal((await raw('tok-emp', '/auth/assistant/confirm', '{roto' + i)).status, 400);
+  for (let i = 0; i < 200; i++) assert.equal((await raw('tok-sinrol', '/auth/assistant/confirm', '{roto' + i)).status, 403);
+  for (let i = 0; i < 200; i++) assert.equal((await raw('tok-sinrol', '/auth/assistant/chat', '{roto' + i)).status, 403);
+  assert.deepEqual(keys('or'), ownerRej, 'los rechazos del dueño siguen todos');
+  assert.equal(cnt('r'), 0, 'ningún rechazo de otro aparato va suelto');
+  const agg = f.all("SELECT value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:a:%'").map((r) => JSON.parse(r.value_json));
+  assert.ok(agg.length <= 8, String(agg.length)); assert.equal(agg.reduce((n, a) => n + a.count, 0), 800);
+  assert.ok(agg.every((a) => a.role !== 'owner'));
+  const g = await (await call('tok-dueno', '/auth/assistant/audit?grupo=or', null, {}, 'GET')).json(); assert.equal(g.entries.length, 4);
+  assert.ok(f.all("SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'").every((r) => r.key.length <= 60));
+  assert.deepEqual(Object.keys(AUDIT_CAPS), ['o', 'or', 'oa', 'r', 'a']);
+});
+
+test('Bot 3: rango de claves (key >= p AND key < p+1) devuelve EXACTAMENTE las mismas filas que LIKE y usa el índice de la clave', async (t) => {
+  const { f } = await setup(t);
+  const { auditWrite, prefixRange, AUDIT_PREFIX, AUDIT_CAPS } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  const db = f.env.nuevo_amanecer_lab;
+  await auditWrite(db, Array.from({ length: 30 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', outcome: i % 2 ? 'proposed' : 'rejected:bad_token', card_id: 'c' + i })));
+  await auditWrite(db, Array.from({ length: 20 }, (_, i) => ({ device_id: 'session:emp', role: 'empleado:consultas', outcome: i % 2 ? 'proposed' : 'rejected:rate_limited' })));
+  // vecinos que NO deben entrar: otro prefijo parecido, mayúsculas y el carácter siguiente a «:»
+  const at = new Date().toISOString();
+  for (const k of ['internal:asst:audit;x', 'internal:asst:audiu:x', 'internal:asst:odev;x', 'internal:asst:odevx', 'internal:asst:odev:dev-1']) f.exec("INSERT INTO pos_settings(key,value_json,revision,updated_at,updated_by) VALUES(?,'{}',1,?,'t')", k, at);
+  for (const p of [AUDIT_PREFIX, ...Object.keys(AUDIT_CAPS).map((b) => AUDIT_PREFIX + b + ':'), 'internal:asst:odev:']) {
+    const [lo, hi] = prefixRange(p);
+    const like = f.all('SELECT key FROM pos_settings WHERE key LIKE ? ORDER BY key', p + '%').map((r) => r.key);
+    const range = f.all('SELECT key FROM pos_settings WHERE key >= ? AND key < ? ORDER BY key', lo, hi).map((r) => r.key);
+    assert.deepEqual(range, like, p); assert.ok(range.every((k) => k.startsWith(p)), p);
+    const plan = JSON.stringify(f.all('EXPLAIN QUERY PLAN SELECT key FROM pos_settings WHERE key >= ? AND key < ?', lo, hi));
+    assert.match(plan, /SEARCH/, 'usa el índice: ' + plan);
+  }
+  assert.deepEqual(prefixRange('internal:asst:audit:o:'), ['internal:asst:audit:o:', 'internal:asst:audit:o;']);
 });
