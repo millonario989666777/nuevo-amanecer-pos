@@ -31,7 +31,7 @@ http.createServer(async (req, res) => {
       let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {}
       if (req.headers['x-proto-role'] === 'empleado') { res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":"owner_only"}'); return; }
       if (!b.operation_id) { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"error":"operation_id_required"}'); return; }
-      if (!/^\d{4,8}$/.test(String(b.pin || ''))) { res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":"owner_pin_invalid"}'); return; }
+      if (!/^\d{4,8}$/.test(String(b.pin || '')) || String(b.pin) === '0000') { /* demo: «0000» simula PIN incorrecto */ res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":"owner_pin_invalid"}'); return; }
       const id = 'apr-demo-' + randomBytes(8).toString('hex'); demoApprovals.set(id, { action: String(b.action), op: String(b.operation_id), used: null });
       res.writeHead(201, { 'content-type': 'application/json' }); res.end(JSON.stringify({ status: 'approved', approval_id: id, action: b.action })); return;
     }
