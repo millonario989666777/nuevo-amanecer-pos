@@ -51,7 +51,7 @@ test('sort ties use coverage, units descending then name; stock boundaries', () 
   assert.equal(r.rows[0].status, 'sin_stock');
   assert.deepEqual(Array.from(r.rows.filter(x => x.status === 'ok'), x => x.id), ['b', 'a']);
   // Stock 0 sin ventas ni mínimo no es «OK»: queda como sin movimiento (no urgente).
-  assert.equal(r.rows.find(x => x.id === 'c').status, 'sin_movimiento');
+  assert.equal(r.rows.find(x => x.id === 'c').status, 'sin_stock');
   assert.equal(report({ lowCoverageDays: 3 }).rows.find(x => x.id === 'low').status, 'ok');
 });
 test('CSV uses BOM, CRLF, RFC4180 quotes, dot decimals, guards formulas and omits costs', () => {
@@ -120,6 +120,28 @@ test('CSV: espacios iniciales no esconden fórmulas; el número negativo sigue s
   r.rows.push({ ...r.rows.find(x => x.id === 'n'), name: ' =1+1', code: '  @SUM(A1)' });
   const csv = api.toCsv(r);
   assert.ok(csv.includes("\r\n' =1+1,'  @SUM(A1),"), csv);
-  assert.match(csv, /\r\nNegativo,ID n,Sin categoría,0,-3,0,,Sin movimiento\r\n/);
+  assert.match(csv, /\r\nNegativo,ID n,Sin categoría,0,-3,0,,Sin stock\r\n/);
   assert.ok(!/Importe/.test(csv));
+});
+
+test('Stock <= 0 sin ventas ni mínimo es «Sin stock», nunca «Sin movimiento»', () => {
+  const api = load();
+  const r = api.buildReport([], [{ id: 'z', name: 'Cero', stock: 0 }, { id: 'm', name: 'Menos tres', stock: -3 }], { now });
+  for (const id of ['z', 'm']) {
+    const row = r.rows.find(x => x.id === id);
+    assert.equal(row.unitsSold, 0);
+    assert.equal(row.status, 'sin_stock', id);
+  }
+  assert.equal(r.counts.sin_stock, 2);
+  assert.equal(r.counts.sin_movimiento, 0);
+  const csv = api.toCsv(r);
+  assert.ok(!/Sin movimiento/.test(csv.split('\r\n').slice(1).join('\n')), csv);
+});
+
+test('CSV: valores que empiezan con \\t o \\r se escapan', () => {
+  const api = load();
+  const r = api.buildReport([], [{ id: 't', name: 'T', stock: 5 }], { now });
+  r.rows.push({ ...r.rows[0], id: 't2', name: '\tabc', code: '\rabc' });
+  const csv = api.toCsv(r);
+  assert.ok(csv.includes("\r\n'\tabc,\"'\rabc\","), JSON.stringify(csv));
 });

@@ -107,7 +107,7 @@
     }).map(function (row) {
       row.avgDaily = row.unitsSold / range.days;
       row.coverageDays = row.stock > 0 && row.avgDaily > 0 ? row.stock / row.avgDaily : null;
-      row.status = row.stock === null ? 'sin_control' : row.stock <= 0 && (row.unitsSold > 0 || row.stockMin > 0) ? 'sin_stock' :
+      row.status = row.stock === null ? 'sin_control' : row.stock <= 0 ? 'sin_stock' :
         row.stock > 0 && ((row.coverageDays !== null && row.coverageDays < threshold) || (row.stockMin > 0 && row.stock <= row.stockMin)) ? 'reponer' :
         row.unitsSold === 0 ? 'sin_movimiento' : 'ok';
       return row;
@@ -125,8 +125,8 @@
     function cell(value) {
       var valueText = value == null ? '' : String(value);
       // Solo texto: un número negativo (stock -2) no es una fórmula y se exporta tal cual.
-      // Espacios iniciales no esconden una fórmula (" =1+1"): se mira el texto sin ellos.
-      if (typeof value === 'string' && /^[=+@\t\r-]/.test(valueText.trimStart())) valueText = "'" + valueText;
+      // Espacios iniciales no esconden una fórmula (" =1+1"): se mira el texto sin ellos. Solo espacios: \t y \r iniciales se escapan.
+      if (typeof value === 'string' && /^[=+@\t\r-]/.test(valueText.replace(/^ +/, ''))) valueText = "'" + valueText;
       return /[",\r\n]/.test(valueText) ? '"' + valueText.replace(/"/g, '""') + '"' : valueText;
     }
     var lines = [['Producto', 'Código', 'Categoría', 'Unidades vendidas', 'Stock', 'Promedio diario', 'Días de cobertura', 'Estado']];
