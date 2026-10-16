@@ -13,6 +13,7 @@
     'pageCodigosDuplicados',
     'pageVentas',
     'pageClientes',
+    'pageReporteDeuda',
     'pageCaja',
     'pageGastos',
     'pageProximamente',

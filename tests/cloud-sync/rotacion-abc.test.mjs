@@ -177,3 +177,22 @@ test('drawer whitelist includes ABC and hides it for employee or unconfirmed ide
     assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageRotacionAbc'), true);
   }
 });
+
+test('rows show the product name or a short code, never the raw internal id', () => {
+  const report = api.buildReport([
+    sale([
+      { id: 'GENERIC:7f3c2a91-5b1e-4d0a-9c7e-2f8b6a1d4e55', name: 'Paracetamol 500 mg', sku: '7750001', precio: 10, qty: 1 },
+      { id: 'GENERIC:aa11bb22-cc33-dd44-ee55-ff6677889900', sku: 'ABR-12', precio: 5, qty: 1 },
+      { id: 'GENERIC:0011', barcode: 'GENERIC:0011', precio: 2, qty: 1 }
+    ])
+  ], [], options);
+  const rows = report.groups.flatMap(g => g.rows);
+  assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(), [['ABR-12', 'ABR-12'], ['Paracetamol 500 mg', '7750001'], ['Producto sin nombre', '']].sort());
+  for (const r of rows) { assert.doesNotMatch(r.name, /GENERIC:/); assert.doesNotMatch(r.code, /GENERIC:/); }
+});
+
+test('rendered rows never print the internal id', () => {
+  const src = readFileSync('POS/js/modules/rotacion-abc.js', 'utf8');
+  assert.doesNotMatch(src, /element\('small', '', row\.id\)/);
+  assert.match(src, /element\('small', '', row\.code\)/);
+});
