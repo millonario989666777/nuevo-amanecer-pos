@@ -24,7 +24,9 @@
     '#naAsstHero:empty{background:rgba(34,197,94,.07);border:1px solid rgba(21,128,61,.18)}' +
     '@media (min-width:700px){#naAsstHero{height:300px;margin:4px 0 18px}}@media (min-width:1100px){#naAsstHero{height:292px}}' +
     // La tarjeta va en lugar de «Hola, ¿qué quieres hacer hoy?» del celular (como en las maquetas v2); el resto de Inicio no cambia.
-    'html.na-asst-owner #naMobileWelcome{display:none!important}';
+    'html.na-asst-owner #naMobileWelcome{display:none!important}' +
+    '#naAsstHero.na-asst-gone{display:flex;align-items:center;justify-content:center;padding:16px;background:#f1f5f9;border:1px solid #e2e8f0;color:#334155;font-size:15px;text-align:center}' +
+    'body.dark #naAsstHero.na-asst-gone{background:#0f172a;border-color:#334155;color:#cbd5e1}';
   function slotCss() { var d = root.document; if (d.getElementById('naAsstSlotCss')) return; var st = d.createElement('style'); st.id = 'naAsstSlotCss'; st.textContent = SLOT_CSS; d.head.appendChild(st); }
   function reserve() {
     var d = root.document, m = d.getElementById('pageMenu'), host = m && m.querySelector('.main-scroll'); if (!host || d.getElementById('naAsstHero')) return;
@@ -32,10 +34,27 @@
     host.insertBefore(slot, at || host.firstChild); d.documentElement.classList.add('na-asst-owner'); d.documentElement.classList.remove('na-asst-pre'); // el hueco real reemplaza al margen reservado en <head>
     if (root.performance && root.performance.mark) root.performance.mark('na-asst-slot');
   }
-  function unreserve() { var e = root.document.getElementById('naAsstHero'); if (e) e.remove(); root.document.documentElement.classList.remove('na-asst-owner', 'na-asst-pre'); }
+  // Ya no es dueño: NADA de la tarjeta queda en el DOM (contenido, atajos, datos) en ese mismo instante. Para no mover la pantalla,
+  // el hueco se queda con su alto y un aviso neutro, sin datos del dueño ni botones o enlaces. Se libera al salir de Inicio
+  // (o en el próximo arranque, que ya no reserva nada porque el rol guardado se borró).
+  var NOTICE = 'El asistente no está disponible en este aparato.';
+  function release() { var e = root.document.getElementById('naAsstHero'); if (e) e.remove(); root.document.documentElement.classList.remove('na-asst-owner', 'na-asst-pre'); }
+  function unreserve() {
+    var d = root.document, e = d.getElementById('naAsstHero'), m = d.getElementById('pageMenu');
+    var onInicio = !!(e && m && m.classList && m.classList.contains('active'));
+    if (!e || !onInicio) { release(); return; }
+    while (e.firstChild) e.removeChild(e.firstChild); // fuera todo: contenido, atajos y escuchas que colgaban de ellos
+    var keep = { id: 1 }; Array.prototype.slice.call(e.attributes || []).forEach(function (a) { if (!keep[a.name]) e.removeAttribute(a.name); });
+    e.className = 'na-asst-gone'; e.setAttribute('role', 'status');
+    var p = d.createElement('p'); p.textContent = NOTICE; e.appendChild(p);
+    d.documentElement.classList.remove('na-asst-pre');
+    if (e._naGone) return; e._naGone = true;
+    var mo = root.MutationObserver ? new root.MutationObserver(function () { if (!m.classList.contains('active')) { mo.disconnect(); release(); } }) : null;
+    if (mo) mo.observe(m, { attributes: true, attributeFilter: ['class'] }); else release();
+  }
   slotCss();
   if (ls('na_asistente_acc') === 'owner') reserve();
-  root.NA_ASISTENTE_SLOT = { reserve: reserve, unreserve: unreserve };
+  root.NA_ASISTENTE_SLOT = { reserve: reserve, unreserve: unreserve, release: release, NOTICE: NOTICE };
   function load() {
     if (loaded) return; loaded = true;
     var d = root.document, l = d.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/asistente.css'; d.head.appendChild(l);

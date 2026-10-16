@@ -83,6 +83,65 @@ test('hueco desde el primer pintado: <head> reserva el mismo alto que el hueco r
   for (const [px, q] of [[352, ''], [334, '@media (min-width:700px)'], [326, '@media (min-width:1100px)']]) assert.ok(head.includes((q ? q + '{' : '') + 'html.na-asst-pre #pageMenu .main-scroll>.quick-stats{margin-top:' + px + 'px}'), String(px));
   assert.match(loader, /height:320px;margin:4px 0 16px/); assert.match(loader, /@media \(min-width:700px\)\{#naAsstHero\{height:300px;margin:4px 0 18px\}\}@media \(min-width:1100px\)\{#naAsstHero\{height:292px\}\}/);
   assert.match(loader, /classList\.remove\('na-asst-pre'\)/, 'el hueco real reemplaza al margen');
-  assert.match(loader, /function unreserve\(\)[^\n]*classList\.remove\('na-asst-owner', 'na-asst-pre'\)/, 'no dueño: se quita todo al instante');
+  assert.match(loader, /function release\(\)[^\n]*classList\.remove\('na-asst-owner', 'na-asst-pre'\)/, 'al liberar se quita todo');
   assert.equal((html.match(/asistente-loader\.js" defer/g) || []).length, 1);
+});
+
+// DOM mínimo para probar el aviso neutro (sin librerías).
+class El {
+  constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.attrs = {}; this.parent = null; const self = this;
+    this.classList = { set: new Set(), add(...c) { c.forEach((x) => this.set.add(x)); self.attrs.class = [...this.set].join(' '); }, remove(...c) { c.forEach((x) => this.set.delete(x)); self.attrs.class = [...this.set].join(' '); }, contains(c) { return this.set.has(c); } }; }
+  get firstChild() { return this.children[0] || null; }
+  get attributes() { return Object.keys(this.attrs).map((name) => ({ name })); }
+  set className(v) { this.classList.set = new Set(String(v).split(/\s+/).filter(Boolean)); this.attrs.class = v; } get className() { return this.attrs.class || ''; }
+  set id(v) { this.attrs.id = v; } get id() { return this.attrs.id; }
+  set textContent(v) { this.children = []; this._text = String(v); } get textContent() { return (this._text || '') + this.children.map((c) => c.textContent).join(''); }
+  setAttribute(k, v) { if (k === 'class') this.className = v; else this.attrs[k] = String(v); } removeAttribute(k) { delete this.attrs[k]; if (k === 'class') this.classList.set = new Set(); }
+  appendChild(c) { c.parent = this; this.children.push(c); return c; } removeChild(c) { this.children = this.children.filter((x) => x !== c); c.parent = null; return c; }
+  remove() { if (this.parent) this.parent.removeChild(this); }
+  all() { return this.children.flatMap((c) => [c, ...c.all()]); }
+}
+function domRun({ status, body }) {
+  const store = new Map([['na_asistente_proto', '1'], ['na_asistente_acc', 'owner'], ['na_cloud_sync_credentials', JSON.stringify({ endpoint: 'https://w.example', token: 't' })]]);
+  const html = new El('html'), head = new El('head'), bodyEl = new El('body'), menu = new El('section'); menu.id = 'pageMenu'; menu.classList.add('page', 'active');
+  const scroll = new El('div'); scroll.className = 'main-scroll'; const qs = new El('div'); qs.className = 'quick-stats'; menu.appendChild(scroll); scroll.appendChild(qs); bodyEl.appendChild(menu);
+  const observers = [];
+  const byId = (id) => [head, bodyEl, ...head.all(), ...bodyEl.all()].find((e) => e.id === id) || null;
+  scroll.querySelector = () => qs; scroll.insertBefore = (n, ref) => { n.parent = scroll; scroll.children.splice(Math.max(0, scroll.children.indexOf(ref)), 0, n); return n; };
+  menu.querySelector = () => scroll;
+  const document = { readyState: 'complete', hidden: false, documentElement: html, head, body: bodyEl, createElement: (t) => new El(t), getElementById: byId, addEventListener() {} };
+  const window = { location: { search: '?asistente=1' }, document, navigator: { onLine: true }, performance: { mark() {} },
+    localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) },
+    requestIdleCallback: () => {}, addEventListener() {}, AbortController,
+    MutationObserver: class { constructor(cb) { this.cb = cb; observers.push(this); } observe() {} disconnect() { this.off = true; } },
+    fetch: async () => ({ status, json: async () => body }) };
+  vm.runInNewContext(SRC, { window, URLSearchParams, setTimeout, clearTimeout, Date, JSON, String, Array });
+  return { window, document, menu, html, store, observers, byId };
+}
+
+test('servidor dice «no dueño» con la tarjeta puesta: TODO su contenido sale del DOM al instante; queda un aviso del mismo alto sin datos ni botones; se libera al salir de Inicio', async () => {
+  const r = domRun({ status: 200, body: { ok: true, role: 'empleado:consultas', level: 'consultas' } });
+  const slot = r.byId('naAsstHero'); assert.ok(slot, 'hueco reservado por el rol guardado');
+  // la UI ya había pintado la tarjeta del dueño: título, datos, campo y atajos
+  for (const [tag, txt] of [['h2', 'Asistente Nuevo Amanecer'], ['p', 'Hola Carlos, dueño · S/ 1,234.50 en caja'], ['input', ''], ['button', '¿Qué falta reponer?'], ['a', 'Ver ventas']]) { const e = new El(tag); e.textContent = txt; slot.appendChild(e); }
+  slot.setAttribute('data-mode', 'owner'); slot.setAttribute('aria-label', 'Asistente');
+  r.window.NA_ASISTENTE_SLOT.unreserve(); // lo mismo que hace el cargador al recibir el ping
+  const same = r.byId('naAsstHero');
+  assert.equal(same, slot, 'el hueco sigue (mismo alto: no mueve la pantalla)');
+  assert.deepEqual(slot.all().map((e) => e.tagName), ['P'], 'solo el aviso; ningún botón, enlace ni campo');
+  assert.equal(slot.textContent, 'El asistente no está disponible en este aparato.');
+  assert.ok(!/Carlos|1,234|reponer|ventas|Asistente Nuevo/.test(slot.textContent), 'sin datos del dueño');
+  assert.deepEqual(Object.keys(slot.attrs).sort(), ['class', 'id', 'role'], 'sin data-mode ni otros restos');
+  assert.equal(slot.className, 'na-asst-gone');
+  // al salir de Inicio se libera
+  r.menu.classList.remove('active'); r.observers.forEach((o) => !o.off && o.cb());
+  assert.equal(r.byId('naAsstHero'), null); assert.equal(r.html.classList.contains('na-asst-owner'), false);
+});
+
+test('el aviso neutro tiene el MISMO alto que la tarjeta (regla #naAsstHero) y la UI vacía la tarjeta por el cargador', () => {
+  assert.match(SRC, /#naAsstHero\.na-asst-gone\{display:flex/); assert.ok(!/#naAsstHero\.na-asst-gone\{[^}]*height/.test(SRC), 'no cambia el alto');
+  const ui = readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  assert.match(ui, /if \(Sx && Sx\.unreserve\) Sx\.unreserve\(\)/);
+  assert.match(ui, /var IDLE_MS = 9000/); assert.match(ui, /root\.addEventListener\('scroll', hold, \{ passive: true, capture: true \}\)/);
+  assert.match(ui, /thinking\.remove\(\); wake\(\);/);
 });

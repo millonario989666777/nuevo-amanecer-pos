@@ -13,7 +13,7 @@
   if (!doc || !C || root.NA_ASISTENTE) return;
   var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
   var clockOffset = 0;
-  var IDLE_MS = 20000, idleTimer = null, sleeping = false, offscreen = false, adminOff = false;
+  var IDLE_MS = 9000, HOLD_MS = 700, holding = false, holdTimer = null, idleTimer = null, sleeping = false, offscreen = false, adminOff = false;
   // Pantallas de gestión donde vive la burbuja. Nunca Venta (pagePOS) ni Caja (pageCaja).
   var ADMIN_PAGES = ['pageMenu', 'pageInventario', 'pageVentas', 'pageClientes', 'pageGastos', 'pageConfig', 'pageHistorialCompras', 'pageValorizacion', 'pageReporteDeuda', 'pageKardex', 'pageVentasStock', 'pageRotacionAbc', 'pageReporteArqueo', 'pageCodigosDuplicados'];
   // access: lo último que dijo el servidor ({ role: 'owner' | 'empleado', level }). null = todavía no se sabe.
@@ -68,6 +68,8 @@
     wake();
   }
   // Batería: tras ~20 s quieta en Listo (panel cerrado) las animaciones infinitas se pausan. Tocar o cambiar de estado las reanuda.
+  // Al desplazar la pantalla o escribir, las animaciones se detienen y vuelven tras un momento quieto (menos trabajo mientras la persona usa el POS).
+  function hold() { if (!holding) { holding = true; applyPause(); } clearTimeout(holdTimer); holdTimer = setTimeout(function () { holding = false; applyPause(); }, HOLD_MS); }
   function wake() { sleeping = false; clearTimeout(idleTimer); idleTimer = setTimeout(function () { if (state === 'listo' && (!panelEl || panelEl.hidden)) { sleeping = true; applyPause(); } }, IDLE_MS); applyPause(); }
   function computeQuality() {
     try { if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return 'off'; } catch (_) {}
@@ -94,9 +96,9 @@
   function busyPos() { return !!doc.querySelector('.modal-overlay.open, #naPurchaseDialog, .na-pin-overlay'); }
   // Con una ventana del POS abierta (cobro, ficha, compra) la burbuja se oculta: nunca tapa sus botones.
   function applyPause() {
-    var busyNow = busyPos() && panelEl && panelEl.hidden, p = doc.hidden || busyNow || offscreen || (sleeping && state === 'listo') ? '1' : '0';
+    var busyNow = busyPos() && panelEl && panelEl.hidden, p = doc.hidden || busyNow || offscreen || holding || (sleeping && state === 'listo') ? '1' : '0';
     chars().forEach(function (c) { if (c.dataset.paused !== p) c.dataset.paused = p; });
-    var hp = doc.hidden || offscreen || (sleeping && state === 'listo') || busyNow ? '1' : '0'; // la tarjeta de Inicio descansa igual que la burbuja
+    var hp = doc.hidden || offscreen || holding || (sleeping && state === 'listo') || busyNow ? '1' : '0'; // la tarjeta de Inicio descansa igual que la burbuja
     if (heroEl && heroEl.dataset.paused !== hp) heroEl.dataset.paused = hp;
     if (rootEl && rootEl.dataset.paused !== p) rootEl.dataset.paused = p;
     if (rootEl) rootEl.style.visibility = busyNow ? 'hidden' : '';
@@ -409,6 +411,7 @@
       }
       syncPin();
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
+        wake();
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
         if (r.code === 'confirm_expired') { delete approvals[p.id]; expire(); setState('error', 2600); return; }
         if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Venció' }[c.dataset.st] || 'Confirmar';
@@ -440,7 +443,7 @@
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
     try {
-      var d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); thinking.remove();
+      var d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); thinking.remove(); wake(); // llegó respuesta: si estaba en pausa, despierta
       if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
       if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); if (d.error === 'admin_only' || d.error === 'assistant_off') { access = null; adminOff = true; renderHero(); setTimeout(function () { closePanel(); }, 1500); } return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
@@ -527,7 +530,13 @@
     // Solo el dueño tiene tarjeta en Inicio (la tarjeta reemplaza a la burbuja). El empleado con nivel encendido ve solo la burbuja con sus atajos.
     var mode = isOwnerAccess() ? (off ? 'offline' : 'owner') : (off && cachedOwner() && !adminOff ? 'offline' : null);
     if (!heroEl) heroEl = doc.getElementById('naAsstHero'); // hueco que reservó el cargador (último ping: dueño)
-    if (!mode) { if (heroEl) { heroEl.remove(); heroEl = null; } doc.documentElement.classList.remove('na-asst-owner'); return; }
+    if (mode && heroEl && heroEl.classList.contains('na-asst-gone')) { var Sr = root.NA_ASISTENTE_SLOT; if (Sr && Sr.release) Sr.release(); else heroEl.remove(); heroEl = null; }
+    if (!mode) {
+      // Ya no es dueño: el cargador vacía la tarjeta EN EL ACTO (contenido y atajos fuera del DOM) y deja un aviso neutro del mismo alto hasta salir de Inicio.
+      var Sx = root.NA_ASISTENTE_SLOT;
+      if (heroEl || doc.getElementById('naAsstHero')) { if (Sx && Sx.unreserve) Sx.unreserve(); else { var hx = heroEl || doc.getElementById('naAsstHero'); if (hx) hx.remove(); doc.documentElement.classList.remove('na-asst-owner'); } }
+      heroEl = null; return;
+    }
     if (!heroEl) { // sin hueco reservado (primera vez de este dueño en este aparato): se agrega arriba una sola vez; desde el próximo arranque ya está reservado
       var S = root.NA_ASISTENTE_SLOT; if (S) S.reserve(); heroEl = doc.getElementById('naAsstHero');
       if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.id = 'naAsstHero'; heroEl.setAttribute('aria-label', 'Asistente'); var host = menu.querySelector('.main-scroll') || menu; host.insertBefore(heroEl, host.querySelector(':scope > .quick-stats') || host.firstChild); } }
@@ -746,6 +755,8 @@
     root.addEventListener('online', function () { offline(false); });
     root.addEventListener('offline', function () { offline(true); });
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) applyPause(); else wake(); });
+    root.addEventListener('scroll', hold, { passive: true, capture: true });
+    doc.addEventListener('input', function (e) { if (e.target && e.target.closest && e.target.closest('.na-asst-panel, .na-asst-hero')) hold(); }, true);
     shownFor = access ? access.role + ':' + access.level : '';
     rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
     try { new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }).observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
