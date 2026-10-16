@@ -277,16 +277,18 @@ test('real V2: pending batch/replays/receipts do not double deduct or mutate a w
   assert.equal(JSON.stringify({ clients:h.ctx.clientes, credits:h.ctx.creditos, pending }), before);
 });
 
-test('forensic characterization P1: real V2 readOnly still normalizes originals when the shared index is cold', t => {
+test('P1 fixed: real V2 readOnly no longer normalizes originals or rebuilds a cold shared index', () => {
   const h = realV2();
   h.ctx.clientes = plain(clients);
   h.ctx.creditos = [credit(1001, 10, { monto:'100', pagado:'90', status:'desfasado' })];
   const before = JSON.stringify(h.ctx.creditos);
-  buildReport(h.ctx.clientes, h.api, null);
-  assert.notEqual(JSON.stringify(h.ctx.creditos), before);
-  assert.equal(typeof h.ctx.creditos[0].monto, 'number');
-  assert.equal(h.ctx.creditos[0].status, 'vigente');
-  t.diagnostic('P1 pendiente fuera de alcance: esta prueba demuestra la mutación; no certifica solo lectura con índice frío.');
+  const report = buildReport(h.ctx.clientes, h.api, null);
+  assert.equal(JSON.stringify(h.ctx.creditos), before);
+  assert.equal(h.ctx.creditos[0].monto, '100');
+  assert.equal(h.ctx.creditos[0].status, 'desfasado');
+  assert.equal(vm.runInContext('_naClientCreditIndexRef', h.ctx), null, 'cold index stays cold');
+  assert.equal(report.rows[0].balance, 10);
+  assert.equal(report.rows[0].openCredits, 1);
 });
 
 test('forensic characterization P1: opening the actual account evaluates policy and normalizes live credits', t => {
