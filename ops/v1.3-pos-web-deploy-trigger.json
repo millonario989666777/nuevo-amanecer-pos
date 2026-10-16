@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#730 valorización de inventario solo-owner; #731 rotación ABC por categoría solo-owner. Worker 42 ya live.",
-  "retry_attempt": 141,
-  "retry_reason": "Deploy de base 5af8d378 (#730, #731). Rollback: f0efc457549c034fb0526d5b4a772cd20cb2216d (build de 140).",
-  "requested_at_utc": "2026-10-16T02:09:46Z",
-  "approved_base": "5af8d37821bfdbaf846a5cd8b32a57456f325b68"
+  "note": "#734 rotación ABC muestra nombre/código; #735 reporte de deuda por cliente (solo owner); #736 códigos de barras duplicados (solo lectura). Worker 43 ya live.",
+  "retry_attempt": 142,
+  "retry_reason": "Deploy de base b0976d74 (#734, #735, #736). Rollback: 63c5bd34bd29db7eb7af2c9873c1b0e47f235dfc (build de 141).",
+  "requested_at_utc": "2026-10-16T03:19:16Z",
+  "approved_base": "b0976d74c4de06ba9a8f8d2499238160198d8247"
 }
