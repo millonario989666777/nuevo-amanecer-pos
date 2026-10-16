@@ -69,7 +69,8 @@
         if (date && (!oldest || date < oldest)) oldest = date;
       });
       rows.push({ clientId:client.id, name:String(client.nombre || 'Cliente'), balance:balance,
-        overdueDebt:amount(summary.overdueDebt), oldestDate:oldest, openCredits:active.length });
+        // La deuda vencida nunca supera el saldo efectivo (pagos en cola incluidos).
+        overdueDebt:Math.min(amount(summary.overdueDebt), balance), oldestDate:oldest, openCredits:active.length });
     });
     var key = order === 'vencida' ? 'overdueDebt' : 'balance';
     rows.sort(function (a, b) { return b[key] - a[key] || b.balance - a.balance; });
@@ -126,9 +127,18 @@
   function money(value) { return 'S/ ' + value.toFixed(2); }
   function dateLabel(value) { return value ? value.split('-').reverse().join('/') : 'Sin fecha registrada'; }
 
-  function metric(row, label, value, className) {
+  // Criterio de «Créditos abiertos»: solo créditos con saldo pendiente mayor a
+  // S/ 0,001 (monto − pagado). La tarjeta de Clientes muestra «N créditos» con
+  // todos los créditos no anulados, incluidos los ya pagados; por eso puede
+  // indicar más que este reporte.
+  var OPEN_CREDITS_NOTE = 'Créditos abiertos cuenta solo los créditos con saldo pendiente. ' +
+    'La lista de Clientes muestra todos los créditos no anulados, incluidos los ya pagados.';
+
+  function metric(row, label, value, className, hint) {
     var cell = element('span', 'rd-cell ' + (className || ''));
-    cell.append(element('span', 'rd-label', label), element('strong', 'rd-value', value));
+    var labelNode = element('span', 'rd-label', label);
+    if (hint) labelNode.title = hint;
+    cell.append(labelNode, element('strong', 'rd-value', value));
     row.append(cell);
   }
 
@@ -180,7 +190,7 @@
       metric(row, 'Saldo pendiente', money(data.balance), 'rd-balance');
       metric(row, 'Deuda vencida', money(data.overdueDebt), data.overdueDebt > 0 ? 'rd-overdue' : '');
       metric(row, 'Crédito impago más antiguo', dateLabel(data.oldestDate));
-      metric(row, 'Créditos abiertos', data.openCredits);
+      metric(row, 'Créditos abiertos', data.openCredits, '', OPEN_CREDITS_NOTE);
       row.addEventListener('click', function () { openClient(data.clientId); });
       item.append(row);
       list.append(item);
@@ -196,7 +206,9 @@
     var countBox = element('div');
     countBox.append(element('span', '', 'Clientes que deben'), count);
     footer.append(totalBox, countBox);
-    content.replaceChildren(list, footer);
+    var note = element('p', 'rd-note', OPEN_CREDITS_NOTE);
+    note.dataset.rdNote = '';
+    content.replaceChildren(list, footer, note);
     renderedReport = signature;
     if (focusedId !== undefined) {
       (focusTarget || page.querySelector('[data-rd-sort]')).focus({ preventScroll:true });

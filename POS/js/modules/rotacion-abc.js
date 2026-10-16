@@ -42,12 +42,18 @@
   }
   // Código visible: SKU o código de barras corto. Nunca el id interno (p. ej. 'GENERIC:…').
   function shortCode(item) {
-    var candidates = [item.sku, item.barcode, item.codigo, item.codigoAlternativo];
+    var generic = item.generic_line && typeof item.generic_line === 'object' ? item.generic_line.code : null;
+    var candidates = [item.sku, item.barcode, item.codigo, item.codigoAlternativo, item.codigoIngresado, generic];
     for (var i = 0; i < candidates.length; i++) {
       var value = text(candidates[i]);
       if (value && value.length <= 24 && !/^generic:/i.test(value)) return value;
     }
     return '';
+  }
+  // Segunda línea para filas 'VARIOS' sin código: prefijo corto del id sin 'GENERIC:'.
+  function visibleId(id) {
+    var value = text(id).replace(/^generic:/i, '').replace(/[^0-9a-z-]/gi, '');
+    return value ? 'ID ' + value.slice(0, 8) : '';
   }
   function identity(item) {
     var id = item.id != null ? item.id : item.productoId;
@@ -80,8 +86,9 @@
     var catalog = new Map(), bySku = new Map(), rows = new Map();
     function createRow(item, ref) {
       var code = shortCode(item);
-      return { key: ref.key, id: ref.id, code: code,
-        name: text(item.name != null ? item.name : item.nombre) || code || 'Producto sin nombre',
+      var name = text(item.name != null ? item.name : item.nombre) || code || 'Producto sin nombre';
+      if (!code && /^varios$/i.test(name)) code = visibleId(ref.id);
+      return { key: ref.key, id: ref.id, code: code, name: name,
         category: categoryKey(item.cat || item.categoria), revenueRaw: 0, transactions: 0 };
     }
     (Array.isArray(products) ? products : []).forEach(function (product) {

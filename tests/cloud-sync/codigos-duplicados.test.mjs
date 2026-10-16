@@ -370,3 +370,40 @@ test('editProd real y su wrapper abren el formulario sin guardar y restauran la 
   assert.throws(() => h.a.openProduct(1), /synthetic DOM failure/);
   assert.equal(h.context.productos[0].imagen, image, 'finally también restaura si falla la apertura');
 });
+
+test('los 6 pares conocidos (código corto 273–279 + código de barras) con datos sintéticos', () => {
+  const { api: a } = api();
+  // Sintético: marcas del caso reportado, códigos de barras inventados, sin clientes.
+  const known = [['Primor', '273'], ['Mirasol', '274'], ['Palmerola', '275'],
+    ['La Tacneña', '276'], ['Curazao', '277'], ['Casino Poker', '279']];
+  const barcode = short => `990000000${short}`;
+  const catalog = [];
+  known.forEach(([brand, short], index) => {
+    // Ficha con código corto y su código de barras; duplicado importado con el código de barras como SKU.
+    catalog.push(product(100 + index, { name: `${brand} sintético`, sku: short, barcode: barcode(short) }));
+    catalog.push(product(200 + index, { name: `${brand} sintético importado`, sku: barcode(short) }));
+  });
+  // 278 sin duplicado no debe aparecer; un descontinuado con el mismo código tampoco forma par.
+  catalog.push(product(300, { name: 'Sin duplicado sintético', sku: '278', barcode: barcode('278') }));
+  catalog.push(product(301, { name: 'Descontinuado sintético', sku: barcode('273'), activo: false }));
+  const rows = plain(a.listPairs(catalog));
+  assert.deepEqual(rows.map(row => [row.code, row.products.map(p => p.id)]),
+    known.map(([, short], index) => [barcode(short), [100 + index, 200 + index]]));
+  assert.equal(rows.some(row => row.code === '278' || row.code === barcode('278')), false);
+  for (const short of ['273', '274', '275', '276', '277', '279']) assert.equal(rows.some(row => row.code === short), false);
+});
+
+test('fallback canAccessScreen sin NA_PERMISSIONS: Reporte de deuda y Códigos duplicados son solo dueño', () => {
+  const nav = readFileSync(new URL('../../POS/js/navigation/menu-navigation.js', import.meta.url), 'utf8');
+  const expr = nav.match(/\n\s*return (\(pageId !== 'pageConfig'[^;]+);/)?.[1];
+  assert.ok(expr, 'fallback must exist');
+  const fallback = new Function('role', 'pageId', `return ${expr};`);
+  for (const page of ['pageReporteDeuda', 'pageCodigosDuplicados', 'pageRotacionAbc', 'pageValorizacion', 'pageGastos', 'pageConfig', 'pageProximamente']) {
+    assert.equal(fallback('owner', page), true, page);
+    assert.equal(fallback('empleado', page), false, page);
+  }
+  assert.equal(fallback('empleado', 'pageClientes'), true);
+  // Cosmético: la pantalla se declara junto a pageReporteDeuda, fuera del bloque SYNC_ENTITIES.
+  const screens = policy.indexOf("SCREENS['pageCodigosDuplicados'] = owner;");
+  assert.ok(screens > 0 && screens < policy.indexOf('var SYNC_ENTITIES'));
+});
