@@ -398,17 +398,44 @@ test('390px card: a balance with «sin costo» wraps inside its card and keeps �
   await screen.locator('[data-product-id="k-1"]').click();
   const balance = screen.locator('[data-label="Valor saldo"]').filter({ hasText: 'sin costo' }).first();
   await expect(balance).toBeVisible();
+  const card = balance.locator('xpath=ancestor::tr[1]');
+  await expect(card).toBeVisible();
   const m = await balance.evaluate(node => {
-    const card = node.closest('tr')!.getBoundingClientRect(), rect = node.getBoundingClientRect();
-    const text = node.firstChild as Text, raw = text.textContent || '', at = raw.indexOf('S/');
-    const range = document.createRange(); range.setStart(text, at); range.setEnd(text, raw.indexOf(' ', at + 3) < 0 ? raw.length : raw.indexOf(' ', at + 3));
-    const tops = new Set(Array.from(range.getClientRects()).map(r => Math.round(r.top)));
-    return { inside: rect.left >= card.left - 1 && rect.right <= card.right + 1, scroll: node.scrollWidth <= node.clientWidth + 1,
-      amountLines: tops.size, whiteSpace: getComputedStyle(node).whiteSpace };
+    const cardRect = node.closest('tr')!.getBoundingClientRect(), rect = node.getBoundingClientRect();
+    const within = (r: DOMRect) => r.width > 0 && r.height > 0 && r.left >= cardRect.left - 1 && r.right <= cardRect.right + 1 &&
+      r.top >= cardRect.top - 1 && r.bottom <= cardRect.bottom + 1;
+    const text = node.firstChild as Text, raw = text.textContent || '';
+    const rangeOf = (start: number, end: number) => { const r = document.createRange(); r.setStart(text, start); r.setEnd(text, end); return r; };
+    const at = raw.indexOf('S/'), amountEnd = raw.indexOf(' ', at + 3) < 0 ? raw.length : raw.indexOf(' ', at + 3);
+    const labels = ['sin costo', 'costo estimado'].filter(label => raw.includes(label)).map(label => {
+      const start = raw.indexOf(label), rects = Array.from(rangeOf(start, start + label.length).getClientRects());
+      return { label, lines: new Set(rects.map(r => Math.round(r.top))).size, inside: rects.length > 0 && rects.every(within),
+        insideCell: rects.every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+    });
+    // Ningún ancestro hasta la tarjeta recorta ni oculta el contenido.
+    const clip: string[] = [];
+    for (let el: HTMLElement | null = node as HTMLElement; el && el.tagName !== 'TR'; el = el.parentElement) {
+      const st = getComputedStyle(el);
+      if (st.visibility !== 'visible' || st.display === 'none' || Number(st.opacity) === 0) clip.push(el.tagName + ' hidden');
+      if (st.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1) clip.push(el.tagName + ' clipped-x');
+      if (st.clipPath !== 'none' || st.clip !== 'auto') clip.push(el.tagName + ' clip');
+      if (st.textOverflow === 'ellipsis') clip.push(el.tagName + ' ellipsis');
+    }
+    return { cellInside: within(rect), scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+      amountLines: new Set(Array.from(rangeOf(at, amountEnd).getClientRects()).map(r => Math.round(r.top))).size,
+      whiteSpace: getComputedStyle(node).whiteSpace, labels, clip };
   });
   expect(m.whiteSpace).toBe('normal');
-  expect(m.inside).toBe(true);
-  expect(m.scroll).toBe(true);
+  expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth);
+  expect(m.cellInside).toBe(true);
   expect(m.amountLines).toBe(1);
+  expect(m.clip).toEqual([]);
+  expect(m.labels.map(l => l.label)).toContain('sin costo');
+  for (const l of m.labels) {
+    expect(l.inside, l.label).toBe(true);
+    expect(l.insideCell, l.label).toBe(true);
+  }
+  await expect(balance.getByText('sin costo', { exact: false })).toBeVisible();
+  if (m.labels.some(l => l.label === 'costo estimado')) await expect(balance.getByText('costo estimado', { exact: false })).toBeVisible();
   await noOverflow(page);
 });
