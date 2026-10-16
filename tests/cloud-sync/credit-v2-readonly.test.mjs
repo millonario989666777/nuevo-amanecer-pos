@@ -16,7 +16,8 @@ function realV2() {
     _naNumber:(value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback };
   ctx.window = ctx;
   vm.createContext(ctx);
-  const status = legacy.slice(legacy.indexOf('function _naIsCreditVoided('), legacy.indexOf('// NUEVO FASE 6'));
+  const voided = readFileSync(new URL('../../POS/js/core/utils.js', import.meta.url), 'utf8').match(/function _naIsCreditVoided\(cr\)\{[^\n]+/)[0];
+  const status = voided + '\n' + legacy.slice(legacy.indexOf('const _naSyncCreditStatus='), legacy.indexOf('// NUEVO FASE 6'));
   const outstanding = legacy.match(/function _naCreditOutstanding\(cr\)\{[^\n]+/)[0];
   const index = legacy.slice(legacy.indexOf('let _naClientCreditIndexRef='), legacy.indexOf('statusCli=function'));
   vm.runInContext(status + '\n' + outstanding + '\n' + index, ctx);

@@ -19,7 +19,8 @@ test('client credit index is built once per client render and exposes O(1) summa
 test('index preserves all-credit history separately from visible credit summaries',()=>{
   assert.match(inline2,/_naClientAllCreditsIndex=new Map\(\)/);
   assert.match(inline2,/allList\.push\(cr\)/);
-  assert.match(inline2,/if\(cr\.anulado\|\|String\(cr\.status\|\|cr\.estado\|\|''\)\.toLowerCase\(\)==='anulado'\)return/);
+  // Los anulados (anulado:true o status/estado/source_status «anul…») salen de los resúmenes visibles por el helper único.
+  assert.match(inline2,/if\(_naIsCreditVoided\(cr\)\)return;/);
   assert.match(inline12,/const credits=_naClientAllCreditsFast\(client\.id\)/);
 });
 
