@@ -97,7 +97,8 @@
     el.style.display = 'flex';
     // Reserva el alto de la franja para que no tape la barra fija de Nueva venta (☰).
     if (body && body.classList) { body.classList.add('na-sb-on'); if (body.style && body.style.setProperty) body.style.setProperty('--na-sb-h', (el.offsetHeight || 28) + 'px'); }
-    el.dataset.tone = v.tone;
+    // Tono semántico para CSS (theme-dark.css): danger = rojo, warn = ámbar.
+    el.dataset.tone = v.tone === 'red' ? 'danger' : 'warn';
     el.style.background = v.tone === 'red' ? '#fee2e2' : '#fef3c7';
     el.style.color = v.tone === 'red' ? '#991b1b' : '#92400e';
     el.style.borderBottom = '1px solid ' + (v.tone === 'red' ? '#fca5a5' : '#fcd34d');
