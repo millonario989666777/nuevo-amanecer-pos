@@ -371,7 +371,7 @@ test('cash close, ingreso, egreso and expense use lexical movement state and no 
   vm.runInContext("cajMovTipo='ing'",tab.context);
   await check('adjustment.create',()=>tab.context.guardarMovCaja());
   vm.runInContext(source('sync/canonical-expense-bridge.js'),tab.context);
-  tab.context.obtenerHoy=()=>new Date().toLocaleDateString('en-CA');
+  tab.context.obtenerHoy=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'});
   tab.el('gasDesc').value='Synthetic expense';tab.el('gasMonto').value='1';tab.el('gasCat').value='Otro';tab.el('gasMetodo').value='efectivo';tab.el('gasFecha').value=tab.context.obtenerHoy();
   await check('expense.create',()=>tab.context.guardarGasto());
   assert.ok(tab.context.__closed.includes('mGasto'));
