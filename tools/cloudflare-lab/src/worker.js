@@ -16,6 +16,7 @@ import { adjustCanonicalInventory, INVENTORY_COMMANDS } from './a6-inventory.js'
 import { PRODUCT_IMAGE_PATHS, productImagesRoute } from './pos-product-images.js';
 import { saleNoteRoute, recordMetaRoute } from './pos-sale-notes.js';
 import { purchasesRoute, closePartialRoute } from './pos-purchases.js';
+import { cashClosesRoute } from './pos-cash-closes.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { dniLookupRoute, DNI_LOOKUP_PATH } from './pos-dni-lookup.js';
@@ -96,6 +97,11 @@ export default {
         const denied = canonicalRuntimeDenied(url, env, json);
         if (denied) return denied;
         return cors(await closePartialRoute(request, env, auth, json));
+      }
+      if (url.pathname === '/auth/cash-closes') {
+        const auth = await authorizeSession(request, env);
+        if (auth instanceof Response) return auth;
+        return cors(await cashClosesRoute(request, env, auth, json));
       }
       if (url.pathname === '/auth/purchases') {
         const auth = await authorizeSession(request, env);
