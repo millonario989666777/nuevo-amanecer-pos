@@ -11,6 +11,7 @@ async function openClientes(page: Page, width: number) {
 // Cada palabra del nombre queda en una sola línea: todos sus caracteres comparten la misma fila.
 async function wordsSplit(page: Page) {
   return page.locator('.na-v2-client-head h2').evaluate(h2 => {
+    if (!h2.isConnected) return ['<h2 desconectado>'];
     const node = h2.firstChild as Text; const text = node.textContent || ''; const split: string[] = [];
     const re = /\S+/g; let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
@@ -25,6 +26,33 @@ async function wordsSplit(page: Page) {
   });
 }
 
+// La ficha se vuelve a dibujar sola: la lista de Clientes anima cada refresco (clase na-client-refresh-out
+// y redibujo 850 ms después) y ese redibujo, más el MutationObserver de #cliList, reemplazan el <h2> de la
+// ficha abierta. Medir antes de que termine deja un nodo desconectado (getComputedStyle devuelve "").
+// Se espera a que no haya refresco en curso y el <h2> sea el mismo nodo sin mutaciones durante 300 ms.
+async function waitFichaStable(page: Page) {
+  await page.evaluate(() => {
+    const w = window as any;
+    if (w.__fichaObs) return;
+    w.__fichaMut = performance.now();
+    w.__fichaObs = new MutationObserver(() => { w.__fichaMut = performance.now(); });
+    w.__fichaObs.observe(document.getElementById('pageClientes')!, { childList: true, subtree: true });
+  });
+  let prev = 0;
+  await expect.poll(async () => {
+    const st = await page.evaluate(() => {
+      const w = window as any, page = document.getElementById('pageClientes')!;
+      const h2 = document.querySelector('.na-v2-client-head h2') as any;
+      if (!h2 || !h2.isConnected) return { id: 0, ok: false };
+      if (!h2.__fichaId) h2.__fichaId = (w.__fichaSeq = (w.__fichaSeq || 0) + 1);
+      const refreshing = page.classList.contains('na-client-refresh-out') || page.classList.contains('na-client-refresh-in');
+      return { id: h2.__fichaId as number, ok: !refreshing && performance.now() - w.__fichaMut >= 300 };
+    });
+    const same = st.id === prev; prev = st.id;
+    return st.ok && same;
+  }, { timeout: 8000, intervals: [100, 150, 200] }).toBe(true);
+}
+
 for (const width of [320, 360, 390, 430, 768, 1024]) {
   for (const name of ['MISAEL QUISPE HUAMANCHUMO', 'MISAELMONTENEGROQUISPEHUAMAN']) {
     test(`ficha: «${name}» nunca se corta a mitad de palabra a ${width}px`, async ({ page }) => {
@@ -35,9 +63,10 @@ for (const width of [320, 360, 390, 430, 768, 1024]) {
       }, name);
       const h2 = page.locator('.na-v2-client-head h2');
       await expect(h2).toBeVisible();
+      await waitFichaStable(page);
       expect(await wordsSplit(page)).toEqual([]);
-      const css = await h2.evaluate(el => { const s = getComputedStyle(el); return [s.overflowWrap, s.wordBreak, s.textOverflow]; });
-      expect(css).toEqual(['normal', 'normal', 'ellipsis']);
+      const css = await h2.evaluate(el => { const s = getComputedStyle(el); return [el.isConnected, el.textContent, s.overflowWrap, s.wordBreak, s.textOverflow]; });
+      expect(css).toEqual([true, name, 'normal', 'normal', 'ellipsis']);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     });
   }
@@ -75,6 +104,7 @@ async function openFichaConDeuda(page: Page, width: number, name: string) {
   }, name);
   await expect(page.locator('.na-v2-client-head h2')).toBeVisible();
   await expect(page.locator('.na-v2-head-money strong')).toContainText('4125.00');
+  await waitFichaStable(page);
 }
 
 for (const width of [1366, 1024, 390]) {

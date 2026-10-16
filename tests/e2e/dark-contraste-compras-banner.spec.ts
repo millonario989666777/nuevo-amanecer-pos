@@ -120,3 +120,49 @@ for (const dark of [true, false]) {
     }
   });
 }
+
+// data-tone (danger/warn): la regla oscura funciona solo con el atributo, y los [style*=] siguen de respaldo.
+async function setBannerSelectors(page: Page, keep: 'data-tone' | 'style') {
+  return page.evaluate(keep => {
+    let n = 0;
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (!/theme-dark\.css/.test(sheet.href || '')) continue;
+      for (const rule of Array.from(sheet.cssRules) as CSSStyleRule[]) {
+        const sel = rule.selectorText || '';
+        if (!/^body\.dark #naStatusBanner\[/.test(sel)) continue;
+        const parts = sel.split(/,\s*(?=body\.dark)/).map(s => s.trim()).filter(s => keep === 'data-tone' ? s.includes('[data-tone=') : s.includes('[style*='));
+        rule.selectorText = parts.join(', '); n += parts.length;
+      }
+    }
+    return n;
+  }, keep);
+}
+
+for (const tone of ['danger', 'warn'] as const) {
+  for (const keep of ['data-tone', 'style'] as const) {
+    test(`franja ${tone} 390px, oscuro: se pinta igual solo con ${keep === 'data-tone' ? 'data-tone' : 'el respaldo [style*=]'}`, async ({ page }) => {
+      await boot(page, true);
+      if (tone === 'danger') await showCashBanner(page); else await showAmberBanner(page);
+      const banner = page.locator('#naStatusBanner');
+      await expect(banner).toHaveAttribute('data-tone', tone);
+      const full = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+      expect(await setBannerSelectors(page, keep)).toBe(2);
+      if (keep === 'style') await banner.evaluate(el => el.removeAttribute('data-tone'));
+      const s = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+      expect([s.fg, s.bg]).toEqual([full.fg, full.bg]);
+      expect(s.box).toEqual(full.box);
+      expect(s.ratio).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+}
+
+test('modo claro 390px: data-tone presente y sin efecto en los colores', async ({ page }) => {
+  await boot(page, false);
+  await showCashBanner(page);
+  const banner = page.locator('#naStatusBanner');
+  await expect(banner).toHaveAttribute('data-tone', 'danger');
+  const withAttr = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+  await banner.evaluate(el => el.removeAttribute('data-tone'));
+  const without = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+  expect(withAttr).toEqual(without);
+});
