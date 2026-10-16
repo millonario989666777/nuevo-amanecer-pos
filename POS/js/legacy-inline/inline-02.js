@@ -214,8 +214,9 @@ function _naClassifyProductCategory(name,current='abarrotes'){
 }
 async function reclasificarCatalogo(showMessage=true){let changed=0;productos.forEach(p=>{const next=_naClassifyProductCategory(p.name,p.cat);if(next!==p.cat){p.cat=next;changed++;}});renderCategorySelects();posRender();invRender();const message=`Catálogo reclasificado: ${changed} producto${changed===1?'':'s'} actualizado${changed===1?'':'s'}`;if(showMessage)await _naFinalizeOperationPersistence(message,'No se pudo guardar la reclasificación');else await saveAllData();return changed;}
 const _naSetSaveStatus=(ok=true,msg='Guardado local')=>{const el=document.getElementById('saveStatus');if(!el)return;el.classList.remove('saved','error');el.classList.add(ok?'saved':'error');if(window.NA_ICON_TEXT)NA_ICON_TEXT(el,ok?'save':'alert',msg);else el.textContent=ok?`💾 ${msg}`:`⚠️ ${msg}`;};
-// Anulado = anulado:true o status/estado/source_status 'anulado' (sin distinguir mayúsculas). Única regla para ficha, filtro, reporte e índice.
-function _naIsCreditVoided(cr){if(!cr)return false;if(cr.anulado===true)return true;return[cr.status,cr.estado,cr.source_status].some(v=>String(v??'').trim().toLowerCase()==='anulado');}
+// Anulado = anulado:true o status/estado/source_status que empiece por 'anul' (anulado, anulada, ANULADO), sin distinguir
+// mayúsculas y recortando espacios. Los estados de sincronización CANON (LIVE, RECONCILED) nunca cuentan. Única regla para ficha, filtro, reporte e índice.
+function _naIsCreditVoided(cr){if(!cr)return false;if(cr.anulado===true)return true;return[cr.status,cr.estado,cr.source_status].some(v=>String(v??'').trim().toLowerCase().startsWith('anul'));}
 const _naSyncCreditStatus=cr=>{if(!cr)return'vigente';if(cr.anulado!==true&&_naIsCreditVoided(cr))return'anulado';cr.monto=Math.max(0,_naNumber(cr.monto));cr.pagado=Math.min(cr.monto,Math.max(0,_naNumber(cr.pagado)));if(cr.anulado){cr.status='anulado';return cr.status;}if(cr.pagado>=cr.monto&&cr.monto>0)cr.status='cancelado';else{const d=diasHasta(cr.vence);cr.status=d!==null&&d<0?'vencido':'vigente';}return cr.status;};
 // NUEVO FASE 6: modelo completo de créditos, pagos y desglose por producto.
 const _NA_CREDIT_METHOD_LABELS={efectivo:'💵 Efectivo',yape:'📲 Yape',plin:'📲 Plin',transferencia:'🏦 Transferencia'};
@@ -743,7 +744,7 @@ function _naClientCreditIndexFresh(){return _naClientCreditIndexRef===creditos&&
 function _naCreditReadOnlyCopy(cr){const copy={...cr};if(Array.isArray(cr.pagos))copy.pagos=cr.pagos.map(p=>p&&typeof p==='object'?{...p}:p);if(Array.isArray(cr.items))copy.items=cr.items.map(i=>i&&typeof i==='object'?{...i}:i);return copy;}
 function _naClientCreditsReadOnly(clientId){
   const key=String(clientId);
-  if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy);
+  if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy).map(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return cr;});
   return(Array.isArray(creditos)?creditos:[]).filter(cr=>cr&&String(cr.cliId??cr.clienteId??'')===key).map(_naCreditReadOnlyCopy).filter(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return!_naIsCreditVoided(cr);});
 }
 function _naClientDebtFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.debt||0;}

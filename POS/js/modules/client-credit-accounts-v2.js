@@ -2068,6 +2068,9 @@ function labCreditDisplayMoment(cr, fallbackDate) {
       });
       rows = naFilterClientsByDebt(summaries, naClientDebtFilter, pending).map(function (row) { return row.client; });
     }
+    // La tarjeta «Clientes» del resumen cuenta exactamente las filas que se muestran.
+    var shownCount = document.getElementById('cliS0');
+    if (shownCount) shownCount.textContent = String(rows.length);
     list.replaceChildren();
     list.dataset.naV2Native = 'true';
     if (!rows.length) {
