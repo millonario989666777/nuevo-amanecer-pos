@@ -141,6 +141,7 @@ const PRECACHE_URLS = [
   './js/core/lazy-assets.js'
 ];
 const LAZY_URLS = [
+  './css/product-image-review.css',
   './js/catalog/reference-catalog-data.js',
   './js/catalog/reference-catalog.js',
   './js/ocr/ocr-extract.js',
