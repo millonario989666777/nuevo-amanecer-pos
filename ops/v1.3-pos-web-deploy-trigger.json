@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#771 dos cambios chicos de cliente: modo oscuro y historial de compras. Worker 47 sin cambios.",
-  "retry_attempt": 155,
-  "retry_reason": "Deploy de base 7a5efe9784edce8c09b15e902fdff2f47912754a (#771). Rollback: web 154 8d1e3874f68df6a7342ba6f2849717c512693596 (merge 1241caee90302be83e84731fe371718ffc4e94aa).",
-  "requested_at_utc": "2026-10-16T11:46:14Z",
-  "approved_base": "7a5efe9784edce8c09b15e902fdff2f47912754a"
+  "note": "#772 Reporte de ventas con stock (Próximamente desbloqueado, solo dueño, solo lectura). Worker 48 ya live (live check OK asistente 5).",
+  "retry_attempt": 156,
+  "retry_reason": "Deploy de base d2d9392a67287f92fe3092c5299a5aa9b0885c1c (#772). Rollback: web 155 afc2d2673c843fb87a7059989de8db2ba66ba510 (merge 7a5efe9784edce8c09b15e902fdff2f47912754a).",
+  "requested_at_utc": "2026-10-16T12:25:07Z",
+  "approved_base": "d2d9392a67287f92fe3092c5299a5aa9b0885c1c"
 }
