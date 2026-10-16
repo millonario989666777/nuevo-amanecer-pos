@@ -192,3 +192,22 @@ test('server 403 for the cash-close report shows no data even if the client role
   await expect(screen.locator('[data-ra-content]')).toBeEmpty();
   await expect(screen.locator('[data-ra-export]')).toBeDisabled();
 });
+
+test('server truncated:true shows a visible notice that the totals are incomplete', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); const dates = await seed(page);
+  await page.route('https://permissions.test/auth/cash-closes**', route => {
+    const at = new Date(dates.today + 'T12:00:00-05:00').toISOString();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ range: {}, truncated: true, cash_closes: [
+      { session_id: 'srv-1', status: 'CLOSED', opened_at: at, closed_at: at, expected_cents: 5000, counted_cents: 5100, difference_cents: 100,
+        opened_by_name: 'Servidor abrió', closed_by_name: 'Servidor cerró' }] }) });
+  });
+  await page.evaluate(() => (window as any).goPage('pageReporteArqueo'));
+  const screen = page.locator('#pageReporteArqueo');
+  await expect(screen.locator('[data-ra-status]')).toContainText('desde el servidor');
+  const notice = screen.locator('[data-ra-truncated]');
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute('role', 'alert');
+  await expect(notice).toContainText('totales están incompletos');
+  await expect(screen.locator('tbody tr')).toHaveCount(1);
+});

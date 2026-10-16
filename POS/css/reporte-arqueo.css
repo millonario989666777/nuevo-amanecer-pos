@@ -43,3 +43,4 @@ body.dark #pageReporteArqueo { --ra-bg: #0f172a; --ra-surface: #1e293b; --ra-tex
   #pageReporteArqueo { padding: 24px; }
   #pageReporteArqueo .ra-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
 }
+#pageReporteArqueo .ra-truncated { margin: 0 0 10px; padding: 12px 16px; border: 2px solid #b45309; border-radius: 12px; background: #fef3c7; color: #78350f; font-weight: 600; }

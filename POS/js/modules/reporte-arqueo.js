@@ -120,7 +120,7 @@
         input.__naArqueoDefaultSet = true;
       }
     });
-    var report, options, fromServer = false;
+    var report, options, fromServer = false, truncated = false;
     try { options = buildReport([], rangeOptions(page)).range; }
     catch (error) { status.textContent = error.message; return false; }
     function current() {
@@ -139,6 +139,7 @@
           if (response && Array.isArray(response.cash_closes) && response.ready !== false) {
             report = buildReport(response.cash_closes, options);
             fromServer = true;
+            truncated = response.truncated === true;
           } else report = localReport(options);
         } catch (error) {
           if (!current()) return false;
@@ -153,6 +154,11 @@
     renderedReport = report;
     if (exportButton) exportButton.disabled = false;
     status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · ' + (fromServer ? 'desde el servidor' : 'cierres cargados en este dispositivo');
+    if (truncated) {
+      var notice = element('p', 'ra-truncated', 'Atención: el servidor devolvió solo los ' + report.rows.length + ' cierres más recientes de este rango. Los totales están incompletos; elegí un rango de fechas más corto.');
+      notice.setAttribute('role', 'alert'); notice.setAttribute('data-ra-truncated', '');
+      content.appendChild(notice);
+    }
     if (!report.rows.length) content.appendChild(element('p', 'ra-empty', 'No hay cierres de caja para este rango de fechas.'));
     content.appendChild(element('p', 'ra-scroll-hint', 'Deslizá para ver más →'));
     var wrap = element('div', 'ra-table-wrap'); wrap.tabIndex = 0;

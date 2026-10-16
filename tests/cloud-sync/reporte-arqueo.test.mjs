@@ -282,3 +282,17 @@ test('overlong range invalidates pending requests before local reads or server f
   assert.equal(await h.api.render(), false); assert.equal(h.reads(), 0);
   assert.match(h.status.textContent, /hasta 366 días/); assert.equal(h.button.disabled, true);
 });
+test('server truncated:true shows a visible incomplete-totals notice; truncated:false does not', async () => {
+  for (const truncated of [true, false, undefined]) {
+    const h = harness(); h.initialize(); h.desde.value = range.desde; h.hasta.value = range.hasta;
+    online(h, async () => ({ truncated, cash_closes: [closed('server', '2026-10-16T18:00:00Z')] }));
+    assert.equal(await h.api.render(), true);
+    const notice = descendants(h.content).find(node => node.className === 'ra-truncated');
+    if (truncated === true) {
+      assert.ok(notice, 'notice must be rendered');
+      assert.equal(notice.attrs.role, 'alert'); assert.equal(notice.hidden, false);
+      assert.match(notice.textContent, /totales están incompletos/);
+      assert.match(notice.textContent, /solo los 1 cierres más recientes/);
+    } else assert.equal(notice, undefined);
+  }
+});

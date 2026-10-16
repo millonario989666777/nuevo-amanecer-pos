@@ -66,6 +66,7 @@ test('owner gets only CLOSED sessions within inclusive Lima days, newest first, 
   const r = await call(f);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.range, { desde: '2026-10-01', hasta: '2026-10-16' });
+  assert.equal(r.body.truncated, false);
   assert.deepEqual(r.body.cash_closes.map(s => s.session_id), ['last', 'middle', 'first']);
   assert.deepEqual(r.body.cash_closes[0], { session_id: 'last', status: 'CLOSED',
     opened_at: '2026-09-30T15:00:00.000Z', closed_at: '2026-10-17T04:59:59.999Z',
@@ -124,4 +125,45 @@ test('missing dependencies of the cash-state view return not ready', async t => 
   f.database.exec('DROP TABLE canonical_expenses');
   const r = await call(f);
   assert.equal(r.status, 200); assert.deepEqual(r.body, { cash_closes: [], ready: false });
+});
+
+function fakeCloseDb(total) {
+  const seen = [];
+  const all = Array.from({ length: total }, (_, i) => ({ session_id: 'c' + i, status: 'CLOSED', closed_at: '2026-10-10T18:00:00.000Z' }));
+  return { seen, prepare(sql) {
+    let args = [];
+    const stmt = { bind(...a) { args = a; return stmt; },
+      async first() { return /canonical_control/.test(sql) ? { active_promotion_id: 'p1' } : null; },
+      async all() {
+        if (/sqlite_master/.test(sql)) return { results: JSON.parse(args[0]).map(name => ({ name })) };
+        if (/pragma_table_info/.test(sql)) return { results: [] };
+        seen.push(sql);
+        const limit = Number(/LIMIT (\d+)/.exec(sql)[1]);
+        return { results: all.slice(0, limit) };
+      } };
+    return stmt;
+  } };
+}
+async function direct(total) {
+  const db = fakeCloseDb(total);
+  const r = await cashClosesRoute(new Request('http://localhost' + path), { DB: db },
+    { posRole: 'dueno', principalId: 'owner' }, (body, status = 200) => ({ body, status }));
+  return { ...r, db };
+}
+
+test('cash-close report requests one extra row and flags truncated when over the 2000 limit', async t => {
+  const { CASH_CLOSE_LIMIT } = await import('../../tools/cloudflare-lab/src/pos-cash-closes.js');
+  assert.equal(CASH_CLOSE_LIMIT, 2000);
+  const over = await direct(2001);
+  assert.equal(over.status, 200);
+  assert.match(over.db.seen[0], /LIMIT 2001\b/);
+  assert.equal(over.body.truncated, true);
+  assert.equal(over.body.cash_closes.length, 2000);
+  assert.equal(over.body.cash_closes.at(-1).session_id, 'c1999');
+  const exact = await direct(2000);
+  assert.equal(exact.body.truncated, false);
+  assert.equal(exact.body.cash_closes.length, 2000);
+  const few = await direct(3);
+  assert.equal(few.body.truncated, false);
+  assert.equal(few.body.cash_closes.length, 3);
 });
