@@ -160,7 +160,7 @@
     if (exportButton) exportButton.disabled = false;
     status.textContent = dateLabel(report.range.desde) + ' al ' + dateLabel(report.range.hasta) + ' · hora de Lima · ' + (fromServer ? 'desde el servidor' : 'cierres cargados en este dispositivo');
     if (truncated) {
-      var notice = element('p', 'ra-truncated', 'Atención: el servidor devolvió solo los ' + report.rows.length + ' cierres más recientes de este rango. Los totales están incompletos; elegí un rango de fechas más corto.');
+      var notice = element('p', 'ra-truncated', 'Atención: el servidor devolvió solo los ' + report.rows.length + ' cierres más recientes de este rango. Los totales están incompletos; elige un rango de fechas más corto.');
       notice.setAttribute('role', 'alert'); notice.setAttribute('data-ra-truncated', '');
       content.appendChild(notice);
     }
