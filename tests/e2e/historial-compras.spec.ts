@@ -28,7 +28,15 @@ const fixture = {
   credits: [{ id: 'TEST-credit', saldo: 4 }]
 };
 
-async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean } = {}) {
+// 300 compras (el máximo que devuelve el servidor): las del fixture + relleno de otro producto.
+function limitPurchases() {
+  const filler = Array.from({ length: 300 - fixture.purchases.length }, (_, i) => ({ purchase_id: 'PUR-e2e-fill-' + i, status: 'aplicada',
+    created_at: '2026-09-01T15:00:00Z', supplier: 'Relleno', total_cost_cents: 400,
+    lines: [{ purchase_id: 'PUR-e2e-fill-' + i, line_number: 1, product_id: '202', quantity: 1, unit_cost_cents: 400 }] }));
+  return fixture.purchases.concat(filler);
+}
+
+async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean; atLimit?: boolean } = {}) {
   const writes: string[] = [], reads: string[] = [];
   let release: (() => void) | undefined;
   const hold = options.delay ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
@@ -43,7 +51,7 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     if (url.pathname === '/auth/purchases' && !url.search) {
       reads.push(url.pathname);
       await hold;
-      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: fixture.purchases }) });
+      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: options.atLimit ? limitPurchases() : fixture.purchases }) });
     }
     return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'test_endpoint_unavailable' }) });
   });
@@ -195,6 +203,7 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     await expect(page.locator('[data-hc-products] button')).toHaveCount(1);
     await page.locator('[data-hc-products] button').click();
     await expect(page.locator('.hc-table tbody tr')).toHaveCount(2);
+    await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveCount(0);
     expect(await page.locator('.hc-table tbody tr').evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.purchaseId))).toEqual(['PUR-e2e-new:1', 'PUR-e2e-old:1']);
     await expect(page.locator('.hc-table tbody tr').first()).toContainText('13/10/2026 21:00');
     await expect(page.locator('.hc-table tbody tr').first()).toContainText('S/ 60.00');
@@ -289,6 +298,21 @@ test('al perder permisos una respuesta tardía no muestra datos del owner', asyn
   await expect(page.locator('[data-hc-denied]')).toBeVisible();
   await expect(page.locator('[data-hc-result]')).toBeEmpty();
   await expect(page.locator('[data-hc-products]')).toBeEmpty();
+  expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
+  expect(io.writes).toEqual([]);
+});
+
+test('límite de 300 compras: el resumen avisa «Mostrando las últimas 300 compras»', async ({ page }) => {
+  const io = await setup(page, 'owner', { atLimit: true });
+  await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+  await expect(page.locator('[data-hc-status]')).toContainText('300 compras recientes');
+  await page.locator('[data-hc-search]').fill('paracetamol');
+  await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+  await expect(page.locator('.hc-table tbody tr')).toHaveCount(2);
+  const notice = page.locator('#pageHistorialCompras .hc-limit');
+  await expect(notice).toHaveText('Mostrando las últimas 300 compras');
+  // Va junto al resumen, para que total y promedio no parezcan de toda la historia.
+  expect(await notice.evaluate(node => node.previousElementSibling?.classList.contains('hc-summary'))).toBe(true);
   expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
   expect(io.writes).toEqual([]);
 });

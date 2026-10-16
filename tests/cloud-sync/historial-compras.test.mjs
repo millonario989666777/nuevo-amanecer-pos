@@ -319,3 +319,25 @@ test('tras un fallo de lectura solo el botón Reintentar vuelve a consultar (sin
   assert.match(source, /retry\.addEventListener\('click', load\)/);
   assert.match(source, /purchases = \[\]; failed = true;/);
 });
+
+test('ownerAllowed depende solo de NA_ROLES.isOwner(), sin canAccessScreen', () => {
+  let screenCalls = 0;
+  const permissions = { canAccessScreen: () => { screenCalls++; return false; } };
+  assert.equal(load({ NA_ROLES: { isOwner: () => true } }).ownerAllowed(), true);
+  assert.equal(load({ NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: permissions }).ownerAllowed(), true);
+  assert.equal(load({ NA_ROLES: { isOwner: () => false }, NA_PERMISSIONS: permissions }).ownerAllowed(), false);
+  assert.equal(load({}).ownerAllowed(), false);
+  assert.equal(screenCalls, 0);
+  assert.doesNotMatch(source, /canAccessScreen/);
+});
+
+test('aviso de límite: desde 300 compras se indica «Mostrando las últimas 300 compras»', () => {
+  const api = load();
+  assert.equal(api.PURCHASE_LIMIT, 300);
+  const list = n => Array.from({ length: n }, (_, i) => ({ purchase_id: 'PUR-' + i, lines: [] }));
+  assert.equal(api.limitReached(list(299)), false);
+  assert.equal(api.limitReached(list(300)), true);
+  assert.equal(api.limitReached(list(305)), true);
+  assert.equal(api.limitReached(null), false);
+  assert.match(source, /'Mostrando las últimas ' \+ PURCHASE_LIMIT \+ ' compras'/);
+});

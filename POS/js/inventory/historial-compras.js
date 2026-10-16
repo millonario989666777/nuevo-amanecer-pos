@@ -6,6 +6,9 @@
 (function (root) {
   'use strict';
   var READ_PATH = '/auth/purchases';
+  // El servidor devuelve como máximo las 300 compras más recientes (más las incompletas).
+  var PURCHASE_LIMIT = 300;
+  function limitReached(purchases) { return Array.isArray(purchases) && purchases.length >= PURCHASE_LIMIT; }
   function text(value) { return value == null ? '' : String(value); }
   function normalize(value) { return text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
   function productId(product) { return text(product && (product.id != null ? product.id : product.product_id)); }
@@ -117,9 +120,8 @@
   function money(cents) { return cents == null ? 'Sin costo registrado' : 'S/ ' + (cents / 100).toFixed(2); }
   function ownerAllowed() {
     try {
-      var roles = root.NA_ROLES, permissions = root.NA_PERMISSIONS;
-      return !!(roles && typeof roles.isOwner === 'function' && roles.isOwner() && permissions &&
-        typeof permissions.canAccessScreen === 'function' && permissions.canAccessScreen('owner', 'pageHistorialCompras'));
+      var roles = root.NA_ROLES;
+      return !!(roles && typeof roles.isOwner === 'function' && roles.isOwner());
     } catch (_) { return false; }
   }
   async function readPurchases() {
@@ -130,7 +132,7 @@
     if (!result || !Array.isArray(result.purchases)) throw new Error('Respuesta de compras no válida');
     return { purchases: result.purchases, ready: result.ready !== false };
   }
-  root.NA_HISTORIAL_COMPRAS = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaLabel: limaLabel, buildHistory: buildHistory, summarize: summarize, money: money, ownerAllowed: ownerAllowed, readPurchases: readPurchases });
+  root.NA_HISTORIAL_COMPRAS = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaLabel: limaLabel, buildHistory: buildHistory, summarize: summarize, money: money, ownerAllowed: ownerAllowed, readPurchases: readPurchases, limitReached: limitReached, PURCHASE_LIMIT: PURCHASE_LIMIT });
   if (!root.document) return;
   var doc = root.document;
   function init() {
@@ -179,6 +181,7 @@
         var box = el('div', 'hc-stat'); box.append(el('dt', '', pair[0]), el('dd', '', pair[1])); stats.append(box);
       });
       result.append(stats);
+      if (limitReached(purchases)) result.append(el('p', 'hc-note hc-limit', 'Mostrando las últimas ' + PURCHASE_LIMIT + ' compras'));
       if (summary.missingCostQuantity) result.append(el('p', 'hc-note', 'Promedio calculado sobre ' + summary.costedQuantity + ' unidades con costo registrado. ' + summary.missingCostQuantity + ' unidades sin costo registrado.'));
       if (history.excludedLines) result.append(el('p', 'hc-note', history.excludedLines + ' línea(s) sin aplicación confirmada excluidas del resumen.'));
       if (!history.rows.length) { result.append(el('p', 'hc-empty', 'Sin compras registradas')); return; }
