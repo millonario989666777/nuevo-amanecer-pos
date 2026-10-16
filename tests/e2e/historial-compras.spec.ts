@@ -36,7 +36,8 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     const request = route.request(), url = new URL(request.url());
     if (url.hostname === '127.0.0.1') return route.continue();
     if (url.hostname !== 'permissions.test') return route.abort();
-    if (request.method() !== 'GET') { writes.push(request.method() + ' ' + url.pathname); return route.abort(); }
+    // POST /settings es la sincronización de configuración que dispara saveAppState() de la propia prueba (en CI llega tarde); el módulo nunca la llama.
+    if (request.method() !== 'GET') { if (url.pathname !== '/settings') writes.push(request.method() + ' ' + url.pathname); return route.abort(); }
     if (url.pathname === '/auth/me') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pos_role: role, owner_pin_set: true, roles_ready: true, device_id: 'TEST-device' }) });
     // La ruta real permite GET a ambos roles; el módulo debe impedir la lectura al empleado.
     if (url.pathname === '/auth/purchases' && !url.search) {
@@ -50,9 +51,30 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     localStorage.setItem('na_cloud_sync_credentials', JSON.stringify({ endpoint: 'https://permissions.test', token: 'TEST-synthetic-token' }));
   });
   await page.goto('/index.html');
-  await page.waitForFunction(() => !!(window as any).NA_ROLES);
+  await expect(page.locator('script[src="js/inventory/historial-compras.js"]')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => {
+    const w = window as any;
+    return typeof w.NA_ROLES?.refresh === 'function' && typeof w.NA_HISTORIAL_COMPRAS?.readPurchases === 'function' && typeof w.NA_CONFIG_G?.flush === 'function';
+  }), { timeout: 30_000 }).toBe(true);
+  await page.evaluate(() => {
+    const w = window as any, api = w.NA_ROLES.api;
+    w.__hcPendingApi = 0;
+    w.__hcCompletedPurchases = 0;
+    w.NA_ROLES.api = async function (...args: any[]) {
+      w.__hcPendingApi++;
+      try { return await api.apply(this, args); }
+      finally {
+        w.__hcPendingApi--;
+        if (args[0] === '/auth/purchases') w.__hcCompletedPurchases++;
+      }
+    };
+  });
   await page.evaluate(async () => { await (window as any).NA_ROLES.refresh(); });
-  await page.waitForFunction(role => (window as any).NA_ROLES.role === role && (window as any).NA_ROLES.confirmed, role);
+  await expect.poll(() => page.evaluate(role => {
+    const roles = (window as any).NA_ROLES;
+    return roles.role === role && roles.confirmed;
+  }, role), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).__hcPendingApi)).toBe(0);
   await page.evaluate(data => {
     const w = window as any;
     const clone = () => JSON.parse(JSON.stringify(data));
@@ -67,9 +89,15 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     localStorage.setItem('na_canonical_journal', JSON.stringify({ state: 'PENDING', command: 'payment.create', payload: { operation_id: 'TEST-payment-pending' } }));
     localStorage.setItem('TEST-sale-outbox', JSON.stringify([{ id: 'TEST-sale-pending', state: 'PENDING' }]));
   }, fixture);
-  await expect(page.locator('script[src="js/inventory/historial-compras.js"]')).toHaveCount(1);
-  writes.length = 0;
+  // Conserva todo el registro de red: reiniciarlo ocultaría escrituras o carreras del arranque.
   return { writes, reads, release: () => release?.() };
+}
+
+async function settlePreferences(page: Page) {
+  // saveAppState/goPage programan un push de settings a 600 ms y no devuelven su promesa.
+  // flush cancela ese timer y espera el guardado y su caché antes de observar storage.
+  await page.evaluate(async () => { await (window as any).NA_CONFIG_G.flush(); });
+  await expect.poll(() => page.evaluate(() => (window as any).__hcPendingApi)).toBe(0);
 }
 
 async function businessData(page: Page) {
@@ -122,17 +150,17 @@ async function expectStorageUnchanged(page: Page) {
 }
 
 async function overflowAndTap(page: Page) {
-  expect(await page.locator('#pageHistorialCompras').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await expect.poll(() => page.locator('#pageHistorialCompras').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   const selected = page.locator('#pageHistorialCompras [data-product-id="101"]');
   await selected.scrollIntoViewIfNeeded();
-  expect(await selected.evaluate(node => {
+  await expect.poll(() => selected.evaluate(node => {
     const r = node.getBoundingClientRect();
     return node.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
   })).toBe(true);
-  expect(await page.locator('#pageHistorialCompras .hc-table td').first().evaluate(node => getComputedStyle(node).whiteSpace)).toBe('normal');
+  await expect(page.locator('#pageHistorialCompras .hc-table td').first()).toHaveCSS('white-space', 'normal');
   await page.locator('#pageHistorialCompras .hc-table td').first().hover();
-  const themeColor = await page.locator('#pageHistorialCompras .hc-table td').first().evaluate(node => {
+  await expect.poll(() => page.locator('#pageHistorialCompras .hc-table td').first().evaluate(node => {
     const page = node.closest('#pageHistorialCompras')!;
     const expected = document.createElement('span');
     expected.style.backgroundColor = getComputedStyle(page).getPropertyValue('--hc-selected');
@@ -140,8 +168,7 @@ async function overflowAndTap(page: Page) {
     const matches = getComputedStyle(expected).backgroundColor === getComputedStyle(node).backgroundColor;
     expected.remove();
     return matches;
-  });
-  expect(themeColor).toBe(true);
+  })).toBe(true);
 }
 
 for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
@@ -151,12 +178,17 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
     // Se crea un snapshot local de prueba antes de iniciar para comparar datos persistidos.
     await page.evaluate(() => (window as any).saveAppState());
+    await settlePreferences(page);
     const before = await businessData(page);
     await page.evaluate(() => (window as any).goPage('pageProximamente'));
+    await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
+    await expect(page.locator('[data-feature-id="historial-compras-producto"]')).toHaveCount(1);
     await page.locator('[data-feature-id="historial-compras-producto"]').click();
     await expect(page.locator('#pageHistorialCompras')).toHaveClass(/\bactive\b/);
     await expect(page.locator('[data-hc-status]')).toContainText('300 compras recientes');
+    await expect.poll(() => page.evaluate(() => (window as any).__hcCompletedPurchases)).toBe(1);
     // goPage persiste preferencias de navegación en el POS; la consulta no debe persistir nada.
+    await settlePreferences(page);
     await watchStorage(page);
     const search = page.locator('[data-hc-search]');
     await search.fill('paracetamol');
@@ -176,17 +208,21 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
       await expect(page.locator('[data-hc-products] button')).toHaveAttribute('data-product-id', '101');
     }
     await search.fill('azucar');
+    await expect(page.locator('[data-hc-products] button')).toHaveCount(1);
+    await expect(page.locator('[data-hc-products] button')).toHaveAttribute('data-product-id', '202');
     await page.locator('[data-hc-products] button').click();
     await expect(page.locator('.hc-table tbody tr')).toHaveCount(1);
     await expect(page.locator('.hc-summary')).toContainText('S/ 4.00');
     await search.fill('FAR-303');
+    await expect(page.locator('[data-hc-products] button')).toHaveCount(1);
+    await expect(page.locator('[data-hc-products] button')).toHaveAttribute('data-product-id', '303');
     await page.locator('[data-hc-products] button').click();
     await expect(page.locator('[data-hc-result]')).toContainText('Sin compras registradas');
     await search.fill('producto inexistente');
     await expect(page.locator('[data-hc-products]')).toContainText('No se encontraron productos');
     expect(await businessData(page)).toEqual(before);
     expect(io.writes).toEqual([]);
-    expect(io.reads).toEqual(['/auth/purchases']);
+    expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
     await expectStorageUnchanged(page);
   });
 }
@@ -208,7 +244,7 @@ test('empleado: navegación y render directo dicen Sin permiso, sin leer compras
   await expect(page.locator('[data-hc-denied]')).not.toHaveAttribute('hidden', /.*/);
   await expect(page.locator('[data-hc-content]')).toHaveAttribute('hidden', /.*/);
   await expect(page.locator('[data-hc-products] button')).toHaveCount(0);
-  expect(io.reads).toEqual([]);
+  expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual([]);
   expect(io.writes).toEqual([]);
   expect(await businessData(page)).toEqual(before);
   await expectStorageUnchanged(page);
@@ -220,6 +256,7 @@ test('fallo de lectura no se disfraza de historial vacío', async ({ page }) => 
   await expect(page.locator('[data-hc-status]')).toContainText('No se pudo cargar');
   await expect(page.locator('[data-hc-retry]')).toBeVisible();
   await expect(page.locator('[data-hc-result]')).toBeEmpty();
+  expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
   expect(io.writes).toEqual([]);
 });
 
@@ -228,10 +265,12 @@ test('registro no disponible (ready:false) no se presenta como historial vacío'
   await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
   await expect(page.locator('[data-hc-status]')).toContainText('todavía no está disponible');
   await page.locator('[data-hc-search]').fill('FAR-101');
+  await expect(page.locator('[data-hc-products] button')).toHaveCount(1);
+  await expect(page.locator('[data-hc-products] button')).toHaveAttribute('data-product-id', '101');
   await page.locator('[data-hc-products] button').click();
   await expect(page.locator('[data-hc-result]')).toBeEmpty();
   await expect(page.locator('[data-hc-retry]')).toBeVisible();
-  expect(io.reads).toEqual(['/auth/purchases']);
+  expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
   expect(io.writes).toEqual([]);
 });
 
@@ -243,9 +282,13 @@ test('al perder permisos una respuesta tardía no muestra datos del owner', asyn
     (window as any).NA_ROLES = { role: 'unknown', confirmed: false, isOwner: () => false };
     window.dispatchEvent(new CustomEvent('na:role'));
   });
+  await expect(page.locator('[data-hc-denied]')).toBeVisible();
   io.release();
+  // Espera el consumo/rechazo de la respuesta en el navegador, no solo route.fulfill.
+  await expect.poll(() => page.evaluate(() => (window as any).__hcCompletedPurchases)).toBe(1);
   await expect(page.locator('[data-hc-denied]')).toBeVisible();
   await expect(page.locator('[data-hc-result]')).toBeEmpty();
   await expect(page.locator('[data-hc-products]')).toBeEmpty();
+  expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
   expect(io.writes).toEqual([]);
 });

@@ -137,7 +137,7 @@
     var page = doc.getElementById('pageHistorialCompras'); if (!page) return;
     var content = page.querySelector('[data-hc-content]'), denied = page.querySelector('[data-hc-denied]'), search = page.querySelector('[data-hc-search]'),
       matches = page.querySelector('[data-hc-products]'), status = page.querySelector('[data-hc-status]'), result = page.querySelector('[data-hc-result]'), retry = page.querySelector('[data-hc-retry]');
-    var purchases = [], catalog = [], movements = [], selectedId = '', loaded = false, purchasesReady = true, pending = false, ticket = 0, active = false;
+    var purchases = [], catalog = [], movements = [], selectedId = '', loaded = false, purchasesReady = true, pending = false, failed = false, ticket = 0, active = false;
     function el(tag, cls, label) { var n = doc.createElement(tag); if (cls) n.className = cls; if (label != null) n.textContent = label; return n; }
     function visible() { return page.classList.contains('active'); }
     function sources() {
@@ -149,7 +149,7 @@
       movements = isCloud ? (Array.isArray(snap.inventoryMovements) ? snap.inventoryMovements : []).slice() : (typeof inventoryMovements !== 'undefined' && Array.isArray(inventoryMovements) ? inventoryMovements.slice() : []); // eslint-disable-line no-undef
     }
     function discard(clearSelection) {
-      ticket++; purchases = []; catalog = []; movements = []; loaded = false; purchasesReady = true; pending = false;
+      ticket++; purchases = []; catalog = []; movements = []; loaded = false; purchasesReady = true; pending = false; failed = false;
       matches.replaceChildren(); result.replaceChildren(); status.textContent = ''; retry.hidden = true;
       if (clearSelection) { selectedId = ''; search.value = ''; }
     }
@@ -195,7 +195,7 @@
     }
     async function load() {
       if (pending || !visible() || !ownerAllowed()) return;
-      var ownTicket = ++ticket; pending = true; loaded = false; result.replaceChildren(); retry.hidden = true; status.textContent = 'Cargando compras…';
+      var ownTicket = ++ticket; pending = true; failed = false; loaded = false; result.replaceChildren(); retry.hidden = true; status.textContent = 'Cargando compras…';
       try {
         sources(); renderProducts();
         var api = root.NuevoAmanecerCanonical;
@@ -212,7 +212,7 @@
         renderProducts(); renderResult();
       } catch (_) {
         if (ownTicket !== ticket || !visible() || !ownerAllowed()) return;
-        purchases = []; result.replaceChildren(); status.textContent = 'No se pudo cargar el historial. Revisa la conexión y vuelve a intentar.'; retry.hidden = false;
+        purchases = []; failed = true; result.replaceChildren(); status.textContent = 'No se pudo cargar el historial. Revisa la conexión y vuelve a intentar.'; retry.hidden = false;
       } finally { if (ownTicket === ticket) pending = false; }
     }
     function update() {
@@ -220,7 +220,7 @@
       content.hidden = !permitted; denied.hidden = permitted;
       if (!permitted) discard(true);
       else if (!isActive) discard(false);
-      else if (!active || (!loaded && !pending)) load();
+      else if (!active || (!loaded && !pending && !failed)) load();
       active = isActive;
     }
     search.addEventListener('input', function () { if (!ownerAllowed()) return update(); renderProducts(); });

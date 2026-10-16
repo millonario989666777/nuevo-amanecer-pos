@@ -4,6 +4,15 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync('POS/js/inventory/historial-compras.js', 'utf8');
+
+test('guarda estática: no usa settings, escrituras, fetch ni persistencia; consulta con GET explícito', () => {
+  for (const forbidden of ['/settings', 'POST', 'fetch(', 'localStorage', 'sessionStorage', 'saveAppState']) {
+    assert.equal(source.includes(forbidden), false, `el módulo no debe contener ${forbidden}`);
+  }
+  assert.doesNotMatch(source, /\bfetch\s*\(/);
+  assert.match(source, /\bapi\(\s*READ_PATH\s*,\s*undefined\s*,\s*'GET'\s*\)/);
+});
+
 function load(globals = {}) {
   const ctx = vm.createContext(globals);
   vm.runInContext(source, ctx);
@@ -303,4 +312,10 @@ test('respuesta tardía se descarta al salir o perder permisos; borra resultados
     if (loseRole) assert.equal(ui.elements.search.value, '');
     assert.deepEqual(ui.violations, []);
   }
+});
+
+test('tras un fallo de lectura solo el botón Reintentar vuelve a consultar (sin reintentos por eventos)', () => {
+  assert.match(source, /!loaded && !pending && !failed\)\) load\(\)/);
+  assert.match(source, /retry\.addEventListener\('click', load\)/);
+  assert.match(source, /purchases = \[\]; failed = true;/);
 });
