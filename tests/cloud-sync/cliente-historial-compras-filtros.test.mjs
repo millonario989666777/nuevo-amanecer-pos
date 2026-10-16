@@ -177,7 +177,7 @@ test('empty date inputs default once to the last 30 Lima days', () => {
 function screen({ role = 'owner', ventas = [], clientes = [{ id: 'c1', nombre: 'Cliente de prueba' }] } = {}) {
   const keys = ['content', 'status', 'controls', 'search', 'customer', 'period', 'from', 'to', 'seller', 'export'];
   const nodes = Object.fromEntries(keys.map(key => {
-    const node = new Node(); node.selector = '[data-ch-' + key + ']'; node.matches = s => s === node.selector;
+    const node = new Node(); node.selector = '[data-ch-' + key + ']'; node.matches = s => s.split(/,\s*/).includes(node.selector);
     return [node.selector, node];
   }));
   nodes['[data-ch-customer]'].value = 'c1';
@@ -281,4 +281,26 @@ test('non-owner: no CSV button is shown and the export function refuses', () => 
   const owner = screen({ role: 'owner', ventas: [sale({ fecha: daysAgo(1) })] });
   assert.equal(owner.nodes['[data-ch-export]'].hidden, false);
   assert.equal(owner.ctx.NA_CLIENTE_HISTORIAL.exportCsv(), true);
+});
+
+test('choosing Personalizado keeps the dates, focuses Desde and stays until a date is edited', () => {
+  const s = screen();
+  const p30 = api.periodDates('30');
+  let focused = 0; s.nodes['[data-ch-from]'].focus = () => { focused++; };
+  s.nodes['[data-ch-period]'].value = 'custom'; s.change('period');
+  assert.equal(focused, 1);
+  assert.equal(s.nodes['[data-ch-from]'].value, p30.from);
+  assert.equal(s.nodes['[data-ch-to]'].value, p30.to);
+  assert.equal(s.nodes['[data-ch-period]'].value, 'custom');
+  s.ctx.NA_CLIENTE_HISTORIAL.render(); s.ctx.NA_CLIENTE_HISTORIAL.render();
+  assert.equal(s.nodes['[data-ch-period]'].value, 'custom');
+  s.change('seller'); // Otros filtros no lo deshacen.
+  assert.equal(s.nodes['[data-ch-period]'].value, 'custom');
+  // Tras editar una fecha vuelve la derivación normal.
+  s.nodes['[data-ch-from]'].value = api.periodDates('90').from; s.change('from');
+  assert.equal(s.nodes['[data-ch-period]'].value, '90');
+  s.nodes['[data-ch-period]'].value = 'custom'; s.change('period');
+  s.nodes['[data-ch-period]'].value = '30'; s.change('period'); // Un atajo también lo libera.
+  assert.equal(s.nodes['[data-ch-period]'].value, '30');
+  assert.equal(s.nodes['[data-ch-from]'].value, p30.from);
 });

@@ -245,7 +245,8 @@
       if (!from.value && !to.value) { from.value = initial.from; to.value = initial.to; }
     }
     // Nunca se contradicen: el Período mostrado se deduce de las fechas.
-    if (period && from && to) period.value = periodFor(from.value, to.value);
+    // «Personalizado» elegido a mano se respeta hasta que se editen las fechas.
+    if (period && from && to) period.value = page.dataset.chCustomPeriod === '1' ? 'custom' : periodFor(from.value, to.value);
     var dates = dateRange(from ? from.value : '', to ? to.value : '');
     if (from) from.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
     if (to) to.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
@@ -280,6 +281,10 @@
         var from = page.querySelector('[data-ch-from]'), to = page.querySelector('[data-ch-to]'), dates = periodDates(event.target.value);
         if (dates && from) from.value = dates.from;
         if (dates && to) to.value = dates.to;
+        if (dates) delete page.dataset.chCustomPeriod;
+        else { page.dataset.chCustomPeriod = '1'; if (from && typeof from.focus === 'function') from.focus(); }
+      } else if (event && event.target && event.target.matches && event.target.matches('[data-ch-from], [data-ch-to]')) {
+        delete page.dataset.chCustomPeriod;
       }
       update();
     });
