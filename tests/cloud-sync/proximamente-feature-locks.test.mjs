@@ -35,6 +35,27 @@ test('real Worker authenticates then returns feature_locked for every locked reg
   assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
 });
 
+for (const id of ['valorizacion-inventario', 'rotacion-abc']) {
+  test(`${id} is unlocked on client and server; owner-only feature route, no writes`, async t => {
+    assert.equal(PERMISSIONS.FEATURE_LOCKS[id], false);
+    assert.equal(PERMISSIONS.featureLocked(id), false);
+    const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
+    f.addDevice('unlock-owner', 'writer', 'active', 'unlock-owner-token');
+    f.addDevice('unlock-employee', 'writer', 'active', 'unlock-employee-token');
+    f.exec("INSERT INTO pos_device_roles(device_id,pos_role,created_by,created_at) VALUES('session:unlock-employee','empleado','test','2026-10-15T00:00:00Z')");
+    const before = f.database.prepare('SELECT * FROM canonical_control').all();
+    for (const method of ['GET', 'POST']) {
+      const owner = await f.fetch('http://localhost/features/' + id, { method, headers: { authorization: 'Bearer unlock-owner-token' } });
+      assert.equal(owner.status, 404);
+      assert.notEqual((await owner.json()).error, 'feature_locked');
+      const employee = await f.fetch('http://localhost/features/' + id, { method, headers: { authorization: 'Bearer unlock-employee-token' } });
+      assert.equal(employee.status, 403);
+      assert.equal((await employee.json()).error, 'forbidden_role');
+    }
+    assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
+  });
+}
+
 test('clientes-filtro-deuda is unlocked on client and server (no feature_locked, no writes)', async t => {
   assert.equal(PERMISSIONS.FEATURE_LOCKS['clientes-filtro-deuda'], false);
   assert.equal(PERMISSIONS.featureLocked('clientes-filtro-deuda'), false);
