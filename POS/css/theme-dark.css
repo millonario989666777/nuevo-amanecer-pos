@@ -825,3 +825,27 @@ body.dark #pageClientes .na-v2-installment.na-v2-installment-overdue {background
 body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-copy small {color:#fecdd3}
 body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-index,
 body.dark #pageClientes .na-v2-installment-overdue .na-v2-installment-status {background-color:#7f1d1d;color:#fecaca;border-color:#b91c1c}
+
+/* ==== fix/followups-156 — dark contrast follow-ups (color only) ====
+   merge after PR #774
+   OCR: misma estructura que el estilo claro de stock-lots.css. */
+body.dark .na-pur-box .na-pur-ocr {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--na-dk-border);
+  border-radius: 10px;
+  padding: 0 14px;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 800;
+  background-color: var(--na-dk-surface-2);
+  color: var(--na-dk-text);
+  cursor: pointer;
+}
+body.dark .f10-btn.primary,
+body.dark #pageProximamente .na-prox-chip.is-active { color: #042f2e; }
+body.dark .vkpi.amber .vkpi-val { color: #fbbf24; }
+/* _naSecCashClosing asigna style.cssText: el navegador serializa #15803d como rgb. */
+body.dark #cajContent span[style*="color: rgb(21, 128, 61)"] { color: #4ade80 !important; }
+body.dark #pageInventario .top-btn-nuevo:is(.na-pur-btn,[onclick^="abrirModalProd"]) { background-color: #c2410c; }
+/* ==== end fix/followups-156 ==== */

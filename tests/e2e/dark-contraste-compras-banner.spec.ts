@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Modo oscuro (visual en vivo web 150): «Total costo», «Desde foto/OCR», franja de caja abierta e ícono del menú.
-// Oscuro: contraste WCAG AA (≥ 4.5:1). Claro: colores idénticos a los de antes. Tamaño y posición iguales en ambos.
+// Oscuro: contraste WCAG AA (≥ 4.5:1). Claro: colores anteriores, salvo el estilo propio OCR de followups-156.
+// Tamaño y posición iguales en ambos modos.
 
 async function boot(page: Page, dark: boolean, width = 390) {
   await page.route('**/*', r => new URL(r.request().url()).hostname === '127.0.0.1' ? r.continue() : r.abort());
@@ -57,8 +58,8 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
   const dark = await measureAll(page);
   test.info().annotations.push({ type: 'contraste-oscuro', description: JSON.stringify(Object.fromEntries(Object.entries(dark).map(([k, v]) => [k, v.ratio]))) });
   for (const [name, s] of Object.entries(dark)) expect(s.ratio, `${name}: ${s.fg} sobre ${s.bg}`).toBeGreaterThanOrEqual(4.5);
-  // El botón OCR ya no es el gris nativo claro.
-  expect(dark.ocr.bg).not.toBe('rgb(239, 239, 239)');
+  // El botón OCR usa la superficie oscura en lugar de su nuevo gris claro propio.
+  expect(dark.ocr.bg).not.toBe('rgb(241, 245, 249)');
   // Solo color: se quitan del CSSOM las reglas nuevas de theme-dark.css y las cajas deben ser las mismas.
   const removed = await page.evaluate(() => {
     let n = 0;
@@ -72,20 +73,22 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
     }
     return n;
   });
-  expect(removed).toBe(4);
+  // followups-156 agrega una segunda regla oscura OCR; sin ambas queda su nuevo estilo claro propio.
+  expect(removed).toBe(5);
   const before = await measureAll(page);
   // El ícono del menú no tiene reglas nuevas; en esta segunda medición la franja ya está visible y lo desplaza (bug de posición aparte).
   for (const k of ['total', 'ocr', 'banner'] as const) expect(dark[k].box, k).toEqual(before[k].box);
   // Y sin esas reglas vuelve el problema (la prueba detecta el arreglo).
   expect(before.total.ratio).toBeLessThan(4.5);
-  expect(before.ocr.bg).toBe('rgb(239, 239, 239)');
+  expect(before.ocr.bg).toBe('rgb(241, 245, 249)');
 });
 
 test('modo claro 390px: colores idénticos a los de antes del cambio', async ({ page }) => {
   await boot(page, false);
   const light = await measureAll(page);
   expect([light.total.fg, light.total.bg]).toEqual(['rgb(15, 23, 42)', 'rgb(255, 255, 255)']);
-  expect([light.ocr.fg, light.ocr.bg]).toEqual(['rgb(0, 0, 0)', 'rgb(239, 239, 239)']);
+  // followups-156 reemplaza el estilo nativo OCR por texto teal sobre gris claro en stock-lots.css.
+  expect([light.ocr.fg, light.ocr.bg]).toEqual(['rgb(15, 118, 110)', 'rgb(241, 245, 249)']);
   expect([light.banner.fg, light.banner.bg]).toEqual(['rgb(153, 27, 27)', 'rgb(254, 226, 226)']);
   expect(await page.locator('#naStatusBanner').evaluate(el => getComputedStyle(el).borderBottomColor)).toBe('rgb(252, 165, 165)');
   expect(light.menu.fg).toBe(LIGHT_MENU_ICON);

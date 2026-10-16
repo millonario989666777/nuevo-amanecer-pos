@@ -82,7 +82,7 @@ async function removeFixRules(page: Page) {
       if (!/theme-dark\.css/.test(sheet.href || '')) continue;
       const marker = Array.from(sheet.cssRules).findIndex(r => ((r as CSSStyleRule).selectorText || '') === 'body.dark #pageClientes .na-v2-subhead');
       if (marker < 0) continue;
-      while (sheet.cssRules.length > marker) { sheet.deleteRule(marker); n++; }
+      while (sheet.cssRules.length > marker && ((sheet.cssRules[marker] as CSSStyleRule).selectorText || '').includes('#pageClientes')) { sheet.deleteRule(marker); n++; }
     }
     return n;
   });

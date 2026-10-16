@@ -60,7 +60,7 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
-  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'historial-compras-producto': owner };
+  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'reporte-ventas-stock': owner, 'historial-compras-producto': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
     'credito-cuotas': true,
@@ -105,6 +105,7 @@
     'reporte-ventas-stock': false,
     'app-almaceneros': true,
     'equipos-pos': true,
+    'asistente-virtual': true,
     'tipo-cierre': true,
     'shopify-woocommerce': true,
     'bandeja-multicanal': true,

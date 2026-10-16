@@ -166,6 +166,7 @@
       category: filter && filter.value !== '*' ? filter.value : null, query: search ? search.value : '' });
   }
   function decimal(value) { return value.toLocaleString('es-PE', { maximumFractionDigits: 1 }); }
+  function dailyAverage(value) { return value > 0 && value < 0.1 ? '<' + decimal(0.1) : decimal(value); }
   function render() {
     var page = root.document && root.document.getElementById(PAGE_ID);
     if (!page) return false;
@@ -204,7 +205,7 @@
       var badge = element('td'); badge.setAttribute('data-label', 'Estado');
       badge.appendChild(element('span', 'vs-badge vs-' + row.status, LABELS[row.status])); line.appendChild(badge);
       [['Vendidas', decimal(row.unitsSold)], ['Stock', row.stock === null ? 'Sin control' : decimal(row.stock)],
-        ['Prom./día', decimal(row.avgDaily)], ['Cobertura', row.coverageDays === null ? '—' : decimal(row.coverageDays) + ' días']].forEach(function (pair) {
+        ['Prom./día', dailyAverage(row.avgDaily)], ['Cobertura', row.coverageDays === null ? '—' : decimal(row.coverageDays) + ' días']].forEach(function (pair) {
         var cell = element('td', 'vs-num', pair[1]); cell.setAttribute('data-label', pair[0]); line.appendChild(cell);
       });
       body.appendChild(line);
