@@ -154,6 +154,32 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
   });
 }
 
+for (const width of [650, 1000]) {
+  test(`owner sees every customer frequency cell at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(() => (window as any).goPage('pageProximamente'));
+    await page.locator('#pageProximamente [data-feature-id="clientes-frecuencia"]').click();
+    const screen = page.locator('#pageClientesFrecuencia');
+    await expect(screen).toBeVisible();
+    const tables = screen.locator('table');
+    expect(await tables.count()).toBeGreaterThan(0);
+    for (const table of await tables.all()) {
+      await expect(table.locator('tbody tr')).toHaveCount(4);
+      await expect(table).toHaveCSS('display', width === 650 ? 'block' : 'table');
+      // At 650px the column headers are intentionally clipped for cards;
+      // row headers and every data cell must still have visible content.
+      const cells = table.locator(width === 650 ? 'tbody :is(th, td)' : 'th, td');
+      await expect(cells).toHaveCount(width === 650 ? 28 : 35);
+      for (const cell of await cells.all()) {
+        await expect(cell).toBeVisible();
+        await expect.poll(() => cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+      }
+    }
+  });
+}
+
 test('employee cannot see the card or open frequency; direct rendering exposes no customer data', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado');
