@@ -88,22 +88,49 @@
     pasos: function (p, d) { if (p.pantalla) d.navigate(p.pantalla); return { ok: true, msg: 'Te llevé a la pantalla.' }; }
   };
 
+  // Puerta de confirmación. execute() es asíncrono:
+  // 1) exige confirmed:true (solo lo pasa el botón «Confirmar»);
+  // 2) revisa el rol en el aparato (segunda barrera);
+  // 3) pide al Worker que gaste el token de un solo uso (deps.confirm). El token trae un operation_id
+  //    creado UNA vez; si se corta la señal se reenvía el MISMO token y el Worker devuelve el mismo id;
+  // 4) recién entonces llama a las funciones existentes del POS. Un doble toque comparte la misma promesa.
   function createGate(deps) {
     var items = Object.create(null);
+    async function run(it) {
+      var perm = canExecute(deps.roles(), it.p);
+      if (!perm.ok) { it.state = 'denied'; return perm; }
+      if (deps.online && !deps.online()) { it.state = 'pending'; return { ok: false, msg: 'Asistente no disponible sin internet.' }; }
+      if (it.p.needsConfirm) {
+        if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar (falta el permiso del servidor).' }; }
+        var c;
+        try { c = await deps.confirm(it.p); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, msg: 'Se cortó la conexión. Pulsa Confirmar otra vez: no se duplicará.' }; }
+        if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'proposal_changed')) ? 'denied' : 'pending';
+          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
+        it.operationId = c.operation_id;
+        if (c.already_confirmed && it.executed) { it.state = 'done'; return { ok: true, msg: 'Ya se hizo. No se repitió.' }; }
+      }
+      if (it.executed) { it.state = 'done'; return { ok: true, msg: 'Ya se hizo. No se repitió.' }; }
+      try {
+        var r = EXECUTORS[it.p.type](it.p, deps, it.operationId);
+        if (r.ok) it.executed = true;
+        it.state = r.ok ? 'done' : 'pending'; return r;
+      } catch (e) { it.state = 'pending'; return { ok: false, msg: 'No se pudo completar. Inténtalo otra vez.' }; }
+    }
     return {
-      add: function (p) { if (p && p.id && !items[p.id]) items[p.id] = { p: p, state: 'pending' }; return items[p.id]; },
+      add: function (p) { if (p && p.id && !items[p.id]) items[p.id] = { p: p, state: 'pending', executed: false, operationId: null, inflight: null }; return items[p.id]; },
       state: function (id) { return items[id] ? items[id].state : null; },
+      operationId: function (id) { return items[id] ? items[id].operationId : null; },
       cancel: function (id) { if (items[id] && items[id].state === 'pending') items[id].state = 'cancelled'; },
       execute: function (id, opts) {
         var it = items[id];
-        if (!it) return { ok: false, msg: 'Propuesta no encontrada.' };
-        if (!opts || opts.confirmed !== true) return { ok: false, msg: 'Falta confirmar.' };
-        if (it.state !== 'pending') return { ok: false, msg: it.state === 'done' ? 'Ya se hizo.' : 'Se canceló.' };
-        var perm = canExecute(deps.roles(), it.p);
-        if (!perm.ok) { it.state = 'denied'; return perm; }
+        if (!it) return Promise.resolve({ ok: false, msg: 'Propuesta no encontrada.' });
+        if (!opts || opts.confirmed !== true) return Promise.resolve({ ok: false, msg: 'Falta confirmar.' });
+        if (it.inflight) return it.inflight;
+        if (it.state === 'done') return Promise.resolve({ ok: true, msg: 'Ya se hizo. No se repitió.' });
+        if (it.state !== 'pending') return Promise.resolve({ ok: false, msg: it.state === 'cancelled' ? 'Se canceló.' : 'No permitido.' });
         it.state = 'running';
-        try { var r = EXECUTORS[it.p.type](it.p, deps); it.state = r.ok ? 'done' : 'pending'; return r; }
-        catch (e) { it.state = 'pending'; return { ok: false, msg: 'No se pudo completar. Inténtalo otra vez.' }; }
+        it.inflight = run(it).finally(function () { it.inflight = null; });
+        return it.inflight;
       }
     };
   }

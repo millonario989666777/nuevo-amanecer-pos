@@ -20,7 +20,7 @@ import { cashClosesRoute } from './pos-cash-closes.js';
 import { annulCanonicalSale, listSaleAnnulments, SALE_ANNUL_COMMAND } from './pos-sale-annul.js';
 import { handleLabWorkspace, isLabWorkspacePath } from './lab-workspace.js';
 import { dniLookupRoute, DNI_LOOKUP_PATH } from './pos-dni-lookup.js';
-import { assistantChatRoute, ASSISTANT_CHAT_PATH } from './pos-assistant.js';
+import { assistantChatRoute, assistantConfirmRoute, ASSISTANT_CHAT_PATH, ASSISTANT_CONFIRM_PATH } from './pos-assistant.js';
 import { handleRoles, ownerGate, posRoleFor, ROLE_PATHS, flagSaleDiscount, flagReview } from './pos-roles.js';
 
 const TEXT_FIELDS = ['operation_id', 'entity_type', 'entity_id', 'payload', 'payload_hash', 'created_at'];
@@ -116,11 +116,12 @@ export default {
         return cors(await purchasesRoute(request, env, auth, json));
       }
       // Asistente (prototipo aislado): apagado salvo ASSISTANT_ENABLED=1; responde 404 antes de autenticar.
-      if (url.pathname === ASSISTANT_CHAT_PATH) {
+      if (url.pathname === ASSISTANT_CHAT_PATH || url.pathname === ASSISTANT_CONFIRM_PATH) {
         if (String(env.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
         const auth = await authorizeSession(request, env);
         if (auth instanceof Response) return cors(auth);
-        return cors(await assistantChatRoute(request, env, auth, json, { db: getDatabase(env) }));
+        const route = url.pathname === ASSISTANT_CHAT_PATH ? assistantChatRoute : assistantConfirmRoute;
+        return cors(await route(request, env, auth, json, { db: getDatabase(env) }));
       }
       // Búsqueda de DNI al agregar cliente: primero clientes guardados, luego Decolecta desde el Worker.
       if (url.pathname === DNI_LOOKUP_PATH) {
