@@ -12,20 +12,23 @@ const owner = { role: 'owner', isOwner: () => true };
 const emp = { role: 'empleado', isOwner: () => false };
 const PRODUCTS = [{ id: 'P1', name: 'Paracetamol 500 mg', precio: 0.5, costo: 0.2, stock: 100 }];
 function deps(roles, extra = {}) {
-  const calls = { posAdd: [], navigate: [], editor: [], confirm: 0, purchase: 0, doc: 0 };
+  const calls = { stock: [], navigate: [], editor: [], newProd: [], confirm: 0, purchase: 0, doc: 0 };
   return { calls, d: Object.assign({
     roles: () => roles, online: () => true, productos: () => PRODUCTS,
     confirm: async () => { calls.confirm++; return { ok: true, operation_id: 'AST-0001' }; },
-    posAdd: (id) => { calls.posAdd.push(id); return true; }, navigate: (id) => calls.navigate.push(id),
-    openPurchase: () => { calls.purchase++; return {}; }, fillPurchase: () => {}, openPriceEditor: (id, p) => calls.editor.push([id, p]),
+    openStockMove: (id, tipo, cant, motivo) => { calls.stock.push([id, tipo, cant, motivo]); return true; }, navigate: (id) => calls.navigate.push(id),
+    openPurchase: () => { calls.purchase++; return {}; }, fillPurchase: () => {}, openProductEditor: (id, p) => calls.editor.push([id, p]),
+    openNewProduct: (p) => { calls.newProd.push(p.nombre); return true; },
     showDocument: () => { calls.doc++; }, businessName: () => 'Prueba'
   }, extra) };
 }
-const venta = { id: 'p1-preparar_venta', type: 'venta', needsConfirm: true, confirm_token: 't', lineas: [{ product_id: 'P1', nombre: 'Paracetamol', cantidad: 2, precio: 0.5 }] };
+const ajuste = { id: 'p1-ajuste', type: 'ajuste', needsConfirm: true, confirm_token: 't', product_id: 'P1', nombre: 'Paracetamol', tipo: 'salida', cantidad: 2, motivo: 'Merma / daño' };
 const precio = { id: 'p1-precio', type: 'precio', needsConfirm: true, confirm_token: 't', product_id: 'P1', nombre: 'Paracetamol', precio_actual: 0.5, precio_nuevo: 0.6 };
 
-test('tabla única de permisos: rutas del asistente para ambos roles, acciones de dueño solo dueño', () => {
+test('tabla única de permisos: chat/confirm para dueño y empleado (el servidor revisa el nivel), cambiar niveles solo dueño', () => {
   for (const path of ['/auth/assistant/chat', '/auth/assistant/confirm']) assert.deepEqual([...PERMISSIONS.routeRoles(path, 'POST')].sort(), ['empleado', 'owner']);
+  for (const m of ['GET', 'POST']) assert.deepEqual([...PERMISSIONS.routeRoles('/auth/assistant/employee-access', m)], ['owner']);
+  for (const a of Object.values(TOOL_ACTIONS)) assert.equal(PERMISSIONS.canDo('empleado', a), false, a);
   assert.deepEqual([...PERMISSIONS.routeRoles('/auth/assistant/chat', 'GET')], ['owner'], 'otros métodos: denegado por defecto');
   assert.equal(PERMISSIONS.canDo('empleado', 'assistant.price.propose'), false);
   assert.equal(PERMISSIONS.canDo('empleado', 'assistant.purchase.propose'), false);
@@ -38,82 +41,117 @@ test('tabla única de permisos: rutas del asistente para ambos roles, acciones d
 });
 
 test('nada se ejecuta sin confirmed:true', async () => {
-  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(venta);
-  assert.equal((await g.execute(venta.id)).ok, false);
-  assert.equal((await g.execute(venta.id, { confirmed: 'yes' })).ok, false);
-  assert.equal(calls.confirm, 0); assert.equal(calls.posAdd.length, 0);
+  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(ajuste);
+  assert.equal((await g.execute(ajuste.id)).ok, false);
+  assert.equal((await g.execute(ajuste.id, { confirmed: 'yes' })).ok, false);
+  assert.equal(calls.confirm, 0); assert.equal(calls.stock.length, 0);
 });
 
-test('Confirmar en venta: pide el token al Worker y llena el carrito con posAdd; no cobra', async () => {
-  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(venta);
-  const r = await g.execute(venta.id, { confirmed: true });
-  assert.equal(r.ok, true); assert.equal(calls.confirm, 1); assert.deepEqual(calls.posAdd, ['P1', 'P1']); assert.deepEqual(calls.navigate, ['pagePOS']);
-  assert.equal(g.operationId(venta.id), 'AST-0001');
+test('Confirmar en ajuste: pide el token al Worker y abre «Registrar movimiento» lleno; no guarda solo', async () => {
+  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(ajuste);
+  const r = await g.execute(ajuste.id, { confirmed: true });
+  assert.equal(r.ok, true); assert.equal(calls.confirm, 1); assert.deepEqual(calls.stock, [['P1', 'salida', 2, 'Merma / daño']]);
+  assert.equal(C.EXECUTORS.venta, undefined, 'no existe ejecutor de venta: el asistente no llena el carrito');
+  assert.equal(g.operationId(ajuste.id), 'AST-0001');
 });
 
 test('doble y triple toque: una sola confirmación y una sola ejecución', async () => {
-  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(venta);
-  const rs = await Promise.all([g.execute(venta.id, { confirmed: true }), g.execute(venta.id, { confirmed: true }), g.execute(venta.id, { confirmed: true })]);
-  assert.ok(rs.every((r) => r.ok)); assert.equal(calls.confirm, 1); assert.equal(calls.posAdd.length, 2);
-  const again = await g.execute(venta.id, { confirmed: true });
-  assert.match(again.msg, /no se repitió/i); assert.equal(calls.posAdd.length, 2);
+  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(ajuste);
+  const rs = await Promise.all([g.execute(ajuste.id, { confirmed: true }), g.execute(ajuste.id, { confirmed: true }), g.execute(ajuste.id, { confirmed: true })]);
+  assert.ok(rs.every((r) => r.ok)); assert.equal(calls.confirm, 1); assert.equal(calls.stock.length, 1);
+  const again = await g.execute(ajuste.id, { confirmed: true });
+  assert.match(again.msg, /no se repitió/i); assert.equal(calls.stock.length, 1);
 });
 
 test('corte de señal al confirmar: reintento con el mismo token, se ejecuta una vez', async () => {
   let n = 0; const tokens = [];
   const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); n++; if (n === 1) throw new Error('network'); return { ok: true, operation_id: 'AST-0001', already_confirmed: n > 2 }; } });
-  const g = C.createGate(d); g.add(venta);
-  const r1 = await g.execute(venta.id, { confirmed: true });
-  assert.equal(r1.ok, false); assert.equal(r1.retry, true); assert.equal(calls.posAdd.length, 0);
-  const r2 = await g.execute(venta.id, { confirmed: true });
-  assert.equal(r2.ok, true); assert.equal(calls.posAdd.length, 2);
+  const g = C.createGate(d); g.add(ajuste);
+  const r1 = await g.execute(ajuste.id, { confirmed: true });
+  assert.equal(r1.ok, false); assert.equal(r1.retry, true); assert.equal(calls.stock.length, 0);
+  const r2 = await g.execute(ajuste.id, { confirmed: true });
+  assert.equal(r2.ok, true); assert.equal(calls.stock.length, 1);
   assert.deepEqual(tokens, ['t', 't']);
 });
 
-test('empleado: cambio de precio denegado en el aparato, sin abrir la ficha ni gastar token', async () => {
+test('empleado: nada se ejecuta en el aparato (asistente solo para el dueño), sin abrir la ficha ni gastar token', async () => {
   const { d, calls } = deps(emp); const g = C.createGate(d); g.add(precio);
   const r = await g.execute(precio.id, { confirmed: true });
-  assert.equal(r.ok, false); assert.match(r.msg, /Solo el dueño/); assert.equal(calls.confirm, 0); assert.equal(calls.editor.length, 0);
+  assert.equal(r.ok, false); assert.match(r.msg, /solo para el dueño/); assert.equal(calls.confirm, 0); assert.equal(calls.editor.length, 0);
   assert.equal(g.state(precio.id), 'denied');
   // dueño sin rol confirmado por el servidor tampoco
   const { d: d2, calls: c2 } = deps({ role: 'owner', isOwner: () => false }); const g2 = C.createGate(d2); g2.add(precio);
   assert.equal((await g2.execute(precio.id, { confirmed: true })).ok, false); assert.equal(c2.editor.length, 0);
   // dueño confirmado: abre la ficha existente con el precio (guardar sigue siendo del POS)
   const { d: d3, calls: c3 } = deps(owner); const g3 = C.createGate(d3); g3.add(precio);
-  assert.equal((await g3.execute(precio.id, { confirmed: true })).ok, true); assert.deepEqual(c3.editor, [['P1', 0.6]]);
+  assert.equal((await g3.execute(precio.id, { confirmed: true })).ok, true); assert.deepEqual(c3.editor, [['P1', { precio: 0.6 }]]);
 });
 
 test('sin internet, sin token o rol desconocido: no se ejecuta', async () => {
-  const off = deps(owner, { online: () => false }); const g = C.createGate(off.d); g.add(venta);
-  assert.match((await g.execute(venta.id, { confirmed: true })).msg, /sin internet/); assert.equal(off.calls.confirm, 0);
-  const nt = deps(owner); const g2 = C.createGate(nt.d); g2.add({ ...venta, id: 'x', confirm_token: null });
-  assert.equal((await g2.execute('x', { confirmed: true })).ok, false); assert.equal(nt.calls.posAdd.length, 0);
-  const un = deps({ role: 'unknown' }); const g3 = C.createGate(un.d); g3.add(venta);
-  assert.equal((await g3.execute(venta.id, { confirmed: true })).ok, false);
+  const off = deps(owner, { online: () => false }); const g = C.createGate(off.d); g.add(ajuste);
+  assert.match((await g.execute(ajuste.id, { confirmed: true })).msg, /sin internet/); assert.equal(off.calls.confirm, 0);
+  const nt = deps(owner); const g2 = C.createGate(nt.d); g2.add({ ...ajuste, id: 'x', confirm_token: null });
+  assert.equal((await g2.execute('x', { confirmed: true })).ok, false); assert.equal(nt.calls.stock.length, 0);
+  const un = deps({ role: 'unknown' }); const g3 = C.createGate(un.d); g3.add(ajuste);
+  assert.equal((await g3.execute(ajuste.id, { confirmed: true })).ok, false);
 });
 
 test('Worker rechaza (vencido o rol): la tarjeta queda bloqueada', async () => {
-  const { d, calls } = deps(owner, { confirm: async () => ({ ok: false, error: 'confirm_expired' }) }); const g = C.createGate(d); g.add(venta);
-  const r = await g.execute(venta.id, { confirmed: true });
-  assert.match(r.msg, /venció/); assert.equal(g.state(venta.id), 'denied'); assert.equal(calls.posAdd.length, 0);
+  const { d, calls } = deps(owner, { confirm: async () => ({ ok: false, error: 'confirm_expired' }) }); const g = C.createGate(d); g.add(ajuste);
+  const r = await g.execute(ajuste.id, { confirmed: true });
+  assert.match(r.msg, /venció/); assert.equal(g.state(ajuste.id), 'denied'); assert.equal(calls.stock.length, 0);
 });
 
 test('cancelar impide ejecutar después', async () => {
-  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(venta); g.cancel(venta.id);
-  assert.equal((await g.execute(venta.id, { confirmed: true })).ok, false); assert.equal(calls.confirm, 0);
+  const { d, calls } = deps(owner); const g = C.createGate(d); g.add(ajuste); g.cancel(ajuste.id);
+  assert.equal((await g.execute(ajuste.id, { confirmed: true })).ok, false); assert.equal(calls.confirm, 0);
 });
 
 test('contexto del celular: sin clientes, sin DNI y sin costos para el empleado', () => {
   const list = [{ id: 'P9', name: 'Jarabe cliente 45678912', precio: 3, costo: 1, stock: 2, dni: '45678912', cliente: 'Ana' }];
-  const e = C.buildContext(list, 'empleado', 'pagePOS', 'jarabe');
+  const e = C.buildContext(list, 'empleado', 'pageInventario', 'jarabe');
   assert.deepEqual(Object.keys(e.products[0]).sort(), ['id', 'nombre', 'precio', 'stock']);
   assert.ok(!JSON.stringify(e).includes('45678912'));
   assert.equal(C.buildContext(list, 'owner', null, '').products[0].costo, 1);
 });
 
-test('documento: siempre marcado como NO comprobante SUNAT y escapado', () => {
-  const html = C.documentHtml({ title: 'Nota', tipo: 'nota_venta', lineas: [{ nombre: '<script>x</script>', cantidad: 2, precio: 1.5 }] }, 'Botica');
-  assert.ok(html.includes('NO ES COMPROBANTE SUNAT')); assert.ok(!html.includes('<script>x')); assert.ok(html.includes('S/ 3.00'));
+const DOC = (tipo, extra = {}) => ({ id: 'd', type: 'documento', tipo, title: 'Doc ' + tipo, fiscal: false, ...extra });
+test('documento: NO comprobante SUNAT, escapado, y sin el módulo del POS no inventa cifras', async () => {
+  const html = (await C.buildDocument(DOC('lista_precios'), { productos: [{ id: 'X', name: '<script>x</script>', precio: 1.5 }] }, 'Botica')).html;
+  assert.ok(html.includes('NO ES COMPROBANTE SUNAT')); assert.ok(!html.includes('<script>x')); assert.ok(html.includes('S/ 1.50'));
+  for (const t of ['inventario_valorizado', 'reporte_ventas', 'estado_cuenta', 'resumen_cierre']) {
+    const d = await C.buildDocument(DOC(t, { cliente: 'Rosa' }), { productos: [{ id: 'X', name: 'Y', precio: 1, costo: 1, stock: 1 }] }, 'Botica');
+    assert.match(d.html, /No disponible/, t); assert.ok(!/S\/ \d/.test(d.html), t + ': sin cuentas propias');
+  }
+});
+
+test('documentos con dinero: usan los cálculos del POS (mismos números que la pantalla) y llevan los avisos heredados', async () => {
+  const seen = [];
+  const api = {
+    valorizacion: (p) => { seen.push('valorizacion:' + p.length); return { rows: [{ category: 'Farmacia', products: 2, units: 5, costValue: 1.11, saleValue: 2.22 }], totals: { products: 2, units: 5, costValue: 1.11, saleValue: 2.22, noCostProducts: 1 } }; },
+    totalV: (v) => { seen.push('totalV'); return v.raw * 2; },
+    deudaReport: () => { seen.push('deuda'); return { rows: [{ name: 'Rosa Quispe', balance: 10.05, overdueDebt: 3, oldestDate: '2026-10-01', openCredits: 1 }], total: 10.05, count: 1 }; },
+    summarizeClient: (c, ro) => { seen.push('summary:' + ro); return { active: [{ desc: 'Fiado', monto: 20, pagado: 9.95 }], overdueDebt: 0 }; },
+    effectiveBalance: () => 7.77, pending: () => null, outstanding: (c) => c.monto - c.pagado,
+    cashCloses: async (d, h) => { seen.push('arqueo:' + d + ':' + h); return { fromServer: true, report: { range: { desde: d, hasta: h }, rows: [{ fechaLabel: '15/10', hora: '20:00', closedByName: 'Dueño', esperado: 12345, contado: 12300, diferencia: -45 }], totals: { count: 1, esperado: 12345, contado: 12300, diferencia: -45, sinContar: 0 } } }; }
+  };
+  const data = { api, productos: [{ id: 'A' }, { id: 'B' }], ventas: [{ fecha: '2026-10-15T10:00', raw: 1.5, metodo: 'efectivo' }, { fecha: '2026-10-15T11:00', raw: 9, metodo: 'yape', anulada: true }], clientes: [{ id: 'C1', nombre: 'Rosa Quispe', dni: '45678912' }] };
+  const v = (await C.buildDocument(DOC('inventario_valorizado'), data, 'B')).html;
+  assert.ok(v.includes('S/ 1.11') && v.includes('S/ 2.22')); assert.match(v, /no actualiza el costo/);
+  const s = (await C.buildDocument(DOC('reporte_ventas', { desde: '2026-10-15', hasta: '2026-10-15' }), data, 'B')).html;
+  assert.ok(s.includes('S/ 3.00'), 'suma totalV(v) sin la anulada'); assert.ok(!s.includes('S/ 18.00')); assert.match(s, /efectivo y pagos digitales/);
+  const e = (await C.buildDocument(DOC('estado_cuenta', { cliente: 'rosa quispe' }), data, 'B')).html;
+  assert.ok(e.includes('S/ 7.77'), 'saldo = effectiveBalance como en Clientes'); assert.ok(!e.includes('45678912') && e.includes('8912'));
+  const c = (await C.buildDocument(DOC('resumen_cierre', { desde: '2026-10-15', hasta: '2026-10-15' }), data, 'B')).html;
+  assert.ok(c.includes('S/ 123.45') && c.includes('S/ -0.45')); assert.match(c, /servidor/); assert.match(c, /efectivo y pagos digitales/);
+  assert.deepEqual(seen, ['valorizacion:2', 'totalV', 'summary:true', 'arqueo:2026-10-15:2026-10-15']);
+  for (const h of [v, s, e, c]) assert.ok(h.includes('NO ES COMPROBANTE SUNAT'));
+});
+
+test('consulta y documento no piden token ni PIN; el ejecutor de documento es asíncrono y muestra el resultado', async () => {
+  const { d, calls } = deps(owner, { data: () => ({ productos: [], api: {} }) });
+  const r = await C.EXECUTORS.documento(DOC('lista_precios'), d);
+  assert.equal(r.ok, true); assert.equal(calls.doc, 1); assert.equal(calls.confirm, 0); assert.match(r.msg, /No es comprobante SUNAT/);
 });
 
 // ---- Hallazgo de Bot 2 (ALTO): con la tarjeta 1 pendiente, Confirmar en la tarjeta 2 ejecutaba la propuesta de la tarjeta 1 ----
@@ -128,46 +166,48 @@ async function serverCard(store, text) {
 }
 function serverConfirm(store) {
   return async (p, review) => { const { confirm_token, ...proposal } = p;
-    const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR, { store, resolveRole: async () => 'owner', verifyApproval: async () => true });
+    const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr-test' }, body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR, { store, resolveRole: async () => 'owner', verifyApproval: async () => true });
     return r.json(); };
 }
 
-test('dos tarjetas pendientes: Confirmar en la segunda llena el carrito SOLO con la segunda (Worker real)', async () => {
+test('dos tarjetas pendientes: Confirmar en la segunda abre SOLO la segunda (Worker real)', async () => {
   const store = createMemoryUsageStore();
-  const c1 = await serverCard(store, 'vende 2 arroz y 1 gaseosa');
-  const c2 = await serverCard(store, 'vende 1 arroz');
+  const c1 = await serverCard(store, 'merma de 2 arroz');
+  const c2 = await serverCard(store, 'merma de 1 gaseosa');
   assert.notEqual(c1.id, c2.id, 'ids distintos generados por el servidor');
-  const cart = [];
-  const { d } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: serverConfirm(store), posAdd: (id) => { cart.push(id); return true; } });
+  const { d, calls } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: serverConfirm(store) });
   const gate = C.createGate(d);
   const k1 = gate.add(c1), k2 = gate.add(c2);
   const r = await gate.execute(k2, { confirmed: true });
-  assert.equal(r.ok, true);
-  const want = c2.lineas.flatMap((l) => Array(l.cantidad).fill(l.product_id));
-  assert.deepEqual(cart, want); assert.deepEqual(cart, ['A']);
+  assert.equal(r.ok, true, r.msg); assert.deepEqual(calls.stock, [['G', 'salida', 1, 'Merma / daño']]);
   assert.equal(gate.state(k1), 'pending', 'la tarjeta 1 sigue sin tocar');
 });
 
 test('id repetido con otro token (como el error viejo): cada tarjeta conserva su propia propuesta', async () => {
-  const cart = [];
-  const a = { id: 'p1-preparar_venta', type: 'venta', needsConfirm: true, confirm_token: 't1', lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 2, precio: 1 }, { product_id: 'G', nombre: 'Gaseosa', cantidad: 1, precio: 1 }] };
-  const b = { id: 'p1-preparar_venta', type: 'venta', needsConfirm: true, confirm_token: 't2', lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 1, precio: 1 }] };
+  const a = { ...ajuste, id: 'p1-ajuste', confirm_token: 't1', product_id: 'A', cantidad: 3 };
+  const b = { ...ajuste, id: 'p1-ajuste', confirm_token: 't2', product_id: 'G', cantidad: 1 };
   const seen = [];
-  const { d } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: async (p) => { seen.push(p.confirm_token); return { ok: true, operation_id: 'AST-x', proposal: p }; }, posAdd: (id) => { cart.push(id); return true; } });
+  const { d, calls } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: async (p) => { seen.push(p.confirm_token); return { ok: true, operation_id: 'AST-x', proposal: p }; } });
   const gate = C.createGate(d);
   const ka = gate.add(a), kb = gate.add(b);
   assert.notEqual(ka, kb);
   await gate.execute(kb, { confirmed: true });
-  assert.deepEqual(seen, ['t2']); assert.deepEqual(cart, ['A']);
+  assert.deepEqual(seen, ['t2']); assert.deepEqual(calls.stock.map((x) => x[0]), ['G']);
 });
 
 test('se aplica la propuesta devuelta por el servidor; si no coincide con la tarjeta, no se ejecuta nada', async () => {
-  const cart = [];
-  const mine = { id: 'u-1', type: 'venta', needsConfirm: true, confirm_token: 't', lineas: [{ product_id: 'P1', nombre: 'Paracetamol', cantidad: 1, precio: 0.5 }] };
-  const { d } = deps(owner, { confirm: async () => ({ ok: true, operation_id: 'AST-1', proposal: { ...mine, id: 'u-otra' } }), posAdd: (id) => { cart.push(id); return true; } });
+  const mine = { ...ajuste, id: 'u-1' };
+  const { d, calls } = deps(owner, { confirm: async () => ({ ok: true, operation_id: 'AST-1', proposal: { ...mine, id: 'u-otra' } }) });
   const gate = C.createGate(d); const k = gate.add(mine);
   const r = await gate.execute(k, { confirmed: true });
-  assert.equal(r.ok, false); assert.deepEqual(cart, []);
+  assert.equal(r.ok, false); assert.deepEqual(calls.stock, []);
+});
+
+test('producto nuevo: abre «Nuevo producto» lleno solo después de Confirmar', async () => {
+  const p = { id: 'u-p', type: 'producto', needsConfirm: true, confirm_token: 't', nombre: 'Jabón inventado', precio: 3, costo: 2 };
+  const { d, calls } = deps(owner); const g = C.createGate(d); const k = g.add(p);
+  assert.deepEqual(calls.newProd, []);
+  assert.equal((await g.execute(k, { confirmed: true })).ok, true); assert.deepEqual(calls.newProd, ['Jabón inventado']);
 });
 
 test('compra con filas marcadas: la revisión (aceptar/quitar) viaja a confirm y se abre la compra con lo que devolvió el servidor', async () => {
@@ -199,18 +239,36 @@ test('request: un servidor que no responde se aborta a tiempo (AbortController) 
 test('confirm que se corta por tiempo: «Pulsa Confirmar otra vez», sigue pendiente y el reintento usa el MISMO token', async () => {
   const tokens = []; let n = 0;
   const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); if (++n === 1) { const e = new Error('timeout'); e.timeout = true; throw e; } return { ok: true, operation_id: 'AST-9', proposal: p }; } });
-  const gate = C.createGate(d); const k = gate.add({ ...venta, id: 'u-t', confirm_token: 'tok-1' });
+  const gate = C.createGate(d); const k = gate.add({ ...ajuste, id: 'u-t', confirm_token: 'tok-1' });
   const r1 = await gate.execute(k, { confirmed: true });
-  assert.equal(r1.ok, false); assert.match(r1.msg, /Pulsa Confirmar otra vez/); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.posAdd, []);
+  assert.equal(r1.ok, false); assert.match(r1.msg, /Pulsa Confirmar otra vez/); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.stock, []);
   const r2 = await gate.execute(k, { confirmed: true });
-  assert.equal(r2.ok, true); assert.deepEqual(tokens, ['tok-1', 'tok-1']); assert.equal(calls.posAdd.length, 2);
+  assert.equal(r2.ok, true); assert.deepEqual(tokens, ['tok-1', 'tok-1']); assert.equal(calls.stock.length, 1);
 });
 
 test('contexto por mensaje: coincidencias primero y tope de ~2 KB', () => {
   const many = Array.from({ length: 300 }, (_, i) => ({ id: 'X' + i, name: 'Producto inventado con nombre largo ' + i, precio: 1, stock: 1 }));
   many.push({ id: 'AMOX', name: 'Amoxicilina 500 mg', precio: 2, stock: 5 });
-  const c = C.buildContext(many, 'owner', 'pagePOS', 'vende 2 amoxicilina');
+  const c = C.buildContext(many, 'owner', 'pageInventario', 'stock de amoxicilina');
   assert.equal(c.products[0].id, 'AMOX');
   assert.ok(JSON.stringify(c).length <= 2100, 'tamaño ' + JSON.stringify(c).length);
   assert.ok(c.products.length <= 25);
+});
+
+test('niveles en el aparato: empleado con nivel puede pedir tarjetas (el PIN del dueño lo exige el servidor); costos y documentos de dueño no', () => {
+  const lvl = (level) => ({ role: 'empleado', level, isOwner: () => false });
+  assert.equal(C.canExecute(lvl('off'), ajuste).ok, false);
+  assert.equal(C.canExecute(lvl('consultas'), ajuste).ok, true);
+  assert.equal(C.canExecute(lvl('consultas'), { type: 'costo' }).ok, false);
+  assert.equal(C.canExecute(lvl('consultas'), { type: 'documento', tipo: 'lista_precios' }).ok, false, 'Solo consultas: sin documentos');
+  assert.equal(C.canExecute(lvl('consultas_documentos'), { type: 'documento', tipo: 'lista_precios' }).ok, true);
+  assert.equal(C.canExecute(lvl('consultas_documentos'), { type: 'documento', tipo: 'inventario_valorizado' }).ok, false);
+});
+
+test('lista de pedido: la del empleado usa SOLO las filas del servidor (sin costos); la del dueño trae costo e inversión', async () => {
+  const local = [{ id: 'A', name: 'Arroz', stock: 1, stockMin: 5, costo: 3.33, precio: 5, controlInventario: true }];
+  const emp = await C.buildDocument({ type: 'documento', tipo: 'lista_pedido', title: 'Pedido', data: { columnas: ['Producto', 'Stock', 'Cantidad sugerida'], filas: [['Arroz', 1, 9]] } }, { productos: local }, 'B');
+  assert.ok(!/3\.33|Costo|Inversi/i.test(emp.html.replace(/no actualiza el costo/g, '')), 'sin costos'); assert.ok(emp.html.includes('Arroz') && emp.html.includes('NO ES COMPROBANTE SUNAT'));
+  const own = await C.buildDocument({ type: 'documento', tipo: 'lista_pedido', title: 'Pedido' }, { productos: local }, 'B');
+  assert.ok(own.html.includes('S/ 3.33') && /Inversi/.test(own.html) && own.html.includes('S/ 29.97'));
 });

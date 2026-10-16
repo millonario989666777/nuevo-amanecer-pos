@@ -1,6 +1,7 @@
 // Servidor LOCAL del prototipo del asistente. Solo para probar en esta computadora con datos inventados.
 // - Sirve POS/ como archivos estáticos.
 // - Atiende /auth/assistant/chat con el MISMO código del Worker (pos-assistant.js) y un contador en memoria.
+// - Las consultas leen datos INVENTADOS en memoria (demo-data.mjs); en el Worker real leen la base (canonicalReader).
 // - El rol se simula con el encabezado x-proto-role (solo aquí; el Worker real usa la sesión).
 // - Sin DEEPSEEK_API_KEY en el entorno funciona en modo demostración.
 // Uso: node tools/asistente-proto/dev-server.mjs [puerto]
@@ -10,6 +11,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { assistantChatRoute, assistantConfirmRoute, createMemoryUsageStore } from '../cloudflare-lab/src/pos-assistant.js';
+import { memoryReader } from '../cloudflare-lab/src/pos-assistant-queries.js';
+import { readerData, posSeed } from './demo-data.mjs';
+const reader = memoryReader(readerData);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, '../../POS');
@@ -21,7 +25,10 @@ const env = { ASSISTANT_ENABLED: '1', DEEPSEEK_API_KEY: process.env.DEEPSEEK_API
 // SOLO PROTOTIPO LOCAL: aprobación del dueño de mentira (cualquier PIN de 4-8 dígitos), en memoria, ligada al operation_id y de un solo uso.
 // En el Worker real la da POST /auth/owner-approval (pos-roles.js) con el PIN verdadero y se gasta con consumeApproval.
 const demoApprovals = new Map();
-async function demoVerify(id, action, op) { const a = demoApprovals.get(id); if (!a || a.action !== action || a.op !== op) return false; if (a.used && a.used !== op) return false; a.used = op; return true; }
+// Aparatos de empleado inventados para la pantalla de Configuración del prototipo.
+const PROTO_DEVICES = [{ device_id: 'proto-emp-1', label: 'Caja 2' }, { device_id: 'proto-emp-2', label: 'Celular de Rosa' }];
+const protoLevels = new Map(PROTO_DEVICES.map((d) => [d.device_id, 'off']));
+async function demoVerify(id, action, op) { const a = demoApprovals.get(id); if (!a || a.action !== action || a.op !== op || a.used) return false; a.used = op; return true; }
 
 http.createServer(async (req, res) => {
   try {
@@ -29,7 +36,6 @@ http.createServer(async (req, res) => {
     if (url.pathname === '/auth/owner-approval' && req.method === 'POST') {
       const chunks = []; for await (const c of req) chunks.push(c);
       let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {}
-      if (req.headers['x-proto-role'] === 'empleado') { res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":"owner_only"}'); return; }
       if (!b.operation_id) { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"error":"operation_id_required"}'); return; }
       if (!/^\d{4,8}$/.test(String(b.pin || '')) || String(b.pin) === '0000') { /* demo: «0000» simula PIN incorrecto */ res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":"owner_pin_invalid"}'); return; }
       const id = 'apr-demo-' + randomBytes(8).toString('hex'); demoApprovals.set(id, { action: String(b.action), op: String(b.operation_id), used: null });
@@ -38,12 +44,26 @@ http.createServer(async (req, res) => {
     if (url.pathname === '/auth/assistant/chat' || url.pathname === '/auth/assistant/confirm') {
       const chunks = []; for await (const c of req) chunks.push(c);
       const request = new Request(url, { method: req.method, headers: req.headers, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined });
-      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado' : 'owner';
+      // Empleado: el nivel sale del encabezado x-proto-level (pruebas) o de lo que el dueño guardó aquí para «Caja 2».
+      const lvl = ['off', 'consultas', 'consultas_documentos'].includes(req.headers['x-proto-level']) ? req.headers['x-proto-level'] : protoLevels.get('proto-emp-1');
+      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado:' + lvl : 'owner';
       const route = url.pathname === '/auth/assistant/chat' ? assistantChatRoute : assistantConfirmRoute;
       // En el Worker real el rol sale de la sesión (assistantRole); aquí se simula con el encabezado.
-      const out = await route(request, env, { principalId: 'proto-device-' + role, posRole: role }, json, { store, resolveRole: async () => role, verifyApproval: demoVerify });
+      const out = await route(request, env, { principalId: 'proto-device-' + role.split(':')[0], posRole: role === 'owner' ? 'owner' : 'empleado' }, json, { store, reader, resolveRole: async () => role, verifyApproval: demoVerify });
       res.writeHead(out.status, { 'content-type': 'application/json' }); res.end(await out.text()); return;
     }
+    // Nivel del asistente por aparato de empleado (en memoria; en el Worker real: pos-assistant-access.js con PIN real).
+    if (url.pathname === '/auth/assistant/employee-access') {
+      const send = (st, o) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+      if (req.headers['x-proto-role'] === 'empleado') return send(403, { error: 'admin_only' });
+      if (req.method === 'GET') return send(200, { devices: PROTO_DEVICES.map((d) => ({ ...d, level: protoLevels.get(d.device_id) })), levels: ['off', 'consultas', 'consultas_documentos'] });
+      const chunks = []; for await (const c of req) chunks.push(c); let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {}
+      if (!protoLevels.has(b.device_id) || !['off', 'consultas', 'consultas_documentos'].includes(b.level)) return send(400, { error: 'bad_request' });
+      if (!(await demoVerify(String(req.headers['x-owner-approval'] || ''), 'assistant.employee_access', String(b.operation_id || '')))) return send(403, { error: 'owner_approval_required' });
+      protoLevels.set(b.device_id, b.level); return send(200, { ok: true, device_id: b.device_id, level: b.level, logged: false });
+    }
+    // Solo prototipo: los mismos datos inventados para sembrar el navegador.
+    if (url.pathname === '/__demo-seed.json') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(posSeed)); return; }
     let file = path.join(ROOT, decodeURIComponent(url.pathname));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
     if ((await stat(file).catch(() => null))?.isDirectory()) file = path.join(file, 'index.html');

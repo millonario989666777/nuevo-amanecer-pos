@@ -1,16 +1,27 @@
-/* Asistente del POS (PROTOTIPO AISLADO): burbuja animada + panel de chat.
-   - Nunca ejecuta nada sin «Confirmar»; la ejecución pasa por NA_ASISTENTE_CORE.createGate.
-   - Ventas: solo llena el carrito con posAdd (el cobro sigue por Cobrar, el outbox y su operation_id).
-   - Compras: abre «Nueva compra» (NA_PURCHASES) con las líneas; registra la persona.
-   - Precio: abre la ficha del producto (editProd) con el precio nuevo; guarda la persona (pide PIN si toca).
-   - Sin internet: «Asistente no disponible sin internet». */
+/* Asistente del POS (PROTOTIPO AISLADO, modo admin): burbuja animada + panel de chat + tarjeta en Inicio.
+   - Dueño: siempre. Aparato de empleado: solo si el dueño le dio un nivel («Solo consultas» o «Consultas y documentos»).
+     Quién puede lo dice el SERVIDOR (ping a /auth/assistant/chat); aquí no se guarda el permiso en ninguna caché.
+   - Solo en pantallas de gestión (nunca en Venta ni en Caja: no tapa Cobrar).
+   - No vende ni llena el carrito.
+   - Nunca ejecuta nada sin «Confirmar» + PIN del dueño; la ejecución pasa por NA_ASISTENTE_CORE.createGate y abre
+     pantallas EXISTENTES del POS: Nueva compra, Registrar movimiento, ficha del producto, Nuevo producto.
+   - Consultas: números leídos por el Worker (solo lectura). Documentos: internos, armados en el aparato, NO SUNAT.
+   - Sin internet: «Asistente no disponible sin internet» (los documentos locales igual se pueden abrir). */
 (function (root) {
   'use strict';
   var doc = root.document, C = root.NA_ASISTENTE_CORE;
   if (!doc || !C || root.NA_ASISTENTE) return;
   var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
   var clockOffset = 0;
-  var IDLE_MS = 20000, idleTimer = null, sleeping = false, offscreen = false;
+  var IDLE_MS = 20000, idleTimer = null, sleeping = false, offscreen = false, adminOff = false;
+  // Pantallas de gestión donde vive la burbuja. Nunca Venta (pagePOS) ni Caja (pageCaja).
+  var ADMIN_PAGES = ['pageMenu', 'pageInventario', 'pageVentas', 'pageClientes', 'pageGastos', 'pageConfig', 'pageHistorialCompras', 'pageValorizacion', 'pageReporteDeuda', 'pageKardex', 'pageVentasStock', 'pageRotacionAbc', 'pageReporteArqueo', 'pageCodigosDuplicados'];
+  // access: lo último que dijo el servidor ({ role: 'owner' | 'empleado', level }). null = todavía no se sabe.
+  var access = null;
+  function isAdmin() { return !adminOff && !!access && (access.role === 'owner' || access.level === 'consultas' || access.level === 'consultas_documentos'); }
+  function isOwnerAccess() { return isAdmin() && access.role === 'owner'; }
+  function pageId() { var a = doc.querySelector('.page.active'); return a ? a.id : null; }
+  function allowedHere() { return isAdmin() && ADMIN_PAGES.indexOf(pageId()) >= 0; }
 
   // ---------- Personaje ----------
   function bits() { var a = ''; for (var i = 0; i < 16; i++) { for (var k = 0; k < 18; k++) a += Math.random() > .5 ? '1' : '0'; a += '<br>'; } return a; }
@@ -85,6 +96,9 @@
     chars().forEach(function (c) { if (c.dataset.paused !== p) c.dataset.paused = p; });
     if (rootEl && rootEl.dataset.paused !== p) rootEl.dataset.paused = p;
     if (rootEl) rootEl.style.visibility = busyNow ? 'hidden' : '';
+    if (rootEl) { var show = allowedHere() && !(heroEl && pageId() === 'pageMenu'); rootEl.style.display = show ? '' : 'none'; // en Inicio la tarjeta hace de lanzador
+      // Al entrar a Venta o Caja (o si deja de ser dueño) el panel se cierra: nunca queda sobre Cobrar.
+      if (!show && panelEl && !panelEl.hidden && (!isAdmin() || pageId() === 'pagePOS' || pageId() === 'pageCaja')) { panelEl.hidden = true; rootEl.hidden = false; } }
   }
 
   // ---------- Posición: nunca tapar Cobrar ni el carrito ----------
@@ -105,10 +119,11 @@
   // ---------- Red ----------
   function creds() { try { var c = JSON.parse(root.localStorage.getItem('na_cloud_sync_credentials') || 'null'); return c && c.endpoint && c.token ? c : null; } catch (_) { return null; } }
   function protoRole() { try { return root.localStorage.getItem('na_asistente_proto_role') === 'empleado' ? 'empleado' : null; } catch (_) { return null; } }
+  function protoLevel() { try { return root.localStorage.getItem('na_asistente_proto_level') || ''; } catch (_) { return ''; } }
+  // Para la puerta de ejecución: rol y nivel según el SERVIDOR (último ping), no el rol guardado del POS.
   function roles() {
-    var R = root.NA_ROLES || { role: 'unknown' };
-    if (!creds() && protoRole()) return { role: 'empleado', isOwner: function () { return false; } };
-    return R;
+    if (!access) return { role: 'unknown' };
+    return { role: access.role, level: access.level, isOwner: function () { return access.role === 'owner'; } };
   }
   // Mismo pedido que NA_ROLES.api (endpoint, Bearer, sin cookies) pero con límite de tiempo propio del asistente.
   // Un timeout lanza un error (timeout=true); un error HTTP vuelve como { error, status }.
@@ -116,7 +131,7 @@
     var c = creds(), url = path, h = Object.assign({ 'content-type': 'application/json' }, headers || {});
     var init = { method: 'POST', cache: 'no-store', body: JSON.stringify(body) };
     if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
-    else if (protoRole()) h['x-proto-role'] = 'empleado';
+    else if (protoRole()) { h['x-proto-role'] = 'empleado'; if (protoLevel()) h['x-proto-level'] = protoLevel(); }
     init.headers = h;
     var r = await C.request(root.fetch.bind(root), url, init, ms || C.TIMEOUTS.chat);
     var d = r.data || {}; if (!r.ok) { d.error = d.error || 'HTTP_' + r.status; d.status = r.status; }
@@ -138,11 +153,33 @@
   }
 
   // ---------- Funciones existentes del POS ----------
+  // Cálculos EXISTENTES del POS que usan sus pantallas de reportes (el asistente no hace cuentas propias de dinero).
+  function reportApi() {
+    var V = root.NA_VALORIZACION, D = root.NA_CLIENTES_REPORTE_DEUDA, A = root.NA_REPORTE_ARQUEO, CC = root.NA_CLIENT_CREDIT_ACCOUNTS_V2, canon = root.NuevoAmanecerCanonical;
+    var pending = function () { return canon && typeof canon.pendingSnapshot === 'function' ? canon.pendingSnapshot() : null; };
+    var catKey = g('_naCategoryKey');
+    return {
+      valorizacion: V && V.calculate ? function (p) { return V.calculate(p, typeof catKey === 'function' ? { categoryKey: catKey } : {}); } : null,
+      totalV: g('totalV'),
+      deudaReport: D && D.buildReport && CC ? function () { return D.buildReport(g('clientes') || [], CC, pending(), 'saldo'); } : null,
+      summarizeClient: CC && CC.summarizeClient, effectiveBalance: CC && CC.debtFilter && CC.debtFilter.effectiveBalance, pending: pending,
+      outstanding: (function (f) { return typeof f === 'function' ? function (c) { return Math.max(0, Number(f(c)) || 0); } : null; })(g('_naCreditOutstanding')),
+      // Mismo origen que «Reporte de arqueo»: servidor (/auth/cash-closes) y, si no hay, la copia local de CANON.
+      cashCloses: A && A.buildReport ? async function (desde, hasta) {
+        var opts = {}; if (desde) opts.desde = desde; if (hasta) opts.hasta = hasta;
+        var range = A.buildReport([], opts).range;
+        try { if (root.navigator.onLine !== false && root.NA_ROLES && typeof root.NA_ROLES.api === 'function') {
+          var r = await root.NA_ROLES.api('/auth/cash-closes?desde=' + encodeURIComponent(range.desde) + '&hasta=' + encodeURIComponent(range.hasta));
+          if (r && Array.isArray(r.cash_closes) && r.ready !== false) return { report: A.buildReport(r.cash_closes, range), fromServer: true }; } } catch (_) {}
+        return { report: A.buildReport(canon && typeof canon.snapshot === 'function' ? canon.snapshot() : {}, range), fromServer: false };
+      } : null
+    };
+  }
+  function mark(i) { i.style.outline = '3px solid #16a34a'; try { i.focus({ preventScroll: true }); } catch (_) {} }
   function g(name) { try { return (0, eval)('typeof ' + name + '!=="undefined"?' + name + ':undefined'); } catch (_) { return undefined; } }
   var deps = {
     roles: roles, confirm: confirmRemote, online: function () { return root.navigator.onLine !== false; },
     productos: function () { return g('productos') || []; },
-    posAdd: function (id) { var f = g('posAdd'); return typeof f === 'function' ? f(id) : false; },
     navigate: function (id) { try { root.NA_MENU_NAVIGATION.navigate(id); } catch (_) { try { root.goPage(id); } catch (__) {} } },
     openPurchase: function () { if (!root.NA_PURCHASES) return null; root.NA_PURCHASES.open(); return doc.getElementById('naPurchaseDialog'); },
     fillPurchase: function (w, p) {
@@ -160,11 +197,32 @@
       });
       w.dispatchEvent(new Event('input', { bubbles: true }));
     },
-    openPriceEditor: function (id, price) {
+    // Ficha EXISTENTE del producto (editProd) con el campo prellenado. Guarda la persona con «Guardar» (product.update con PIN).
+    openProductEditor: function (id, v) {
       var f = g('editProd'); if (typeof f !== 'function') return;
-      f(id); var i = doc.getElementById('pPrecio'); if (!i) return;
-      i.value = Number(price).toFixed(2); i.dispatchEvent(new Event('input', { bubbles: true })); i.style.outline = '3px solid #16a34a'; try { i.focus(); } catch (_) {}
+      f(id); var i = doc.getElementById(v.costo != null ? 'pCosto' : 'pPrecio'); if (!i) return;
+      i.value = Number(v.costo != null ? v.costo : v.precio).toFixed(2); i.dispatchEvent(new Event('input', { bubbles: true })); mark(i);
     },
+    // Ventana EXISTENTE «Registrar movimiento» (abrirMovInv). Guarda la persona (inventory.adjust con PIN).
+    openStockMove: function (id, tipo, cantidad, motivo) {
+      var f = g('abrirMovInv'); if (typeof f !== 'function') return false;
+      f(id, tipo); var m = doc.getElementById('mMovInv'); if (!m) return false;
+      var b = m.querySelector('.mov-type-btn[data-type="' + tipo + '"]'), st = g('setMovType'); if (b && typeof st === 'function') st(b, tipo);
+      var q = doc.getElementById('mMovCant'); if (q) { q.value = cantidad; q.dispatchEvent(new Event('input', { bubbles: true })); mark(q); }
+      var r = doc.getElementById('mMovMotivo'); if (r && motivo) { Array.prototype.forEach.call(r.options, function (o) { if (o.text === motivo || o.value === motivo) r.value = o.value; }); mark(r); }
+      return m.classList.contains('open');
+    },
+    // Formulario EXISTENTE «Nuevo producto» (abrirModalProd). Guarda la persona (product.create).
+    openNewProduct: function (p) {
+      var f = g('abrirModalProd'); if (typeof f !== 'function') return false;
+      f(); var m = doc.getElementById('mProd'); if (!m) return false;
+      function set(id, v) { var i = doc.getElementById(id); if (!i || v == null || v === '') return; if (i.tagName === 'SELECT' && !Array.prototype.some.call(i.options, function (o) { return o.value === String(v); })) return; i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); mark(i); }
+      set('pNombre', p.nombre); set('pPrecio', p.precio != null ? Number(p.precio).toFixed(2) : null); set('pCosto', p.costo != null ? Number(p.costo).toFixed(2) : null);
+      set('pStock', p.stock_inicial); set('pStockMin', p.stock_minimo); set('pBarcode', p.codigo_barras); set('pCat', p.categoria); set('pUnidad', p.unidad);
+      return m.classList.contains('open');
+    },
+    // Datos que el POS ya tiene en este aparato (para documentos locales, solo lectura).
+    data: function () { return { productos: g('productos') || [], ventas: g('ventas') || [], clientes: g('clientes') || [], api: reportApi() }; },
     showDocument: function (html) {
       var o = doc.createElement('div'); o.className = 'na-asst-doc'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true');
       o.innerHTML = '<div><iframe title="Vista previa del documento"></iframe><div class="acts"><button type="button" class="na-asst-no">Cerrar</button><button type="button" class="na-asst-ok">Imprimir / Guardar PDF</button></div></div>';
@@ -186,32 +244,50 @@
     var E = C.esc, rows = '';
     if (p.type === 'pasos') return '<h4>' + E(p.title) + '</h4><ol>' + p.pasos.map(function (s) { return '<li>' + E(s) + '</li>'; }).join('') + '</ol>' +
       (p.pantalla ? '<div class="acts"><button type="button" class="na-asst-ok" data-go>Llévame ahí</button></div>' : '');
-    if (p.type === 'venta') { rows = p.lineas.map(function (l) { return '<tr><td>' + E(l.cantidad) + ' × ' + E(l.nombre) + '</td><td class="r">' + soles(l.precio * l.cantidad) + '</td></tr>'; }).join('');
-      rows += '<tr><td><b>Total</b></td><td class="r"><b>' + soles(p.total) + '</b></td></tr>'; }
-    if (p.type === 'compra') rows = p.lineas.map(function (l, i) {
+    if (p.type === 'consulta') {
+      var r = p.result || {};
+      return '<h4>' + E(r.titulo || 'Consulta') + '<span class="pill ro">Solo lectura</span></h4>' + (r.error ? '<div class="warn">' + E(r.texto) + '</div>' :
+        '<table class="q">' + (r.columnas && r.columnas.length ? '<tr>' + r.columnas.map(function (c, i) { return '<th' + (i ? ' class="r"' : '') + '>' + E(c) + '</th>'; }).join('') + '</tr>' : '') +
+        (r.filas || []).map(function (f) { return '<tr>' + f.map(function (c, i) { return '<td' + (i ? ' class="r"' : '') + '>' + E(typeof c === 'number' && !Number.isInteger(c) ? c.toFixed(2) : c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>' +
+        (r.total != null && r.filas && r.filas.length < r.total ? '<div class="note">Mostrando ' + r.filas.length + ' de ' + E(r.total) + '.</div>' : '')) +
+        '<div class="note">Datos leídos del servidor. No cambia nada.</div>';
+    }
+    if (p.type === 'documento') return '<h4>' + E(p.title) + '<span class="pill ro">Solo lectura</span></h4>' +
+      '<div class="note">' + E([p.desde, p.hasta && p.hasta !== p.desde ? p.hasta : null].filter(Boolean).join(' a ') + (p.cliente ? ' · Cliente: ' + p.cliente : '')) + '</div>' +
+      '<div class="warn doc">Documento interno. NO es comprobante SUNAT.</div>' +
+      '<div class="res" aria-live="polite"></div><div class="acts"><button type="button" class="na-asst-ok" data-open>Abrir documento</button></div>';
+    if (p.type === 'compra') rows = '<tr><th>Producto</th><th class="r">Costo actual</th><th class="r">Factura</th></tr>' + p.lineas.map(function (l, i) {
       var flag = l.revisar && l.revisar.length;
       var why = flag ? l.revisar.map(function (k) { return REVIEW_TEXT[k] || k; }).join(', ') : '';
+      var diff = l.costo_actual != null && l.costo_unitario != null && Math.abs(l.costo_unitario - l.costo_actual) > Math.max(0.01, l.costo_actual * 0.01);
       return '<tr' + (flag ? ' class="flag" data-row="' + i + '"' : '') + '><td>' + E(l.cantidad) + ' × ' + E(l.nombre) + (l.product_id ? '' : ' <b class="nr">(no registrado)</b>') +
         (flag ? '<div class="flag-t">Revisa este dato: ' + E(why) + '</div><div class="flag-a"><button type="button" data-accept="' + i + '">Está bien</button><button type="button" data-drop="' + i + '">Quitar fila</button></div>' : '') +
-        '</td><td class="r">' + (l.costo_unitario != null ? soles(l.costo_unitario) : '') + '</td></tr>'; }).join('');
+        '</td><td class="r">' + (l.costo_actual != null ? soles(l.costo_actual) : '-') + '</td><td class="r' + (diff ? ' chg' : '') + '">' + (l.costo_unitario != null ? soles(l.costo_unitario) : '-') + '</td></tr>'; }).join('');
     if (p.type === 'precio') rows = '<tr><td>' + E(p.nombre) + '</td><td class="r">' + soles(p.precio_actual) + ' → <b>' + soles(p.precio_nuevo) + '</b></td></tr>';
-    if (p.type === 'documento') rows = p.lineas.map(function (l) { return '<tr><td>' + E(l.cantidad) + ' × ' + E(l.nombre) + '</td><td class="r">' + soles(l.precio) + '</td></tr>'; }).join('');
+    if (p.type === 'costo') rows = '<tr><td>' + E(p.nombre) + '<div class="note">Costo</div></td><td class="r">' + (p.costo_actual != null ? soles(p.costo_actual) : 'sin costo') + ' → <b>' + soles(p.costo_nuevo) + '</b></td></tr>';
+    if (p.type === 'ajuste') rows = '<tr><td>' + E(p.nombre) + '<div class="note">' + E(p.motivo) + '</div></td><td class="r">' + (p.tipo === 'entrada' ? '+' : '−') + E(p.cantidad) + '</td></tr>' +
+      (p.stock_actual != null ? '<tr><td>Stock</td><td class="r">' + E(p.stock_actual) + ' → <b>' + E(p.stock_despues) + '</b></td></tr>' : '');
+    if (p.type === 'producto') rows = [['Nombre', E(p.nombre)], ['Precio', soles(p.precio)], ['Costo', p.costo != null ? soles(p.costo) : '-'], ['Stock inicial', p.stock_inicial != null ? E(p.stock_inicial) : '-'],
+      ['Stock mínimo', p.stock_minimo != null ? E(p.stock_minimo) : '-'], ['Categoría', E(p.categoria || '-')], ['Código', E(p.codigo_barras || '-')]].map(function (r) { return '<tr><td>' + r[0] + '</td><td class="r">' + r[1] + '</td></tr>'; }).join('');
     var warn = '';
-    if (p.type === 'venta' && p.faltan && p.faltan.length) warn += '<div class="warn">No encontré: ' + E(p.faltan.join(', ')) + '</div>';
     if (p.type === 'compra' && p.sinProducto) warn += '<div class="warn">' + p.sinProducto + ' línea(s) sin producto registrado: revísalas.</div>';
     if (p.type === 'precio' && p.cambioGrande) warn += '<div class="warn">Cambio grande (más de 50%). Revisa bien.</div>';
-    if (p.type === 'precio' && p.bajoCosto) warn += '<div class="warn">El precio nuevo queda por debajo del costo.</div>';
-    var note = { venta: 'Al confirmar, los productos van al carrito. El cobro lo haces tú con Cobrar.', compra: 'Al confirmar, se abre «Nueva compra» llena. El stock sube solo cuando pulses «Registrar compra».',
-      precio: 'Al confirmar, se abre la ficha del producto con el precio nuevo. Se aplica cuando pulses Guardar.', documento: 'Documento interno de prueba. NO es comprobante SUNAT.' }[p.type];
+    if ((p.type === 'precio' || p.type === 'producto') && p.bajoCosto) warn += '<div class="warn">El precio queda por debajo del costo.</div>';
+    if (p.type === 'ajuste' && p.quedaNegativo) warn += '<div class="warn">El stock quedaría negativo. Revisa la cantidad.</div>';
+    if (p.type === 'ajuste' && p.grande) warn += '<div class="warn">Cantidad muy grande. Revisa bien.</div>';
+    if (p.type === 'producto' && p.parecidos && p.parecidos.length) warn += '<div class="warn">Ya hay productos parecidos: ' + E(p.parecidos.join(', ')) + '.</div>';
+    if (p.type === 'producto' && p.revisar) warn += '<div class="warn">Precio o costo fuera de lo normal. Revisa bien.</div>';
+    var note = { compra: 'Al confirmar, se abre «Nueva compra» llena. El stock sube solo cuando pulses «Registrar compra». La compra no cambia el costo del producto: usa las tarjetas «Actualizar costo».',
+      precio: 'Al confirmar, se abre la ficha del producto con el precio nuevo. Se aplica cuando pulses Guardar.', costo: 'Al confirmar, se abre la ficha del producto con el costo de la factura. Se aplica cuando pulses Guardar.' + (p.origen ? ' (' + p.origen + ')' : ''),
+      ajuste: 'Al confirmar, se abre «Registrar movimiento» lleno. El stock cambia solo cuando pulses Guardar.', producto: 'Al confirmar, se abre «Nuevo producto» lleno. Se crea solo cuando pulses Guardar.' }[p.type];
     var head = p.type === 'compra' && (p.proveedor || p.documento) ? '<div class="note">' + E([p.proveedor, p.documento, p.fecha].filter(Boolean).join(' · ')) + '</div>' : '';
-    var owner = OWNER_TYPES.indexOf(p.type) >= 0;
-    return '<h4>' + E(p.title) + (owner ? '<span class="pill">Solo dueño</span>' : '') + '</h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div>' +
+    return '<h4>' + E(p.title) + '<span class="pill">PIN del dueño</span></h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div>' +
       '<div class="meta"><span>Vence en <b data-left>5:00</b></span><span>Se usa una sola vez</span></div>' +
-      (owner ? '<div class="na-asst-pin"><label>Escribe tu PIN de dueño</label><input type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN del dueño"></div>' : '') +
+      '<div class="na-asst-pin"><label>Escribe tu PIN de dueño</label><input type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN del dueño"></div>' +
       '<div class="res" aria-live="polite"></div>' +
       '<div class="acts"><button type="button" class="na-asst-ok" data-ok>Confirmar</button><button type="button" class="na-asst-no" data-no>Cancelar</button></div>';
   }
-  var OWNER_TYPES = ['precio', 'compra'];
+  var APPROVAL = { precio: 'product.update', costo: 'product.update', compra: 'inventory.adjust', ajuste: 'inventory.adjust', producto: 'product.create' };
   var REVIEW_TEXT = { cantidad: 'cantidad fuera de lo normal', costo: 'costo por unidad fuera de lo normal', total: 'total de la fila muy alto', costo_raro: 'costo muy distinto al de tu inventario' };
   function tokenData(p) { try { var b = String(p.confirm_token || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)) || {}; } catch (_) { return {}; } }
   function tokenExp(p) { return tokenData(p).exp || 0; }
@@ -223,7 +299,7 @@
     var op = tokenOp(p); if (!op) return { ok: false, msg: 'Esta tarjeta no se puede confirmar. Pídela otra vez.' };
     // La aprobación queda ligada al operation_id de ESTA tarjeta; el servidor la verifica y la gasta al confirmar.
     var d;
-    try { d = await post('/auth/owner-approval', { pin: pin, action: p.type === 'precio' ? 'product.update' : 'inventory.adjust', operation_id: op }, null, C.TIMEOUTS.approval); }
+    try { d = await post('/auth/owner-approval', { pin: pin, action: APPROVAL[p.type], operation_id: op }, null, C.TIMEOUTS.approval); }
     catch (e) { return { ok: false, msg: e && e.timeout ? 'No hubo respuesta. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet e inténtalo otra vez.' }; }
     if (!d || !d.approval_id) {
       var e = String((d && d.error) || '');
@@ -239,6 +315,8 @@
     var c = el('div', 'na-asst-card', cardHtml(p)); c.dataset.type = p.type; c.dataset.st = 'pending'; msgsEl.appendChild(c);
     var res = c.querySelector('.res');
     var go = c.querySelector('[data-go]'); if (go) go.onclick = function () { gate.execute(key, { confirmed: true }).then(function () { closePanel(); }); };
+    // Documento local (solo lectura): se puede abrir varias veces, sin servidor ni PIN.
+    var op = c.querySelector('[data-open]'); if (op) op.onclick = function () { var perm = C.canExecute(roles(), p); if (!perm.ok) { c.querySelector('.res').textContent = perm.msg; return; } op.disabled = true; Promise.resolve(C.EXECUTORS.documento(p, deps)).then(function (r) { c.querySelector('.res').textContent = r.msg; }, function () { c.querySelector('.res').textContent = 'No se pudo armar el documento.'; }).then(function () { op.disabled = false; }); };
     var no = c.querySelector('[data-no]'); if (no) no.onclick = function () { gate.cancel(key); c.dataset.st = 'cancelled'; res.textContent = 'Cancelado. No se hizo nada.'; };
     var ok = c.querySelector('[data-ok]'), left = c.querySelector('[data-left]'), pinEl = c.querySelector('.na-asst-pin input');
     var exp = tokenExp(p), timer = null;
@@ -272,7 +350,7 @@
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
         if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Vencida' }[c.dataset.st] || 'Confirmar';
-        if (r.ok) { setState('feliz', 2600); if (p.type !== 'documento') setTimeout(closePanel, 1400); }
+        if (r.ok) { setState('feliz', 2600); setTimeout(closePanel, 1400); }
         else { setState('error', 2600); if (c.dataset.st === 'pending') { ok.disabled = false; no.disabled = false; ok.textContent = 'Confirmar'; syncOk(); } }
       });
     };
@@ -280,7 +358,7 @@
   }
   var ERRORS = { rate_limited: 'Vas muy rápido. Espera un minuto.', daily_limit: 'Llegaste al límite de hoy en este aparato.', monthly_cap: 'Se alcanzó el tope del mes del asistente. Avisa al dueño.',
     image_too_large: 'La foto es muy grande.', bad_image: 'No pude leer esa foto.', upstream_timeout: 'El asistente tardó mucho. Inténtalo otra vez.', upstream_error: 'El asistente no respondió. Inténtalo otra vez.',
-    upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', unauthorized: 'Este aparato no tiene sesión.' };
+    upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', admin_only: 'El asistente es solo para el dueño.', assistant_off: 'El dueño no activó el asistente en este aparato.', unauthorized: 'Este aparato no tiene sesión.' };
   async function send(text, image) {
     if (busy) return;
     if (root.navigator.onLine === false) { offline(true); addMsg('sys', 'Asistente no disponible sin internet'); setState('offline'); return; }
@@ -294,10 +372,11 @@
     try {
       var d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); thinking.remove();
       if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
-      if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); return; }
+      if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); if (d.error === 'admin_only' || d.error === 'assistant_off') { access = null; adminOff = true; renderHero(); setTimeout(function () { closePanel(); }, 1500); } return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
+      if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
       (d.proposals || []).forEach(addCard);
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
     } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
@@ -322,21 +401,154 @@
   function offline(on) { offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on) setState('offline'); else if (state === 'offline') setState('listo'); }
   function openPanel() {
     panelEl.hidden = false; rootEl.hidden = true; place(); applyPause();
-    if (!msgsEl.children.length) addMsg('a', '¡Hola! Soy Burbuja. Te ayudo a vender, registrar compras, leer fotos de facturas, preparar documentos y explicarte el sistema. Nada se hace sin que pulses Confirmar.');
+    if (!msgsEl.children.length) addMsg('a', isOwnerAccess() ? '¡Hola! Soy Burbuja, tu ayudante de gestión. Te digo qué falta reponer y cómo van las ventas, preparo compras y ajustes de stock, cambios de precio y costo, productos nuevos y documentos. Nada se guarda sin tu PIN.'
+      : '¡Hola! Soy Burbuja. Te digo el stock y qué falta reponer' + (access && access.level === 'consultas_documentos' ? ', y armo la lista de precios o de pedido' : '') + '. Si propongo un cambio, lo aprueba el dueño con su PIN.');
     var off = root.navigator.onLine === false; offline(off); if (off) setState('offline'); else setState('feliz', 1300); measureFrames();
     setTimeout(function () { try { inputEl.focus({ preventScroll: true }); } catch (_) {} }, 50);
   }
   function closePanel() { panelEl.hidden = true; rootEl.hidden = false; place(); applyPause(); }
 
+  function chipsHtml() {
+    if (isOwnerAccess()) return '<button type="button" data-q="¿Qué me falta reponer?">¿Qué falta reponer?</button><button type="button" data-q="¿Cuánto vendimos hoy?">Ventas de hoy</button><button type="button" data-photo>Leer factura (foto)</button><button type="button" data-q="Arma el documento de inventario valorizado">Inventario valorizado</button>';
+    return '<button type="button" data-q="¿Qué me falta reponer?">¿Qué falta reponer?</button><button type="button" data-q="¿Cuánto stock hay de paracetamol?">Stock de un producto</button>' +
+      (access && access.level === 'consultas_documentos' ? '<button type="button" data-q="Arma la lista de precios">Lista de precios</button><button type="button" data-q="Arma la lista de pedido para el proveedor">Lista de pedido</button>' : '');
+  }
+
+  // ---------- Permiso: lo decide el servidor ----------
+  // Ping sin costo (no llama a DeepSeek ni gasta cupo). Se repite al volver internet, al volver a la app y al entrar a Inicio.
+  var pinging = null;
+  function refreshAccess() {
+    if (pinging) return pinging;
+    if (root.navigator.onLine === false) { renderHero(); return Promise.resolve(access); }
+    pinging = post('/auth/assistant/chat', { ping: true }, null, 8000).then(function (d) {
+      if (d && d.ok) { access = { role: d.role === 'owner' ? 'owner' : 'empleado', level: d.level }; adminOff = false; }
+      else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) { access = null; }
+      return access;
+    }, function () { return access; }).then(function (a) {
+      pinging = null;
+      if (isAdmin()) { if (!doc.querySelector('.na-asst-root')) mount(); else syncPanelForAccess(); }
+      else if (panelEl && !panelEl.hidden) closePanel();
+      renderHero(); if (rootEl) applyPause(); decorateConfig();
+      return a;
+    });
+    return pinging;
+  }
+  // Si el nivel cambió con la app abierta: saludo y chips nuevos.
+  var shownFor = null;
+  function syncPanelForAccess() {
+    var key = access ? access.role + ':' + access.level : '';
+    if (!panelEl || shownFor === key) return; shownFor = key;
+    var ch = panelEl.querySelector('.na-asst-chips'); if (ch) ch.innerHTML = chipsHtml();
+    var sm = panelEl.querySelector('.na-asst-head-t small'); if (sm) sm.textContent = isOwnerAccess() ? 'Gestión · dueño · prueba aislada' : 'Consultas · empleado · prueba aislada';
+  }
+
+  // ---------- Tarjeta en Inicio ----------
+  // Solo se dibuja cuando el SERVIDOR confirmó el permiso. A un empleado sin permiso no se le dibuja nada (ni espacio).
+  // Va al FINAL de Inicio: no empuja ni mueve lo que ya está. Sin internet: «Asistente no disponible sin internet»
+  // solo si este aparato ya fue confirmado como dueño o el rol guardado del POS es dueño; el resto de Inicio sigue igual.
+  var heroEl = null;
+  function cachedOwner() { var R = root.NA_ROLES; return !!(R && R.role === 'owner'); }
+  function renderHero() {
+    var menu = doc.getElementById('pageMenu'); if (!menu) return;
+    var off = root.navigator.onLine === false;
+    var mode = isAdmin() ? (off ? 'offline' : isOwnerAccess() ? 'owner' : 'emp') : (off && cachedOwner() && !adminOff ? 'offline' : null);
+    if (!mode) { if (heroEl) { heroEl.remove(); heroEl = null; } return; }
+    if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.setAttribute('aria-label', 'Asistente'); menu.appendChild(heroEl); }
+    if (heroEl.dataset.mode === mode && heroEl.dataset.lvl === String(access && access.level)) return;
+    heroEl.dataset.mode = mode; heroEl.dataset.lvl = String(access && access.level);
+    // Estilo de las maquetas v2 de Bot 4: píldora, título, subtítulo, la MISMA burbuja CSS (con brillo y órbita), campo con onda de voz y 3 chips.
+    // En Inicio esta tarjeta reemplaza a la burbuja flotante (nunca salen las dos). Solo transform/opacity; se pausa con la burbuja.
+    var SPARK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M8 0l1.8 6.2L16 8l-6.2 1.8L8 16l-1.8-6.2L0 8l6.2-1.8z"/></svg>';
+    var WAVE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3 12h1M7 9v6M11 6v12M15 9v6M19 11v2"/></svg>';
+    var SEND = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    var DOC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M7 3h7l4 4v14H7zM10 12h5M10 16h5"/></svg>';
+    var BOX = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg>';
+    var emp = mode === 'emp', docs = emp && access.level === 'consultas_documentos';
+    var chips = mode === 'owner' ? [['Qué me falta reponer', '¿Qué me falta reponer?'], ['Leer factura', null, 'photo'], ['Inventario valorizado', 'Imprime el inventario valorizado']]
+      : docs ? [['Qué falta reponer', '¿Qué falta reponer?'], ['Lista de precios', 'Imprime la lista de precios'], ['Lista de pedido', 'Arma la lista de pedido para el proveedor']]
+      : [['Qué falta reponer', '¿Qué falta reponer?'], ['Cómo se hace algo', '¿Cómo registro una compra?']];
+    var vis = emp ? '' : '<div class="na-asst-hero-v" aria-hidden="true"><span class="h-glow"></span><span class="h-ring back"></span><span class="h-bb">' + charHtml() + '</span><span class="h-ring front"></span>' +
+      '<span class="h-card c1">' + BOX + '</span><span class="h-card c2">' + DOC + '</span></div>';
+    var txt = '<div class="na-asst-hero-t"><span class="h-pill">' + SPARK + (emp ? 'Asistente' : 'Asistente inteligente') + '</span><h2>' + (emp ? 'Asistente' : 'Asistente Nuevo Amanecer') + '</h2><p>' +
+      (emp ? (docs ? 'Puedo ayudarte con stock, precios de venta y listas para imprimir.' : 'Puedo ayudarte con stock y precios de venta.') : 'Puedo ayudarte con stock, compras, precios y documentos.') + '</p></div>';
+    if (mode === 'offline') heroEl.innerHTML = txt + vis + '<p class="h-off" role="status">Asistente no disponible sin internet. El resto de Inicio funciona normal.</p>';
+    else heroEl.innerHTML = txt + vis + '<form class="h-in" autocomplete="off"><span class="h-wave">' + WAVE + '</span><input type="text" enterkeyhint="send" maxlength="500" aria-label="Pregúntale al asistente" placeholder="¿Qué deseas hacer hoy?"><button type="submit" class="h-send" aria-label="Enviar">' + SEND + '</button></form>' +
+      '<div class="h-chips">' + chips.map(function (c) { return '<button type="button" class="h-chip"' + (c[1] ? ' data-hero-q="' + C.esc(c[1]) + '"' : '') + (c[2] ? ' data-hero-photo="1"' : '') + '>' + C.esc(c[0]) + '</button>'; }).join('') + '</div>';
+    heroEl.classList.toggle('emp', emp); heroEl.classList.toggle('off', mode === 'offline');
+    if (!emp) { var ch = heroEl.querySelector('.na-asst-char'); if (ch) { ch.dataset.state = state; ch.dataset.paused = rootEl ? rootEl.dataset.paused || '0' : '0'; } }
+    var form = heroEl.querySelector('.h-in');
+    if (form) form.onsubmit = function (e) { e.preventDefault(); var inp = form.querySelector('input'), q = inp.value.trim(); if (!q || !isAdmin() || !panelEl) return; inp.value = ''; openPanel(); send(q); };
+    heroEl.onclick = function (e) { var b = e.target.closest('.h-chip'); if (!b || !isAdmin() || !panelEl) return; openPanel(); if (b.dataset.heroQ) send(b.dataset.heroQ); else if (b.dataset.heroPhoto && fileEl) fileEl.click(); };
+  }
+
+  // ---------- Configuración > Aparatos: nivel del asistente por aparato de empleado ----------
+  // Se agrega DEBAJO de la lista de aparatos que ya existe (no se toca config-g.js). Guarda solo (sin botón Guardar),
+  // pidiendo el PIN del dueño en la ventana de PIN del POS. El servidor exige aparato dueño + PIN y lo anota si hay bitácora.
+  var LEVELS = [['off', 'Apagado'], ['consultas', 'Solo consultas'], ['consultas_documentos', 'Consultas y documentos']];
+  function decorateConfig() {
+    if (!isOwnerAccess() || root.navigator.onLine === false) return;
+    // Puede haber dos pantallas de Configuración (v9 y la anterior): se decora cada lista visible una sola vez.
+    doc.querySelectorAll('#naDevList').forEach(function (list) { var host = list.parentElement; if (host && !host.querySelector('.na-asst-acc')) decorateOne(host); });
+  }
+  function decorateOne(host) {
+    var box = el('div', 'na-asst-acc'); box.innerHTML = '<h4>Asistente en aparatos de empleado</h4><p class="na-asst-acc-n">Apagado por defecto. Al cambiar se pide tu PIN y se guarda solo. Cualquier cambio de stock, precio o compra que proponga el asistente igual necesita tu PIN.</p><div class="na-asst-acc-l">Cargando…</div>';
+    host.appendChild(box);
+    get(ACCESS_PATH).then(function (d) { paintAccess(box, d); }, function () { box.querySelector('.na-asst-acc-l').textContent = 'No se pudo cargar. Revisa internet.'; });
+  }
+  var ACCESS_PATH = '/auth/assistant/employee-access';
+  function paintAccess(box, d) {
+    var l = box.querySelector('.na-asst-acc-l');
+    if (!d || !d.devices) { l.textContent = (d && d.error === 'admin_only') ? 'Solo el aparato del dueño puede cambiar esto.' : 'No se pudo cargar.'; return; }
+    if (!d.devices.length) { l.textContent = 'No hay aparatos de empleado vinculados.'; return; }
+    l.innerHTML = d.devices.map(function (x, i) {
+      return '<div class="na-asst-acc-r" data-dev="' + C.esc(x.device_id) + '" data-cur="' + C.esc(x.level) + '"><div><strong>' + C.esc(x.label || 'Aparato de empleado') + '</strong><small class="st" role="status"></small></div>' +
+        '<div class="na-asst-seg" role="radiogroup" aria-label="Asistente en ' + C.esc(x.label || 'aparato') + '">' + LEVELS.map(function (L) {
+          return '<label><input type="radio" name="naAsstLvl' + i + '" value="' + L[0] + '"' + (L[0] === x.level ? ' checked' : '') + '><span>' + L[1] + '</span></label>'; }).join('') + '</div></div>';
+    }).join('');
+    l.onchange = function (e) {
+      var inp = e.target; if (!inp || inp.type !== 'radio') return;
+      var row = inp.closest('.na-asst-acc-r'), st = row.querySelector('.st'), prev = row.dataset.cur, lvl = inp.value;
+      function revert(msg) { var r = row.querySelector('input[value="' + prev + '"]'); if (r) r.checked = true; st.textContent = msg || ''; }
+      var R = root.NA_ROLES;
+      // PIN del dueño -> aprobación 'assistant.employee_access' ligada a ESTE cambio (operation_id) -> el servidor la gasta una vez.
+      var save = async function (pin) {
+        var op = 'ACC-' + (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+        var apr = await post('/auth/owner-approval', { pin: pin, action: 'assistant.employee_access', operation_id: op }, null, 15000);
+        if (!apr || !apr.approval_id) { var ea = String(apr && apr.error || ''); return { msg: /locked/.test(ea) ? 'Demasiados intentos. Espera unos minutos.' : /pin/.test(ea) ? 'PIN incorrecto.' : 'No se pudo verificar el PIN.', stop: !/pin_invalid/.test(ea) }; }
+        var res = await post(ACCESS_PATH, { device_id: row.dataset.dev, level: lvl, operation_id: op }, { 'x-owner-approval': apr.approval_id }, 15000);
+        if (res && res.ok) { row.dataset.cur = lvl; st.textContent = 'Guardado' + (res.logged ? '' : ' (sin bitácora en este servidor)'); return { ok: true }; }
+        var e2 = String(res && res.error || '');
+        return { msg: /locked/.test(e2) ? 'Demasiados intentos. Espera unos minutos.' : /pin/.test(e2) ? 'PIN incorrecto.' : 'No se pudo guardar.', stop: !/pin_invalid/.test(e2) };
+      };
+      if (R && typeof R.askPin === 'function' && creds()) {
+        R.askPin('Asistente: ' + LEVELS.filter(function (L) { return L[0] === lvl; })[0][1], 'Escribe tu PIN de dueño.', save).then(function (ok) { if (!ok) revert('Sin cambios.'); });
+      } else {
+        // Prototipo local sin sesión: PIN en una ventana simple del navegador.
+        var pin = root.prompt ? root.prompt('PIN del dueño para cambiar el asistente') : '';
+        if (!pin) { revert('Sin cambios.'); return; }
+        save(pin).then(function (r) { if (!r.ok) revert(r.msg); });
+      }
+    };
+  }
+  async function get(path) {
+    var c = creds(), url = path, h = {};
+    if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; }
+    else if (protoRole()) h['x-proto-role'] = 'empleado';
+    var r = await C.request(root.fetch.bind(root), url, c ? { method: 'GET', headers: h, cache: 'no-store', credentials: 'omit', redirect: 'error' } : { method: 'GET', headers: h, cache: 'no-store' }, 10000);
+    var d = r.data || {}; if (!r.ok) d.error = d.error || 'HTTP_' + r.status; return d;
+  }
+
   function mount() {
     if (doc.querySelector('.na-asst-root')) return; // se construye una sola vez
+    // Sin permiso del servidor no se arma nada (ni burbuja ni panel).
+    if (!isAdmin()) return;
     rootEl = el('div', 'na-asst-root'); rootEl.dataset.state = 'listo';
     rootEl.innerHTML = '<span class="na-asst-tag" aria-hidden="true"></span><button type="button" class="na-asst-bubble" aria-label="Abrir asistente Burbuja">' + charHtml() + '</button>';
     tagEl = rootEl.querySelector('.na-asst-tag');
     panelEl = el('section', 'na-asst-panel'); panelEl.hidden = true; panelEl.setAttribute('role', 'dialog'); panelEl.setAttribute('aria-label', 'Asistente Burbuja');
-    panelEl.innerHTML = '<div class="na-asst-head">' + charHtml() + '<div class="na-asst-head-t"><b>Burbuja</b><small>Asistente · prueba aislada</small></div><button type="button" class="na-asst-x" aria-label="Cerrar asistente">✕</button></div>' +
+    panelEl.innerHTML = '<div class="na-asst-head">' + charHtml() + '<div class="na-asst-head-t"><b>Burbuja</b><small>' + (isOwnerAccess() ? 'Gestión · dueño · prueba aislada' : 'Consultas · empleado · prueba aislada') + '</small></div><button type="button" class="na-asst-x" aria-label="Cerrar asistente">✕</button></div>' +
       '<div class="na-asst-offline" hidden>Asistente no disponible sin internet</div><div class="na-asst-msgs" aria-live="polite"></div>' +
-      '<div class="na-asst-chips"><button type="button" data-q="¿Cómo cobro una venta?">¿Cómo cobro?</button><button type="button" data-photo>Leer factura (foto)</button><button type="button" data-q="Vende 2 paracetamol">Preparar venta</button></div>' +
+      '<div class="na-asst-chips">' + chipsHtml() + '</div>' +
       '<div class="na-asst-input"><button type="button" class="na-asst-photo" aria-label="Enviar foto">📷</button><input type="file" accept="image/*" capture="environment" hidden>' +
       '<textarea rows="1" placeholder="Escribe aquí…" aria-label="Mensaje para el asistente"></textarea><button type="button" class="na-asst-send" aria-label="Enviar">➤</button></div>';
     doc.body.appendChild(rootEl); doc.body.appendChild(panelEl);
@@ -353,6 +565,7 @@
     root.addEventListener('online', function () { offline(false); });
     root.addEventListener('offline', function () { offline(true); });
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) applyPause(); else wake(); });
+    shownFor = access ? access.role + ':' + access.level : '';
     rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
     try { new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }).observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
     root.addEventListener('resize', place);
@@ -366,6 +579,18 @@
     setTimeout(measureFrames, 1500);
   }
 
-  root.NA_ASISTENTE = { open: function () { openPanel(); }, close: function () { closePanel(); }, setState: setState, send: send, _gate: gate, _deps: deps, get quality() { return quality; }, place: place };
-  if (doc.body) mount(); else doc.addEventListener('DOMContentLoaded', mount);
+  // Arranque: después de que el POS terminó de cargar (load + momento libre), primero se pregunta al servidor.
+  function boot() {
+    refreshAccess();
+    root.addEventListener('online', refreshAccess);
+    root.addEventListener('offline', function () { renderHero(); });
+    doc.addEventListener('visibilitychange', function () { if (!doc.hidden) refreshAccess(); });
+    var tick = 0; function check() { if (tick) return; tick = setTimeout(function () { tick = 0; if (!doc.hidden) { renderHero(); decorateConfig(); } }, 250); }
+    try { new MutationObserver(check).observe(doc.body, { childList: true, subtree: true }); } catch (_) {}
+    var menu = doc.getElementById('pageMenu');
+    try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) refreshAccess(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}
+  }
+  root.NA_ASISTENTE = { open: function () { if (panelEl) openPanel(); }, close: function () { if (panelEl) closePanel(); }, setState: setState, send: send, _gate: gate, _deps: deps, get quality() { return quality; }, place: place, refreshAccess: refreshAccess, get access() { return access; } };
+  function later() { (root.requestIdleCallback || function (f) { setTimeout(f, 300); })(boot, { timeout: 2500 }); }
+  if (doc.readyState === 'complete') later(); else root.addEventListener('load', later);
 })(window);

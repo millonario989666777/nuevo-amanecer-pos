@@ -8,7 +8,8 @@
   var ACTIONS = {};
   ['cash.closes.view', 'purchases.costs.view', 'expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
-  ACTIONS['assistant.chat'] = both; ACTIONS['assistant.price.propose'] = owner; ACTIONS['assistant.purchase.propose'] = owner;
+  // Asistente (prototipo): SOLO dueño (modo admin). No vende ni llena carritos.
+  ['assistant.chat', 'assistant.query', 'assistant.document', 'assistant.price.propose', 'assistant.purchase.propose', 'assistant.stock.propose', 'assistant.product.propose'].forEach(function (id) { ACTIONS[id] = owner; });
   SCREENS['pageReporteDeuda'] = owner;
   SCREENS['pageCodigosDuplicados'] = owner;
   var SYNC_ENTITIES = {};
@@ -37,9 +38,11 @@
   ['sale.create','cash.open','cash.close','payment.create','payment.batch','credit-account.create','product.create','product.update','customer.create','customer.contact.set','customer.credit-policy.set','inventory.adjust','adjustment.create','compensation.create','sale.annul'].forEach(function (name) { API_ROUTES.push({ path: '/commands/' + name, methods: ['POST'], roles: both }); });
   API_ROUTES.push({ path: '/commands/import.stage', methods: ['POST'], roles: owner });
   API_ROUTES.push({ path: '/auth/dni-lookup', methods: ['POST'], roles: both });
-  // Asistente (prototipo): ambos roles conversan; las propuestas de dueño se filtran por ACTIONS.
-  API_ROUTES.push({ path: '/auth/assistant/chat', methods: ['POST'], roles: both });
-  API_ROUTES.push({ path: '/auth/assistant/confirm', methods: ['POST'], roles: both });
+  // Asistente (prototipo): solo dueño; el Worker responde 403 admin_only a cualquier otro rol.
+  // Asistente: el dueño siempre; un aparato empleado solo si el dueño le dio un nivel (el servidor lo revisa en cada pedido).
+  API_ROUTES.push({ path: '/auth/assistant/chat', methods: ['POST'], roles: ['owner', 'empleado'] });
+  API_ROUTES.push({ path: '/auth/assistant/confirm', methods: ['POST'], roles: ['owner', 'empleado'] });
+  API_ROUTES.push({ path: '/auth/assistant/employee-access', methods: ['GET', 'POST'], roles: owner });
   API_ROUTES.push({ path: '/commands/sale.annul', methods: ['GET'], roles: both });
   ['/auth/session','/auth/record-meta','/auth/sale-annulments'].forEach(function (path) { API_ROUTES.push({ path: path, methods: ['GET'], roles: both }); });
   ['/auth/sale-notes','/auth/purchases'].forEach(function (path) { API_ROUTES.push({ path: path, methods: ['GET','POST'], roles: both }); });

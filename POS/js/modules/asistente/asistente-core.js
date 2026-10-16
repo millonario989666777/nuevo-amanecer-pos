@@ -1,4 +1,5 @@
-/* Asistente del POS (PROTOTIPO AISLADO). Lógica sin pantalla: privacidad, permisos y confirmación.
+/* Asistente del POS (PROTOTIPO AISLADO, SOLO DUEÑO / modo admin). Lógica sin pantalla: privacidad, permisos y confirmación.
+   No vende ni llena el carrito.
    Funciona en el navegador (window.NA_ASISTENTE_CORE) y en Node (pruebas).
    Regla de oro: una propuesta solo se ejecuta con execute(id, {confirmed:true}) llamado desde el
    botón «Confirmar», una sola vez, y usando funciones que el POS ya tiene. */
@@ -30,49 +31,114 @@
     }) }, 2000, 25);
   }
 
-  // ¿Puede ESTA persona ejecutar ESTA propuesta? (el Worker ya filtró; esto es la segunda barrera)
+  // ¿Puede ESTE aparato ejecutar ESTA propuesta? (el Worker ya filtró y vuelve a revisar al confirmar; esto es la segunda barrera).
+  // Dueño: sí. Empleado: solo si el SERVIDOR le dio un nivel (roles.level viene del último ping, nunca de una caché local);
+  // y aun así las tarjetas que cambian algo piden el PIN del dueño. Documentos del empleado: solo lista de precios y pedido.
+  var TYPES = ['compra', 'precio', 'costo', 'ajuste', 'producto', 'documento', 'consulta', 'pasos'];
+  var EMP_LEVELS = ['consultas', 'consultas_documentos'], EMP_DOCS = ['lista_precios', 'lista_pedido'];
   function canExecute(roles, proposal) {
     var role = roles && roles.role;
     if (role !== 'owner' && role !== 'empleado') return { ok: false, msg: 'No se sabe quién usa este aparato. Revisa la conexión.' };
-    if (!proposal || !proposal.type) return { ok: false, msg: 'Propuesta no válida.' };
-    if (proposal.type === 'precio') {
-      var ownerOk = canDo(role, 'assistant.price.propose') && (!roles.isOwner || roles.isOwner());
-      if (!ownerOk) return { ok: false, msg: 'Solo el dueño puede cambiar precios.' };
+    if (role === 'owner' && roles.isOwner && !roles.isOwner()) return { ok: false, msg: 'El asistente es solo para el dueño.' };
+    if (role === 'empleado') {
+      if (EMP_LEVELS.indexOf(roles.level) < 0) return { ok: false, msg: 'El asistente es solo para el dueño.' };
+      if (proposal && proposal.type === 'costo') return { ok: false, msg: 'Solo el dueño puede cambiar costos.' };
+      if (proposal && proposal.type === 'documento' && (roles.level !== 'consultas_documentos' || EMP_DOCS.indexOf(proposal.tipo) < 0)) return { ok: false, msg: 'Ese documento es solo para el dueño.' };
     }
-    if (['venta', 'compra', 'precio', 'documento', 'pasos'].indexOf(proposal.type) < 0) return { ok: false, msg: 'Acción desconocida.' };
+    if (!proposal || TYPES.indexOf(proposal.type) < 0) return { ok: false, msg: 'Acción desconocida.' };
     return { ok: true };
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function soles(n) { return n == null || !isFinite(n) ? '-' : 'S/ ' + Number(n).toFixed(2); }
 
-  // Documento interno imprimible. Siempre marcado como NO comprobante SUNAT.
-  function documentHtml(p, business) {
-    var total = 0;
-    var rows = (p.lineas || []).map(function (l) { var sub = l.precio != null ? l.precio * (l.cantidad || 1) : null; if (sub != null) total += sub;
-      return '<tr><td>' + esc(l.cantidad || 1) + '</td><td>' + esc(l.nombre) + '</td><td class="r">' + soles(l.precio) + '</td><td class="r">' + soles(sub) + '</td></tr>'; }).join('');
-    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(p.title) + '</title><style>' +
-      'body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#0f172a}h1{font-size:20px;margin:0 0 4px}.w{border:2px dashed #b91c1c;color:#b91c1c;padding:6px 10px;font-weight:800;margin:10px 0;text-align:center}' +
-      'table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #cbd5e1;padding:6px 4px;text-align:left}.r{text-align:right}tfoot td{font-weight:800}</style></head><body>' +
-      '<h1>' + esc(business || 'Botica Nuevo Amanecer') + '</h1><div>' + esc(p.title) + ' · ' + esc(new Date().toLocaleDateString('es-PE')) + '</div>' +
-      '<div class="w">DOCUMENTO INTERNO DE PRUEBA · NO ES COMPROBANTE SUNAT</div>' +
-      '<table><thead><tr><th>Cant.</th><th>Descripción</th><th class="r">P. unit.</th><th class="r">Importe</th></tr></thead><tbody>' + rows + '</tbody>' +
-      (p.tipo === 'lista_precios' ? '' : '<tfoot><tr><td></td><td>Total</td><td></td><td class="r">' + soles(total) + '</td></tr></tfoot>') + '</table>' +
-      (p.nota ? '<p>' + esc(p.nota) + '</p>' : '') + '</body></html>';
+  // ---------- Documentos internos (solo lectura, armados en el aparato con datos que el POS ya tiene) ----------
+  // Siempre marcados «NO ES COMPROBANTE SUNAT». Nunca emiten nada fiscal ni escriben datos.
+  function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+  function maskDoc(d) { var s = String(d || '').replace(/\s/g, ''); return s.length >= 4 ? '****' + s.slice(-4) : (s ? '****' : '-'); }
+  function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function pname(p) { return p.name || p.nombre || ''; }
+  function tracks(p) { return p.controlInventario !== false && p.tracksInventory !== false; }
+  function inRange(f, d, h) { f = String(f || '').slice(0, 10); return (!d || f >= d) && (!h || f <= h); }
+  function docShell(title, sub, head, rows, foot, note, business) {
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' +
+      'body{font:14px/1.4 system-ui,sans-serif;margin:24px;color:#0f172a}h1{font-size:20px;margin:0 0 2px}.s{color:#334155;margin-bottom:6px}.w{border:2px dashed #b91c1c;color:#991b1b;padding:6px 10px;font-weight:800;margin:10px 0;text-align:center}' +
+      'table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #cbd5e1;padding:6px 4px;text-align:left}th{background:#f1f5f9}.r{text-align:right}tfoot td{font-weight:800}.n{color:#334155;font-size:12px;margin-top:10px}@media print{.w{border-color:#000;color:#000}}</style></head><body>' +
+      '<h1>' + esc(business || 'Botica Nuevo Amanecer') + '</h1><div class="s">' + esc(title) + (sub ? ' · ' + esc(sub) : '') + ' · Generado ' + esc(new Date().toLocaleString('es-PE')) + '</div>' +
+      '<div class="w">DOCUMENTO INTERNO · NO ES COMPROBANTE SUNAT</div>' +
+      '<table><thead><tr>' + head.map(function (h, i) { return '<th' + (i && h.r ? ' class="r"' : '') + '>' + esc(h.t || h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      (rows.length ? rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td' + (head[i] && head[i].r ? ' class="r"' : '') + '>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="' + head.length + '">Sin datos.</td></tr>') +
+      '</tbody>' + (foot ? '<tfoot><tr>' + foot.map(function (c, i) { return '<td' + (head[i] && head[i].r ? ' class="r"' : '') + '>' + esc(c) + '</td>'; }).join('') + '</tr></tfoot>' : '') + '</table>' +
+      (note ? '<div class="n">' + esc(note) + '</div>' : '') + '</body></html>';
+  }
+  var R = function (t) { return { t: t, r: true }; };
+  // Avisos heredados de Reportes (ver docs/asistente/PLAN.md). Van al pie del documento donde aplican.
+  var KNOWN = { caja: 'Aviso heredado de Reportes: el flujo de caja todavía no separa bien efectivo y pagos digitales.', costo: 'Aviso heredado: registrar una compra no actualiza el costo del producto; el valor al costo puede estar desfasado.' };
+  function unavailable(p, what, business) { return { title: p.title, rows: 0, html: docShell(p.title, null, ['Detalle'], [], null, 'No disponible: falta ' + what + ' en este aparato.', business) }; }
+  // Los documentos usan los MISMOS cálculos que las pantallas del POS (data.api): así el PDF sale igual que la pantalla al céntimo.
+  // El asistente no hace cuentas propias de dinero, solo da formato.
+  async function buildDocument(p, data, business) {
+    data = data || {}; var api = data.api || {}, prods = data.productos || [], d = p.desde || null, h = p.hasta || p.desde || null;
+    // Aparato de empleado: filas armadas por el SERVIDOR (sin costos). No se usan los datos locales del aparato.
+    if (p.data) {
+      if (p.data.error || !Array.isArray(p.data.filas)) return unavailable(p, 'la lista del servidor', business);
+      var er = p.data.filas.map(function (f) { return f.map(function (v, i) { return p.tipo === 'lista_precios' && i === 1 ? soles(num(v)) : v; }); });
+      var eh = (p.data.columnas || []).map(function (c, i) { return i ? R(c) : c; });
+      return { title: p.title, rows: er.length, html: docShell(p.title, p.tipo === 'lista_pedido' ? 'Lista de pedido para proveedor' : null, eh, er, null,
+        (p.tipo === 'lista_pedido' ? 'Cantidad sugerida: hasta el doble del mínimo. Revísala antes de pedir.' : 'Precios de venta de la ficha de cada producto.') + (p.data.truncado ? ' Lista larga: se muestran los primeros productos.' : ''), business) };
+    }
+    if (p.tipo === 'inventario_valorizado') {
+      if (typeof api.valorizacion !== 'function') return unavailable(p, 'el reporte de Valorización', business);
+      var rep = api.valorizacion(prods), t = rep.totals || {};
+      var rows = (rep.rows || rep.categories || []).map(function (r) { return [r.category || r.key || '-', num(r.products), num(r.units), soles(num(r.costValue)), soles(num(r.saleValue))]; });
+      return { title: p.title, rows: rows.length, html: docShell(p.title, 'Mismo cálculo que Valorización de inventario', ['Categoría', R('Productos'), R('Unidades'), R('Valor costo'), R('Valor venta')], rows,
+        ['Total', num(t.products), num(t.units), soles(num(t.costValue)), soles(num(t.saleValue))], (t.noCostProducts ? t.noCostProducts + ' producto(s) sin costo: el valor al costo está incompleto. ' : '') + KNOWN.costo, business) };
+    }
+    if (p.tipo === 'lista_precios') {
+      var lr = prods.slice().sort(function (a, b) { return pname(a).localeCompare(pname(b)); }).map(function (x) { return [pname(x), soles(num(x.precio)), x.precioCaja ? soles(num(x.precioCaja)) : '-']; });
+      return { title: p.title, rows: lr.length, html: docShell(p.title, null, ['Producto', R('Precio'), R('Precio caja')], lr, null, 'Precios de la ficha de cada producto.', business) };
+    }
+    if (p.tipo === 'lista_pedido') {
+      // Mismo criterio que el aviso de stock bajo del inventario: stock en o bajo el mínimo. La cantidad sugerida es solo una ayuda.
+      var rr = prods.filter(function (x) { return tracks(x) && (num(x.stock) <= 0 || num(x.stock) <= num(x.stockMin)); })
+        .sort(function (a, b) { return (num(a.stock) - num(a.stockMin)) - (num(b.stock) - num(b.stockMin)); })
+        .map(function (x) { var q = Math.max(1, Math.ceil(num(x.stockMin) * 2 - num(x.stock))), c = num(x.costo); return [pname(x), num(x.stock), num(x.stockMin), q, c > 0 ? soles(c) : '-', c > 0 ? soles(c * q) : '-', c > 0 ? Math.round(c * q * 100) : 0]; });
+      // Versión del dueño: con costo de referencia e inversión estimada (la del empleado no los trae).
+      var inv = rr.reduce(function (a, r) { return a + r.pop(); }, 0);
+      return { title: p.title, rows: rr.length, html: docShell(p.title, 'Lista de pedido para proveedor', ['Producto', R('Stock'), R('Mínimo'), R('Pedir'), R('Costo ref.'), R('Inversión')], rr, ['Total estimado', '', '', '', '', soles(inv / 100)], 'Cantidad sugerida: hasta el doble del mínimo. Revísala antes de pedir. ' + KNOWN.costo, business) };
+    }
+    if (p.tipo === 'reporte_ventas') {
+      if (typeof api.totalV !== 'function') return unavailable(p, 'el cálculo de Ventas', business);
+      // Igual que la pantalla Ventas: excluye anuladas (v.anulada) y suma totalV(v).
+      var vs = (data.ventas || []).filter(function (v) { return !v.anulada && inRange(v.fecha, d, h); }), byDay = {}, byM = {}, total = 0;
+      vs.forEach(function (v) { var f = String(v.fecha).slice(0, 10), tv = num(api.totalV(v)), m = v.metodo || 'otro'; total += tv; byDay[f] = (byDay[f] || 0) + tv; byM[m] = (byM[m] || 0) + tv; });
+      var vr = Object.keys(byDay).sort().map(function (k) { return ['Día ' + k, soles(byDay[k])]; }).concat(Object.keys(byM).sort().map(function (k) { return ['Método: ' + k, soles(byM[k])]; }));
+      return { title: p.title, rows: vs.length, html: docShell(p.title, (d || 'todas') + (h && h !== d ? ' a ' + h : ''), ['Detalle', R('S/')], vr, ['Total (' + vs.length + ' ventas)', soles(total)], 'Mismo cálculo que la pantalla Ventas (sin anuladas). ' + KNOWN.caja, business) };
+    }
+    if (p.tipo === 'estado_cuenta') {
+      if (typeof api.summarizeClient !== 'function' || typeof api.effectiveBalance !== 'function') return unavailable(p, 'el resumen de créditos', business);
+      var words = norm(p.cliente).split(/\s+/).filter(function (w) { return w.length >= 3; });
+      var cli = words.length ? (data.clientes || []).find(function (c) { var n = norm(c.nombre || c.name); return words.every(function (w) { return n.indexOf(w) >= 0; }); }) : null;
+      if (!cli) return { title: p.title, rows: 0, html: docShell(p.title, 'Cliente no encontrado', ['Detalle'], [], null, 'Escribe el nombre del cliente como está en Clientes.', business) };
+      // Igual que Deudas de clientes: summarizeClient(cliente, solo lectura) + effectiveBalance (pagos en cola incluidos).
+      var sum = api.summarizeClient(cli, true), saldo = num(api.effectiveBalance(sum, api.pending ? api.pending() : null));
+      var cr = (sum.active || []).map(function (c) { return [c.desc || c.concepto || c.tipo || 'Crédito', soles(num(c.monto)), soles(num(c.pagado)), soles(num(api.outstanding ? api.outstanding(c) : num(c.monto) - num(c.pagado))), c.vence || '-']; });
+      return { title: p.title, rows: cr.length, html: docShell(p.title, (cli.nombre || cli.name) + ' · Doc. ' + maskDoc(cli.dni || cli.documento || cli.document), ['Concepto', R('Monto'), R('Pagado'), R('Pendiente'), 'Vence'], cr,
+        ['Saldo (como en Clientes)', '', '', soles(saldo), ''], 'El documento del cliente se muestra oculto. Vencido: ' + soles(num(sum.overdueDebt)) + '.', business) };
+    }
+    if (p.tipo === 'resumen_cierre') {
+      if (typeof api.cashCloses !== 'function') return unavailable(p, 'el reporte de Arqueo', business);
+      // Mismo origen y cálculo que «Reporte de arqueo»: GET /auth/cash-closes + NA_REPORTE_ARQUEO.buildReport.
+      var ar = await api.cashCloses(d, h), at = ar.report.totals;
+      var crow = ar.report.rows.map(function (r) { return [r.fechaLabel + (r.hora ? ' ' + r.hora : ''), r.closedByName, soles(r.esperado / 100), r.contado == null ? 'sin contar' : soles(r.contado / 100), r.diferencia == null ? '-' : soles(r.diferencia / 100)]; });
+      return { title: p.title, rows: crow.length, html: docShell(p.title, ar.report.range.desde + ' a ' + ar.report.range.hasta + (ar.fromServer ? ' · servidor' : ' · copia local'), ['Cierre', 'Cerró', R('Esperado'), R('Contado'), R('Diferencia')], crow,
+        ['Total (' + at.count + ')', '', soles(at.esperado / 100), soles(at.contado / 100), soles(at.diferencia / 100)], (at.sinContar ? at.sinContar + ' cierre(s) sin contar no suman. ' : '') + KNOWN.caja, business) };
+    }
+    return unavailable(p, 'ese tipo de documento', business);
   }
 
   // Ejecutores: usan SOLO funciones existentes del POS, inyectadas (deps) para poder probarlos.
   var EXECUTORS = {
-    venta: function (p, d) {
-      var added = 0, fails = [];
-      (p.lineas || []).forEach(function (l) {
-        var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(l.product_id); });
-        if (!prod) { fails.push(l.nombre); return; }
-        for (var i = 0; i < l.cantidad; i++) { if (d.posAdd(prod.id) === false) { fails.push(l.nombre); break; } added++; }
-      });
-      d.navigate('pagePOS');
-      return { ok: added > 0, msg: added ? 'Agregué ' + added + ' unidad(es) al carrito. Revisa y pulsa Cobrar.' + (fails.length ? ' No se pudo: ' + fails.join(', ') + '.' : '') : 'No se pudo agregar: ' + fails.join(', ') + '.' };
-    },
     compra: function (p, d) {
       var w = d.openPurchase();
       if (!w) return { ok: false, msg: 'No se pudo abrir «Nueva compra».' };
@@ -82,10 +148,27 @@
     precio: function (p, d) {
       var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
       if (!prod) return { ok: false, msg: 'Ese producto ya no está en el inventario.' };
-      d.openPriceEditor(prod.id, p.precio_nuevo);
-      return { ok: true, msg: 'Abrí la ficha de ' + prod.name + ' con el precio nuevo. Pulsa Guardar para aplicarlo.' };
+      d.openProductEditor(prod.id, { precio: p.precio_nuevo });
+      return { ok: true, msg: 'Abrí la ficha de ' + pname(prod) + ' con el precio nuevo. Pulsa Guardar para aplicarlo.' };
     },
-    documento: function (p, d) { d.showDocument(documentHtml(p, d.businessName && d.businessName()), p); return { ok: true, msg: 'Vista previa lista. No es comprobante SUNAT.' }; },
+    costo: function (p, d) {
+      var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
+      if (!prod) return { ok: false, msg: 'Ese producto ya no está en el inventario.' };
+      d.openProductEditor(prod.id, { costo: p.costo_nuevo });
+      return { ok: true, msg: 'Abrí la ficha de ' + pname(prod) + ' con el costo nuevo. Pulsa Guardar para aplicarlo.' };
+    },
+    ajuste: function (p, d) {
+      var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
+      if (!prod) return { ok: false, msg: 'Ese producto ya no está en el inventario.' };
+      if (!d.openStockMove(prod.id, p.tipo, p.cantidad, p.motivo)) return { ok: false, msg: 'No se pudo abrir «Registrar movimiento».' };
+      return { ok: true, msg: 'Abrí «Registrar movimiento» de ' + pname(prod) + ' lleno. Revisa y pulsa Guardar.' };
+    },
+    producto: function (p, d) {
+      if (!d.openNewProduct(p)) return { ok: false, msg: 'No se pudo abrir «Nuevo producto».' };
+      return { ok: true, msg: 'Abrí «Nuevo producto» lleno. Revisa y pulsa Guardar.' };
+    },
+    documento: async function (p, d) { var doc = await buildDocument(p, d.data ? d.data() : {}, d.businessName && d.businessName()); d.showDocument(doc.html, p); return { ok: true, msg: 'Documento listo (' + doc.rows + ' fila(s)). No es comprobante SUNAT.' }; },
+    consulta: function () { return { ok: true, msg: '' }; },
     pasos: function (p, d) { if (p.pantalla) d.navigate(p.pantalla); return { ok: true, msg: 'Te llevé a la pantalla.' }; }
   };
 
@@ -124,13 +207,13 @@
     async function run(it) {
       var perm = canExecute(deps.roles(), it.p);
       if (!perm.ok) { it.state = 'denied'; return perm; }
-      if (deps.online && !deps.online()) { it.state = 'pending'; return { ok: false, msg: 'Asistente no disponible sin internet.' }; }
+      if (it.p.needsConfirm && deps.online && !deps.online()) { it.state = 'pending'; return { ok: false, msg: 'Asistente no disponible sin internet.' }; }
       if (it.p.needsConfirm) {
         if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar (falta el permiso del servidor).' }; }
         var c;
         try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, msg: 'Se cortó la conexión. Pulsa Confirmar otra vez: no se duplicará.' }; }
-        if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'proposal_changed')) ? 'denied' : 'pending';
-          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa las filas marcadas antes de confirmar.', owner_approval_required: 'Falta el PIN del dueño.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
+        if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'admin_only' || c.error === 'proposal_changed')) ? 'denied' : 'pending';
+          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', admin_only: 'El asistente es solo para el dueño.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa las filas marcadas antes de confirmar.', owner_approval_required: 'Falta el PIN del dueño.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
         it.operationId = c.operation_id;
         // Se aplica la propuesta que el servidor verificó para ESTE token, nunca otra que esté en memoria.
         if (c.proposal) { if (c.proposal.id !== it.p.id || c.proposal.type !== it.p.type) { it.state = 'denied'; return { ok: false, msg: 'La propuesta no coincide. Pídela otra vez.' }; } it.applied = c.proposal; }
@@ -138,7 +221,7 @@
       }
       if (it.executed) { it.state = 'done'; return { ok: true, msg: 'Ya se hizo. No se repitió.' }; }
       try {
-        var r = EXECUTORS[it.p.type](it.applied || it.p, deps, it.operationId);
+        var r = await EXECUTORS[it.p.type](it.applied || it.p, deps, it.operationId);
         if (r.ok) it.executed = true;
         it.state = r.ok ? 'done' : 'pending'; return r;
       } catch (e) { it.state = 'pending'; return { ok: false, msg: 'No se pudo completar. Inténtalo otra vez.' }; }
@@ -172,7 +255,7 @@
     };
   }
 
-  var api = { request: request, TIMEOUTS: TIMEOUTS, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, documentHtml: documentHtml, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  var api = { request: request, TIMEOUTS: TIMEOUTS, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
