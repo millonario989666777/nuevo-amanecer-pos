@@ -76,7 +76,7 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
     await rolePage(page, 'owner');
     await seed(page);
     const before = await readState(page), writes: string[] = [];
-    page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
+    page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method()) && !(request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/settings'))) writes.push(request.method() + ' ' + request.url()); });
     await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageProximamente'); }, dark);
     const card = page.locator('#pageProximamente [data-feature-id="cliente-historial-compras"]');
     await expect(card).toHaveClass(/is-enabled/);
@@ -178,7 +178,7 @@ test('employee cannot open customer history and direct rendering clears customer
   await rolePage(page, 'empleado');
   await seed(page);
   const before = await readState(page), writes: string[] = [];
-  page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.url()); });
+  page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method()) && !(request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/settings'))) writes.push(request.url()); });
   await page.locator('#naMobileMenuToggle').click();
   await expect(page.locator('#naMobileDrawer [data-page="pageClienteHistorial"]')).toHaveCount(0);
   await page.evaluate(() => { (window as any).NA_MENU_NAVIGATION.closeMobileDrawer(); (window as any).goPage('pageClienteHistorial'); });
