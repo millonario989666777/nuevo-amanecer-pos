@@ -8,7 +8,14 @@
   var READ_PATH = '/auth/purchases';
   // El servidor devuelve como máximo las 300 compras más recientes (más las incompletas).
   var PURCHASE_LIMIT = 300;
-  function limitReached(purchases) { return Array.isArray(purchases) && purchases.length >= PURCHASE_LIMIT; }
+  // Avisa solo si el servidor cortó la lista. Con `truncated` (worker nuevo) manda el flag;
+  // sin él (worker anterior) se cuentan solo las compras no incompletas: las «en_curso»
+  // se agregan aparte del límite de 300 y no prueban que haya corte.
+  function limitReached(purchases, truncated) {
+    if (typeof truncated === 'boolean') return truncated;
+    if (!Array.isArray(purchases)) return false;
+    return purchases.filter(function (p) { return p && p.status !== 'en_curso'; }).length >= PURCHASE_LIMIT;
+  }
   function text(value) { return value == null ? '' : String(value); }
   function normalize(value) { return text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
   function productId(product) { return text(product && (product.id != null ? product.id : product.product_id)); }
@@ -130,7 +137,7 @@
     var result = await root.NA_ROLES.api(READ_PATH, undefined, 'GET');
     if (!ownerAllowed()) throw new Error('Sin permiso');
     if (!result || !Array.isArray(result.purchases)) throw new Error('Respuesta de compras no válida');
-    return { purchases: result.purchases, ready: result.ready !== false };
+    return { purchases: result.purchases, ready: result.ready !== false, truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined };
   }
   root.NA_HISTORIAL_COMPRAS = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaLabel: limaLabel, buildHistory: buildHistory, summarize: summarize, money: money, ownerAllowed: ownerAllowed, readPurchases: readPurchases, limitReached: limitReached, PURCHASE_LIMIT: PURCHASE_LIMIT });
   if (!root.document) return;
@@ -139,7 +146,7 @@
     var page = doc.getElementById('pageHistorialCompras'); if (!page) return;
     var content = page.querySelector('[data-hc-content]'), denied = page.querySelector('[data-hc-denied]'), search = page.querySelector('[data-hc-search]'),
       matches = page.querySelector('[data-hc-products]'), status = page.querySelector('[data-hc-status]'), result = page.querySelector('[data-hc-result]'), retry = page.querySelector('[data-hc-retry]');
-    var purchases = [], catalog = [], movements = [], selectedId = '', loaded = false, purchasesReady = true, pending = false, failed = false, ticket = 0, active = false;
+    var purchases = [], catalog = [], movements = [], selectedId = '', loaded = false, purchasesReady = true, purchasesTruncated, pending = false, failed = false, ticket = 0, active = false;
     function el(tag, cls, label) { var n = doc.createElement(tag); if (cls) n.className = cls; if (label != null) n.textContent = label; return n; }
     function visible() { return page.classList.contains('active'); }
     function sources() {
@@ -151,7 +158,7 @@
       movements = isCloud ? (Array.isArray(snap.inventoryMovements) ? snap.inventoryMovements : []).slice() : (typeof inventoryMovements !== 'undefined' && Array.isArray(inventoryMovements) ? inventoryMovements.slice() : []); // eslint-disable-line no-undef
     }
     function discard(clearSelection) {
-      ticket++; purchases = []; catalog = []; movements = []; loaded = false; purchasesReady = true; pending = false; failed = false;
+      ticket++; purchases = []; catalog = []; movements = []; loaded = false; purchasesReady = true; purchasesTruncated = undefined; pending = false; failed = false;
       matches.replaceChildren(); result.replaceChildren(); status.textContent = ''; retry.hidden = true;
       if (clearSelection) { selectedId = ''; search.value = ''; }
     }
@@ -181,7 +188,7 @@
         var box = el('div', 'hc-stat'); box.append(el('dt', '', pair[0]), el('dd', '', pair[1])); stats.append(box);
       });
       result.append(stats);
-      if (limitReached(purchases)) result.append(el('p', 'hc-note hc-limit', 'Mostrando las últimas ' + PURCHASE_LIMIT + ' compras'));
+      if (limitReached(purchases, purchasesTruncated)) result.append(el('p', 'hc-note hc-limit', 'Mostrando las últimas ' + PURCHASE_LIMIT + ' compras'));
       if (summary.missingCostQuantity) result.append(el('p', 'hc-note', 'Promedio calculado sobre ' + summary.costedQuantity + ' unidades con costo registrado. ' + summary.missingCostQuantity + ' unidades sin costo registrado.'));
       if (history.excludedLines) result.append(el('p', 'hc-note', history.excludedLines + ' línea(s) sin aplicación confirmada excluidas del resumen.'));
       if (!history.rows.length) { result.append(el('p', 'hc-empty', 'Sin compras registradas')); return; }
@@ -204,9 +211,9 @@
         var api = root.NuevoAmanecerCanonical;
         // En modo local no existen compras de servidor; el ledger local sigue siendo consultable.
         var cloud = api && typeof api.enabled === 'function' && api.enabled();
-        var response = cloud ? await readPurchases() : { purchases: [], ready: true };
+        var response = cloud ? await readPurchases() : { purchases: [], ready: true, truncated: false };
         if (ownTicket !== ticket || !visible() || !ownerAllowed()) return;
-        purchases = response.purchases; purchasesReady = response.ready; loaded = true;
+        purchases = response.purchases; purchasesReady = response.ready; purchasesTruncated = response.truncated; loaded = true;
         if (!purchasesReady) {
           status.textContent = 'El registro de compras todavía no está disponible. Vuelve a intentar más tarde.'; retry.hidden = false;
           return;

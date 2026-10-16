@@ -84,3 +84,37 @@ test('B6-8 Historial incluye compras incompletas aunque haya más de 300 recient
   const list = await call(f, '/auth/purchases', 'owner-token');
   assert.ok(list.body.purchases.some(p => p.purchase_id === 'b6-old' && p.status === 'en_curso'));
 });
+
+test('GET /auth/purchases: truncated solo cuando el servidor corta las 300 recientes (las incompletas no cuentan)', async t => {
+  const f = await setup29(t);
+  const L = [{ line: 1, product_id: 'NO-EXISTE', quantity: 1, unit_cost_cents: 100 }];
+  // Una compra incompleta antigua: se agrega aparte del límite y no debe provocar el aviso.
+  await call(f, '/auth/purchases', 'owner-token', { ...P(f, 'trunc-old', L), created_at: '2020-01-01T00:00:00.000Z' });
+  f.database.exec('UPDATE pos_purchases SET created_at=\'2020-01-01T00:00:00.000Z\' WHERE purchase_id=\'trunc-old\'');
+  const ins = f.database.prepare("INSERT INTO pos_purchases(purchase_id,promotion_id,total_cost_cents,line_count,status,principal_id,created_at) VALUES(?,?,0,1,'aplicada','x',?)");
+  const pr = f.control().active_promotion_id;
+  const at = i => '2026-10-01T' + String(Math.floor(i / 60) % 24).padStart(2, '0') + ':' + String(i % 60).padStart(2, '0') + ':00Z';
+  for (let i = 0; i < 299; i++) ins.run('t' + i, pr, at(i));
+  // 299 aplicadas + 1 incompleta = 300 filas en la tabla: no hay corte.
+  let list = await call(f, '/auth/purchases', 'owner-token');
+  assert.equal(list.status, 200);
+  assert.equal(list.body.truncated, false);
+  assert.equal(list.body.purchases.length, 300);
+  // 300 aplicadas + 1 incompleta antigua = 301 filas: el SELECT de recientes deja fuera la incompleta
+  // (que igual se agrega aparte), así que sí hubo corte.
+  ins.run('t299', pr, at(299));
+  list = await call(f, '/auth/purchases', 'owner-token');
+  assert.equal(list.body.truncated, true);
+  assert.equal(list.body.purchases.filter(p => p.status !== 'en_curso').length, 300);
+  assert.ok(list.body.purchases.some(p => p.purchase_id === 'trunc-old' && p.status === 'en_curso'));
+});
+
+test('GET /auth/purchases: con menos de 300 compras truncated es false', async t => {
+  const f = await setup29(t);
+  const ins = f.database.prepare("INSERT INTO pos_purchases(purchase_id,promotion_id,total_cost_cents,line_count,status,principal_id,created_at) VALUES(?,?,0,1,'aplicada','x',?)");
+  const pr = f.control().active_promotion_id;
+  for (let i = 0; i < 300; i++) ins.run('s' + i, pr, '2026-10-02T00:00:00Z');
+  const list = await call(f, '/auth/purchases', 'owner-token');
+  assert.equal(list.body.truncated, false);
+  assert.equal(list.body.purchases.length, 300);
+});

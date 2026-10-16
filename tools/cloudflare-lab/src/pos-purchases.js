@@ -65,7 +65,11 @@ export async function purchasesRoute(request, env, auth, json) {
         closure: closed ? { reason: closed.reason, closed_at: closed.closed_at, missing_lines: JSON.parse(closed.missing_lines || '[]') } : null });
     }
     const COLS = 'purchase_id,supplier,document_ref,total_cost_cents,line_count,status,created_at,completed_at';
-    const recent = (await db.prepare('SELECT ' + COLS + ' FROM pos_purchases ORDER BY created_at DESC LIMIT 300').all()).results || [];
+    // Se pide una fila de más solo para saber si hubo corte; se devuelven como máximo 300.
+    const RECENT_LIMIT = 300;
+    const fetched = (await db.prepare('SELECT ' + COLS + ' FROM pos_purchases ORDER BY created_at DESC LIMIT ' + (RECENT_LIMIT + 1)).all()).results || [];
+    const truncated = fetched.length > RECENT_LIMIT;
+    const recent = truncated ? fetched.slice(0, RECENT_LIMIT) : fetched;
     // Las compras incompletas se listan SIEMPRE, aunque sean más antiguas que las últimas 300.
     const cr = await closuresReady(db);
     const open = (await db.prepare('SELECT ' + COLS + ' FROM pos_purchases WHERE status=\'en_curso\'' + (cr ? ' AND purchase_id NOT IN (SELECT purchase_id FROM pos_purchase_closures)' : '') + ' ORDER BY created_at DESC').all()).results || [];
@@ -80,7 +84,7 @@ export async function purchasesRoute(request, env, auth, json) {
     const lines = ids.length ? ((await db.prepare(`SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id IN (${ids.map((_, i) => '?' + (i + 1)).join(',')}) ORDER BY purchase_id,line_number`).bind(...ids).all()).results || []) : [];
     const detailed=await withLots(db,lines);
     rows.forEach(r => { r.lines = detailed.filter(l => l.purchase_id === r.purchase_id); });
-    return json({ purchases: rows });
+    return json({ purchases: rows, truncated });
   }
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, OPTIONS' });
   if (!ready) return json({ error: 'purchase_schema_not_ready' }, 503);

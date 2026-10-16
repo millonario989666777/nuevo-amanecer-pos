@@ -335,9 +335,33 @@ test('aviso de límite: desde 300 compras se indica «Mostrando las últimas 300
   const api = load();
   assert.equal(api.PURCHASE_LIMIT, 300);
   const list = n => Array.from({ length: n }, (_, i) => ({ purchase_id: 'PUR-' + i, lines: [] }));
+  // Sin flag (worker anterior): cuenta solo las no incompletas.
   assert.equal(api.limitReached(list(299)), false);
   assert.equal(api.limitReached(list(300)), true);
   assert.equal(api.limitReached(list(305)), true);
   assert.equal(api.limitReached(null), false);
   assert.match(source, /'Mostrando las últimas ' \+ PURCHASE_LIMIT \+ ' compras'/);
+});
+
+test('limitReached: el flag truncated del servidor manda; sin él no cuentan las incompletas', () => {
+  const api = load();
+  const list = (n, status = 'aplicada') => Array.from({ length: n }, (_, i) => ({ purchase_id: status + '-' + i, status, lines: [] }));
+  // 299 aplicadas + 5 en_curso = 304 filas, pero el servidor no cortó.
+  const mixed = list(299).concat(list(5, 'en_curso'));
+  assert.equal(api.limitReached(mixed), false);
+  assert.equal(api.limitReached(list(300).concat(list(3, 'en_curso'))), true);
+  // cerrada_parcial viene dentro de las 300 recientes: sí cuenta.
+  assert.equal(api.limitReached(list(299).concat(list(1, 'cerrada_parcial'))), true);
+  // Con flag, se usa tal cual aunque el conteo diga otra cosa.
+  assert.equal(api.limitReached(list(300), false), false);
+  assert.equal(api.limitReached(list(10), true), true);
+  assert.equal(api.limitReached(mixed, true), true);
+});
+
+test('readPurchases propaga truncated solo si es booleano', async () => {
+  const make = body => load({ NA_ROLES: { isOwner: () => true, api: async () => body } });
+  assert.equal((await make({ purchases: [], truncated: true }).readPurchases()).truncated, true);
+  assert.equal((await make({ purchases: [], truncated: false }).readPurchases()).truncated, false);
+  assert.equal((await make({ purchases: [] }).readPurchases()).truncated, undefined);
+  assert.equal((await make({ purchases: [], truncated: 'yes' }).readPurchases()).truncated, undefined);
 });

@@ -28,15 +28,15 @@ const fixture = {
   credits: [{ id: 'TEST-credit', saldo: 4 }]
 };
 
-// 300 compras (el máximo que devuelve el servidor): las del fixture + relleno de otro producto.
+// 300 compras no incompletas (el máximo de recientes del servidor) + las incompletas del fixture, que van aparte.
 function limitPurchases() {
-  const filler = Array.from({ length: 300 - fixture.purchases.length }, (_, i) => ({ purchase_id: 'PUR-e2e-fill-' + i, status: 'aplicada',
+  const filler = Array.from({ length: 300 - fixture.purchases.filter(p => p.status !== 'en_curso').length }, (_, i) => ({ purchase_id: 'PUR-e2e-fill-' + i, status: 'aplicada',
     created_at: '2026-09-01T15:00:00Z', supplier: 'Relleno', total_cost_cents: 400,
     lines: [{ purchase_id: 'PUR-e2e-fill-' + i, line_number: 1, product_id: '202', quantity: 1, unit_cost_cents: 400 }] }));
   return fixture.purchases.concat(filler);
 }
 
-async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean; atLimit?: boolean } = {}) {
+async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean; atLimit?: boolean; truncated?: boolean } = {}) {
   const writes: string[] = [], reads: string[] = [];
   let release: (() => void) | undefined;
   const hold = options.delay ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
@@ -51,7 +51,7 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     if (url.pathname === '/auth/purchases' && !url.search) {
       reads.push(url.pathname);
       await hold;
-      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: options.atLimit ? limitPurchases() : fixture.purchases }) });
+      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: options.atLimit ? limitPurchases() : fixture.purchases, ...(options.truncated === undefined ? {} : { truncated: options.truncated }) }) });
     }
     return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'test_endpoint_unavailable' }) });
   });
@@ -315,4 +315,22 @@ test('límite de 300 compras: el resumen avisa «Mostrando las últimas 300 comp
   expect(await notice.evaluate(node => node.previousElementSibling?.classList.contains('hc-summary'))).toBe(true);
   expect(io.reads.filter(path => path.startsWith('/auth/purchases'))).toEqual(['/auth/purchases']);
   expect(io.writes).toEqual([]);
+});
+
+test('300 filas con truncated:false (incluye incompletas): sin aviso de límite', async ({ page }) => {
+  const io = await setup(page, 'owner', { atLimit: true, truncated: false });
+  await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+  await page.locator('[data-hc-search]').fill('paracetamol');
+  await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+  await expect(page.locator('.hc-table tbody tr')).toHaveCount(2);
+  await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveCount(0);
+  expect(io.writes).toEqual([]);
+});
+
+test('truncated:true del servidor: aviso aunque lleguen pocas filas', async ({ page }) => {
+  await setup(page, 'owner', { truncated: true });
+  await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+  await page.locator('[data-hc-search]').fill('paracetamol');
+  await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+  await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveText('Mostrando las últimas 300 compras');
 });
