@@ -168,13 +168,14 @@
 
   // Filtro de deuda: misma selección que labClientCredits (mismo índice compartido),
   // pero sobre copias, porque el helper de estado normaliza su argumento in situ.
+  // Ruta de solo lectura: _naClientCreditsReadOnly no reconstruye el índice ni toca
+  // los créditos originales (antes _naClientCreditsFast podía normalizarlos in situ).
   function labClientCreditsReadOnly(clientId) {
     var rows = null;
-    if (typeof _naClientCreditsFast === 'function') {
-      try { rows = _naClientCreditsFast(clientId); } catch (_) {}
+    if (typeof _naClientCreditsReadOnly === 'function') {
+      try { rows = _naClientCreditsReadOnly(clientId); } catch (_) { rows = null; }
     }
-    if (Array.isArray(rows)) rows = rows.map(function (cr) { return Object.assign({}, cr); });
-    else rows = (Array.isArray(creditos) ? creditos : []).filter(function (cr) {
+    if (!Array.isArray(rows)) rows = (Array.isArray(creditos) ? creditos : []).filter(function (cr) {
       return String(cr && (cr.cliId ?? cr.clienteId)) === String(clientId);
     }).map(function (cr) { return Object.assign({}, cr); }).filter(function (cr) {
       return !cr.anulado && labCreditStatus(cr) !== 'anulado';

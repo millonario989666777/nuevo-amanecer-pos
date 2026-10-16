@@ -734,6 +734,16 @@ function _naEnsureClientCreditIndex(force=false){
 }
 function _naClientAllCreditsFast(clientId){_naEnsureClientCreditIndex();return(_naClientAllCreditsIndex.get(String(clientId))||[]).slice();}
 function _naClientCreditsFast(clientId){_naEnsureClientCreditIndex();return(_naClientCreditsIndex.get(String(clientId))||[]).slice();}
+// Solo lectura: nunca reconstruye el índice compartido ni normaliza los créditos originales.
+// Devuelve copias (pagos incluido) con el mismo filtro y el mismo estado que _naRebuildClientCreditIndex.
+// _naClientCreditsFast sigue devolviendo los objetos vivos para los flujos de escritura existentes.
+function _naClientCreditIndexFresh(){return _naClientCreditIndexRef===creditos&&_naClientCreditIndexLength===(Array.isArray(creditos)?creditos.length:0)&&_naClientCreditIndexDate===obtenerHoy();}
+function _naCreditReadOnlyCopy(cr){const copy={...cr};if(Array.isArray(cr.pagos))copy.pagos=cr.pagos.map(p=>p&&typeof p==='object'?{...p}:p);if(Array.isArray(cr.items))copy.items=cr.items.map(i=>i&&typeof i==='object'?{...i}:i);return copy;}
+function _naClientCreditsReadOnly(clientId){
+  const key=String(clientId);
+  if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy);
+  return(Array.isArray(creditos)?creditos:[]).filter(cr=>cr&&String(cr.cliId??cr.clienteId??'')===key).map(_naCreditReadOnlyCopy).filter(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return!(cr.anulado||String(cr.status||cr.estado||'').toLowerCase()==='anulado');});
+}
 function _naClientDebtFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.debt||0;}
 function _naClientStatusFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.status||'ninguno';}
 statusCli=function(c){return _naClientStatusFast(c);};
