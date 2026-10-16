@@ -807,3 +807,10 @@ body.dark #mMovInv .mov-type-btn.entrada.active {
   body.dark #mProd .mbody,
   body.dark #mProd .mbtns {background-color:var(--na-dk-surface)!important}
 }
+
+/* Contraste en modo oscuro (visual en vivo web 150). Solo color: sin cambios de tamaño, posición ni texto. */
+body.dark .na-pur-total {color:var(--na-dk-text)}
+body.dark .na-pur-box .na-pur-ocr {background-color:var(--na-dk-surface-2);color:var(--na-dk-text);border-color:var(--na-dk-border)}
+/* La franja de estado pinta colores inline por tono (rojo/ámbar); se reemplazan por variantes oscuras. */
+body.dark #naStatusBanner[style*="254, 226, 226"] {background:var(--na-dk-danger-bg)!important;color:var(--na-dk-danger-text)!important;border-bottom-color:#b91c1c!important}
+body.dark #naStatusBanner[style*="254, 243, 199"] {background:#451a03!important;color:#fde68a!important;border-bottom-color:#92400e!important}
