@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base efa91db36951ef4aff73c6c72fb3a46d8923b4a4: #740 historial de compras — permissions table only (FEATURE_LOCKS historial-compras-producto=false, FEATURE_ROLES owner, SCREENS pageHistorialCompras owner). No worker code changes. No schema changes. Rollback to b0976d74 (worker 43, currently live).",
-  "target_commit": "efa91db36951ef4aff73c6c72fb3a46d8923b4a4",
-  "rollback_ref": "b0976d74c4de06ba9a8f8d2499238160198d8247",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base 527937732e59e505cd08dcf8773e20a772a1a302: #757 GET /auth/purchases returns truncated flag (LIMIT 301, max 300 rows; additive field). No permissions changes. No schema changes. Rollback to efa91db3 (worker 44, currently live). Web stays at 149 until live check.",
+  "target_commit": "527937732e59e505cd08dcf8773e20a772a1a302",
+  "rollback_ref": "efa91db36951ef4aff73c6c72fb3a46d8923b4a4",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 44,
-  "optimization": "HISTORIAL_COMPRAS_740"
+  "attempt": 45,
+  "optimization": "HISTORIAL_COMPRAS_TRUNCATED_757"
 }
