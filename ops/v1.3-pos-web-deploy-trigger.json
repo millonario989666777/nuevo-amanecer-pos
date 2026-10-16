@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#788 pulido-159: arqueo con 6 columnas y total de Diferencia a <=700px, texto del aviso. Worker 53 ya live (Cloudflare 84a7afc6, live check 401 OK).",
-  "retry_attempt": 162,
-  "retry_reason": "Deploy de base fffaf2ad4c97c30efa0b2de123c2879c230496a3 (#788). Rollback: web 161 cb4b72b7ef1d059438f557c6c65097bae5bafa65 (Cloudflare 97b58ce9, base d8f12ddbb561c547ad67a2ad325e625aa5aa5465).",
-  "requested_at_utc": "2026-10-16T17:45:00Z",
-  "approved_base": "fffaf2ad4c97c30efa0b2de123c2879c230496a3"
+  "note": "#793 kardex por producto (owner-only, desde Próximamente). Worker 54 ya live (Cloudflare c9a75046, live check 401 OK).",
+  "retry_attempt": 163,
+  "retry_reason": "Deploy de base dde26fb5ef3236966bdd2578433b78697e08e3e9 (#793). Rollback: web 162 ac56151a (Cloudflare a5f504f4, base fffaf2ad4c97c30efa0b2de123c2879c230496a3).",
+  "requested_at_utc": "2026-10-16T19:06:00Z",
+  "approved_base": "dde26fb5ef3236966bdd2578433b78697e08e3e9"
 }
