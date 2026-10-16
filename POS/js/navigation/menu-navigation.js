@@ -15,6 +15,7 @@
     'pageCaja',
     'pageGastos',
     'pageProximamente',
+    'pageRotacionAbc',
     'pageConfig'
   ]);
   var MOBILE_SCROLL_PAGES = Object.freeze({
@@ -325,7 +326,7 @@
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
       return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente') || role === 'owner';
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageRotacionAbc') || role === 'owner';
   }
 
   function renderDrawerItems() {
@@ -342,6 +343,7 @@
       ['Caja', 'cash', 'pageCaja', 'Abrir, cerrar y movimientos'],
       ['Gastos', 'expense', 'pageGastos', 'Registrar y consultar gastos'],
       ['Próximamente', 'soon', 'pageProximamente', 'Funciones en preparación'],
+      ['Rotación ABC por categoría', 'sales', 'pageRotacionAbc', 'Importe vendido en 30 o 90 días'],
       ['Configuración', 'settings', 'pageConfig', 'Negocio, usuarios y equipos']
     ].forEach(function (item) {
       if (document.getElementById(item[2]) && canShowDrawerPage(item[2])) {
