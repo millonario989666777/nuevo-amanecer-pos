@@ -15,6 +15,7 @@
     'pageCaja',
     'pageGastos',
     'pageProximamente',
+    'pageValorizacion',
     'pageRotacionAbc',
     'pageConfig'
   ]);
@@ -326,7 +327,7 @@
     if (root.NA_PERMISSIONS && typeof root.NA_PERMISSIONS.canAccessScreen === 'function') {
       return root.NA_PERMISSIONS.canAccessScreen(role, pageId);
     }
-    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageRotacionAbc') || role === 'owner';
+    return (pageId !== 'pageConfig' && pageId !== 'pageGastos' && pageId !== 'pageProximamente' && pageId !== 'pageValorizacion' && pageId !== 'pageRotacionAbc') || role === 'owner';
   }
 
   function renderDrawerItems() {

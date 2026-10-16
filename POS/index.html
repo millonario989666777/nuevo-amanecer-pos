@@ -85,6 +85,7 @@
     <link rel="stylesheet" href="css/inventario-redesign.css">
     <link rel="stylesheet" href="css/theme-dark.css">
     <link rel="stylesheet" href="css/sales-reports.css">
+    <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
@@ -380,7 +381,20 @@
     <div class="na-prox-grid" id="naProximamenteGrid"></div>
 </div>
 
-<!-- GASTOS -->
+<div class="page" id="pageValorizacion">
+    <header class="val-header">
+        <div class="val-heading">
+            <h1>Valorización de inventario</h1>
+            <p>Consulta de solo lectura · Solo dueño</p>
+        </div>
+        <button type="button" class="val-refresh" data-valorizacion-refresh>Actualizar</button>
+    </header>
+    <div class="val-content">
+        <p class="val-explanation">Unidades físicas del stock en memoria, incluidos lotes y unidades sin lote. Valor calculado con el costo y precio actuales por unidad. Los productos sin costo se indican aparte.</p>
+        <div data-valorizacion-report></div>
+    </div>
+</div>
+
 <div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
   <div class="abc-shell">
     <header>
@@ -406,6 +420,8 @@
     <div data-abc-content></div>
   </div>
 </div>
+
+<!-- GASTOS -->
 <div class="page" id="pageGastos">
     <div class="page-chrome">
     <div class="top-mod-bar"><span class="top-mod-title na-li-host"><svg class="na-li" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg> Gastos y Egresos</span><button class="top-btn-nuevo" onclick="abrirModalGasto()">+ Gasto</button></div>
@@ -1101,6 +1117,7 @@
 <script src="js/canon-phone-sale.js"></script>
 <script src="js/canon-desktop-dashboard.js"></script>
 <script src="js/modules/proximamente.js"></script>
+<script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>
