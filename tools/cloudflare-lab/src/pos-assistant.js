@@ -357,7 +357,6 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
   const tok = await readConfirmToken(body?.token, secret);
   if (!tok) return json({ error: 'bad_token' }, 403);
   const now = (deps.now || Date.now)();
-  if (!(tok.exp > now)) return json({ error: 'confirm_expired' }, 410);
   if (tok.d !== (await sha256Hex(String(auth.principalId || ''))).slice(0, 24)) return json({ error: 'other_device' }, 403);
   const tool = TYPE_TOOL[tok.t];
   if (!tool || !toolAllowed(role, tool) || (tok.r === 'owner' && role !== 'owner')) return json({ error: 'forbidden_role' }, 403);
@@ -365,6 +364,14 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
   if (!body?.proposal || typeof body.proposal !== 'object') return json({ error: 'proposal_changed' }, 409);
   if (body.proposal.id !== tok.pid) return json({ error: 'proposal_id_mismatch' }, 409); // id del cliente distinto del firmado
   if ((await proposalHash(body.proposal)) !== tok.h) return json({ error: 'proposal_changed' }, 409);
+  const store = deps.store || (deps.db ? createSettingsUsageStore(deps.db) : null);
+  if (!store) return json({ error: 'usage_store_missing' }, 500);
+  const usedKey = USAGE_PREFIX + 'u:' + tok.n;
+  // Ya usada se revisa ANTES que vencida: un reenvío tardío (corte de señal) recibe el mismo operation_id, no 410.
+  const withDrops = (drop) => (tok.t === 'compra' && Array.isArray(drop) && drop.length ? { ...body.proposal, lineas: body.proposal.lineas.filter((_, i) => !drop.includes(i)), quitadas: drop } : body.proposal);
+  const used = await store.get(usedKey);
+  if (used.value?.op) return json({ ok: true, already_confirmed: true, operation_id: used.value.op, type: tok.t, proposal: withDrops(used.value.drop) });
+  if (!(tok.exp > now)) return json({ error: 'confirm_expired' }, 410);
   const approvalAction = OWNER_APPROVAL_ACTION[tok.t];
   if (approvalAction) {
     const approvalId = String(request.headers.get('x-owner-approval') || '');
@@ -383,19 +390,14 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
     if (!lineas.length) return json({ error: 'empty_after_review' }, 422);
     applied = { ...body.proposal, lineas, aceptadas: accept, quitadas: drop };
   }
-  const store = deps.store || (deps.db ? createSettingsUsageStore(deps.db) : null);
-  if (!store) return json({ error: 'usage_store_missing' }, 500);
-  const usedKey = USAGE_PREFIX + 'u:' + tok.n;
-  const used = await store.get(usedKey);
-  if (used.value?.op) return json({ ok: true, already_confirmed: true, operation_id: used.value.op, type: tok.t, proposal: applied });
   // Límite de confirmaciones por aparato y minuto.
   const minute = Math.floor(now / 60000), devKey = USAGE_PREFIX + 'w:' + tok.d;
   const w = await store.get(devKey); const wv = w.value.min === minute ? { ...w.value } : { min: minute, n: 0 };
   if (wv.n >= capFrom(env, 'ASSISTANT_CONFIRMS_PER_MINUTE', ASSISTANT_LIMITS.confirmsPerMinute)) return json({ error: 'rate_limited', retry_after_s: 60 - Math.floor((now % 60000) / 1000) }, 429);
   wv.n++;
-  if (!(await store.put(usedKey, { op: tok.op, at: now, t: tok.t }, used.revision))) {
+  if (!(await store.put(usedKey, { op: tok.op, at: now, t: tok.t, drop: applied.quitadas || [] }, used.revision))) {
     const again = await store.get(usedKey);
-    return json({ ok: true, already_confirmed: true, operation_id: again.value?.op || tok.op, type: tok.t, proposal: applied });
+    return json({ ok: true, already_confirmed: true, operation_id: again.value?.op || tok.op, type: tok.t, proposal: withDrops(again.value?.drop) });
   }
   await store.put(devKey, wv, w.revision);
   // Devuelve la propuesta verificada contra el token: el cliente aplica ESTA y no otra.
@@ -466,6 +468,6 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   const DENIED_MSG = { proponer_cambio_precio: 'Solo el dueño puede cambiar precios.', preparar_compra: 'Solo el dueño puede registrar compras.', leer_factura_compra: 'Solo el dueño puede registrar compras desde una foto.' };
   const denied = dropped.filter((d) => d.dropped === 'forbidden_role' && DENIED_MSG[d.tool]).map((d) => ({ tool: d.tool, message: DENIED_MSG[d.tool] }));
   if (!proposals.length && denied.length) reply = denied[0].message + ' Pídeselo al dueño.';
-  return json({ ok: true, mode, role, reply, proposals, denied, dropped: dropped.map((d) => ({ tool: d.tool, reason: d.dropped })), left: quota.left,
+  return json({ ok: true, mode, role, server_now: (deps.now || Date.now)(), reply, proposals, denied, dropped: dropped.map((d) => ({ tool: d.tool, reason: d.dropped })), left: quota.left,
     usage: result.usage ? { prompt_tokens: result.usage.prompt_tokens || 0, completion_tokens: result.usage.completion_tokens || 0 } : null });
 }

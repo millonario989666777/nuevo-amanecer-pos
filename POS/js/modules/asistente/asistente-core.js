@@ -23,11 +23,11 @@
     function score(p) { var n = String(p.name || p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return words.some(function (w) { return n.indexOf(w) >= 0; }) ? 1 : 0; }
     var ranked = list.slice().sort(function (a, b) { return score(b) - score(a); }).slice(0, 80);
     var costs = canDo(role, 'purchases.costs.view');
-    return { screen: screen || null, products: ranked.map(function (p) {
-      var o = { id: String(p.id), nombre: redactText(String(p.name || p.nombre || '')).slice(0, 80), precio: Number(p.precio) || 0, stock: Number(p.stock) || 0 };
+    return capContext({ screen: screen || null, products: ranked.map(function (p) {
+      var o = { id: String(p.id), nombre: redactText(String(p.name || p.nombre || '')).slice(0, 60), precio: Number(p.precio) || 0, stock: Number(p.stock) || 0 };
       if (costs && Number(p.costo) > 0) o.costo = Number(p.costo);
       return o;
-    }) };
+    }) }, 2000, 25);
   }
 
   // ¿Puede ESTA persona ejecutar ESTA propuesta? (el Worker ya filtró; esto es la segunda barrera)
@@ -95,6 +95,30 @@
   // 3) pide al Worker que gaste el token de un solo uso (deps.confirm). El token trae un operation_id
   //    creado UNA vez; si se corta la señal se reenvía el MISMO token y el Worker devuelve el mismo id;
   // 4) recién entonces llama a las funciones existentes del POS. Un doble toque comparte la misma promesa.
+  // Pedido con límite de tiempo (solo para el asistente; no cambia NA_ROLES.api del resto del POS).
+  // Si no responde en ms, se aborta y lanza un error con timeout=true.
+  async function request(fetchImpl, url, init, ms) {
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, timer = null, timedOut = false;
+    var opts = Object.assign({}, init || {}); if (ctl) opts.signal = ctl.signal;
+    var guard = new Promise(function (_, reject) { timer = setTimeout(function () { timedOut = true; if (ctl) ctl.abort(); var e = new Error('timeout'); e.timeout = true; reject(e); }, ms); });
+    try {
+      var r = await Promise.race([fetchImpl(url, opts), guard]);
+      var data = {}; try { data = await Promise.race([r.json(), guard]); } catch (e) { if (e && e.timeout) throw e; data = {}; }
+      return { status: r.status, ok: !!r.ok, data: data || {} };
+    } catch (e) { if (timedOut || (e && e.name === 'AbortError')) { var t = new Error('timeout'); t.timeout = true; throw t; } throw e; }
+    finally { clearTimeout(timer); }
+  }
+  var TIMEOUTS = { chat: 30000, confirm: 12000, approval: 15000 };
+
+  // Contexto chico (~2 KB): primero los productos que coinciden con lo escrito, después el resto hasta el tope.
+  function capContext(ctx, maxBytes, maxItems) {
+    var out = [], size = 40;
+    for (var i = 0; i < ctx.products.length && out.length < (maxItems || 25); i++) {
+      var n = JSON.stringify(ctx.products[i]).length + 1; if (size + n > (maxBytes || 2000)) break; out.push(ctx.products[i]); size += n;
+    }
+    return { screen: ctx.screen, products: out };
+  }
+
   function createGate(deps) {
     var items = Object.create(null);
     async function run(it) {
@@ -148,7 +172,7 @@
     };
   }
 
-  var api = { redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, documentHtml: documentHtml, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  var api = { request: request, TIMEOUTS: TIMEOUTS, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, documentHtml: documentHtml, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

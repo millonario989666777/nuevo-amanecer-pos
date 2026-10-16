@@ -70,6 +70,8 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 - El dueño hoy aparece como empleado para el asistente. Ningún código crea la fila "owner" en la tabla de roles de aparatos: solo se crean filas de empleado al vincular una caja. El resto del POS trata "sin fila" como dueño, pero el asistente, por seguridad, lo trata como empleado. Resultado: el dueño real no ve las herramientas de dueño (precios y compras) en el asistente. No se tocó ningún dato de roles. El arreglo, que necesita la aprobación del dueño, sería una forma aprobada de marcar su aparato como "owner" (por ejemplo, un paso en Configuración que pida su PIN y guarde esa fila), o una migración que lo haga una sola vez.
 - Falta un registro de auditoría en el servidor. Hacerlo necesita una migración de base de datos, y eso requiere aprobación del dueño.
 
+- Arranque con la app instalada y mala señal (hallazgo de Bot 3, fuera del asistente, NO se arregló porque el POS está congelado): varios archivos que no son del asistente se piden a la red en cada arranque porque no están en la lista de precarga del service worker. Por ejemplo `pos-permissions.js`, `runtime-config.js`, `theme-state.js` y `cash-perf-probe.js`. Con señal colgada pueden demorar el arranque. Es un arreglo aparte, para cuando el dueño lo apruebe. El cargador del asistente sí se agregó a esa lista y se carga con `defer`.
+
 ## 5. Siguientes pasos
 1. Que el dueño lo pruebe en un celular de la tienda con el servidor local y datos inventados.
 2. Decidir si se acepta que los datos pasen por China. Si no, se puede cambiar de proveedor sin rehacer el POS.

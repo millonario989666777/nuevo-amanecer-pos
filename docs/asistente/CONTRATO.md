@@ -30,7 +30,7 @@ Pide: `{ "text": "...", "image": "data:image/jpeg;base64,..." (opcional), "histo
 - El contexto solo lleva productos. Nunca lleva clientes. Va al modelo en un mensaje aparte `<datos_pos>…</datos_pos>` marcado como solo dato (no en el mensaje system); `<` y `>` se escapan para que un nombre no cierre el bloque. El costo se quita si el rol no puede verlo (`purchases.costs.view`).
 - Antes de llamar al modelo se ocultan DNI (`DNI ****1234`), RUC (`RUC *******1234`), teléfonos y correos, en el texto, el historial y el contexto.
 
-Responde: `{ ok, mode: "deepseek"|"mock", role, reply, proposals: [...], denied: [{tool, message}], dropped: [{tool, reason}], left: {hoy, fotosHoy}, usage }`
+Responde: `{ ok, mode: "deepseek"|"mock", role, server_now, reply, proposals: [...], denied: [{tool, message}], dropped: [{tool, reason}], left: {hoy, fotosHoy}, usage }`
 Errores: 400 `bad_request|empty_message|bad_image`, 404 `not_found`, 503 `assistant_not_configured`, 413 `image_too_large|payload_too_large`, 429 `rate_limited|daily_limit|monthly_cap`, 502 `upstream_error`, 503 `upstream_busy`, 504 `upstream_timeout`.
 
 Propuesta (tarjeta): `id` es un UUID que genera el servidor (`crypto.randomUUID()`) y va firmado en el token (`pid`); el cliente nunca lo arma. `{ id, type: "venta"|"compra"|"precio"|"documento"|"pasos", needsConfirm, title, ..., confirm_token }`
@@ -39,6 +39,7 @@ Propuesta (tarjeta): `id` es un UUID que genera el servidor (`crypto.randomUUID(
 Pide: `{ "token": "<confirm_token>", "proposal": <la propuesta sin confirm_token> }`
 Tarjetas de dueño (`precio`, `compra`): además la cabecera `x-owner-approval: <approval_id>`. El approval se pide antes con `POST /auth/owner-approval {pin, action, operation_id}` donde `action` es `product.update` (precio) o `inventory.adjust` (compra) y `operation_id` es el `op` del token de ESA tarjeta (el cliente lo lee del token). Confirm verifica que la aprobación sea de este aparato, esta acción y este `operation_id`, y la gasta con `consumeApproval` (un solo uso; el reenvío de la misma tarjeta vuelve a pasar con la misma aprobación).
 Compras (`compra`): las filas con datos fuera de rango llevan `revisar: [...]` (`cantidad` > 1000, `costo` > S/ 2000 o <= 0, `total` de fila > S/ 20000, `costo_raro` = más de 3 veces o menos de 1/3 del costo o precio conocido). Confirm repite esa revisión y responde **422 `review_required` `{rows}`** salvo que el cuerpo traiga `review: { op: <op del token>, accept: [filas], drop: [filas] }` que cubra cada fila marcada. Las filas en `drop` no se devuelven.
+Orden: firma, aparato, rol, parámetros, id y hash; después **ya usada** (devuelve `already_confirmed` con el mismo `operation_id` aunque hayan pasado los 5 min); después vencida (410); después PIN del dueño y revisión.
 Responde 200: `{ ok: true, operation_id: "AST-<24 hex>", type, role, proposal }`. `proposal` es la propuesta verificada contra ESE token (con las filas quitadas); el celular aplica esa y no otra. Si se reenvía el mismo token: `{ ok: true, already_confirmed: true, operation_id: <el mismo> }`.
 Rechazos: 422 `review_required|empty_after_review`, 400 `forbidden_param` (role, pin, approval, token, owner, admin...), 403 `bad_token|other_device|forbidden_role|owner_approval_required` (este último trae `action` y `operation_id`), 409 `proposal_id_mismatch|proposal_changed`, 410 `confirm_expired`, 429 `rate_limited` (5 por minuto por aparato), 503 `confirm_unavailable`.
 
@@ -62,6 +63,10 @@ Crear producto (`product.create`, el servidor no filtra por rol), importar (`imp
 Un abono futuro tendría que ir por `canonical-credit-payment-bridge.js` (`payment.create`/`payment.batch`), nunca por un camino propio.
 
 ## Cliente
+- Límites de tiempo propios del asistente (AbortController, sin tocar `NA_ROLES.api`): chat 30 s, cada intento de confirm 12 s (2 intentos), PIN 15 s.
+- La cuenta regresiva usa `server_now` para corregir el reloj del celular.
+- Contexto por mensaje: primero los productos que coinciden con lo escrito, tope de unos 2 KB y 25 productos.
+- `asistente-loader.js` está en `PRECACHE_URLS` de `POS/sw.js` y se carga con `defer`.
 - Cargador: `POS/js/modules/asistente/asistente-loader.js`. Solo se activa con `?asistente=1` (y se apaga con `?asistente=0`). Carga los archivos cuando el POS ya abrió y el navegador está libre.
 - Lógica sin pantalla: `asistente-core.js` (`NA_ASISTENTE_CORE`). Pantalla: `asistente-ui.js` (`NA_ASISTENTE`). Estilos: `POS/css/asistente.css`.
 - Estados de la burbuja: `listo`, `concentrado`, `pensando`, `hablando`, `feliz`, `error`, `offline`.

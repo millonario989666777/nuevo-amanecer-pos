@@ -334,3 +334,21 @@ test('redacción sin etiqueta doble: «RUC RUC» y «DNI DNI» no aparecen', () 
   assert.ok(!/RUC\s+RUC/.test(t) && !/DNI\s+DNI/.test(t), t);
   assert.match(t, /RUC \*{7}6789/); assert.match(t, /DNI \*{4}8912/); assert.match(t, /DNI \*{4}4321/);
 });
+
+test('reenvío tardío de una tarjeta YA usada: mismo operation_id aunque pasaron los 5 min; sin usar y vencida = 410', async () => {
+  const store = createMemoryUsageStore();
+  const p = await proposalFor(OWNER, 'vende 2 paracetamol', store);
+  const a = await confirm(p, { store }); assert.equal(a.status, 200);
+  const late = await confirm(p, { store, now: () => Date.now() + CONFIRM_TTL_MS + 60000 });
+  assert.equal(late.status, 200); assert.equal(late.body.already_confirmed, true); assert.equal(late.body.operation_id, a.body.operation_id);
+  const q = await proposalFor(OWNER, 'vende 1 paracetamol', store);
+  assert.equal((await confirm(q, { store, now: () => Date.now() + CONFIRM_TTL_MS + 60000 })).status, 410);
+  // Un token ajeno (otro aparato) no puede leer el operation_id de una tarjeta usada.
+  assert.equal((await confirm(p, { store, auth: { principalId: 'session:otro', posRole: 'owner' }, now: () => Date.now() + CONFIRM_TTL_MS + 60000 })).status, 403);
+});
+
+test('chat devuelve server_now para que la cuenta regresiva use la hora del servidor', async () => {
+  const { body } = await chat({ text: 'vende 2 paracetamol' }, { now: () => 1_800_000_000_000 });
+  assert.equal(body.server_now, 1_800_000_000_000);
+  assert.equal((await readConfirmToken(body.proposals[0].confirm_token, SECRET)).exp, 1_800_000_000_000 + CONFIRM_TTL_MS);
+});

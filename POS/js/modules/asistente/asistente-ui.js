@@ -8,8 +8,8 @@
   'use strict';
   var doc = root.document, C = root.NA_ASISTENTE_CORE;
   if (!doc || !C || root.NA_ASISTENTE) return;
-  var ASSET = 'assets/asistente/';
   var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
+  var clockOffset = 0;
   var IDLE_MS = 20000, idleTimer = null, sleeping = false, offscreen = false;
 
   // ---------- Personaje ----------
@@ -110,14 +110,16 @@
     if (!creds() && protoRole()) return { role: 'empleado', isOwner: function () { return false; } };
     return R;
   }
-  async function post(path, body, headers) {
-    if (creds() && root.NA_ROLES && root.NA_ROLES.api) {
-      try { return await root.NA_ROLES.api(path, body, 'POST', headers || undefined); } catch (e) { if (e && e.status) return Object.assign({ error: e.message, status: e.status }, e.data || {}); throw e; }
-    }
-    var h = Object.assign({ 'content-type': 'application/json' }, headers || {}); if (protoRole()) h['x-proto-role'] = 'empleado';
-    var r = await root.fetch(path, { method: 'POST', headers: h, body: JSON.stringify(body), cache: 'no-store' });
-    var d = {}; try { d = await r.json(); } catch (_) {}
-    if (!r.ok) d.error = d.error || 'HTTP_' + r.status;
+  // Mismo pedido que NA_ROLES.api (endpoint, Bearer, sin cookies) pero con límite de tiempo propio del asistente.
+  // Un timeout lanza un error (timeout=true); un error HTTP vuelve como { error, status }.
+  async function post(path, body, headers, ms) {
+    var c = creds(), url = path, h = Object.assign({ 'content-type': 'application/json' }, headers || {});
+    var init = { method: 'POST', cache: 'no-store', body: JSON.stringify(body) };
+    if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
+    else if (protoRole()) h['x-proto-role'] = 'empleado';
+    init.headers = h;
+    var r = await C.request(root.fetch.bind(root), url, init, ms || C.TIMEOUTS.chat);
+    var d = r.data || {}; if (!r.ok) { d.error = d.error || 'HTTP_' + r.status; d.status = r.status; }
     return d;
   }
   // Confirmación: el MISMO token se reenvía hasta 3 veces si se corta la señal (mismo operation_id).
@@ -126,10 +128,11 @@
     var clean = JSON.parse(JSON.stringify(p)); delete clean.confirm_token;
     var hdr = approvals[p.id] ? { 'x-owner-approval': approvals[p.id] } : null;
     var lastErr;
-    for (var i = 0; i < 3; i++) {
+    // Cada intento se corta a los ~12 s; 2 intentos y después «Pulsa Confirmar otra vez» (mismo token y operation_id).
+    for (var i = 0; i < 2; i++) {
       try { var body = { token: p.confirm_token, proposal: clean }; if (review) body.review = review;
-        var d = await post('/auth/assistant/confirm', body, hdr); return d.ok ? d : { ok: false, error: d.error, rows: d.rows }; }
-      catch (e) { lastErr = e; await new Promise(function (r) { setTimeout(r, 600 * (i + 1)); }); }
+        var d = await post('/auth/assistant/confirm', body, hdr, C.TIMEOUTS.confirm); return d.ok ? d : { ok: false, error: d.error, rows: d.rows }; }
+      catch (e) { lastErr = e; if (i === 0) await new Promise(function (r) { setTimeout(r, 600); }); }
     }
     throw lastErr || new Error('network');
   }
@@ -220,8 +223,8 @@
     var op = tokenOp(p); if (!op) return { ok: false, msg: 'Esta tarjeta no se puede confirmar. Pídela otra vez.' };
     // La aprobación queda ligada al operation_id de ESTA tarjeta; el servidor la verifica y la gasta al confirmar.
     var d;
-    try { d = await post('/auth/owner-approval', { pin: pin, action: p.type === 'precio' ? 'product.update' : 'inventory.adjust', operation_id: op }); }
-    catch (_) { return { ok: false, msg: 'No se pudo conectar. Revisa internet e inténtalo otra vez.' }; }
+    try { d = await post('/auth/owner-approval', { pin: pin, action: p.type === 'precio' ? 'product.update' : 'inventory.adjust', operation_id: op }, null, C.TIMEOUTS.approval); }
+    catch (e) { return { ok: false, msg: e && e.timeout ? 'No hubo respuesta. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet e inténtalo otra vez.' }; }
     if (!d || !d.approval_id) {
       var e = String((d && d.error) || '');
       if (/locked|bloque|too_many/i.test(e)) return { ok: false, msg: 'Demasiados intentos. Espera unos minutos.' };
@@ -252,8 +255,9 @@
       syncOk();
     });
     function tick() {
-      if (!left) return; var ms = exp - Date.now(); if (!exp) { left.textContent = '-'; return; }
-      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; } left.textContent = '0:00'; return; }
+      if (!left) return; var ms = exp - (Date.now() + clockOffset); if (!exp) { left.textContent = '-'; return; }
+      if (ms <= 0 && ok && ok.textContent === 'Confirmando…') { left.textContent = '0:00'; return; } // en curso: el servidor decide (ya usada = mismo id)
+      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; if (ok) { ok.textContent = 'Vencida'; ok.disabled = true; } if (no) no.disabled = true; } left.textContent = '0:00'; return; }
       var sec = Math.ceil(ms / 1000); left.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
     syncOk();
@@ -267,6 +271,7 @@
       }
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
+        if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Vencida' }[c.dataset.st] || 'Confirmar';
         if (r.ok) { setState('feliz', 2600); if (p.type !== 'documento') setTimeout(closePanel, 1400); }
         else { setState('error', 2600); if (c.dataset.st === 'pending') { ok.disabled = false; no.disabled = false; ok.textContent = 'Confirmar'; syncOk(); } }
       });
@@ -287,14 +292,15 @@
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
     try {
-      var d = await post('/auth/assistant/chat', body); thinking.remove();
+      var d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); thinking.remove();
+      if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
       if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       (d.proposals || []).forEach(addCard);
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
-    } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
+    } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
     finally { busy = false; sendBtn.disabled = root.navigator.onLine === false; photoBtn.disabled = root.navigator.onLine === false; }
   }
   // Comprime en el aparato: lado mayor 1600 px, JPEG, baja calidad hasta quedar < 1.4 MB.
@@ -317,7 +323,7 @@
   function openPanel() {
     panelEl.hidden = false; rootEl.hidden = true; place(); applyPause();
     if (!msgsEl.children.length) addMsg('a', '¡Hola! Soy Burbuja. Te ayudo a vender, registrar compras, leer fotos de facturas, preparar documentos y explicarte el sistema. Nada se hace sin que pulses Confirmar.');
-    offline(root.navigator.onLine === false); setState('feliz', 1300); measureFrames();
+    var off = root.navigator.onLine === false; offline(off); if (off) setState('offline'); else setState('feliz', 1300); measureFrames();
     setTimeout(function () { try { inputEl.focus({ preventScroll: true }); } catch (_) {} }, 50);
   }
   function closePanel() { panelEl.hidden = true; rootEl.hidden = false; place(); applyPause(); }
@@ -350,7 +356,7 @@
     rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
     try { new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }).observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
     root.addEventListener('resize', place);
-    setInterval(function () { if (doc.hidden) return; place(); applyPause(); }, 1000);
+    setInterval(function () { if (doc.hidden || sleeping) return; place(); applyPause(); }, 1000); // quieta: el MutationObserver y los toques recolocan
     // Recolocar enseguida al cambiar de pantalla o abrir/cerrar ventanas (sin esperar el segundo).
     var raf = 0; function soon() { if (raf) return; raf = root.requestAnimationFrame(function () { raf = 0; place(); applyPause(); }); }
     try { var mo = new MutationObserver(soon); doc.querySelectorAll('.page, .modal-overlay, #cartDrawer').forEach(function (n) { mo.observe(n, { attributes: true, attributeFilter: ['class'] }); });

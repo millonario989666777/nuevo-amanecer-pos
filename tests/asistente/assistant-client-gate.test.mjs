@@ -179,3 +179,38 @@ test('compra con filas marcadas: la revisión (aceptar/quitar) viaja a confirm y
   assert.equal(r.ok, true); assert.deepEqual(got, { op: 'AST-2', accept: [], drop: [0] });
   assert.deepEqual(filled.lineas.map((l) => l.nombre), ['Y'], 'la fila quitada no llega a «Nueva compra»');
 });
+
+// ---- Hallazgo de Bot 3 (P1): el cliente no tenía límite de tiempo ----
+const hanging = (log) => (url, init) => new Promise((_, reject) => { log.push(url); init.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); }); });
+
+test('request: un servidor que no responde se aborta a tiempo (AbortController) y lanza timeout', async () => {
+  const log = []; const t0 = Date.now();
+  await assert.rejects(C.request(hanging(log), '/auth/assistant/chat', { method: 'POST' }, 80), (e) => e.timeout === true);
+  assert.ok(Date.now() - t0 < 1000); assert.deepEqual(log, ['/auth/assistant/chat']);
+  // respuesta normal
+  const r = await C.request(async () => new Response('{"ok":true}', { status: 200 }), '/x', {}, 500);
+  assert.deepEqual(r.data, { ok: true }); assert.equal(r.ok, true);
+  // cuerpo que nunca termina también se corta
+  await assert.rejects(C.request(async () => ({ status: 200, ok: true, json: () => new Promise(() => {}) }), '/x', {}, 60), (e) => e.timeout === true);
+  assert.ok(C.TIMEOUTS.chat >= 25000 && C.TIMEOUTS.chat <= 35000, 'chat ~30 s, más que los 25 s del Worker');
+  assert.ok(C.TIMEOUTS.confirm >= 10000 && C.TIMEOUTS.confirm <= 15000, 'confirm 10-15 s por intento');
+});
+
+test('confirm que se corta por tiempo: «Pulsa Confirmar otra vez», sigue pendiente y el reintento usa el MISMO token', async () => {
+  const tokens = []; let n = 0;
+  const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); if (++n === 1) { const e = new Error('timeout'); e.timeout = true; throw e; } return { ok: true, operation_id: 'AST-9', proposal: p }; } });
+  const gate = C.createGate(d); const k = gate.add({ ...venta, id: 'u-t', confirm_token: 'tok-1' });
+  const r1 = await gate.execute(k, { confirmed: true });
+  assert.equal(r1.ok, false); assert.match(r1.msg, /Pulsa Confirmar otra vez/); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.posAdd, []);
+  const r2 = await gate.execute(k, { confirmed: true });
+  assert.equal(r2.ok, true); assert.deepEqual(tokens, ['tok-1', 'tok-1']); assert.equal(calls.posAdd.length, 2);
+});
+
+test('contexto por mensaje: coincidencias primero y tope de ~2 KB', () => {
+  const many = Array.from({ length: 300 }, (_, i) => ({ id: 'X' + i, name: 'Producto inventado con nombre largo ' + i, precio: 1, stock: 1 }));
+  many.push({ id: 'AMOX', name: 'Amoxicilina 500 mg', precio: 2, stock: 5 });
+  const c = C.buildContext(many, 'owner', 'pagePOS', 'vende 2 amoxicilina');
+  assert.equal(c.products[0].id, 'AMOX');
+  assert.ok(JSON.stringify(c).length <= 2100, 'tamaño ' + JSON.stringify(c).length);
+  assert.ok(c.products.length <= 25);
+});
