@@ -83,5 +83,5 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 ## 6. Dónde ver las pruebas
 - Capturas: `/workspace/asistente-proto/shots/` (390x844, 768 y 1280x800, tema verde y nocturno).
 - Videos: `/workspace/asistente-proto/asistente-estados-390.mp4` y `asistente-estados-1280.mp4` (también en .webm).
-- Pruebas automáticas: `tests/asistente/` en la rama (30 pruebas, todas pasan).
-- Suite de permisos de Bot 5, adaptada en una copia (`/workspace/asistente-proto/bot5-adaptado/`): 30 pasan. La tarjeta vencida pasa con la espera real de 5 minutos. No pasan: el registro de auditoría (falta la tabla), una revisión del propio mock y dos casos del POS que fallan igual en la rama base. No hay abono a propósito.
+- Pruebas automáticas: `tests/asistente/` en la rama (45 pruebas, todas pasan).
+- Suite de permisos de Bot 5 (versión actualizada, contrato `contrato-bot5-adaptado.json`) sobre 0b6fb5fd: 39 pasan, 1 brecha que ya estaba en la rama base (L07), 1 no aplica (no hay abono a propósito), 6 informativas, 1 pendiente (interfaz). Tres fallan: A20 (falta la tabla de auditoría, necesita migración aprobada), R01 (la prueba manda el PIN como la interfaz vieja, sin operation_id; la interfaz nueva sí lo manda y la prueba de punta a punta pasa) y R07 (el mock de Bot 5 aún no tiene el escenario `dos_ventas`; el caso de dos tarjetas está cubierto en `tests/asistente/`).
