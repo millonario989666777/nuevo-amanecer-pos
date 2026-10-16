@@ -486,10 +486,11 @@
           <option value="90">Últimos 90 días</option>
           <option value="365">Últimos 365 días</option>
           <option value="all">Todo el historial</option>
+          <option value="custom">Personalizado</option>
         </select>
       </label>
       <button type="button" data-ch-refresh>Actualizar reporte</button>
-      <button type="button" data-ch-export disabled>Exportar CSV</button>
+      <button type="button" data-ch-export disabled hidden>Exportar CSV</button>
     </div>
     <p class="ch-method">Consulta de solo lectura. Se excluyen ventas anuladas. Total consumido = total registrado de las ventas; importe por producto = subtotal de la línea o precio vendido × cantidad. Los abonos no se cuentan como compras.</p>
     <p class="ch-status" data-ch-status role="status" aria-live="polite"></p>

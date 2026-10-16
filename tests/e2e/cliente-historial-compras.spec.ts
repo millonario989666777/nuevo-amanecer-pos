@@ -249,13 +249,58 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await seller.selectOption('missing:');
   await expect(summary.nth(0)).toContainText('S/ 3.00');
   await expect(sales.locator('tbody tr')).toHaveCount(1);
-  await seller.selectOption('name:Beatriz');
+  await seller.selectOption('name:beatriz');
   await expect(summary.nth(0)).toContainText('S/ 9.00');
   await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c2');
   await expect(seller.locator('option')).toHaveText(['Todos']);
   await expect(seller).toHaveValue('');
   expect(await readState(page)).toBe(before);
 });
+
+for (const dark of [false, true]) {
+  test(`Período fills Desde/Hasta, manual edits switch to Personalizado, Todo clears and the date error is readable (${dark ? 'Nocturno' : 'claro'})`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageClienteHistorial'); }, dark);
+    const screen = page.locator('#pageClienteHistorial');
+    const period = screen.locator('[data-ch-period]');
+    const from = screen.getByLabel('Desde', { exact: true }), to = screen.getByLabel('Hasta', { exact: true });
+    const range = (days: string) => page.evaluate(days => (window as any).NA_CLIENTE_HISTORIAL.periodDates(days), days);
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    await expect(period).toHaveValue('30');
+    const p30 = await range('30');
+    await expect(from).toHaveValue(p30.from); await expect(to).toHaveValue(p30.to);
+    await period.selectOption('90');
+    await expect(from).toHaveValue((await range('90')).from); await expect(to).toHaveValue(p30.to);
+    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('Histórico de 90 días');
+    await from.fill((await range('365')).from); await from.blur();
+    await expect(period).toHaveValue('365');
+    await from.fill('2026-01-02'); await from.blur();
+    await expect(period).toHaveValue('custom');
+    await expect(period.locator('option:checked')).toHaveText('Personalizado');
+    await period.selectOption('all');
+    await expect(from).toHaveValue(''); await expect(to).toHaveValue('');
+    await expect(screen.locator('[data-ch-status]')).toContainText('Todo el historial');
+    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('2020');
+    await to.fill('2020-01-01'); await to.blur();
+    await expect(period).toHaveValue('custom');
+    await from.fill('2026-10-15'); await from.blur();
+    const status = screen.locator('[data-ch-status]');
+    await expect(status).toContainText('no puede ser posterior');
+    await expect(status).toHaveClass(/ch-error/);
+    const ratio = await status.evaluate(node => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) || []).map(Number);
+      const lum = (c: number[]) => { const [r, g, b] = c.slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      let el: Element | null = node, bg = 'rgba(0, 0, 0, 0)';
+      while (el && (bg = getComputedStyle(el).backgroundColor) && (bg === 'transparent' || rgb(bg)[3] === 0)) el = el.parentElement;
+      const a = lum(rgb(getComputedStyle(node).color)), b = lum(rgb(bg));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    await noOverflow(page);
+  });
+}
 
 test('employee cannot open customer history and direct rendering clears customer details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

@@ -64,9 +64,37 @@
     // Límites inclusivos; vacíos = sin límite. Desde no puede ser posterior a Hasta.
     return { from: from, to: to, invalid: !!(from && to && from > to) };
   }
-  function saleSeller(sale) {
-    var id = text(sale.cajeroId), name = text(sale.cajeroNombre) || text(sale.cajero);
-    return { value: id ? 'id:' + id : name ? 'name:' + name : 'missing:', label: name || id || 'No registrado' };
+  // «Período» es solo un atajo: llena Desde/Hasta. El filtro usa únicamente Desde/Hasta.
+  function periodDates(value, now) {
+    if (value === 'custom') return null;
+    var range = periodRange(value, now);
+    return range.days === 'all' ? { from: '', to: '' } : { from: range.from, to: range.to };
+  }
+  function periodFor(from, to, now) {
+    from = text(from); to = text(to);
+    var match = ['30', '90', '365', 'all'].find(function (value) { var d = periodDates(value, now); return d.from === from && d.to === to; });
+    return match || 'custom';
+  }
+  function exportAllowed() {
+    var roles = root.NA_ROLES, permissions = root.NA_PERMISSIONS;
+    var allowedRoles = permissions && permissions.FEATURE_ROLES && permissions.FEATURE_ROLES[FEATURE_ID];
+    return !!(ownerAllowed() && roles && Array.isArray(allowedRoles) && allowedRoles.includes(roles.role));
+  }
+  function sellerName(value) { return text(value).replace(/\s+/g, ' ').toLocaleLowerCase('es'); }
+  // Nombre (sin mayúsculas ni espacios extra) → id, solo si ese nombre tiene un único id en las ventas.
+  function sellerIds(sales) {
+    var ids = new Map();
+    (Array.isArray(sales) ? sales : []).forEach(function (sale) {
+      var id = text(sale && sale.cajeroId), name = sellerName(sale && (text(sale.cajeroNombre) || text(sale.cajero)));
+      if (!id || !name) return;
+      if (!ids.has(name)) ids.set(name, id); else if (ids.get(name) !== id) ids.set(name, null);
+    });
+    return ids;
+  }
+  function saleSeller(sale, ids) {
+    var id = text(sale.cajeroId), label = text(sale.cajeroNombre) || text(sale.cajero), name = sellerName(label);
+    if (!id && name && ids && ids.get(name)) id = ids.get(name);
+    return { value: id ? 'id:' + id : name ? 'name:' + name : 'missing:', label: label.replace(/\s+/g, ' ') || id || 'No registrado', hasId: !!text(sale.cajeroId) };
   }
   function customerSales(sales, selectedId) {
     var selected = text(selectedId);
@@ -76,30 +104,32 @@
     });
   }
   function sellerOptions(sales, selectedId) {
-    var sellers = new Map();
-    customerSales(sales, selectedId).forEach(function (sale) {
-      var seller = saleSeller(sale);
-      if (!sellers.has(seller.value)) sellers.set(seller.value, seller);
+    var sellers = new Map(), list = customerSales(sales, selectedId), ids = sellerIds(list);
+    list.forEach(function (sale) {
+      var seller = saleSeller(sale, ids), known = sellers.get(seller.value);
+      // Preferir la etiqueta de una venta que trae id.
+      if (!known || (!known.hasId && seller.hasId)) sellers.set(seller.value, seller);
     });
-    return Array.from(sellers.values()).sort(function (a, b) { return a.label.localeCompare(b.label, 'es') || a.value.localeCompare(b.value); });
+    return Array.from(sellers.values()).map(function (item) { return { value: item.value, label: item.label }; }).sort(function (a, b) { return a.label.localeCompare(b.label, 'es') || a.value.localeCompare(b.value); });
   }
   function filterSales(sales, selectedId, options) {
     options = options || {};
     var range = dateRange(options.from, options.to), seller = text(options.seller);
     if (range.invalid) return [];
-    return customerSales(sales, selectedId).filter(function (sale) {
+    var list = customerSales(sales, selectedId), ids = sellerIds(list);
+    return list.filter(function (sale) {
       var day = limaDay(sale.fecha || sale.timestamp);
-      return day && (!range.from || day >= range.from) && (!range.to || day <= range.to) && (!seller || saleSeller(sale).value === seller);
+      return day && (!range.from || day >= range.from) && (!range.to || day <= range.to) && (!seller || saleSeller(sale, ids).value === seller);
     });
   }
   function buildReport(sales, selectedId, options) {
     options = options || {};
-    var range = periodRange(options.days, options.now);
+    // Desde/Hasta son el ÚNICO filtro de fechas; «Período» solo las prellena.
+    var range = dateRange(options.from, options.to);
     var rows = [], products = new Map(), totalCents = 0;
     // Nunca enlazar por nombre/DNI: dos clientes pueden tener el mismo nombre.
     filterSales(sales, selectedId, options).forEach(function (sale) {
       var day = limaDay(sale.fecha || sale.timestamp);
-      if (!day || (range.from && day < range.from) || day > range.to) return;
       var itemsTotal = 0;
       (Array.isArray(sale.items) ? sale.items : []).forEach(function (item) {
         if (!item || typeof item !== 'object') return;
@@ -138,8 +168,10 @@
     if (/^[=+@\t\r\n-]/.test(raw)) raw = "'" + raw;
     return '"' + raw.replace(/"/g, '""') + '"';
   }
-  function toCsv(report) {
-    var rows = [['Fecha', 'Comprobante / ID', 'Total', 'Método de pago']];
+  function toCsv(report, filters) {
+    filters = filters || {};
+    var rows = [['Cliente: ' + text(filters.cliente), 'Desde: ' + (filters.desde ? dateLabel(filters.desde) : 'sin límite'),
+      'Hasta: ' + (filters.hasta ? dateLabel(filters.hasta) : 'sin límite'), 'Vendedor: ' + (text(filters.vendedor) || 'Todos')], ['Fecha', 'Comprobante / ID', 'Total', 'Método de pago']];
     report.sales.forEach(function (sale) { rows.push([dateLabel(sale.day), sale.reference, sale.total.toFixed(2), paymentLabel(sale.method)]); });
     rows.push([], ['Producto', 'Cantidad', 'Importe']);
     report.products.forEach(function (product) { rows.push([product.name, product.quantity, product.amount.toFixed(2)]); });
@@ -181,7 +213,7 @@
     var controls = page.querySelector('[data-ch-controls]'), search = page.querySelector('[data-ch-search]'), select = page.querySelector('[data-ch-customer]');
     var seller = page.querySelector('[data-ch-seller]'), exportButton = page.querySelector('[data-ch-export]');
     renderedReport = null;
-    if (exportButton) exportButton.disabled = true;
+    if (exportButton) { exportButton.disabled = true; exportButton.hidden = !exportAllowed(); }
     var allowed = ownerAllowed();
     if (controls) controls.hidden = !allowed;
     content.replaceChildren();
@@ -204,19 +236,21 @@
       select.value = matches.some(function (customer) { return customer.id === selected; }) ? selected : '';
       selected = select.value;
     }
-    var period = page.querySelector('[data-ch-period]'), range = periodRange(period ? period.value : 30);
+    var period = page.querySelector('[data-ch-period]');
     var from = page.querySelector('[data-ch-from]'), to = page.querySelector('[data-ch-to]');
-    // Por defecto: últimos 30 días (hora de Lima), solo la primera vez.
+    // Primera vez: Desde/Hasta salen del Período elegido (por defecto, últimos 30 días de Lima).
     if (from && to && !page.dataset.chDatesInit) {
       page.dataset.chDatesInit = '1';
-      var last30 = periodRange(30);
-      if (!from.value && !to.value) { from.value = last30.from; to.value = last30.to; }
+      var initial = periodDates(period && period.value !== 'custom' ? period.value : '30');
+      if (!from.value && !to.value) { from.value = initial.from; to.value = initial.to; }
     }
+    // Nunca se contradicen: el Período mostrado se deduce de las fechas.
+    if (period && from && to) period.value = periodFor(from.value, to.value);
     var dates = dateRange(from ? from.value : '', to ? to.value : '');
     if (from) from.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
     if (to) to.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
-    status.textContent = (range.from ? dateLabel(range.from) + ' al ' + dateLabel(range.to) : 'Todo el historial hasta ' + dateLabel(range.to)) + ' · hora de Lima · ventas cargadas en este dispositivo';
-    if (dates.from || dates.to) status.textContent += ' · Desde ' + (dates.from ? dateLabel(dates.from) : 'sin límite') + ' · Hasta ' + (dates.to ? dateLabel(dates.to) : 'sin límite');
+    if (status.classList) status.classList.toggle('ch-error', dates.invalid);
+    status.textContent = (dates.from || dates.to ? 'Desde ' + (dates.from ? dateLabel(dates.from) : 'sin límite') + ' · Hasta ' + (dates.to ? dateLabel(dates.to) : 'sin límite') : 'Todo el historial') + ' · hora de Lima · ventas cargadas en este dispositivo';
     var sales = typeof ventas !== 'undefined' ? ventas : root.ventas;
     if (seller) {
       var selectedSeller = seller.value, sellers = sellerOptions(sales, selected);
@@ -228,9 +262,11 @@
     var customer = matches.find(function (item) { return item.id === selected; });
     if (dates.invalid) { status.textContent = '«Desde» no puede ser posterior a «Hasta». Corrige el rango de fechas.'; return true; }
     if (!customer) { content.innerHTML = '<p class="ch-empty">Busca y selecciona un cliente para consultar sus compras.</p>'; return true; }
-    renderedReport = buildReport(sales, customer.id, { days: range.days, now: range.to, from: dates.from, to: dates.to, seller: seller ? seller.value : '' });
+    var sellerLabel = seller && seller.value ? (sellerOptions(sales, selected).find(function (item) { return item.value === seller.value; }) || {}).label : '';
+    renderedReport = buildReport(sales, customer.id, { from: dates.from, to: dates.to, seller: seller ? seller.value : '' });
+    renderedReport.filters = { cliente: customer.name || customer.nombre || customer.id, desde: dates.from, hasta: dates.to, vendedor: sellerLabel };
     content.innerHTML = reportHtml(renderedReport, customer);
-    if (exportButton) exportButton.disabled = false;
+    if (exportButton) exportButton.disabled = !exportAllowed();
     return true;
   }
   function init() {
@@ -241,9 +277,9 @@
     page.addEventListener('change', function (event) {
       // Cambiar «Período» reinicia Desde/Hasta a ese período (Todo = sin límite).
       if (event && event.target && event.target.matches && event.target.matches('[data-ch-period]')) {
-        var from = page.querySelector('[data-ch-from]'), to = page.querySelector('[data-ch-to]'), range = periodRange(event.target.value);
-        if (from) from.value = range.from;
-        if (to) to.value = range.days === 'all' ? '' : range.to;
+        var from = page.querySelector('[data-ch-from]'), to = page.querySelector('[data-ch-to]'), dates = periodDates(event.target.value);
+        if (dates && from) from.value = dates.from;
+        if (dates && to) to.value = dates.to;
       }
       update();
     });
@@ -251,20 +287,26 @@
     var refresh = page.querySelector('[data-ch-refresh]');
     if (refresh) refresh.addEventListener('click', update);
     var exportButton = page.querySelector('[data-ch-export]');
-    if (exportButton) exportButton.addEventListener('click', function () {
-      if (!render() || !renderedReport) return;
-      var url = root.URL.createObjectURL(new root.Blob([toCsv(renderedReport)], { type: 'text/csv;charset=utf-8' }));
+    if (exportButton) exportButton.addEventListener('click', exportCsv);
+    function exportCsv() {
+      // Guardia propia: no basta con ocultar el botón.
+      if (!exportAllowed()) { render(); return false; }
+      if (!render() || !renderedReport || !exportAllowed()) return false;
+      var url = root.URL.createObjectURL(new root.Blob([toCsv(renderedReport, renderedReport.filters)], { type: 'text/csv;charset=utf-8' }));
       var link = root.document.createElement('a'); link.href = url; link.download = 'cliente-historial-compras.csv';
       try { page.appendChild(link); link.click(); }
       finally { link.remove(); root.setTimeout(function () { root.URL.revokeObjectURL(url); }, 1000); }
-    });
+      return true;
+    }
+    page.__naClienteHistorialExport = exportCsv;
     if (typeof root.MutationObserver === 'function') new root.MutationObserver(update).observe(page, { attributes: true, attributeFilter: ['class'] });
     root.addEventListener('na:role', function () { if (!ownerAllowed()) render(); else update(); });
     ['na:canonical-updated', 'na:canonical-sale-projection', 'focus'].forEach(function (event) { root.addEventListener(event, update); });
     update();
   }
   root.NA_CLIENTE_HISTORIAL = Object.freeze({ limaDay: limaDay, periodRange: periodRange, searchCustomers: searchCustomers,
-    dateRange: dateRange, saleSeller: saleSeller, sellerOptions: sellerOptions, filterSales: filterSales, csvCell: csvCell, toCsv: toCsv,
+    dateRange: dateRange, sellerIds: sellerIds, periodDates: periodDates, periodFor: periodFor, exportAllowed: exportAllowed,
+    exportCsv: function () { var page = root.document && root.document.getElementById(PAGE_ID); return !!(page && page.__naClienteHistorialExport && page.__naClienteHistorialExport()); }, saleSeller: saleSeller, sellerOptions: sellerOptions, filterSales: filterSales, csvCell: csvCell, toCsv: toCsv,
     buildReport: buildReport, escapeHtml: escapeHtml, reportHtml: reportHtml, ownerAllowed: ownerAllowed, render: render, init: init });
   if (root.document) {
     if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', init, { once: true });
