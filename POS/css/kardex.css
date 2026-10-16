@@ -1,0 +1,66 @@
+#pageKardex {
+  --kardex-bg: #f8fafc;
+  --kardex-surface: #fff;
+  --kardex-text: #0f172a;
+  --kardex-muted: #475569;
+  --kardex-border: #cbd5e1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--kardex-text);
+  background: var(--kardex-bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#pageKardex *, #pageKardex *::before, #pageKardex *::after { box-sizing: border-box; min-width: 0; }
+#pageKardex [hidden] { display: none !important; }
+#pageKardex .kardex-shell { width: 100%; max-width: 1120px; margin: 0 auto; }
+#pageKardex h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; }
+#pageKardex h2 { margin: 16px 0; font-size: 20px; }
+#pageKardex :is(h1, h2, p, strong, small, button) { overflow-wrap: anywhere; white-space: normal; }
+#pageKardex p { margin: 0 0 16px; color: var(--kardex-muted); }
+#pageKardex .kardex-filters, #pageKardex .kardex-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 16px 0; }
+#pageKardex label { display: grid; gap: 6px; font-weight: 700; }
+#pageKardex :is(input, button) { width: 100%; max-width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--kardex-border); border-radius: 10px; font: inherit; color: var(--kardex-text); background: var(--kardex-surface); }
+#pageKardex button { cursor: pointer; font-weight: 700; }
+#pageKardex button:disabled { opacity: .6; cursor: default; }
+#pageKardex :is(input, button):focus-visible { outline: 3px solid #0d9488; outline-offset: 2px; }
+#pageKardex .kardex-products { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; padding: 4px; margin: 0 -4px; }
+#pageKardex .kardex-product { text-align: left; }
+#pageKardex .kardex-product :is(strong, small) { display: block; }
+#pageKardex .kardex-product small { color: var(--kardex-muted); font-weight: 400; }
+#pageKardex .kardex-product[aria-pressed="true"] { border-color: #0d9488; box-shadow: inset 0 0 0 1px #0d9488; }
+#pageKardex .kardex-method, #pageKardex .kardex-note { padding: 12px 16px; border: 1px solid var(--kardex-border); border-radius: 12px; background: var(--kardex-surface); }
+#pageKardex .kardex-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+#pageKardex .kardex-summary-card { padding: 14px; border: 1px solid var(--kardex-border); border-radius: 12px; background: var(--kardex-surface); }
+#pageKardex .kardex-summary-card span { display: block; color: var(--kardex-muted); }
+#pageKardex .kardex-summary-card strong { display: block; font-size: 22px; }
+#pageKardex .kardex-table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--kardex-surface); }
+#pageKardex .kardex-table :is(th, td) { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--kardex-border); white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+#pageKardex .kardex-table thead th { color: var(--kardex-muted); font-size: 12px; }
+#pageKardex .kardex-table th:nth-child(3) { width: 28%; }
+#pageKardex .kardex-table .kardex-num { text-align: right; font-variant-numeric: tabular-nums; }
+#pageKardex .kardex-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Tema oscuro del Kardex, acotado a su página. */
+body.dark #pageKardex { --kardex-bg: #0f172a; --kardex-surface: #1e293b; --kardex-text: #f8fafc; --kardex-muted: #cbd5e1; --kardex-border: #64748b; color-scheme: dark; }
+@media (max-width: 599px) {
+  #pageKardex .kardex-table, #pageKardex .kardex-table tbody { display: block; }
+  #pageKardex .kardex-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #pageKardex .kardex-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--kardex-border); border-radius: 12px; }
+  #pageKardex .kardex-table td { display: block; padding: 0; border: 0; }
+  #pageKardex .kardex-table td:nth-child(3) { grid-column: 1 / -1; }
+  #pageKardex .kardex-table td::before { content: attr(data-label); display: block; color: var(--kardex-muted); font-size: 12px; }
+  #pageKardex .kardex-table .kardex-num { text-align: left; }
+}
+@media (min-width: 600px) {
+  #pageKardex { padding: 24px; }
+  #pageKardex .kardex-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #pageKardex .kardex-filters label:first-child { grid-column: 1 / -1; }
+  #pageKardex .kardex-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #pageKardex .kardex-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1000px) {
+  #pageKardex .kardex-filters { grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }
+  #pageKardex .kardex-filters label:first-child { grid-column: auto; }
+}
