@@ -157,7 +157,8 @@
     reference_already_used: 'Ese número de operación ya fue usado en otro abono. Revisa el voucher.',
     stale_credit: 'El saldo de este crédito cambió en otro equipo. Se actualizó la pantalla: revisa el saldo y vuelve a confirmar.',
     credit_balance_conflict: 'El monto supera el saldo pendiente actual del crédito. Se actualizó la pantalla: revisa el saldo.',
-    stale_session: 'La caja cambió (se cerró o se movió en otro equipo). Revisa la caja y vuelve a confirmar.'
+    stale_session: 'La caja cambió (se cerró o se movió en otro equipo). Revisa la caja y vuelve a confirmar.',
+    credit_voided: 'Este crédito está anulado y no acepta abonos.'
   };
   function describePendingFailure(error) {
     var pending = pendingRecord();
