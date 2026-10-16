@@ -851,11 +851,18 @@ body.dark .sale-special-badge.free {background-color:#431407;color:#fed7aa}
 body.dark .v-chart .bar-v {background-color:#0f172a;color:#f1f5f9}
 body.dark .v-chart .bar-v.today {color:#fdba74}
 /* 5. Inventario → Nueva compra. «Desde foto/OCR» no tiene estilo propio (botón nativo: appearance auto, borde outset);
-   #761 solo ponía background-color/color/border-color. Se fija el fondo completo y el estilo del borde (mismo ancho). */
-body.dark .na-pur-box .na-pur-ocr {background:#334155;color:#f1f5f9;border-color:#64748b;border-style:solid}
+   #761 solo ponía background-color/color/border-color. Se fija el fondo completo y el estilo del borde (mismo ancho).
+   Mayor especificidad (0,4,2)+ y estados para que ninguna regla genérica de botón lo devuelva al gris claro nativo;
+   appearance:none elimina el dibujo nativo del botón. «Historial» y «Cancelar» tienen style="background:#64748b"
+   inline (pos-purchases-client.js), por eso su regla usa !important en background y color. */
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr,
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:hover,
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:active,
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:focus,
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:focus-visible {-webkit-appearance:none;appearance:none;background:#334155;color:#f1f5f9;border-color:#64748b;border-style:solid}
 body.dark .na-pur-box .na-pur-hist,
 body.dark .na-pur-box .na-pur-cancel,
-body.dark .na-pur-box .na-pur-close {background:#334155!important;color:#f8fafc}
+body.dark .na-pur-box .na-pur-close {background:#334155!important;color:#f8fafc!important}
 /* 6. Detalle del producto: banda de margen; chip de categoría distinguible de la tarjeta. */
 body.dark #mProd .prod-margin {background-color:#0f2a2b;border-color:#1f5f5a;--red:#fca5a5;--teal:#5eead4}
 /* El valor ≥ 100 % llega como color en línea fijo (#15803d), que no alcanza 4.5:1 sobre ningún fondo oscuro:

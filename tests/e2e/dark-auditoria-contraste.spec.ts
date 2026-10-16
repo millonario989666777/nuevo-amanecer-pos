@@ -172,6 +172,11 @@ for (const width of [390, 1366]) {
     // «Desde foto/OCR» ya no es el botón nativo claro.
     expect(after['Desde foto/OCR'].bg).toBe('rgb(51, 65, 85)');
     expect(after['Desde foto/OCR'].border).toContain('solid');
+    // Tienen style="background:#64748b" inline; gana la regla oscura con !important.
+    for (const k of ['Historial', 'Cancelar']) {
+      expect(after[k].bg).toBe('rgb(51, 65, 85)');
+      expect(after[k].fg).toBe('rgb(248, 250, 252)');
+    }
     // Antes (sin las reglas nuevas, en la misma página): mismas cajas y vuelve el problema.
     await page.reload();
     await boot(page, width, true);
@@ -195,3 +200,49 @@ for (const width of [390, 1366]) {
     for (const k of Object.keys(withRules)) expect(withRules[k], k).toEqual(without[k]);
   });
 }
+
+// Recorrido táctil real con las hojas tardías cargadas: OCR oscuro y AA en cada estado del botón.
+test('oscuro 390px táctil: «Desde foto/OCR» oscuro y AA en todos los estados, por el camino real', async ({ browser, baseURL }) => {
+  test.setTimeout(60_000);
+  const ctx = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const page = await ctx.newPage();
+  try {
+    await boot(page, 390, true);
+    await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
+      .filter(link => link.href.startsWith(location.origin))
+      .every(link => link.media !== 'print' && !!link.sheet));
+    await page.evaluate(() => (window as any).NA_MENU_NAVIGATION.navigate('pageInventario'));
+    const purchase = page.locator('#pageInventario .na-pur-btn');
+    await expect(purchase).toBeVisible();
+    await purchase.tap();
+    const ocrSelector = '.na-pur-overlay .na-pur-box button.na-pur-ocr';
+    const ocr = page.locator(ocrSelector);
+    await expect(ocr).toBeVisible();
+    await page.waitForTimeout(350);
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('DOM.enable');
+    await cdp.send('CSS.enable');
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: ocrSelector });
+    for (const forced of [[], ['hover'], ['active', 'hover'], ['focus'], ['focus', 'focus-visible']]) {
+      const state = forced.join('+') || 'normal';
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: forced });
+      const s = await sample(page, ocrSelector);
+      expect(s.bg, `${state}: fondo`).toBe('rgb(51, 65, 85)');
+      expect(s.fg, `${state}: texto`).toBe('rgb(241, 245, 249)');
+      expect(s.ratio, `${state}: contraste`).toBeGreaterThanOrEqual(4.5);
+      expect(s.image, `${state}: imagen de fondo`).toBe('none');
+    }
+    await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] });
+    expect(await ocr.evaluate(el => getComputedStyle(el).appearance)).toBe('none');
+    for (const selector of ['.na-pur-hist', '.na-pur-cancel']) {
+      const fullSelector = '.na-pur-overlay .na-pur-box ' + selector;
+      expect(await page.locator(fullSelector).getAttribute('style')).toContain('#64748b');
+      const s = await sample(page, fullSelector);
+      expect([s.bg, s.fg], selector).toEqual(['rgb(51, 65, 85)', 'rgb(248, 250, 252)']);
+      expect(s.ratio, `${selector}: contraste`).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    await ctx.close();
+  }
+});

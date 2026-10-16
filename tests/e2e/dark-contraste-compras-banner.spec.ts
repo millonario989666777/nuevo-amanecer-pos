@@ -71,7 +71,7 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
       const audit = sels.lastIndexOf('body.dark .cfg-toggle');
       for (let i = rules.length - 1; i >= 0; i--) {
         const sel = (rules[i] as CSSStyleRule).selectorText || '';
-        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); if (audit < 0 || i < audit) n++; }
+        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|\.na-pur-overlay \.na-pur-box button\.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); if (audit < 0 || i < audit) n++; }
       }
     }
     return n;
