@@ -166,7 +166,7 @@ async function serverCard(store, text) {
 }
 function serverConfirm(store) {
   return async (p, review) => { const { confirm_token, ...proposal } = p;
-    const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr-test' }, body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR, { store, resolveRole: async () => 'owner', verifyApproval: async () => true });
+    const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr-test' }, body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR, { store, reader: { products: async () => CTX.products.map((x) => ({ id: x.id, nombre: x.nombre, controla: true })) }, resolveRole: async () => 'owner', verifyApproval: async () => true });
     return r.json(); };
 }
 

@@ -22,7 +22,7 @@ import { canDo } from './pos-permissions.js';
 import { mockAssistantReply } from './pos-assistant-mock.js';
 import { runAssistantQuery, canonicalReader, QUERY_TYPES, employeeDocumentRows } from './pos-assistant-queries.js';
 import { assistantAccess, accessOn, accessLevel, STRICT_APPROVAL_SQL } from './pos-assistant-access.js';
-import { auditWrite } from './pos-assistant-audit.js';
+import { auditWrite, isAggregated } from './pos-assistant-audit.js';
 
 export const ASSISTANT_CHAT_PATH = '/auth/assistant/chat';
 export const ASSISTANT_CONFIRM_PATH = '/auth/assistant/confirm';
@@ -443,17 +443,31 @@ export async function verifyOwnerApproval(db, deviceId, approvalId, action, oper
   } catch { return false; }
 }
 
+// Confirmaciones RECHAZADAS también quedan en la bitácora (Bots 3/5). 429 y 403 de rol se AGRUPAN (una fila por aparato, minuto y
+// resultado con count) para que un aparato insistiendo no llene el registro; el resto, una fila por rechazo en su propio cajón.
 export async function assistantConfirmRoute(request, env, auth, json, deps = {}) {
+  const ctx = {}; let rej = null;
+  const jr = (data, status = 200) => { if (status >= 400) rej = { error: data && data.error, status }; return json(data, status); };
+  const res = await confirmCore(request, env, auth, jr, deps, ctx);
+  if (rej && rej.error && rej.status !== 404 && rej.status !== 405) {
+    const aggregate = rej.status === 429 || (rej.status === 403 && isAggregated(rej.error));
+    await (deps.audit || auditWrite)(deps.db, [{ device_id: auth?.principalId, role: ctx.role ? String(ctx.role) : null, tool: ctx.tok ? TYPE_TOOL[ctx.tok.t] || null : null, type: ctx.tok?.t || null,
+      outcome: 'rejected:' + rej.error, card_id: ctx.tok?.pid || null, operation_id: ctx.tok?.op || null, aggregate }]);
+  }
+  return res;
+}
+async function confirmCore(request, env, auth, json, deps, ctx) {
   if (String(env?.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   const secret = env.ASSISTANT_CONFIRM_SECRET;
   if (!secret || String(secret).length < 16) return json({ error: 'confirm_unavailable' }, 503);
   let body; try { body = JSON.parse((await request.text()).slice(0, 200000)); } catch { return json({ error: 'bad_request' }, 400); }
   // Rol y nivel se leen del servidor en CADA confirmación (sin caché): quitar el permiso aplica al instante.
-  const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth);
+  const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth); ctx.role = role;
   if (!accessOn(role)) return json(offBody(role), 403);
   const tok = await readConfirmToken(body?.token, secret);
   if (!tok) return json({ error: 'bad_token' }, 403);
+  ctx.tok = tok;
   const now = (deps.now || Date.now)();
   if (tok.d !== (await sha256Hex(String(auth.principalId || ''))).slice(0, 24)) return json({ error: 'other_device' }, 403);
   const tool = TYPE_TOOL[tok.t];
@@ -495,11 +509,22 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
   if (tok.t === 'ajuste' && !(Number(applied.cantidad) > 0 && Number(applied.cantidad) <= PURCHASE_HARD_LIMITS.maxQty)) return json({ error: 'over_limit', rows: [], limits: PURCHASE_HARD_LIMITS, message: 'La cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.' }, 422);
   // Control de inventario: se vuelve a mirar en la base del servidor (pudo cambiar después de la tarjeta).
   if (tok.t === 'ajuste' || tok.t === 'compra') {
+    // Falla CERRADO: sin base, lectura caída o lista incompleta (cortada) que no trae el producto -> no se confirma.
     const rd = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
-    const map = await stockControlMap(rd, null);
     const lines = tok.t === 'ajuste' ? [applied] : applied.lineas;
-    const bad = lines.filter((l) => l.product_id && map.get(String(l.product_id)) === false).map((l) => l.nombre);
-    if (bad.length) return json({ error: 'sin_control_stock', nombres: bad, message: bad.map(NO_STOCK_TEXT).join(' ') }, 409);
+    const ids = lines.filter((l) => l.product_id).map((l) => String(l.product_id));
+    if (ids.length) {
+      const unavailable = () => json({ error: 'stock_check_unavailable', message: 'No pude revisar el inventario ahora. Inténtalo en un momento.' }, 503);
+      if (!rd || typeof rd.products !== 'function') return unavailable();
+      let list; try { list = await rd.products(); } catch { return unavailable(); }
+      if (!Array.isArray(list)) return unavailable();
+      const byId = new Map(list.map((p) => [String(p.id), p]));
+      const missing = ids.filter((id) => !byId.has(id));
+      if (missing.length && list.truncated) return unavailable();
+      if (missing.length) return json({ error: 'product_missing', message: 'Ese producto ya no está en el inventario. Pide la tarjeta de nuevo.' }, 409);
+      const bad = lines.filter((l) => l.product_id && byId.get(String(l.product_id)).controla === false).map((l) => l.nombre);
+      if (bad.length) return json({ error: 'sin_control_stock', nombres: bad, message: bad.map(NO_STOCK_TEXT).join(' ') }, 409);
+    }
   }
   // Límite de confirmaciones por aparato y minuto.
   const minute = Math.floor(now / 60000), devKey = USAGE_PREFIX + 'w:' + tok.d;

@@ -149,6 +149,8 @@ test('rol del asistente: sin fila de rol o sin tabla cuenta como empleado', asyn
   assert.equal(await assistantRole(null, OWNER), 'empleado');
 });
 
+// Base de solo lectura de prueba: el confirm de ajustes/compras revisa el producto en el servidor (falla cerrado sin base).
+const READER = { products: async () => PRODUCTS.map((p) => ({ id: String(p.id), nombre: p.name || p.nombre, controla: true })) };
 async function proposalFor(auth, text, store) {
   const { body } = await chat({ text }, { auth, store });
   return body.proposals[0];
@@ -158,7 +160,7 @@ const okApproval = async () => true;
 async function confirm(p, { auth = OWNER, store, e = env(), now, proposal, approval = 'apr-test', verifyApproval = okApproval, db } = {}) {
   const clean = { ...(proposal || p) }; delete clean.confirm_token;
   const r0 = req({ token: p.confirm_token, proposal: clean }, '/auth/assistant/confirm'); if (approval) r0.headers.set('x-owner-approval', approval);
-  const r = await assistantConfirmRoute(r0, e, auth, json, { store, now, resolveRole: roleOf(auth), verifyApproval: db ? undefined : verifyApproval, db });
+  const r = await assistantConfirmRoute(r0, e, auth, json, { store, now, resolveRole: roleOf(auth), verifyApproval: db ? undefined : verifyApproval, db, reader: READER });
   return { status: r.status, body: await r.json() };
 }
 
@@ -314,7 +316,7 @@ test('factura absurda (9999 x S/ 99,999): filas marcadas; confirm las rechaza sa
   assert.equal(p.lineas[1].revisar, undefined); assert.equal(p.lineas[2].revisar, undefined); assert.equal(p.revisarFilas, 1);
   const op = (await readConfirmToken(p.confirm_token, SECRET)).op;
   const send = async (review, proposal = p) => { const { confirm_token, ...clean } = proposal; const r0 = req({ token: confirm_token, proposal: clean, review }, '/auth/assistant/confirm'); r0.headers.set('x-owner-approval', 'apr');
-    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { store, resolveRole: roleOf(OWNER), verifyApproval: async () => true }); return { status: r.status, body: await r.json() }; };
+    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { reader: READER, store, resolveRole: roleOf(OWNER), verifyApproval: async () => true }); return { status: r.status, body: await r.json() }; };
   // Consola sin revisar (botón apagado saltado): rechazado.
   let r = await send(undefined); assert.equal(r.status, 422, JSON.stringify(r.body)); assert.equal(r.body.error, 'review_required'); assert.deepEqual(r.body.rows, [0]);
   r = await send({ op: 'AST-otro', accept: [0] }); assert.equal(r.status, 422, 'aceptación ligada a otro token no vale');
@@ -333,7 +335,7 @@ test('factura absurda: aceptar la fila explícitamente también vale, y la propu
   const { body } = await chat({ text: 'lee' }, { store, e: env({ DEEPSEEK_API_KEY: 'k' }), fetch });
   const p = body.proposals[0]; const op = (await readConfirmToken(p.confirm_token, SECRET)).op;
   const { confirm_token, ...clean } = p; const r0 = req({ token: confirm_token, proposal: clean, review: { op, accept: [0] } }, '/auth/assistant/confirm'); r0.headers.set('x-owner-approval', 'apr');
-  const r = await assistantConfirmRoute(r0, env(), OWNER, json, { store, resolveRole: roleOf(OWNER), verifyApproval: async () => true });
+  const r = await assistantConfirmRoute(r0, env(), OWNER, json, { reader: READER, store, resolveRole: roleOf(OWNER), verifyApproval: async () => true });
   const b = await r.json(); assert.equal(r.status, 200); assert.equal(b.proposal.id, p.id); assert.deepEqual(b.proposal.aceptadas, [0]);
 });
 
@@ -390,7 +392,7 @@ test('P1: 422 review_required, 422 empty_after_review y 429 NO gastan la aprobac
   const rows = [{ approval_id: 'apr-1', device_id: OWNER.principalId, action: 'inventory.adjust', operation_id: op, expires_at: '2999-01-01T00:00:00.000Z', used_at: null }];
   const db = approvalsDb(rows);
   const send = async (review, now) => { const { confirm_token, ...clean } = p; const r0 = req({ token: confirm_token, proposal: clean, review }, '/auth/assistant/confirm'); r0.headers.set('x-owner-approval', 'apr-1');
-    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { store, now, resolveRole: roleOf(OWNER), db }); return { status: r.status, body: await r.json() }; };
+    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { reader: READER, store, now, resolveRole: roleOf(OWNER), db }); return { status: r.status, body: await r.json() }; };
   assert.equal((await send(undefined)).status, 422); assert.equal(rows[0].used_at, null, '422 review_required no gasta');
   assert.equal((await send({ op, drop: [0, 1] })).body.error, 'empty_after_review'); assert.equal(rows[0].used_at, null, '422 empty_after_review no gasta');
   // 429: se llena el cupo de confirmaciones de este minuto con otras tarjetas

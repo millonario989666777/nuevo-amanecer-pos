@@ -187,25 +187,43 @@ test('A20 auditoría: una fila por llamada a herramienta y por confirmación; so
   assert.equal((await call('tok-emp', '/auth/assistant/audit', null, {}, 'GET')).status, 403);
   // y no se ve por /settings
   const st = await call('tok-dueno', '/settings', null, {}, 'GET'); assert.equal(st.status, 200); assert.ok(!JSON.stringify(await st.json()).includes('internal:'), '/settings nunca devuelve claves internas');
-  assert.equal(b.keep, 300); assert.equal(typeof b.write_errors, 'number');
+  assert.equal(b.keep, 1000); assert.deepEqual(b.caps, { o: 1000, r: 300, a: 300 }); assert.equal(typeof b.write_errors, 'number');
 });
 
-test('A20: tope de 300 filas; un error al anotar no rompe el chat, avisa con console.warn sin datos y se cuenta en write_errors', async (t) => {
-  const { f, call, chat } = await setup(t);
-  const { auditWrite, AUDIT_KEEP, auditStats } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
-  assert.equal(AUDIT_KEEP, 300);
-  const rows = Array.from({ length: 40 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', tool: 'consultar', outcome: 'proposed', card_id: 'c' + i }));
-  for (let k = 0; k < 9; k++) await auditWrite(f.env.nuevo_amanecer_lab, rows);
-  assert.equal(f.all("SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'")[0].n, 300);
-  // base que falla: no lanza, avisa y cuenta
-  const warns = []; const orig = console.warn; console.warn = (...a) => warns.push(a.join(' '));
-  const before = auditStats().write_errors;
-  try { assert.equal(await auditWrite({ prepare: () => ({ bind: () => ({}) }), batch: async () => { throw new Error('D1_ERROR: disk full key=internal:asst:audit:secreto DNI 45678912'); } }, rows), 0); }
-  finally { console.warn = orig; }
-  assert.equal(auditStats().write_errors, before + 1); assert.equal(warns.length, 1);
-  assert.ok(!/45678912|secreto|internal:asst/.test(warns[0]), warns[0]);
-  // el chat sigue funcionando y el dueño ve el contador
-  assert.equal((await chat('tok-dueno', '¿qué me falta reponer?')).status, 200);
+test('A20: cajones con tope propio (dueño 1000, rechazos 300, agrupados 300): un empleado inundando NO saca filas del dueño', async (t) => {
+  const { f } = await setup(t);
+  const { auditWrite, AUDIT_CAPS } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  const db = f.env.nuevo_amanecer_lab;
+  const cnt = (b) => f.all(`SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%'`)[0].n;
+  await auditWrite(db, Array.from({ length: 40 }, (_, i) => ({ device_id: 'session:dueno', role: 'owner', tool: 'proponer_ajuste_stock', outcome: i % 2 ? 'confirmed' : 'proposed', card_id: 'o' + i })));
+  // inundación: 900 propuestas/rechazos de empleado + 500 «429» y «403 de rol» del mismo aparato
+  for (let k = 0; k < 9; k++) await auditWrite(db, Array.from({ length: 100 }, (_, i) => ({ device_id: 'session:emp', role: 'empleado:consultas', tool: 'consultar', outcome: i % 3 ? 'proposed' : 'rejected:review_required', card_id: 'e' + k + '-' + i })));
+  for (let k = 0; k < 5; k++) await auditWrite(db, Array.from({ length: 100 }, (_, i) => ({ device_id: 'session:emp', role: 'empleado:consultas', outcome: i % 2 ? 'rejected:rate_limited' : 'rejected:forbidden_role', aggregate: true })));
+  assert.equal(cnt('o'), 40, 'las 40 filas del dueño siguen todas');
+  assert.equal(cnt('r'), AUDIT_CAPS.r, 'el ruido del empleado se recorta en SU cajón');
+  // agrupados: una fila por aparato, minuto y resultado con count (no 500 filas)
+  const agg = f.all("SELECT value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:a:%'").map((r) => JSON.parse(r.value_json));
+  assert.ok(agg.length <= 4, JSON.stringify(agg.length));
+  assert.equal(agg.reduce((n, a) => n + a.count, 0), 500);
+  assert.deepEqual([...new Set(agg.map((a) => a.outcome))].sort(), ['rejected:forbidden_role', 'rejected:rate_limited']);
+  assert.ok(f.all("SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'").every((r) => r.key.length <= 60), 'claves de 60 caracteres o menos');
+});
+
+test('A20: confirm rechazado queda anotado (422/403 sueltos; 429 agrupados); fallo al anotar: console.warn sin datos y write_errors', async (t) => {
+  const { f, call, chat, confirm, approve } = await setup(t);
+  const { auditWrite, auditStats } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
+  const a = await chat('tok-dueno', 'merma de 2 Synthetic 00003');
+  const card = a.body.proposals.find((p) => p.confirm_token);
+  assert.equal((await confirm('tok-dueno', card)).status, 403); // sin aprobación
   const g = await (await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET')).json();
-  assert.ok(g.write_errors >= 1); assert.ok(g.last_write_error_at);
+  assert.ok(g.entries.some((e) => e.outcome === 'rejected:owner_approval_required' && e.card_id === card.id), JSON.stringify(g.entries.slice(0, 4)));
+  // base que falla: no lanza, avisa y cuenta
+  const warns = []; const orig = console.warn; console.warn = (...x) => warns.push(x.join(' '));
+  const before = auditStats().write_errors;
+  try { assert.equal(await auditWrite({ prepare: () => ({ bind: () => ({}) }), batch: async () => { throw new Error('D1_ERROR: disk full key=internal:asst:audit:secreto DNI 45678912'); } }, [{ device_id: 'x', role: 'owner', outcome: 'proposed' }]), 0); }
+  finally { console.warn = orig; }
+  assert.equal(auditStats().write_errors, before + 1); assert.equal(warns.length, 1); assert.ok(!/45678912|secreto|internal:asst/.test(warns[0]), warns[0]);
+  assert.equal((await chat('tok-dueno', '¿qué me falta reponer?')).status, 200);
+  const g2 = await (await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET')).json();
+  assert.ok(g2.write_errors >= 1); assert.ok(g2.last_write_error_at);
 });

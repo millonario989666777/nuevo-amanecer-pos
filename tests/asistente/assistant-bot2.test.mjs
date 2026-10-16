@@ -126,3 +126,29 @@ test('R25 (Bot 5): empleado en «consultas» que pide CUALQUIER documento -> 403
     assert.equal(r.status, 403, tipo); assert.equal(r.body.error, 'forbidden_document'); assert.equal(r.body.proposals, undefined, 'no viaja ninguna tarjeta');
   }
 });
+
+test('confirm falla CERRADO si no puede leer el producto: sin base, lectura caída, lista cortada sin el producto; borrado -> 409', async () => {
+  const a = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })]);
+  const card = a.body.proposals[0];
+  const cut = Object.assign([{ id: 'Z', nombre: 'Otro', controla: true }], { truncated: true });
+  for (const [name, rd, st, err] of [['sin base', null, 503, 'stock_check_unavailable'], ['lectura caída', { products: async () => { throw new Error('D1'); } }, 503, 'stock_check_unavailable'],
+    ['lista cortada', { products: async () => cut }, 503, 'stock_check_unavailable'], ['borrado', { products: async () => [{ id: 'Z', nombre: 'Otro', controla: true }] }, 409, 'product_missing']]) {
+    const r = await confirm(a.store, card, null, { reader: rd });
+    assert.equal(r.status, st, name); assert.equal(r.body.error, err, name); assert.equal(r.spent, 0, name + ': aprobación sin gastar');
+  }
+  assert.equal((await confirm(a.store, card, null)).status, 200, 'con la base bien, pasa');
+});
+
+test('confirm: 429 y 403 de rol se anotan AGRUPADOS; los demás rechazos, uno por uno', async () => {
+  const rows = []; const audit = async (_db, r) => { rows.push(...r); };
+  const store = createMemoryUsageStore();
+  const { body } = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })], { store });
+  const card = body.proposals[0]; const { confirm_token, ...proposal } = card;
+  const send = (extra = {}) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: extra.noApproval ? {} : { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token: confirm_token, proposal }) }), { ...ENV, ASSISTANT_CONFIRMS_PER_MINUTE: '0' }, OWN, jsonR,
+    { store, resolveRole: async () => extra.role || 'owner', verifyApproval: async () => true, reader, audit });
+  assert.equal((await send({ noApproval: true })).status, 403);
+  assert.equal((await send()).status, 429);
+  assert.equal((await send({ role: 'empleado:off' })).status, 403);
+  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate]), [['rejected:owner_approval_required', false], ['rejected:rate_limited', true], ['rejected:assistant_off', true]]);
+  assert.ok(rows.every((r) => r.device_id === OWN.principalId));
+});
