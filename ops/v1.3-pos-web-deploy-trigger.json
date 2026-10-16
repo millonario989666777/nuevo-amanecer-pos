@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#786 reporte arqueo: cierres de caja solo due\u00f1o en el servidor. Worker 52 ya live (live check OK).",
-  "retry_attempt": 161,
-  "retry_reason": "Deploy de base d8f12ddbb561c547ad67a2ad325e625aa5aa5465 (#786). Rollback: web 160 cc38965253beaec8d0d1c9a127f1fe8e28e7c55b (Cloudflare f6c44181, base 8f6891d5ffd7a053b2547c23d2a0a07f24c6be05).",
-  "requested_at_utc": "2026-10-16T16:56:00Z",
-  "approved_base": "d8f12ddbb561c547ad67a2ad325e625aa5aa5465"
+  "note": "#788 pulido-159: arqueo con 6 columnas y total de Diferencia a <=700px, texto del aviso. Worker 53 ya live (Cloudflare 84a7afc6, live check 401 OK).",
+  "retry_attempt": 162,
+  "retry_reason": "Deploy de base fffaf2ad4c97c30efa0b2de123c2879c230496a3 (#788). Rollback: web 161 cb4b72b7ef1d059438f557c6c65097bae5bafa65 (Cloudflare 97b58ce9, base d8f12ddbb561c547ad67a2ad325e625aa5aa5465).",
+  "requested_at_utc": "2026-10-16T17:45:00Z",
+  "approved_base": "fffaf2ad4c97c30efa0b2de123c2879c230496a3"
 }
