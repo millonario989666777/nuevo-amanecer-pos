@@ -6,6 +6,7 @@
 import { getDatabase } from './database-binding.js';
 import { adjustCanonicalInventory } from './a6-inventory.js';
 import { posRoleFor, verifyOwnerPin } from './pos-roles.js';
+import { canDo } from './pos-permissions.js';
 import { lotsCore, lotsReady } from './stock-lots.js';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
@@ -43,10 +44,19 @@ async function withLots(db,lines){
   return lines.map(l=>{const lots=byId.get(l.purchase_id+':'+l.line_number);return lots?.length?{...l,lots}:l;});
 }
 
+export function redactPurchasesForRole(payload, role) {
+  if (canDo(role, 'purchases.costs.view')) return payload;
+  const line = l => { const { unit_cost_cents, ...rest } = l; return rest; };
+  const row = p => { const { supplier, total_cost_cents, ...rest } = p; return { ...rest, ...(p.lines ? { lines: p.lines.map(line) } : {}) }; };
+  return { ...payload, ...(payload.purchases ? { purchases: payload.purchases.map(row) } : {}),
+    ...(payload.purchase ? { purchase: row(payload.purchase) } : {}), ...(payload.lines ? { lines: payload.lines.map(line) } : {}) };
+}
+
 export async function purchasesRoute(request, env, auth, json) {
   const db = getDatabase(env);
   const ready = !!(await db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='pos_purchases'").first());
   if (request.method === 'GET') {
+    const role = auth.posRole === 'empleado' ? 'empleado' : await posRoleFor(db, auth.principalId);
     if (!ready) return json({ purchases: [], ready: false });
     // Estado de una compra puntual (la app lo consulta antes de cambiar de id): applied | in_progress | not_found.
     const one = new URL(request.url).searchParams.get('id');
@@ -61,8 +71,8 @@ export async function purchasesRoute(request, env, auth, json) {
         for (const l of lines) l.applied = !!(await db.prepare('SELECT 1 ok FROM canonical_inventory_operations WHERE operation_id=?1').bind(one + ':' + l.line_number).first());
       }
       const closed = r ? await closureOf(db, one) : null;
-      return json({ purchase_id: one, status: !r ? 'not_found' : r.status === 'aplicada' ? 'applied' : closed ? 'closed_partial' : 'in_progress', purchase: r || null, lines,
-        closure: closed ? { reason: closed.reason, closed_at: closed.closed_at, missing_lines: JSON.parse(closed.missing_lines || '[]') } : null });
+      return json(redactPurchasesForRole({ purchase_id: one, status: !r ? 'not_found' : r.status === 'aplicada' ? 'applied' : closed ? 'closed_partial' : 'in_progress', purchase: r || null, lines,
+        closure: closed ? { reason: closed.reason, closed_at: closed.closed_at, missing_lines: JSON.parse(closed.missing_lines || '[]') } : null }, role));
     }
     const COLS = 'purchase_id,supplier,document_ref,total_cost_cents,line_count,status,created_at,completed_at';
     // Se pide una fila de más solo para saber si hubo corte; se devuelven como máximo 300.
@@ -84,7 +94,7 @@ export async function purchasesRoute(request, env, auth, json) {
     const lines = ids.length ? ((await db.prepare(`SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id IN (${ids.map((_, i) => '?' + (i + 1)).join(',')}) ORDER BY purchase_id,line_number`).bind(...ids).all()).results || []) : [];
     const detailed=await withLots(db,lines);
     rows.forEach(r => { r.lines = detailed.filter(l => l.purchase_id === r.purchase_id); });
-    return json({ purchases: rows, truncated });
+    return json(redactPurchasesForRole({ purchases: rows, truncated }, role));
   }
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, OPTIONS' });
   if (!ready) return json({ error: 'purchase_schema_not_ready' }, 503);
@@ -92,8 +102,9 @@ export async function purchasesRoute(request, env, auth, json) {
   const invalid = validate(b); if (invalid) return json({ error: invalid }, 400);
   const lotSchema=await lotsReady(db);
   if(b.lines.some(l=>l.lots?.length)&&!lotSchema)return json({error:'lots_schema_not_ready'},503);
-  const supplier = opt(b.supplier, 120), doc = opt(b.document_ref, 80);
-  const total = b.lines.reduce((s, l) => s + (l.unit_cost_cents == null ? 0 : Math.round(l.unit_cost_cents * l.quantity)), 0);
+  let supplier = opt(b.supplier, 120);
+  const doc = opt(b.document_ref, 80);
+  const purchaseTotal = () => b.lines.reduce((s, l) => s + (l.unit_cost_cents == null ? 0 : Math.round(l.unit_cost_cents * l.quantity)), 0);
   async function payloadMatches(saved){
     const stored=await withLots(db,(await db.prepare('SELECT purchase_id,line_number,product_id,quantity,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results||[]);
     const want=[...b.lines].sort((x,y)=>x.line-y.line).map(l=>[l.line,String(l.product_id),Number(l.quantity),l.unit_cost_cents??null,l.lots||[]]);
@@ -102,6 +113,16 @@ export async function purchasesRoute(request, env, auth, json) {
   }
 
   let claim = await db.prepare('SELECT * FROM pos_purchases WHERE purchase_id=?1').bind(b.operation_id).first();
+  async function fillClaimCosts(saved) {
+    const role = auth.posRole === 'empleado' ? 'empleado' : await posRoleFor(db, auth.principalId);
+    if (canDo(role, 'purchases.costs.view')) return;
+    if (b.supplier === undefined) b.supplier = saved.supplier;
+    const stored = (await db.prepare('SELECT line_number,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results || [];
+    const costs = new Map(stored.map(l => [Number(l.line_number), l.unit_cost_cents]));
+    b.lines.forEach(l => { if (l.unit_cost_cents === undefined && costs.has(l.line)) l.unit_cost_cents = costs.get(l.line); });
+    supplier = opt(b.supplier, 120);
+  }
+  if (claim) await fillClaimCosts(claim);
   // Mismo id con otro contenido (líneas, cantidades, costos, proveedor o comprobante): 409 y no se aplica nada.
   // Se compara contra lo guardado en la primera llamada (pos_purchases + pos_purchase_lines); no hace falta migración.
   // Cerrada como parcial: siempre 409 closed, aunque el contenido sea otro (se revisa antes de comparar).
@@ -114,7 +135,7 @@ export async function purchasesRoute(request, env, auth, json) {
   if (!claim) {
     const assertion='purchase:'+crypto.randomUUID();
     const stmts = [db.prepare(`INSERT INTO pos_purchases(purchase_id,promotion_id,supplier,document_ref,total_cost_cents,line_count,status,principal_id,created_at)
-      VALUES(?1,?2,?3,?4,?5,?6,'en_curso',?7,?8) ON CONFLICT DO NOTHING`).bind(b.operation_id, b.promotion_id, supplier, doc, total, b.lines.length, String(auth.principalId || 'unknown'), b.created_at)];
+      VALUES(?1,?2,?3,?4,?5,?6,'en_curso',?7,?8) ON CONFLICT DO NOTHING`).bind(b.operation_id, b.promotion_id, supplier, doc, purchaseTotal(), b.lines.length, String(auth.principalId || 'unknown'), b.created_at)];
     // Only the request that created the header can create its immutable lines/lots.
     // A concurrent loser rolls back before inserting metadata into another receipt.
     stmts.push(db.prepare('INSERT INTO canonical_assertions(assertion_id,ok) VALUES(?1,CASE WHEN changes()=1 THEN 1 ELSE 0 END)').bind(assertion));
@@ -125,6 +146,7 @@ export async function purchasesRoute(request, env, auth, json) {
     try{await db.batch(stmts);}catch(error){
       claim=await db.prepare('SELECT * FROM pos_purchases WHERE purchase_id=?1').bind(b.operation_id).first();
       if(!claim)throw error;
+      await fillClaimCosts(claim);
       if(!await payloadMatches(claim))return json({error:'purchase_payload_mismatch',purchase_id:b.operation_id,status:claim.status==='aplicada'?'applied':'in_progress'},409);
       if(claim.status==='aplicada')return json({status:'already_processed',purchase_id:b.operation_id,idempotent:true},200);
     }
@@ -148,7 +170,10 @@ export async function purchasesRoute(request, env, auth, json) {
   }
   const at = new Date().toISOString();
   await db.prepare("UPDATE pos_purchases SET status='aplicada',completed_at=?2 WHERE purchase_id=?1 AND status='en_curso'").bind(b.operation_id, at).run();
-  return json({ status: 'applied', purchase_id: b.operation_id, supplier, document_ref: doc, total_cost_cents: total, applied, skipped }, 201);
+  const done = { status: 'applied', purchase_id: b.operation_id, supplier, document_ref: doc, total_cost_cents: purchaseTotal(), applied, skipped };
+  const viewer = auth.posRole === 'empleado' ? 'empleado' : await posRoleFor(db, auth.principalId);
+  if (!canDo(viewer, 'purchases.costs.view')) { delete done.supplier; delete done.total_cost_cents; }
+  return json(done, 201);
 }
 
 // Bot 6 ítem 9: «Cerrar como parcial». Solo el aparato del dueño y con PIN maestro + motivo. Conserva las líneas

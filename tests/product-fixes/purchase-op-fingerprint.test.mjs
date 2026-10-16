@@ -119,3 +119,43 @@ test('Bot 6 item 4: compra a medias sin productos en común queda en Historial c
   assert.equal(sent[0].meta.supplier, 'Sol');
   assert.equal(JSON.parse(store.get('na_purchase_pending_ops_v2') || '{}')[a.id], undefined, 'id liberado tras terminar');
 });
+
+test('redacted history and status finish args omit hidden keys and retain explicit null costs', async () => {
+  const row = { purchase_id: 'PUR-u1', document_ref: 'F1', lines: [{ line_number: 1, product_id: 'A', quantity: 2 }] };
+  const { P } = load({ 'PUR-u1': { status: 'in_progress', purchase: row, lines: row.lines } });
+  const args = P._historyFinishArgs(row);
+  assert.equal('supplier' in args.meta, false);
+  assert.equal('unit_cost_cents' in args.lines[0], false);
+  await P._opFor(L1, M);
+  const pick = await P._opFor(L2, M);
+  assert.equal('supplier' in pick.finish.meta, false);
+  assert.equal('unit_cost_cents' in pick.finish.lines[0], false);
+  row.supplier = null; row.lines[0].unit_cost_cents = null;
+  assert.equal(P._historyFinishArgs(row).lines[0].unit_cost_cents, null);
+});
+
+test('history hides supplier and money for employees and missing permissions, preserving markup', async () => {
+  for (const role of ['owner', 'empleado', undefined]) {
+    const list = { innerHTML: '', querySelectorAll: () => [] }, button = {};
+    const w = { querySelector: s => s === '.na-pur-list' ? list : button, addEventListener() {} };
+    const root = {
+      document: { querySelector: () => null, getElementById: () => null, createElement: () => w, body: { appendChild() {} } },
+      NA_ROLES: { role, api: async () => ({ purchases: ['aplicada', 'en_curso'].map(status => ({
+        status, supplier: 'Proveedor secreto', document_ref: 'F1', created_at: '2026-10-16',
+        total_cost_cents: 99900, lines: [{ product_id: 'A', quantity: 3, unit_cost_cents: 33300 }]
+      })) }) }
+    };
+    if (role) root.NA_PERMISSIONS = { canDo: (r, a) => r === 'owner' && a === 'purchases.costs.view' };
+    vm.runInNewContext(readFileSync(new URL('../../POS/js/config/pos-purchases-client.js', import.meta.url), 'utf8'), { globalThis: root, window: root });
+    await root.NA_PURCHASES.history();
+    assert.match(list.innerHTML, /na-pur-row/);
+    assert.match(list.innerHTML, /F1/);
+    assert.match(list.innerHTML, /2026-10-16/);
+    if (role === 'owner') assert.match(list.innerHTML, /Proveedor secreto.*S\/ 999.00/s);
+    else {
+      assert.doesNotMatch(list.innerHTML, /Proveedor secreto|S\/|×|sin costo/);
+      assert.match(list.innerHTML, /<strong>Compra<\/strong>/);
+      assert.match(list.innerHTML, /x 3/);
+    }
+  }
+});
