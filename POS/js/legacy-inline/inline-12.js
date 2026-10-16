@@ -233,18 +233,19 @@ abrirDetalleCredito=function(creditId){
   container.replaceChildren();
 
   const summary=_naSecAppend(container,'div','credit-detail-summary');
+  const voidedCredit=typeof _naIsCreditVoided==='function'&&_naIsCreditVoided(credit);
 
   [
     ['Cliente',client?.nombre||credit.clienteNombre||'Cliente'],
     ['Estado',_naCreditStatusLabel(credit)],
     ['Monto original',fmt(credit.monto)],
     ['Total abonado',fmt(credit.pagado)],
-    ['Saldo pendiente',fmt(pending)],
+    [voidedCredit?'Saldo anulado':'Saldo pendiente',fmt(pending),voidedCredit?'credit-saldo-anulado':''],
     ['\u00daltimo abono',latestPayment?fmt(latestPayment.monto):'Sin pagos']
-  ].forEach(([label,value])=>{
+  ].forEach(([label,value,cls])=>{
     const box=_naSecAppend(summary,'div','credit-detail-box');
     _naSecAppend(box,'span','',label);
-    _naSecAppend(box,'strong','',value);
+    _naSecAppend(box,'strong',cls||'',value);
   });
 
   const meta=_naSecAppend(container,'div','credit-pay-meta');

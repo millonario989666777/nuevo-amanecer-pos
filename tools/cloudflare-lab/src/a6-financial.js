@@ -137,7 +137,9 @@ export async function createCanonicalFinancial(command, request, env, auth, json
   if (creditId) {
     credit = await db.prepare('SELECT * FROM canonical_credit_balances WHERE promotion_id=?1 AND credit_id=?2').bind(body.promotion_id,creditId).first();
     if (!credit || credit.revision !== body.expected_credit_revision) return json({error:'stale_credit'},409);
-    if (command === 'payment.create' && credit.provenance === 'IMPORT' && await importCreditVoided(db, body.promotion_id, creditId)) return json({error:'credit_voided',credit_id:creditId},409);
+    // Abonar o anular un abono de un crédito importado anulado en origen: 409 sin aplicar nada. El replay idempotente
+    // (replay() más arriba) ya respondió antes. adjustment.create no tiene crédito (es un ajuste de caja), así que no aplica.
+    if ((command === 'payment.create' || command === 'compensation.create') && credit.provenance === 'IMPORT' && await importCreditVoided(db, body.promotion_id, creditId)) return json({error:'credit_voided',credit_id:creditId},409);
     const balance = credit.current_balance_cents + creditDelta;
     if (!uint(balance) || balance > credit.opening_balance_cents) return json({error:'credit_balance_conflict'},409);
     assert(`EXISTS(SELECT 1 FROM canonical_credit_balances WHERE promotion_id=?2 AND credit_id=?3 AND provenance=?4
