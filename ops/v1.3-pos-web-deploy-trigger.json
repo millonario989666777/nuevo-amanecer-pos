@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#734 rotación ABC muestra nombre/código; #735 reporte de deuda por cliente (solo owner); #736 códigos de barras duplicados (solo lectura). Worker 43 ya live.",
+  "note": "#734 rotación ABC nombre/código; #735 reporte de deuda; #736 códigos duplicados; #739 páginas fuera de secciones LAB (fix gate). Worker 43 ya live.",
   "retry_attempt": 142,
-  "retry_reason": "Deploy de base b0976d74 (#734, #735, #736). Rollback: 63c5bd34bd29db7eb7af2c9873c1b0e47f235dfc (build de 141).",
-  "requested_at_utc": "2026-10-16T03:19:16Z",
-  "approved_base": "b0976d74c4de06ba9a8f8d2499238160198d8247"
+  "retry_reason": "Reintento web 142 con base 710e3072af2581d6d10a800af0b93a79f7fb724a (#734-#736 + #739); el intento anterior falló en el gate de paridad LAB sin desplegar. Rollback: 63c5bd34bd29db7eb7af2c9873c1b0e47f235dfc (build de 141).",
+  "requested_at_utc": "2026-10-16T03:28:26Z",
+  "approved_base": "710e3072af2581d6d10a800af0b93a79f7fb724a"
 }
