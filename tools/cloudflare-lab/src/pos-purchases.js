@@ -116,10 +116,10 @@ export async function purchasesRoute(request, env, auth, json) {
   async function fillClaimCosts(saved) {
     const role = auth.posRole === 'empleado' ? 'empleado' : await posRoleFor(db, auth.principalId);
     if (canDo(role, 'purchases.costs.view')) return;
-    if (b.supplier === undefined) b.supplier = saved.supplier;
+    b.supplier = saved.supplier;
     const stored = (await db.prepare('SELECT line_number,unit_cost_cents FROM pos_purchase_lines WHERE purchase_id=?1 ORDER BY line_number').bind(b.operation_id).all()).results || [];
     const costs = new Map(stored.map(l => [Number(l.line_number), l.unit_cost_cents]));
-    b.lines.forEach(l => { if (l.unit_cost_cents === undefined && costs.has(l.line)) l.unit_cost_cents = costs.get(l.line); });
+    b.lines.forEach(l => { if (costs.has(l.line)) l.unit_cost_cents = costs.get(l.line) ?? null; });
     supplier = opt(b.supplier, 120);
   }
   if (claim) await fillClaimCosts(claim);
