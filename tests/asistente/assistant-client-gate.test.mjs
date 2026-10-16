@@ -115,3 +115,67 @@ test('documento: siempre marcado como NO comprobante SUNAT y escapado', () => {
   const html = C.documentHtml({ title: 'Nota', tipo: 'nota_venta', lineas: [{ nombre: '<script>x</script>', cantidad: 2, precio: 1.5 }] }, 'Botica');
   assert.ok(html.includes('NO ES COMPROBANTE SUNAT')); assert.ok(!html.includes('<script>x')); assert.ok(html.includes('S/ 3.00'));
 });
+
+// ---- Hallazgo de Bot 2 (ALTO): con la tarjeta 1 pendiente, Confirmar en la tarjeta 2 ejecutaba la propuesta de la tarjeta 1 ----
+import { assistantChatRoute, assistantConfirmRoute, createMemoryUsageStore } from '../../tools/cloudflare-lab/src/pos-assistant.js';
+const jsonR = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+const ENV = { ASSISTANT_ENABLED: '1', ASSISTANT_CONFIRM_SECRET: 'secreto-de-prueba-0123456789abcdef', ASSISTANT_DEMO: '1' };
+const OWN = { principalId: 'session:dev-owner', posRole: 'owner' };
+const CTX = { products: [{ id: 'A', nombre: 'Arroz', precio: 12.34, stock: 50 }, { id: 'G', nombre: 'Gaseosa', precio: 12.34, stock: 50 }] };
+async function serverCard(store, text) {
+  const r = await assistantChatRoute(new Request('https://w.test/auth/assistant/chat', { method: 'POST', body: JSON.stringify({ text, context: CTX }) }), ENV, OWN, jsonR, { store, resolveRole: async () => 'owner' });
+  return (await r.json()).proposals[0];
+}
+function serverConfirm(store) {
+  return async (p, review) => { const { confirm_token, ...proposal } = p;
+    const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR, { store, resolveRole: async () => 'owner', verifyApproval: async () => true });
+    return r.json(); };
+}
+
+test('dos tarjetas pendientes: Confirmar en la segunda llena el carrito SOLO con la segunda (Worker real)', async () => {
+  const store = createMemoryUsageStore();
+  const c1 = await serverCard(store, 'vende 2 arroz y 1 gaseosa');
+  const c2 = await serverCard(store, 'vende 1 arroz');
+  assert.notEqual(c1.id, c2.id, 'ids distintos generados por el servidor');
+  const cart = [];
+  const { d } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: serverConfirm(store), posAdd: (id) => { cart.push(id); return true; } });
+  const gate = C.createGate(d);
+  const k1 = gate.add(c1), k2 = gate.add(c2);
+  const r = await gate.execute(k2, { confirmed: true });
+  assert.equal(r.ok, true);
+  const want = c2.lineas.flatMap((l) => Array(l.cantidad).fill(l.product_id));
+  assert.deepEqual(cart, want); assert.deepEqual(cart, ['A']);
+  assert.equal(gate.state(k1), 'pending', 'la tarjeta 1 sigue sin tocar');
+});
+
+test('id repetido con otro token (como el error viejo): cada tarjeta conserva su propia propuesta', async () => {
+  const cart = [];
+  const a = { id: 'p1-preparar_venta', type: 'venta', needsConfirm: true, confirm_token: 't1', lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 2, precio: 1 }, { product_id: 'G', nombre: 'Gaseosa', cantidad: 1, precio: 1 }] };
+  const b = { id: 'p1-preparar_venta', type: 'venta', needsConfirm: true, confirm_token: 't2', lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 1, precio: 1 }] };
+  const seen = [];
+  const { d } = deps(owner, { productos: () => [{ id: 'A', name: 'Arroz' }, { id: 'G', name: 'Gaseosa' }], confirm: async (p) => { seen.push(p.confirm_token); return { ok: true, operation_id: 'AST-x', proposal: p }; }, posAdd: (id) => { cart.push(id); return true; } });
+  const gate = C.createGate(d);
+  const ka = gate.add(a), kb = gate.add(b);
+  assert.notEqual(ka, kb);
+  await gate.execute(kb, { confirmed: true });
+  assert.deepEqual(seen, ['t2']); assert.deepEqual(cart, ['A']);
+});
+
+test('se aplica la propuesta devuelta por el servidor; si no coincide con la tarjeta, no se ejecuta nada', async () => {
+  const cart = [];
+  const mine = { id: 'u-1', type: 'venta', needsConfirm: true, confirm_token: 't', lineas: [{ product_id: 'P1', nombre: 'Paracetamol', cantidad: 1, precio: 0.5 }] };
+  const { d } = deps(owner, { confirm: async () => ({ ok: true, operation_id: 'AST-1', proposal: { ...mine, id: 'u-otra' } }), posAdd: (id) => { cart.push(id); return true; } });
+  const gate = C.createGate(d); const k = gate.add(mine);
+  const r = await gate.execute(k, { confirmed: true });
+  assert.equal(r.ok, false); assert.deepEqual(cart, []);
+});
+
+test('compra con filas marcadas: la revisión (aceptar/quitar) viaja a confirm y se abre la compra con lo que devolvió el servidor', async () => {
+  let got = null, filled = null;
+  const p = { id: 'u-c', type: 'compra', needsConfirm: true, confirm_token: 't', lineas: [{ nombre: 'X', cantidad: 9999, costo_unitario: 99999, revisar: ['cantidad'] }, { nombre: 'Y', cantidad: 2, costo_unitario: 1 }] };
+  const { d } = deps(owner, { confirm: async (pp, review) => { got = review; return { ok: true, operation_id: 'AST-2', proposal: { ...pp, lineas: [pp.lineas[1]], quitadas: [0] } }; }, fillPurchase: (w, x) => { filled = x; } });
+  const gate = C.createGate(d); const k = gate.add(p);
+  const r = await gate.execute(k, { confirmed: true, review: { op: 'AST-2', accept: [], drop: [0] } });
+  assert.equal(r.ok, true); assert.deepEqual(got, { op: 'AST-2', accept: [], drop: [0] });
+  assert.deepEqual(filled.lineas.map((l) => l.nombre), ['Y'], 'la fila quitada no llega a «Nueva compra»');
+});

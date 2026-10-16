@@ -7,9 +7,9 @@
   var PATTERNS = [
     [/\b(pin|clave|contrase(?:ñ|n)a|password|token|api[ _-]?key)\b(\s*(?:es|era|de|:|=)?\s*)[^\s,.;]{3,}/gi, '$1$2[oculto]'],
     [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[correo oculto]'],
-    [/\b(?:10|15|17|20)\d{9}\b/g, '[RUC oculto]'],
+    [/\b(?:RUC\s*(?:N[°º.]?\s*)?[:#-]?\s*)?(?:10|15|17|20)\d{9}\b/gi, '[RUC oculto]'],
     [/(?:\+?51[\s-]?)?\b9\d{2}[\s-]?\d{3}[\s-]?\d{3}\b/g, '[teléfono oculto]'],
-    [/\b\d{8}\b/g, '[DNI oculto]']
+    [/\b(?:DNI\s*[:#-]?\s*)?\d{8}\b/gi, '[DNI oculto]']
   ];
   function redactText(v) { var s = String(v == null ? '' : v); PATTERNS.forEach(function (p) { s = s.replace(p[0], p[1]); }); return s; }
   function perms() { return root.NA_PERMISSIONS; }
@@ -104,21 +104,32 @@
       if (it.p.needsConfirm) {
         if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar (falta el permiso del servidor).' }; }
         var c;
-        try { c = await deps.confirm(it.p); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, msg: 'Se cortó la conexión. Pulsa Confirmar otra vez: no se duplicará.' }; }
+        try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, msg: 'Se cortó la conexión. Pulsa Confirmar otra vez: no se duplicará.' }; }
         if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'proposal_changed')) ? 'denied' : 'pending';
-          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
+          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa las filas marcadas antes de confirmar.', owner_approval_required: 'Falta el PIN del dueño.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
         it.operationId = c.operation_id;
+        // Se aplica la propuesta que el servidor verificó para ESTE token, nunca otra que esté en memoria.
+        if (c.proposal) { if (c.proposal.id !== it.p.id || c.proposal.type !== it.p.type) { it.state = 'denied'; return { ok: false, msg: 'La propuesta no coincide. Pídela otra vez.' }; } it.applied = c.proposal; }
         if (c.already_confirmed && it.executed) { it.state = 'done'; return { ok: true, msg: 'Ya se hizo. No se repitió.' }; }
       }
       if (it.executed) { it.state = 'done'; return { ok: true, msg: 'Ya se hizo. No se repitió.' }; }
       try {
-        var r = EXECUTORS[it.p.type](it.p, deps, it.operationId);
+        var r = EXECUTORS[it.p.type](it.applied || it.p, deps, it.operationId);
         if (r.ok) it.executed = true;
         it.state = r.ok ? 'done' : 'pending'; return r;
       } catch (e) { it.state = 'pending'; return { ok: false, msg: 'No se pudo completar. Inténtalo otra vez.' }; }
     }
     return {
-      add: function (p) { if (p && p.id && !items[p.id]) items[p.id] = { p: p, state: 'pending', executed: false, operationId: null, inflight: null }; return items[p.id]; },
+      // Cada tarjeta tiene su propia entrada (clave = id firmado por el servidor). Si llegara un id repetido con OTRO token,
+      // se le da una clave nueva: nunca se reutiliza la propuesta de otra tarjeta.
+      add: function (p) {
+        if (!p || !p.id) return null;
+        var key = String(p.id), n = 1;
+        while (items[key] && items[key].p.confirm_token !== p.confirm_token) key = p.id + '#' + (++n);
+        if (!items[key]) items[key] = { p: p, key: key, state: 'pending', executed: false, operationId: null, inflight: null, applied: null, review: null };
+        return key;
+      },
+      proposal: function (key) { return items[key] ? items[key].p : null; },
       state: function (id) { return items[id] ? items[id].state : null; },
       operationId: function (id) { return items[id] ? items[id].operationId : null; },
       cancel: function (id) { if (items[id] && items[id].state === 'pending') items[id].state = 'cancelled'; },
@@ -129,6 +140,7 @@
         if (it.inflight) return it.inflight;
         if (it.state === 'done') return Promise.resolve({ ok: true, msg: 'Ya se hizo. No se repitió.' });
         if (it.state !== 'pending') return Promise.resolve({ ok: false, msg: it.state === 'cancelled' ? 'Se canceló.' : 'No permitido.' });
+        if (opts.review) it.review = opts.review;
         it.state = 'running';
         it.inflight = run(it).finally(function () { it.inflight = null; });
         return it.inflight;

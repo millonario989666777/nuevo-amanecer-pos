@@ -116,7 +116,8 @@
 [data-q="high"][data-state="offline"] .na-asst-squash{animation:asstDroop 5s ease-in-out infinite}
 [data-q="high"][data-state="feliz"] .na-asst-face .lid{animation:none}
 [data-paused="1"] *,[data-paused="1"]{animation-play-state:paused!important}
-@media (prefers-reduced-motion:reduce){.na-asst-char *{animation:none!important}.na-asst-char .na-asst-face .lid{animation:asstBlink 8s infinite!important}}
+/* Reducir movimiento: ninguna animación infinita (tampoco parpadeo ni fundidos de Pensando/Feliz/Error). */
+@media (prefers-reduced-motion:reduce){.na-asst-root *,.na-asst-root,.na-asst-panel *{animation:none!important;transition:none!important}}
 
 /* ---- Panel de chat ---- */
 .na-asst-panel{position:fixed;z-index:400;display:flex;flex-direction:column;background:#f8fafc;color:#0f172a;box-shadow:0 18px 50px rgba(2,6,23,.35);font-size:17px;line-height:1.35}
@@ -189,3 +190,15 @@ body.dark .na-asst-card.denied{background:#2a0f0f;border-color:#7f1d1d}
 body.dark .na-asst-card.denied h4{color:#fecaca}
 body.dark .na-asst-card .pill{background:#14532d;color:#dcfce7}
 .na-asst-chips[hidden]{display:none}
+
+/* Filas de compra con datos fuera de rango: rojo con texto (sin emoji), contraste >= 4.5:1 */
+.na-asst-card tr.flag td{background:#fef2f2}.na-asst-card tr.flag .flag-t{color:#991b1b;font-weight:800;font-size:15px;margin-top:4px}
+.na-asst-card tr.flag[data-decision] td{background:#f8fafc}.na-asst-card tr.flag[data-decision] .flag-t{color:#334155}
+.na-asst-card tr[data-decision="drop"] td{text-decoration:line-through}
+.na-asst-card .flag-a{display:flex;gap:8px;margin-top:6px}.na-asst-card .flag-a button{min-height:44px;padding:0 12px;border-radius:10px;border:2px solid #991b1b;background:#fff;color:#991b1b;font-weight:800;font-size:15px}
+.na-asst-card tr.flag[data-decision] .flag-a{display:none}
+.na-asst-card .nr{color:#92400e}
+.na-asst-ok:disabled{background:#475569;color:#fff}
+body.dark .na-asst-card tr.flag td{background:#3b1212}body.dark .na-asst-card tr.flag .flag-t{color:#fecaca}
+body.dark .na-asst-card tr.flag[data-decision] td{background:#10261a}body.dark .na-asst-card tr.flag[data-decision] .flag-t{color:#cbd5e1}
+body.dark .na-asst-card .flag-a button{background:#1f0a0a;color:#fecaca;border-color:#fca5a5}body.dark .na-asst-card .nr{color:#fcd34d}

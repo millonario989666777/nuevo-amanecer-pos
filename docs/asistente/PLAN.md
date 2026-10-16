@@ -12,7 +12,7 @@ Rama: `feature/asistente-aislado` (sale de `feature/v1.3-mobile-cloud`). No se u
   - Preparar una compra o leer la foto de una factura: abre "Nueva compra" ya llena para revisar. Solo dueño.
   - Proponer un cambio de precio: abre la ficha del producto con el precio nuevo. Solo dueño.
   - Hacer una vista previa de documento (nota de venta, cotización, lista de precios). No es comprobante SUNAT y lo dice en la hoja.
-- Nada se hace solo. Cada acción sale como una tarjeta con "Confirmar". La tarjeta vence en 5 minutos, se usa una sola vez y las de dueño piden el PIN del dueño.
+- Nada se hace solo. Cada acción sale como una tarjeta con "Confirmar". La tarjeta vence en 5 minutos, se usa una sola vez y las de dueño piden el PIN del dueño. El servidor exige ese PIN: la aprobación queda ligada al número de operación de esa tarjeta y se gasta al confirmar, así que no se puede saltar desde la consola del navegador.
 - Si el aparato es de empleado y pide algo de dueño, la respuesta es "Solo el dueño puede cambiar precios."
 - Sin internet la burbuja se pone gris y dice "Asistente no disponible sin internet".
 - Estados de la burbuja: Listo, Concentrado, Pensando, Hablando, Feliz, Error y Sin internet. Las animaciones bajan de calidad solas en celulares lentos, con batería baja o si el usuario pidió menos movimiento, y se pausan si la pestaña no se ve.
@@ -25,10 +25,12 @@ Rama: `feature/asistente-aislado` (sale de `feature/v1.3-mobile-cloud`). No se u
 - En el Worker:
   - `tools/cloudflare-lab/src/pos-assistant.js`: rutas `POST /auth/assistant/chat` y `POST /auth/assistant/confirm`.
   - Apagado por defecto: sin `ASSISTANT_ENABLED=1` responde 404.
-  - La clave de DeepSeek vive solo en el Worker (`DEEPSEEK_API_KEY`). Sin clave funciona en modo demostración.
+  - La clave de DeepSeek vive solo en el Worker (`DEEPSEEK_API_KEY`). Sin clave responde "asistente no configurado" (503). El modo demostración solo se enciende a propósito con `ASSISTANT_DEMO=1`, para el prototipo local y las pruebas.
   - Modelo `deepseek-flash`, sin modo "pensar", con herramientas. La dirección se puede cambiar con `DEEPSEEK_BASE_URL` (así se probó con el mock de Bot 2).
 - Seguridad:
   - El rol lo decide el servidor. Para el asistente, un aparato sin fila de rol cuenta como empleado.
+  - Cada propuesta lleva un número único que crea el servidor y va firmado. Si el celular manda otro número, se rechaza.
+  - Los nombres de productos van al modelo en un bloque aparte marcado como solo dato, no junto a las reglas.
   - Cada rol solo recibe sus herramientas. El empleado nunca ve las de dueño.
   - Se rechazan parámetros como role, pin, approval o token.
   - Antes de llamar al modelo se ocultan DNI, RUC, teléfonos, correos, PIN, claves y tokens.
@@ -65,6 +67,7 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 - Costo: si alguien abusa, los límites por aparato (por minuto y por día) y el tope mensual lo frenan.
 - Dependencia de internet y de DeepSeek: sin internet o si DeepSeek falla, el asistente dice que no está disponible y el POS sigue funcionando igual.
 - Velocidad del POS: el asistente se carga después de que el POS abrió y solo si se activa. Las animaciones bajan de calidad solas.
+- El dueño hoy aparece como empleado para el asistente. Ningún código crea la fila "owner" en la tabla de roles de aparatos: solo se crean filas de empleado al vincular una caja. El resto del POS trata "sin fila" como dueño, pero el asistente, por seguridad, lo trata como empleado. Resultado: el dueño real no ve las herramientas de dueño (precios y compras) en el asistente. No se tocó ningún dato de roles. El arreglo, que necesita la aprobación del dueño, sería una forma aprobada de marcar su aparato como "owner" (por ejemplo, un paso en Configuración que pida su PIN y guarde esa fila), o una migración que lo haga una sola vez.
 - Falta un registro de auditoría en el servidor. Hacerlo necesita una migración de base de datos, y eso requiere aprobación del dueño.
 
 ## 5. Siguientes pasos
@@ -78,5 +81,5 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 ## 6. Dónde ver las pruebas
 - Capturas: `/workspace/asistente-proto/shots/` (390x844, 768 y 1280x800, tema verde y nocturno).
 - Videos: `/workspace/asistente-proto/asistente-estados-390.mp4` y `asistente-estados-1280.mp4` (también en .webm).
-- Pruebas automáticas: `tests/asistente/` en la rama (26 pruebas, todas pasan).
+- Pruebas automáticas: `tests/asistente/` en la rama (30 pruebas, todas pasan).
 - Suite de permisos de Bot 5, adaptada en una copia (`/workspace/asistente-proto/bot5-adaptado/`): 30 pasan. La tarjeta vencida pasa con la espera real de 5 minutos. No pasan: el registro de auditoría (falta la tabla), una revisión del propio mock y dos casos del POS que fallan igual en la rama base. No hay abono a propósito.
