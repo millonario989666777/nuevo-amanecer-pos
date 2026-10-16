@@ -89,6 +89,7 @@
     <link rel="stylesheet" href="css/sales-reports.css">
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
+    <link rel="stylesheet" href="css/ventas-stock.css">
     <link rel="stylesheet" href="css/historial-compras.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
@@ -421,6 +422,24 @@
     </div>
 </div>
 
+<div class="page" id="pageVentasStock" aria-labelledby="ventasStockTitle">
+  <div class="vs-shell">
+    <header><h1 id="ventasStockTitle">Ventas con stock</h1>
+      <p class="vs-description">Consulta las ventas y la cobertura del stock para priorizar la reposición.</p></header>
+    <div class="vs-controls" data-vs-controls hidden>
+      <label>Período<select data-vs-period aria-label="Período">
+        <option value="7">Últimos 7 días</option><option value="30" selected>Últimos 30 días</option><option value="90">Últimos 90 días</option>
+      </select></label>
+      <label>Categoría<select data-vs-category aria-label="Categoría"><option value="*">Todas las categorías</option></select></label>
+      <label>Buscar producto<input type="search" data-vs-search aria-label="Buscar producto" placeholder="Nombre o código"></label>
+      <button type="button" data-vs-refresh>Actualizar reporte</button>
+      <button type="button" data-vs-export>Exportar CSV</button>
+    </div>
+    <p class="vs-method">Cobertura = stock ÷ promedio diario vendido. Reponer: cobertura &lt; 7 días o stock ≤ mínimo (con stock y mínimo positivos). Se excluyen ventas anuladas. Los productos fuera del catálogo figuran sin control.</p>
+    <p class="vs-status" data-vs-status role="status" aria-live="polite"></p>
+    <div data-vs-content></div>
+  </div>
+</div>
 <div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
   <div class="abc-shell">
     <header>
@@ -1176,6 +1195,7 @@
 <script src="js/modules/proximamente.js"></script>
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
+<script src="js/modules/ventas-stock.js"></script>
 <script src="js/inventory/historial-compras.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>
