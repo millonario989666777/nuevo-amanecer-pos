@@ -92,3 +92,31 @@ test('modo claro 390px: colores idénticos a los de antes del cambio', async ({ 
 });
 
 const LIGHT_MENU_ICON = 'rgb(25, 52, 76)';
+
+// Tono ámbar de la franja (#fef3c7): una venta pendiente de envío, sin caja de otro día.
+async function showAmberBanner(page: Page) {
+  await page.evaluate(() => {
+    const w = window as any;
+    w.NuevoAmanecerCanonical = Object.assign({}, w.NuevoAmanecerCanonical || {}, { enabled: () => true, snapshot: () => ({ cashSessions: [] }), pendingSnapshot: () => null });
+    w.NuevoAmanecerCanonicalUIAdapter = Object.assign({}, w.NuevoAmanecerCanonicalUIAdapter || {}, { cashState: () => null });
+    w.NuevoAmanecerCanonicalSaleOutbox = Object.assign({}, w.NuevoAmanecerCanonicalSaleOutbox || {}, { snapshot: () => ({ intents: [{ id: 'amber-1' }] }), quarantine: () => ({ entries: [] }) });
+    w.NuevoAmanecerStatusBanner.render();
+  });
+  await expect(page.locator('#naStatusBanner')).toContainText('1 operación pendiente · reintentando');
+}
+
+for (const dark of [true, false]) {
+  test(`franja ámbar 390px, modo ${dark ? 'oscuro: AA sin el amarillo claro' : 'claro: colores de siempre'}`, async ({ page }) => {
+    await boot(page, dark);
+    await showAmberBanner(page);
+    const s = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+    if (dark) {
+      expect(s.bg).not.toBe('rgb(254, 243, 199)');
+      expect(s.ratio, `${s.fg} sobre ${s.bg}`).toBeGreaterThanOrEqual(4.5);
+      expect([s.fg, s.bg]).toEqual(['rgb(253, 230, 138)', 'rgb(69, 26, 3)']);
+    } else {
+      expect([s.fg, s.bg]).toEqual(['rgb(146, 64, 14)', 'rgb(254, 243, 199)']);
+      expect(await page.locator('#naStatusBanner').evaluate(el => getComputedStyle(el).borderBottomColor)).toBe('rgb(252, 211, 77)');
+    }
+  });
+}
