@@ -287,17 +287,6 @@
     <div class="table-wrap"><div class="table-card"><table><thead><tr><th>Producto</th><th>Cat.</th><th>Precio</th><th>Vencimiento</th><th>Stock</th><th>Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>
 </div>
 
-<div class="page" id="pageCodigosDuplicados">
-    <header class="cd-header">
-        <h1>Códigos duplicados</h1>
-        <button class="cd-button" type="button" data-cd-back>Volver a Inventario</button>
-        <button class="cd-button" type="button" data-cd-refresh data-cd-owner hidden>Actualizar lista</button>
-    </header>
-    <p class="cd-intro" data-cd-owner hidden>Las fotos de esos códigos no se asignan solas porque el código pertenece a más de un producto. Se corrige editando el producto y revisando sus códigos. Esta lista es de solo lectura.</p>
-    <p class="cd-status" data-cd-status role="status" aria-live="polite"></p>
-    <div class="cd-list" data-cd-list></div>
-</div>
-
 <!-- CLIENTES -->
 <div class="page" id="pageClientes">
     <div class="page-chrome">
@@ -320,24 +309,6 @@
     </div>
     </div>
     <div class="cli-list" id="cliList"></div>
-</div>
-
-<div class="page" id="pageReporteDeuda">
-    <header class="rd-header">
-        <h1>Reporte de deuda</h1>
-        <p>Clientes con saldo pendiente. Toca un cliente para abrir su ficha.</p>
-    </header>
-    <div class="rd-toolbar">
-        <button type="button" class="rd-back" data-rd-back>Volver a Clientes</button>
-        <label data-rd-owner-control>Ordenar por
-            <select data-rd-sort>
-                <option value="saldo">Saldo pendiente: mayor a menor</option>
-                <option value="vencida">Deuda vencida: mayor a menor</option>
-            </select>
-        </label>
-    </div>
-    <p class="rd-status" role="status" aria-live="polite" data-rd-status></p>
-    <div class="rd-content" data-rd-content></div>
 </div>
 
 <!-- CAJA -->
@@ -450,6 +421,35 @@
     <p class="abc-status" data-abc-status role="status" aria-live="polite"></p>
     <div data-abc-content></div>
   </div>
+</div>
+
+<div class="page" id="pageReporteDeuda">
+    <header class="rd-header">
+        <h1>Reporte de deuda</h1>
+        <p>Clientes con saldo pendiente. Toca un cliente para abrir su ficha.</p>
+    </header>
+    <div class="rd-toolbar">
+        <button type="button" class="rd-back" data-rd-back>Volver a Clientes</button>
+        <label data-rd-owner-control>Ordenar por
+            <select data-rd-sort>
+                <option value="saldo">Saldo pendiente: mayor a menor</option>
+                <option value="vencida">Deuda vencida: mayor a menor</option>
+            </select>
+        </label>
+    </div>
+    <p class="rd-status" role="status" aria-live="polite" data-rd-status></p>
+    <div class="rd-content" data-rd-content></div>
+</div>
+
+<div class="page" id="pageCodigosDuplicados">
+    <header class="cd-header">
+        <h1>Códigos duplicados</h1>
+        <button class="cd-button" type="button" data-cd-back>Volver a Inventario</button>
+        <button class="cd-button" type="button" data-cd-refresh data-cd-owner hidden>Actualizar lista</button>
+    </header>
+    <p class="cd-intro" data-cd-owner hidden>Las fotos de esos códigos no se asignan solas porque el código pertenece a más de un producto. Se corrige editando el producto y revisando sus códigos. Esta lista es de solo lectura.</p>
+    <p class="cd-status" data-cd-status role="status" aria-live="polite"></p>
+    <div class="cd-list" data-cd-list></div>
 </div>
 
 <!-- GASTOS -->
