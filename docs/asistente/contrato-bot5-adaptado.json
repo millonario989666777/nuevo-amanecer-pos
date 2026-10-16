@@ -1,0 +1,81 @@
+{
+ "_nota": "ADAPTADO por el prototipo (copia). Original en /workspace/asistente/grokbot5/pruebas/contrato.json sin tocar.",
+ "rutas": {
+  "chat": "/auth/assistant/chat",
+  "tool": "/auth/assistant/tool",
+  "confirm": "/auth/assistant/confirm",
+  "audit": "/auth/assistant/audit"
+ },
+ "campos": {
+  "mensaje": "text",
+  "imagenes": "image",
+  "tarjetas": [
+   "proposals"
+  ],
+  "tarjeta_id": [
+   "id"
+  ],
+  "operacion_id": [
+   "operation_id"
+  ],
+  "herramienta": [
+   "tool",
+   "type"
+  ],
+  "denegada": [
+   "denied"
+  ]
+ },
+ "env_worker": {
+  "base_url": [
+   "DEEPSEEK_BASE_URL",
+   "DEEPSEEK_API_BASE",
+   "ASSISTANT_BASE_URL"
+  ],
+  "clave": [
+   "DEEPSEEK_API_KEY",
+   "ASSISTANT_API_KEY"
+  ],
+  "modelo": []
+ },
+ "modelo": "deepseek-flash",
+ "herramientas_dueno": [
+  "proponer_cambio_precio",
+  "preparar_compra",
+  "leer_factura_compra",
+  "precio",
+  "compra",
+  "cambiar_precio",
+  "cambiar_precios",
+  "crear_producto",
+  "importar_datos",
+  "resetear_datos",
+  "descargar_respaldo",
+  "aplicar_descuento",
+  "anular_venta",
+  "anular_ventas",
+  "cambiar_configuracion",
+  "cambiar_cajero",
+  "registrar_factura_compra",
+  "ajustar_inventario",
+  "cambiar_linea_credito"
+ ],
+ "herramientas_empleado": [
+  "explicar_pasos",
+  "preparar_venta",
+  "preparar_documento"
+ ],
+ "nombres_herramientas_mock": {
+  "cambiar_precio": "proponer_cambio_precio"
+ },
+ "tarjeta_ttl_s": 300,
+ "limites": {
+  "empleado_por_min": 10,
+  "imagenes_por_min": 2,
+  "escrituras_por_min": 5
+ },
+ "tablas_no_negocio": "assistant|audit|rate|review|pin_fail|owner_approvals|pairing|auth_sessions|devices|sync_operations|_cf_|sqlite_",
+ "semilla": {
+  "nombre_producto_inyectado": null
+ }
+}
