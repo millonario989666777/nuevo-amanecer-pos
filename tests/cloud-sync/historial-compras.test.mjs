@@ -343,12 +343,15 @@ test('aviso de límite: desde 300 compras se indica «Mostrando las últimas 300
   assert.match(source, /'Mostrando las últimas ' \+ PURCHASE_LIMIT \+ ' compras'/);
 });
 
-test('limitReached: el flag truncated del servidor manda; sin él no cuentan las incompletas', () => {
+test('limitReached: el flag truncated del servidor manda; sin él, 300 filas o más prueban corte', () => {
   const api = load();
   const list = (n, status = 'aplicada') => Array.from({ length: n }, (_, i) => ({ purchase_id: status + '-' + i, status, lines: [] }));
-  // 299 aplicadas + 5 en_curso = 304 filas, pero el servidor no cortó.
+  // 299 aplicadas + 5 en_curso = 304 filas: sin corte el servidor devuelve todo (≤ 300), así que 304 prueba corte.
   const mixed = list(299).concat(list(5, 'en_curso'));
-  assert.equal(api.limitReached(mixed), false);
+  assert.equal(api.limitReached(mixed), true);
+  // Bloque de 300 con 7 en_curso dentro (antes se descontaban y el aviso no salía).
+  assert.equal(api.limitReached(list(293).concat(list(7, 'en_curso'))), true);
+  assert.equal(api.limitReached(list(292).concat(list(7, 'en_curso'))), false);
   assert.equal(api.limitReached(list(300).concat(list(3, 'en_curso'))), true);
   // cerrada_parcial viene dentro de las 300 recientes: sí cuenta.
   assert.equal(api.limitReached(list(299).concat(list(1, 'cerrada_parcial'))), true);
@@ -364,4 +367,63 @@ test('readPurchases propaga truncated solo si es booleano', async () => {
   assert.equal((await make({ purchases: [], truncated: false }).readPurchases()).truncated, false);
   assert.equal((await make({ purchases: [] }).readPurchases()).truncated, undefined);
   assert.equal((await make({ purchases: [], truncated: 'yes' }).readPurchases()).truncated, undefined);
+});
+
+// Arma la respuesta igual que GET /auth/purchases: bloque de las 300 más recientes de cualquier estado
+// (con LIMIT 301 en el worker 45, que además informa truncated) + las en_curso más antiguas aparte.
+function serverResponse(db, withFlag) {
+  const sorted = db.slice().sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const recent = sorted.slice(0, 300), seen = new Set(recent.map(r => r.purchase_id));
+  const open = sorted.filter(r => r.status === 'en_curso' && !seen.has(r.purchase_id));
+  const purchases = open.concat(recent).map(r => ({ ...r, lines: [] }));
+  return withFlag ? { purchases, truncated: sorted.length > 300 } : { purchases };
+}
+function makeDb({ applied, openRecent = 0, openOld = 0 }) {
+  const at = i => new Date(Date.UTC(2026, 9, 15) - i * 3600e3).toISOString();
+  const db = [];
+  for (let i = 0; i < openRecent; i++) db.push({ purchase_id: 'new-open-' + i, status: 'en_curso', created_at: at(i) });
+  for (let i = 0; i < applied; i++) db.push({ purchase_id: 'ap-' + i, status: 'aplicada', created_at: at(openRecent + i) });
+  for (let i = 0; i < openOld; i++) db.push({ purchase_id: 'old-open-' + i, status: 'en_curso', created_at: at(openRecent + applied + i) });
+  return db;
+}
+
+test('limitInfo: aviso correcto con y sin en_curso, con y sin truncated (respuesta armada como el worker)', () => {
+  const api = load();
+  const cases = [
+    // [descripción, db, ¿hubo corte?, en_curso fuera del bloque de 300]
+    ['10 aplicadas', { applied: 10 }, false, 0],
+    ['300 justas', { applied: 300 }, false, 0],
+    ['301 aplicadas', { applied: 301 }, true, 0],
+    ['295 aplicadas + 5 en_curso recientes (300 en total)', { applied: 295, openRecent: 5 }, false, 0],
+    ['296 aplicadas + 5 en_curso recientes (corte con en_curso en el bloque)', { applied: 296, openRecent: 5 }, true, 0],
+    ['320 aplicadas + 6 en_curso recientes', { applied: 320, openRecent: 6 }, true, 0],
+    ['320 aplicadas + 4 en_curso antiguas', { applied: 320, openOld: 4 }, true, 4],
+    ['310 aplicadas + 3 recientes + 1 antigua', { applied: 310, openRecent: 3, openOld: 1 }, true, 1],
+    ['290 aplicadas + 10 en_curso antiguas (300 en total, sin corte)', { applied: 290, openOld: 10 }, false, 0],
+    ['290 aplicadas + 12 en_curso antiguas (2 quedan fuera)', { applied: 290, openOld: 12 }, true, 2]
+  ];
+  for (const [name, spec, cut, older] of cases) {
+    const db = makeDb(spec);
+    for (const withFlag of [true, false]) {
+      const res = serverResponse(db, withFlag);
+      const info = api.limitInfo(res.purchases, res.truncated);
+      // El worker anterior no distingue «exactamente 300» de «hubo corte»: con 300 filas avisa (conservador).
+      const expectCut = withFlag ? cut : res.purchases.length >= 300;
+      assert.equal(info.reached, expectCut, name + (withFlag ? ' (con truncated)' : ' (sin truncated)'));
+      if (cut) {
+        assert.equal(info.reached, true, name);
+        assert.equal(info.olderOpen, older, name);
+        assert.equal(info.label, 'Mostrando las últimas 300 compras' + (older ? ' y ' + older + (older === 1 ? ' incompleta más antigua' : ' incompletas más antiguas') : ''), name);
+      } else if (!info.reached) assert.equal(info.label, '', name);
+    }
+  }
+});
+
+test('limitInfo: entradas raras no rompen el aviso', () => {
+  const api = load();
+  assert.deepEqual({ ...api.limitInfo(null) }, { reached: false, olderOpen: 0, label: '' });
+  assert.deepEqual({ ...api.limitInfo(undefined, true) }, { reached: true, olderOpen: 0, label: 'Mostrando las últimas 300 compras' });
+  assert.equal(api.limitInfo([null, undefined], false).reached, false);
+  // truncated:false manda aunque lleguen 300 filas.
+  assert.equal(api.limitInfo(serverResponse(makeDb({ applied: 300 }), false).purchases, false).reached, false);
 });
