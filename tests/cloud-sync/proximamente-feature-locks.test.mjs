@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { activeCanon } from './canon-browser-harness.mjs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual', 'lotes-multiples-fefo', 'stock-negativo-configurable', 'app-pedidos-marca-propia', 'cambiar-clave-usuarios', 'conversion-masiva-documentos', 'vendedor-en-venta', 'comentarios-venta', 'despacho-productos', 'cliente-historial-compras', 'vendedor-por-cliente', 'consulta-dni-ruc', 'edicion-masiva-productos', 'marcas-productos', 'subcategorias-atributos', 'produccion-recetas', 'registro-sanitario', 'numero-serie-producto', 'tipos-movimiento-inventario', 'conciliacion-bancaria', 'historial-exportaciones', 'catalogo-reportes', 'importar-proveedores', 'periodo-contable-percepcion', 'desbloquear-usuario', 'detraccion-retencion', 'historial-precios-producto', 'canales-venta', 'estado-recepcion-compras', 'adjuntos-proveedor', 'dashboard-compras', 'recargo-servicio'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual', 'lotes-multiples-fefo', 'stock-negativo-configurable', 'app-pedidos-marca-propia', 'cambiar-clave-usuarios', 'conversion-masiva-documentos', 'vendedor-en-venta', 'comentarios-venta', 'despacho-productos', 'vendedor-por-cliente', 'consulta-dni-ruc', 'edicion-masiva-productos', 'marcas-productos', 'subcategorias-atributos', 'produccion-recetas', 'registro-sanitario', 'numero-serie-producto', 'tipos-movimiento-inventario', 'conciliacion-bancaria', 'historial-exportaciones', 'catalogo-reportes', 'importar-proveedores', 'periodo-contable-percepcion', 'desbloquear-usuario', 'detraccion-retencion', 'historial-precios-producto', 'canales-venta', 'estado-recepcion-compras', 'adjuntos-proveedor', 'dashboard-compras', 'recargo-servicio'];
 
 test('real Worker authenticates then returns feature_locked for every locked registry id without writes', async t => {
   const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
@@ -37,7 +37,7 @@ test('real Worker authenticates then returns feature_locked for every locked reg
   assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);
 });
 
-for (const id of ['valorizacion-inventario', 'rotacion-abc', 'kardex', 'reporte-ventas-stock', 'reporte-arqueo', 'historial-compras-producto']) {
+for (const id of ['valorizacion-inventario', 'rotacion-abc', 'kardex', 'reporte-ventas-stock', 'reporte-arqueo', 'historial-compras-producto', 'cliente-historial-compras']) {
   test(`${id} is unlocked on client and server; owner-only feature route, no writes`, async t => {
     assert.equal(PERMISSIONS.FEATURE_LOCKS[id], false);
     assert.equal(PERMISSIONS.featureLocked(id), false);

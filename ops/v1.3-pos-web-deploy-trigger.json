@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#793 kardex por producto (owner-only, desde Próximamente). Worker 54 ya live (Cloudflare c9a75046, live check 401 OK).",
-  "retry_attempt": 163,
-  "retry_reason": "Deploy de base dde26fb5ef3236966bdd2578433b78697e08e3e9 (#793). Rollback: web 162 ac56151a (Cloudflare a5f504f4, base fffaf2ad4c97c30efa0b2de123c2879c230496a3).",
-  "requested_at_utc": "2026-10-16T19:06:00Z",
-  "approved_base": "dde26fb5ef3236966bdd2578433b78697e08e3e9"
+  "note": "#794 historial de compras por cliente (owner-only, desde Próximamente). Worker 55 ya live (Cloudflare e7329e2f, live check 401 OK).",
+  "retry_attempt": 164,
+  "retry_reason": "Deploy de base 1354350a6430419a7ffdcb32c124e861d8fc7a4c (#794). Rollback: web 163 (Cloudflare 904db4f7, build 311ba65d, base dde26fb5ef3236966bdd2578433b78697e08e3e9).",
+  "requested_at_utc": "2026-10-16T20:13:00Z",
+  "approved_base": "1354350a6430419a7ffdcb32c124e861d8fc7a4c"
 }
