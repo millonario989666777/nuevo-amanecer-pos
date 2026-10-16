@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
+import { activeCanon } from './canon-browser-harness.mjs';
 
 const read = path => readFileSync(path, 'utf8');
 const source = read('POS/js/modules/kardex.js');
@@ -89,6 +90,44 @@ test('durable movement/sale ids deduplicate records and never double-count sales
   assert.equal(report.outgoing, 5); assert.equal(report.rows.length, 3);
 });
 
+test('documents resolve purchase line operations and sale ids to readable numbers, including annulments', () => {
+  const purchaseId = '11111111-1111-4111-8111-111111111111', saleId = '22222222-2222-4222-8222-222222222222';
+  const purchases = [{ purchase_id: purchaseId, document_ref: 'F001-000042' },
+    { id: 'purchase-series', serie: 'F002', correlativo: '000007' },
+    { purchase_id: 'purchase-number', purchase_number: 'C-000015' }];
+  const sales = [sale(saleId, 1, { ticket_number: 'T-000123' }), sale('fallback-ticket', 1, { receipt_number: 'B001-000005' }),
+    sale('V-000006', 1, { operation: '33333333-3333-4333-8333-333333333333' })];
+  const report = api.buildLedger(product, [
+    move('purchase-line', 1, { type: 'COMPRA', operation_id: purchaseId + ':1', referenceId: 'p1' }),
+    move('purchase-id', 1, { type: 'COMPRA', purchaseId: 'purchase-series' }),
+    move('purchase-number', 1, { type: 'COMPRA', operationId: 'purchase-number:2' }),
+    move('sale-id', -1, { type: 'SALE', sale_id: saleId, document: saleId }),
+    move('annulment', 1, { type: 'SALE_REVERSAL', saleId }),
+    move('direct', 1, { document_number: 'G001-000008' }),
+  ], sales, { ...options, purchases });
+  const refs = Object.fromEntries(report.rows.map(r => [r.id, r.reference]));
+  assert.equal(refs['purchase-line'], 'F001-000042');
+  assert.equal(refs['purchase-id'], 'F002-000007');
+  assert.equal(refs['purchase-number'], 'C-000015');
+  assert.equal(refs['sale-id'], 'T-000123'); assert.equal(refs.annulment, 'T-000123');
+  assert.equal(refs.direct, 'G001-000008');
+  assert.equal(refs['sale:fallback-ticket'], 'B001-000005');
+  assert.equal(refs['sale:V-000006'], 'V-000006');
+});
+
+test('documents retain UUID references only when movements and related records lack readable numbers', () => {
+  const purchaseId = '11111111-1111-4111-8111-111111111111', saleId = '22222222-2222-4222-8222-222222222222';
+  const movements = [move('p', 1, { type: 'COMPRA', purchase_id: purchaseId }),
+    move('s', -1, { type: 'SALE', sale_id: saleId })];
+  for (const purchases of [[], [{ purchase_id: purchaseId }]]) {
+    const report = api.buildLedger(product, movements, [sale(saleId, 1)], { ...options, purchases });
+    assert.equal(report.rows.find(r => r.id === 'p').reference, purchaseId);
+    assert.equal(report.rows.find(r => r.id === 's').reference, saleId);
+  }
+  const report = api.buildLedger(product, [], [sale(saleId, 1)], options);
+  assert.equal(report.rows[1].reference, saleId);
+});
+
 test('sale fallback uses physical box units, repeated lines and durable ids; never joins products by name', () => {
   const sales = [sale('boxes', 2, { items: [{ productoId: 'p1', cantidad: 2, unitsPerQty: 12 }, { product_id: 'p1', quantity: .5 },
     { id: 'other', name: product.name, qty: 500 }, { id: 'p1', qty: 999, ventaLibre: true }, { id: 'p1', qty: 99, controlInventario: false }] })];
@@ -114,8 +153,28 @@ test('search handles accents, codes and alternate codes without conflating produ
     { id: 'p2', name: 'Ácido fólico', sku: 'K-02' }];
   assert.deepEqual(plain(api.searchProducts(products, 'acido k-01').map(p => p.id)), ['p1']);
   assert.deepEqual(plain(api.searchProducts(products, 'alt-5').map(p => p.id)), ['p1']);
+  assert.deepEqual(plain(api.searchProducts(products, 'acido folico').map(p => p.id)), ['p1', 'p2']);
   assert.equal(api.searchProducts(products, 'ausente').length, 0);
   assert.equal(api.searchProducts(undefined, '').length, 0);
+});
+
+test('search deduplicates product ids before matching, preferring recent then complete records without mutating input', () => {
+  const records = [
+    { id: 'latest', name: 'Nombre antiguo', sku: 'OLD', stock: 99, updated_at: '2026-10-01' },
+    { product_id: 'latest', name: 'Nombre vigente', sku: 'NEW', stock: 4, updated_at: '2026-10-15' },
+    { id: 'complete', name: 'Producto completo', barcode: '789', stock: 7 },
+    { id: 'complete', name: 'Producto completo' },
+    { id: 'revision', name: 'Revisión vigente', metadataRevision: 3 },
+    { id: 'revision', name: 'Revisión antigua', metadataRevision: 2 },
+    { id: 'tie', name: 'Versión previa' }, { id: 'tie', name: 'Última versión cargada' }, null, {},
+  ];
+  records.forEach(p => { if (p) Object.freeze(p); }); Object.freeze(records);
+  const result = api.searchProducts(records, '');
+  assert.equal(result.length, 4);
+  assert.ok(result.includes(records[1])); assert.ok(result.includes(records[2]));
+  assert.ok(result.includes(records[4])); assert.ok(result.includes(records[7]));
+  assert.equal(api.searchProducts(records, 'OLD').length, 0);
+  assert.equal(api.searchProducts(records, 'NEW')[0], records[1]);
 });
 
 test('CSV quotes text, guards formulas in names/codes/references and preserves negative numeric balances', () => {
@@ -165,13 +224,52 @@ function renderHarness(extra = {}) {
   const nodes = Object.fromEntries(['content', 'status', 'controls', 'products', 'search', 'from', 'to', 'export'].map(k => [`[data-kardex-${k}]`, new Node()]));
   const page = { querySelector: s => nodes[s] || null };
   const c = context({ document: { readyState: 'loading', addEventListener() {}, getElementById: () => page, createElement: () => new Node() },
-    NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS, productos: [product], ventas: [], inventoryMovements: [], ...extra });
+    NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS, productos: [product], ventas: [], inventoryMovements: [], ...extra });
   return { api: c.NA_KARDEX, c, nodes };
 }
+const renderedTable = content => content.children.find(n => n.className === 'kardex-table-wrap').children[0];
+
+test('same-name suggestions stay separate with sku, barcode, codigo or distinguishable short ids beside their names', () => {
+  const name = 'Mismo nombre';
+  const h = renderHarness({ productos: [
+    { id: 'sku-id', name, sku: 'SKU-1' }, { id: 'barcode-id', name, barcode: '789123' },
+    { id: 'codigo-id', name, codigo: 'COD-3' }, { id: 'abcdef123456', name },
+    { id: 'shared-one', name }, { id: 'shared-two', name },
+  ] });
+  h.api.render();
+  const buttons = h.nodes['[data-kardex-products]'].children;
+  assert.equal(buttons.length, 6);
+  const labels = Object.fromEntries(buttons.map(b => [b.attrs['data-product-id'], b.children[1].textContent]));
+  assert.deepEqual(labels, { 'sku-id': 'SKU-1', 'barcode-id': '789123', 'codigo-id': 'COD-3',
+    abcdef123456: 'ID abcdef', 'shared-one': 'ID shared-one', 'shared-two': 'ID shared-two' });
+  assert.ok(buttons.every(b => b.children[0].textContent === name));
+});
+
+test('a duplicated product renders one suggestion and the selected ledger uses its latest stock', () => {
+  const h = renderHarness({ productos: [{ ...product, name: 'Antiguo', stock: 99, updatedAt: '2026-10-01' },
+    { ...product, name: 'Vigente', stock: 4, updatedAt: '2026-10-15' }] });
+  h.api.render();
+  const buttons = h.nodes['[data-kardex-products]'].children;
+  assert.equal(buttons.length, 1); assert.match(buttons[0].textContent, /Vigente/);
+  buttons[0].click();
+  const table = renderedTable(h.nodes['[data-kardex-content]']);
+  assert.equal(table.children.at(-1).children[0].children[7].textContent, '4');
+});
+
+test('all quantity and cost headers carry the numeric alignment class, including when costs are denied', () => {
+  for (const canViewCosts of [true, false]) {
+    const h = renderHarness({ NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => canViewCosts } });
+    h.api.render(); h.nodes['[data-kardex-products]'].children[0].click();
+    const headers = renderedTable(h.nodes['[data-kardex-content]']).children[1].children[0].children;
+    assert.equal(headers.length, canViewCosts ? 9 : 6);
+    assert.ok(headers.slice(3).every(th => th.className === 'kardex-num'));
+    assert.ok(headers.slice(0, 3).every(th => !th.className));
+  }
+});
 
 test('render inserts escaped text, uses the canonical snapshot and clears sensitive state before denied reads', () => {
   let owner = true, snapshots = 0;
-  const h = renderHarness({ NA_ROLES: { isOwner: () => owner },
+  const h = renderHarness({ NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner },
     productos: [{ ...product, name: '<img src=x onerror=alert(1)>' }],
     inventoryMovements: [move('local', 100)],
     NuevoAmanecerCanonical: { enabled: () => true, snapshot: () => { snapshots++; return { inventoryMovements: [move('canon', -2, { referenceId: '<svg onload=alert(1)>' })] }; },
@@ -181,7 +279,8 @@ test('render inserts escaped text, uses the canonical snapshot and clears sensit
   const content = h.nodes['[data-kardex-content]'];
   assert.ok(content.textContent.includes('<img src=x onerror=alert(1)>'));
   assert.ok(content.textContent.includes('<svg onload=alert(1)>'));
-  assert.equal(content.children.at(-1).children.at(-1).children.length, 2);
+  const table = renderedTable(content);
+  assert.equal(table.children.at(-1).children.length, 2);
   assert.equal(h.nodes['[data-kardex-export]'].disabled, false);
   owner = false; const count = snapshots;
   Object.defineProperty(h.c, 'productos', { get() { throw new Error('Unauthorized read'); } });
@@ -200,7 +299,7 @@ test('unlocked Kardex is owner-only in the shared client/server table; unconfirm
   for (const roles of [undefined, { role: 'owner', confirmed: false }, { isOwner: () => false }]) {
     assert.equal(context({ NA_ROLES: roles, NA_PERMISSIONS: PERMISSIONS }).NA_KARDEX.ownerAllowed(), false);
   }
-  assert.equal(context({ NA_ROLES: { isOwner: () => true } }).NA_KARDEX.ownerAllowed(), false);
+  assert.equal(context({ NA_ROLES: { role: 'owner', isOwner: () => true } }).NA_KARDEX.ownerAllowed(), false);
 });
 
 test('integrated page, precache and navigation permit the card without adding side-menu items', () => {
@@ -212,11 +311,156 @@ test('integrated page, precache and navigation permit the card without adding si
     for (const roles of [undefined, { role: 'owner' }, { role: 'empleado', isOwner: () => false }]) {
       c.NA_ROLES = roles; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), false);
     }
-    c.NA_ROLES = { isOwner: () => true }; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), true);
+    c.NA_ROLES = { role: 'owner', isOwner: () => true }; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), true);
   }
   assert.doesNotMatch(nav.slice(nav.indexOf('function renderDrawerItems()'), nav.indexOf('function renderDrawerItems()') + 2500), /pageKardex/);
   const html = read('POS/index.html'), sw = read('POS/sw.js');
   for (const file of ['css/kardex.css', 'js/modules/kardex.js']) { assert.ok(html.includes(file)); assert.ok(sw.includes("'./" + file + "'")); }
   assert.match(html, /class="page" id="pageKardex"/);
   assert.doesNotMatch(source, /innerHTML|outerHTML|insertAdjacentHTML/);
+});
+
+test('weighted average values each exit at its historical average, retaining precision until display', () => {
+  const report = api.buildLedger({ ...product, stock: 15 }, [
+    move('a', 10, { type: 'COMPRA', unit_cost_cents: 200, timestamp: '2026-10-15T08:00:00' }),
+    move('b', 10, { type: 'COMPRA', unit_cost_cents: 400, timestamp: '2026-10-15T09:00:00' }),
+    move('c', -5, { type: 'SALE', unit_cost_cents: 9999, timestamp: '2026-10-15T10:00:00' }),
+  ], [], options);
+  assert.deepEqual(plain(report.rows.map(r => [r.balance, r.balanceValue])), [[0, 0], [10, 20], [20, 60], [15, 45]]);
+  assert.equal(report.rows[2].averageCost, 3);
+  assert.equal(report.rows[3].outgoingValue, 15);
+  assert.equal(report.rows[3].unitCost, 3, 'exit ignores any supplied purchase cost');
+  assert.equal(report.closingValue, 45); assert.equal(report.lastCost, 4);
+  assert.equal(report.lastPurchase, '2026-10-15'); assert.equal(report.lastSale, '2026-10-15');
+  assert.equal(report.uncosted, 0);
+  const fractional = api.buildLedger({ ...product, stock: 2 }, [
+    move('a', 1, { unit_cost_cents: 100 }), move('b', 2, { unit_cost_cents: 101 }), move('c', -1),
+  ], [], options);
+  assert.ok(Math.abs(fractional.rows[2].averageCost - 3.02 / 3) < 1e-12);
+  assert.ok(Math.abs(fractional.closingValue - 2 * 3.02 / 3) < 1e-12);
+});
+
+test('missing entry cost uses the current average and is explicitly estimated; zero cost is known', () => {
+  const report = api.buildLedger({ ...product, stock: 13 }, [
+    move('a', 10, { unit_cost_cents: 200 }), move('b', 5), move('c', -2),
+  ], [], options);
+  assert.equal(report.rows[2].incomingValue, 10);
+  assert.equal(report.rows[2].costStatus, 'costo estimado');
+  assert.equal(report.rows[2].averageCost, 2);
+  assert.equal(report.rows[3].outgoingValue, 4); assert.equal(report.closingValue, 26);
+  assert.equal(report.uncosted, 0);
+  const zero = api.buildLedger({ ...product, stock: 1 }, [move('a', 1, { unit_cost_cents: 0 }), move('b', 1), move('c', -1)], [], options);
+  assert.equal(zero.rows[1].unitCost, 0); assert.equal(zero.rows[2].costStatus, 'costo estimado');
+  assert.equal(zero.closingValue, 0); assert.equal(zero.uncosted, 0);
+});
+
+test('no average: missing entries and exits add no value and count as sin costo; catalog cost never backfills', () => {
+  const report = api.buildLedger({ ...product, stock: 4, costo: 99 }, [move('a', 5), move('b', -1)], [], options);
+  assert.equal(report.rows[1].costStatus, 'sin costo'); assert.equal(report.rows[1].incomingValue, null);
+  assert.equal(report.rows[2].costStatus, 'sin costo'); assert.equal(report.rows[2].outgoingValue, null);
+  assert.equal(report.closingValue, 0); assert.equal(report.uncosted, 2); assert.equal(report.uncostedBalance, 4);
+  assert.equal(report.lastCost, 99);
+  const partial = api.buildLedger({ ...product, stock: 10 }, [move('a', 5), move('b', 5, { unit_cost_cents: 200 })], [], options);
+  assert.equal(partial.closingValue, 10); assert.equal(partial.rows[2].averageCost, 2);
+  assert.equal(partial.uncostedBalance, 5); assert.equal(partial.uncosted, 1);
+  const noStock = api.buildLedger({ id: 'p1' }, [move('a', 1, { unit_cost_cents: 200 })], [], options);
+  assert.equal(noStock.closingValue, null);
+  const negative = api.buildLedger({ ...product, stock: -2 }, [move('a', 1, { unit_cost_cents: 200 }), move('b', -3)], [], options);
+  assert.equal(negative.closingValue, 0); assert.ok(Number.isFinite(negative.rows[2].outgoingValue));
+});
+
+test('range filtering carries prior average and excludes later purchases from historical exit valuation', () => {
+  const movements = [move('old', 10, { fecha: '2026-09-01', unit_cost_cents: 200, type: 'COMPRA' }),
+    move('out', -2, { fecha: '2026-10-01', type: 'SALE' }),
+    move('later', 10, { unit_cost_cents: 400, type: 'COMPRA' })];
+  const report = api.buildLedger({ ...product, stock: 18 }, movements, [], { ...options, from: '2026-10-01', to: '2026-10-01' });
+  assert.equal(report.openingValue, 20); assert.equal(report.rows[1].outgoingValue, 4); assert.equal(report.closingValue, 16);
+  assert.equal(report.rows[1].unitCost, 2); assert.equal(report.lastCost, 4);
+});
+
+test('purchase costs join only durable operation and product ids, including applied partial lines, without new stock rows', () => {
+  const purchases = [{ purchase_id: 'PUR:test', status: 'en_curso', lines: [
+    { line_number: 1, product_id: 'p1', quantity: 2, unit_cost_cents: 350 },
+    { line_number: 2, product_id: 'p1', quantity: 99, unit_cost_cents: 99999 },
+    { line_number: 3, product_id: 'other', quantity: 99, unit_cost_cents: 99999 },
+  ] }];
+  const before = JSON.stringify(purchases);
+  const report = api.buildLedger({ ...product, stock: 2 }, [move('a', 2, { operation_id: 'PUR:test:1', type: 'COMPRA' })], [], { ...options, purchases });
+  assert.equal(report.rows.length, 2); assert.equal(report.incoming, 2);
+  assert.equal(report.rows[1].incomingValue, 7); assert.equal(report.lastCost, 3.5);
+  assert.equal(JSON.stringify(purchases), before);
+  const wrong = api.buildLedger({ ...product, stock: 2 }, [move('a', 2, { operation_id: 'PUR:test:3' })], [], { ...options, purchases });
+  assert.equal(wrong.uncosted, 1);
+});
+
+test('CSV adds costs only for confirmed permitted owners, with every required formula prefix guarded', () => {
+  const owner = context({ NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS }).NA_KARDEX;
+  const report = owner.buildLedger({ ...product, stock: 1 }, [move('a', 1, { unit_cost_cents: 250 })], [], options);
+  assert.match(owner.toCsv(report), /Costo entrada \(S\/\)/);
+  assert.match(owner.toCsv(report), /Valor saldo \(S\/\)/);
+  assert.match(owner.toCsv(report), /2\.50/);
+  assert.doesNotMatch(api.toCsv(report), /Costo|Valor saldo|2\.50/);
+  for (const prefix of ['=', '+', '@', '\t', '\r', '\n', '-']) {
+    report.product.name = prefix + '1'; report.product.code = prefix + '1'; report.rows[0].reference = prefix + '1';
+    assert.ok(owner.toCsv(report).includes("'" + prefix + '1'));
+  }
+  assert.ok(source.includes('/^[=+@\\t\\r\\n-]/'));
+  for (const extra of [{ NA_ROLES: { isOwner: () => false }, NA_PERMISSIONS: PERMISSIONS },
+    { NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => false } }]) {
+    assert.doesNotMatch(context(extra).NA_KARDEX.toCsv(report), /Costo entrada|Valor saldo/);
+  }
+});
+
+test('purchase loading disables export, joins costs read-only and discards a late response after role revocation', async () => {
+  let owner = true, resolve, reads = 0;
+  const h = renderHarness({
+    NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner, api: (path, body, method) => {
+      assert.equal(path, '/auth/purchases'); assert.equal(body, undefined); assert.equal(method, 'GET');
+      reads++; return new Promise(done => { resolve = done; });
+    } },
+    inventoryMovements: [move('a', 2, { type: 'COMPRA', operation_id: 'PUR:1' })],
+  });
+  h.api.render(); h.nodes['[data-kardex-products]'].children[0].click();
+  assert.equal(reads, 1); assert.equal(h.nodes['[data-kardex-export]'].disabled, true);
+  resolve({ purchases: [{ purchase_id: 'PUR', document_ref: 'F001-000009', lines: [{ line_number: 1, product_id: 'p1', unit_cost_cents: 500 }] }] });
+  await new Promise(done => setImmediate(done));
+  assert.equal(h.nodes['[data-kardex-export]'].disabled, false);
+  assert.match(h.nodes['[data-kardex-content]'].textContent, /S\/ 10\.00/);
+  assert.match(h.nodes['[data-kardex-content]'].textContent, /F001-000009/);
+  assert.equal(reads, 1);
+
+  let late;
+  const revoked = renderHarness({ NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner, api: () => new Promise(done => { late = done; }) } });
+  revoked.api.render(); revoked.nodes['[data-kardex-products]'].children[0].click();
+  owner = false; revoked.api.render();
+  late({ purchases: [{ purchase_id: 'secret', lines: [{ unit_cost_cents: 99999 }] }] });
+  await new Promise(done => setImmediate(done));
+  assert.equal(revoked.nodes['[data-kardex-content]'].textContent, '');
+  assert.equal(revoked.nodes['[data-kardex-export]'].disabled, true);
+});
+
+test('cost permission denial renders only quantity columns even with locally available costs', () => {
+  const h = renderHarness({ NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => false },
+    inventoryMovements: [move('a', 2, { unit_cost_cents: 500 })] });
+  h.api.render(); h.nodes['[data-kardex-products]'].children[0].click();
+  const content = h.nodes['[data-kardex-content]'], table = renderedTable(content);
+  assert.equal(table.children[1].children[0].children.length, 6);
+  assert.doesNotMatch(content.textContent, /S\/|Costo entrada|Último costo/);
+});
+
+test('a purchase after an exit weights the remaining balance, not all historic entries', () => {
+  const report = api.buildLedger({ ...product, stock: 10 }, [
+    move('a', 10, { unit_cost_cents: 200 }), move('b', -5), move('c', 5, { unit_cost_cents: 400 }),
+  ], [], options);
+  assert.equal(report.rows[2].outgoingValue, 10);
+  assert.equal(report.rows[3].averageCost, 3);
+  assert.equal(report.closingValue, 30);
+});
+
+test('Kardex table columns override the global mobile hide rule before mobile card styles', () => {
+  const css = read('POS/css/kardex.css');
+  const rule = '#pageKardex .kardex-table :is(th,td){display:table-cell}';
+  assert.ok(css.includes(rule));
+  assert.ok(css.indexOf(rule) < css.indexOf('@media'));
+  assert.match(css.slice(css.indexOf('@media (max-width: 599px)')), /#pageKardex \.kardex-table td \{ display: block/);
 });

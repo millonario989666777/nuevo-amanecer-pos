@@ -487,7 +487,7 @@
 <div class="page" id="pageKardex" aria-labelledby="kardexTitle">
   <div class="kardex-shell">
     <header>
-      <h1 id="kardexTitle">Kardex por producto</h1>
+      <h1 id="kardexTitle">Kardex valorizado por producto</h1>
       <p>Consulta entradas, salidas y saldo de stock en unidades físicas.</p>
     </header>
     <div data-kardex-controls hidden>
@@ -503,6 +503,7 @@
       </div>
     </div>
     <p class="kardex-method">El saldo inicial se calcula desde el stock actual y el historial disponible. El saldo al cierre corresponde al rango elegido; el stock actual se muestra por separado. Se conservan ventas y devoluciones registradas; las ventas anuladas sin movimiento se excluyen.</p>
+    <p class="kardex-method" data-kardex-cost-method hidden>Promedio ponderado por unidades físicas con costo conocido: cada entrada con costo recalcula el promedio y cada salida usa el promedio vigente. Las entradas sin costo usan costo estimado si hay promedio; de lo contrario, quedan sin costo y no suman valor. El último costo del producto no se aplica al historial anterior. La valorización depende del historial disponible.</p>
     <p data-kardex-status role="status" aria-live="polite"></p>
     <div data-kardex-content></div>
   </div>
