@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-15 Lima; asistente 2 code OK, asistente 4 LOCAL OK, asistente 3 OK) deploy of base b0976d74: #734 rotacion-abc name fix, #735 clientes reporte de deuda (owner, read-only), #736 codigos duplicados (read-only); permissions table changes (SCREENS). No schema changes. Rollback to 5af8d378 (worker 42, currently live).",
-  "target_commit": "b0976d74c4de06ba9a8f8d2499238160198d8247",
-  "rollback_ref": "5af8d37821bfdbaf846a5cd8b32a57456f325b68",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base efa91db36951ef4aff73c6c72fb3a46d8923b4a4: #740 historial de compras — permissions table only (FEATURE_LOCKS historial-compras-producto=false, FEATURE_ROLES owner, SCREENS pageHistorialCompras owner). No worker code changes. No schema changes. Rollback to b0976d74 (worker 43, currently live).",
+  "target_commit": "efa91db36951ef4aff73c6c72fb3a46d8923b4a4",
+  "rollback_ref": "b0976d74c4de06ba9a8f8d2499238160198d8247",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 43,
-  "optimization": "REPORTE_DEUDA_CODIGOS_DUP_734_736"
+  "attempt": 44,
+  "optimization": "HISTORIAL_COMPRAS_740"
 }
