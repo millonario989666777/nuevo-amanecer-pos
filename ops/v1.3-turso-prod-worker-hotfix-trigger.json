@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base fffaf2ad4c97c30efa0b2de123c2879c230496a3: #788 pulido-159 (arqueo 6 columnas a <=700px, texto; touches pos-permissions.js). No schema changes. Rollback to d8f12ddb (worker 52, Cloudflare version 5334c8b1, currently live). Web stays at 161 (162 not deployed yet).",
-  "target_commit": "fffaf2ad4c97c30efa0b2de123c2879c230496a3",
-  "rollback_ref": "d8f12ddbb561c547ad67a2ad325e625aa5aa5465",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK, repeat-each 10 80/80, e2e 440/442 flaky conocidos) deploy of base 1354350a6430419a7ffdcb32c124e861d8fc7a4c: #794 historial de compras por cliente. No schema changes. Rollback to dde26fb5 (worker 54, Cloudflare version c9a75046, currently live). Web NOT deployed (pending asistente 5 live check).",
+  "target_commit": "1354350a6430419a7ffdcb32c124e861d8fc7a4c",
+  "rollback_ref": "dde26fb5ef3236966bdd2578433b78697e08e3e9",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 53,
-  "optimization": "PULIDO_159_788"
+  "attempt": 55,
+  "optimization": "CLIENTE_HISTORIAL_794"
 }

@@ -4,7 +4,7 @@
   var owner = ['owner'], both = ['owner', 'empleado'];
   var SCREENS = {};
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
-  ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'pageClientesFrecuencia', 'pageVentasStock', 'pageReporteArqueo', 'pageHistorialCompras', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
+  ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'pageClientesFrecuencia', 'pageKardex', 'pageVentasStock', 'pageReporteArqueo', 'pageHistorialCompras', 'pageClienteHistorial', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
   ['cash.closes.view', 'purchases.costs.view', 'expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
@@ -61,7 +61,7 @@
   // Bloqueo de funciones Próximamente por id estable (única fuente, cliente y servidor).
   // true = bloqueada (sin rutas de escritura). Desbloquear = cambiar UNA línea a false.
   // Id ausente = bloqueada (default-deny).
-  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'clientes-frecuencia': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner, 'lotes-multiples-fefo': owner, 'stock-negativo-configurable': owner, 'app-pedidos-marca-propia': owner, 'cambiar-clave-usuarios': owner, 'conversion-masiva-documentos': owner, 'vendedor-en-venta': owner, 'comentarios-venta': owner, 'despacho-productos': owner, 'cliente-historial-compras': owner, 'vendedor-por-cliente': owner, 'consulta-dni-ruc': owner, 'edicion-masiva-productos': owner, 'marcas-productos': owner, 'subcategorias-atributos': owner, 'produccion-recetas': owner, 'registro-sanitario': owner, 'numero-serie-producto': owner, 'tipos-movimiento-inventario': owner, 'conciliacion-bancaria': owner, 'historial-exportaciones': owner, 'catalogo-reportes': owner, 'importar-proveedores': owner, 'periodo-contable-percepcion': owner, 'desbloquear-usuario': owner, 'detraccion-retencion': owner, 'historial-precios-producto': owner, 'canales-venta': owner, 'estado-recepcion-compras': owner, 'adjuntos-proveedor': owner, 'dashboard-compras': owner, 'recargo-servicio': owner };
+  var FEATURE_ROLES = { 'asistencia-empleados': owner, 'asistente-virtual': owner, 'valorizacion-inventario': owner, 'rotacion-abc': owner, 'clientes-frecuencia': owner, 'kardex': owner, 'reporte-ventas-stock': owner, 'reporte-arqueo': owner, 'historial-compras-producto': owner, 'lotes-multiples-fefo': owner, 'stock-negativo-configurable': owner, 'app-pedidos-marca-propia': owner, 'cambiar-clave-usuarios': owner, 'conversion-masiva-documentos': owner, 'vendedor-en-venta': owner, 'comentarios-venta': owner, 'despacho-productos': owner, 'cliente-historial-compras': owner, 'vendedor-por-cliente': owner, 'consulta-dni-ruc': owner, 'edicion-masiva-productos': owner, 'marcas-productos': owner, 'subcategorias-atributos': owner, 'produccion-recetas': owner, 'registro-sanitario': owner, 'numero-serie-producto': owner, 'tipos-movimiento-inventario': owner, 'conciliacion-bancaria': owner, 'historial-exportaciones': owner, 'catalogo-reportes': owner, 'importar-proveedores': owner, 'periodo-contable-percepcion': owner, 'desbloquear-usuario': owner, 'detraccion-retencion': owner, 'historial-precios-producto': owner, 'canales-venta': owner, 'estado-recepcion-compras': owner, 'adjuntos-proveedor': owner, 'dashboard-compras': owner, 'recargo-servicio': owner };
   var FEATURE_LOCKS = {
     'venta-exitosa-comprobante': true,
     'credito-cuotas': true,
@@ -74,7 +74,7 @@
     'vendedor-en-venta': true,
     'comentarios-venta': true,
     'despacho-productos': true,
-    'cliente-historial-compras': true,
+    'cliente-historial-compras': false,
     'vendedor-por-cliente': true,
     'consulta-dni-ruc': true,
     'edicion-masiva-productos': true,
@@ -153,7 +153,7 @@
     'delivery': true,
     'catalogo-en-linea': true,
     'recordatorios-recompra': true,
-    'kardex': true,
+    'kardex': false,
     'metas-comisiones': true,
     'notificaciones-dueno': true,
     'offline-mejorado': true,
