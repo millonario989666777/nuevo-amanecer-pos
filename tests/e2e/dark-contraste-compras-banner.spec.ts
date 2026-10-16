@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Modo oscuro (visual en vivo web 150): «Total costo», «Desde foto/OCR», franja de caja abierta e ícono del menú.
-// Oscuro: contraste WCAG AA (≥ 4.5:1). Claro: colores idénticos a los de antes. Tamaño y posición iguales en ambos.
+// Oscuro: contraste WCAG AA (≥ 4.5:1). Claro: colores anteriores, salvo el estilo propio OCR de followups-156.
+// Tamaño y posición iguales en ambos modos.
 
 async function boot(page: Page, dark: boolean, width = 390) {
   await page.route('**/*', r => new URL(r.request().url()).hostname === '127.0.0.1' ? r.continue() : r.abort());
@@ -57,8 +58,8 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
   const dark = await measureAll(page);
   test.info().annotations.push({ type: 'contraste-oscuro', description: JSON.stringify(Object.fromEntries(Object.entries(dark).map(([k, v]) => [k, v.ratio]))) });
   for (const [name, s] of Object.entries(dark)) expect(s.ratio, `${name}: ${s.fg} sobre ${s.bg}`).toBeGreaterThanOrEqual(4.5);
-  // El botón OCR ya no es el gris nativo claro.
-  expect(dark.ocr.bg).not.toBe('rgb(239, 239, 239)');
+  // El botón OCR usa la superficie oscura en lugar de su nuevo gris claro propio.
+  expect(dark.ocr.bg).not.toBe('rgb(241, 245, 249)');
   // Solo color: se quitan del CSSOM las reglas nuevas de theme-dark.css y las cajas deben ser las mismas.
   const removed = await page.evaluate(() => {
     let n = 0;
@@ -76,20 +77,22 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
     }
     return n;
   });
+  // La estructura OCR está en la regla de auditoría; se cuentan solo las 4 reglas originales.
   expect(removed).toBe(4);
   const before = await measureAll(page);
   // El ícono del menú no tiene reglas nuevas; en esta segunda medición la franja ya está visible y lo desplaza (bug de posición aparte).
   for (const k of ['total', 'ocr', 'banner'] as const) expect(dark[k].box, k).toEqual(before[k].box);
   // Y sin esas reglas vuelve el problema (la prueba detecta el arreglo).
   expect(before.total.ratio).toBeLessThan(4.5);
-  expect(before.ocr.bg).toBe('rgb(239, 239, 239)');
+  expect(before.ocr.bg).toBe('rgb(241, 245, 249)');
 });
 
 test('modo claro 390px: colores idénticos a los de antes del cambio', async ({ page }) => {
   await boot(page, false);
   const light = await measureAll(page);
   expect([light.total.fg, light.total.bg]).toEqual(['rgb(15, 23, 42)', 'rgb(255, 255, 255)']);
-  expect([light.ocr.fg, light.ocr.bg]).toEqual(['rgb(0, 0, 0)', 'rgb(239, 239, 239)']);
+  // followups-156 reemplaza el estilo nativo OCR por texto teal sobre gris claro en stock-lots.css.
+  expect([light.ocr.fg, light.ocr.bg]).toEqual(['rgb(15, 118, 110)', 'rgb(241, 245, 249)']);
   expect([light.banner.fg, light.banner.bg]).toEqual(['rgb(153, 27, 27)', 'rgb(254, 226, 226)']);
   expect(await page.locator('#naStatusBanner').evaluate(el => getComputedStyle(el).borderBottomColor)).toBe('rgb(252, 165, 165)');
   expect(light.menu.fg).toBe(LIGHT_MENU_ICON);
@@ -127,15 +130,28 @@ for (const dark of [true, false]) {
 
 // data-tone (danger/warn) es el único gancho del modo oscuro: los respaldos [style*="254, 226, 226"] y
 // [style*="254, 243, 199"] se quitaron (render() es el único que pinta la franja y siempre pone data-tone).
-test('theme-dark.css: las reglas de #naStatusBanner usan solo [data-tone], sin [style*=]', async ({ page }) => {
+test('theme-dark.css: franja por [data-tone]; auditoría y followups usan exactamente dos selectores [style*=], en #mgVal y #cajContent', async ({ page }) => {
   await boot(page, true);
   const selectors = await page.evaluate(() => {
     const out: string[] = [];
+    const inline: string[] = [];
     const walk = (rules: CSSRuleList) => { for (const r of Array.from(rules)) { const sel = (r as CSSStyleRule).selectorText; if (sel && sel.includes('#naStatusBanner')) out.push(sel); if ((r as CSSGroupingRule).cssRules) walk((r as CSSGroupingRule).cssRules); } };
-    for (const sheet of Array.from(document.styleSheets)) if (/theme-dark\.css/.test(sheet.href || '')) walk(sheet.cssRules);
-    return out;
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (!/theme-dark\.css/.test(sheet.href || '')) continue;
+      walk(sheet.cssRules);
+      // Solo los bloques nuevos: las reglas genéricas previas también usan [style*=].
+      const sels = Array.from(sheet.cssRules).map(r => (r as CSSStyleRule).selectorText || '');
+      const audit = sels.lastIndexOf('body.dark .cfg-toggle');
+      if (audit >= 0) inline.push(...sels.slice(audit).filter(sel => sel.includes('[style*=')));
+    }
+    return { banner: out, inline };
   });
-  expect(selectors).toEqual(['body.dark #naStatusBanner[data-tone="danger"]', 'body.dark #naStatusBanner[data-tone="warn"]']);
+  expect(selectors.banner).toEqual(['body.dark #naStatusBanner[data-tone="danger"]', 'body.dark #naStatusBanner[data-tone="warn"]']);
+  expect(selectors.inline).toHaveLength(2);
+  expect(selectors.inline).toEqual([
+    'body.dark #mProd .prod-margin #mgVal[style*="21, 128, 61"]',
+    'body.dark #cajContent span[style*="color: rgb(21, 128, 61)"]',
+  ]);
 });
 
 const DARK_BANNER = { danger: ['rgb(254, 202, 202)', 'rgb(127, 29, 29)'], warn: ['rgb(253, 230, 138)', 'rgb(69, 26, 3)'] };

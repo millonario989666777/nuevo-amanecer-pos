@@ -79,6 +79,30 @@ class Node {
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   setAttribute() {}
 }
+test('render distinguishes small daily averages from zero without changing other cells or CSV', () => {
+  const content = new Node(), period = new Node(); period.value = '30';
+  const nodes = { '[data-vs-content]': content, '[data-vs-status]': new Node(), '[data-vs-period]': period };
+  const quantities = [0, 1, 2, 3, 15];
+  const products = quantities.map(qty => ({ id: String(qty), name: 'Producto ' + qty, stock: 20 }));
+  const sales = [{ fecha: now, items: quantities.map(qty => ({ id: String(qty), qty })) }];
+  const api = load({
+    document: { readyState: 'loading', addEventListener() {}, getElementById: () => ({ querySelector: s => nodes[s] }), createElement: () => new Node() },
+    NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: { canAccessScreen: () => true },
+    NALimaTime: { parts: () => ({ date: now }) }, productos: products, ventas: sales,
+  });
+  assert.equal(api.render(), true);
+  const rows = content.children[1].children[2].children;
+  const expected = ['0', '<0.1', '<0.1', '0.1', '0.5'];
+  quantities.forEach((qty, i) => {
+    const cells = rows.find(row => row.children[0]._text === 'Producto ' + qty).children;
+    assert.equal(cells[4].textContent, expected[i]);
+    assert.equal(cells[2].textContent, String(qty));
+    assert.equal(cells[3].textContent, '20');
+  });
+  const csv = api.toCsv(api.buildReport(sales, products, { now }));
+  assert.ok(csv.includes('Producto 1,ID 1,Sin categoría,1,20,0.03,600,OK\r\n'));
+  assert.ok(!csv.includes('<0.1'));
+});
 test('render uses text nodes and clears data before denying access without reading sales', () => {
   const content = new Node(), status = new Node(), controls = new Node(), period = new Node(); period.value = '30';
   const nodes = { '[data-vs-content]': content, '[data-vs-status]': status, '[data-vs-controls]': controls, '[data-vs-period]': period };
