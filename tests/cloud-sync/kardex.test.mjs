@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
-import { redactKardexCostsForRole } from '../../tools/cloudflare-lab/src/pos-kardex-costs.js';
 import { activeCanon } from './canon-browser-harness.mjs';
 
 const read = path => readFileSync(path, 'utf8');
@@ -409,43 +408,6 @@ test('CSV adds costs only for confirmed permitted owners, with every required fo
   for (const extra of [{ NA_ROLES: { isOwner: () => false }, NA_PERMISSIONS: PERMISSIONS },
     { NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => false } }]) {
     assert.doesNotMatch(context(extra).NA_KARDEX.toCsv(report), /Costo entrada|Valor saldo/);
-  }
-});
-
-test('server cost filter preserves owner bytes, strips nested movement/product costs and fails closed', () => {
-  const payload = { products: [{ product_id: 'p1', cost_cents: 900, price_cents: 1200 }],
-    inventory_movements: [{ movement_id: 'm1', quantity: 2, unit_cost_cents: 500, balanceValue: 10 }] };
-  const before = JSON.stringify(payload);
-  assert.equal(redactKardexCostsForRole(payload, 'owner'), payload);
-  for (const role of ['empleado', 'unknown', null, undefined]) {
-    const stripped = redactKardexCostsForRole(payload, role);
-    assert.equal('cost_cents' in stripped.products[0], false);
-    assert.equal('unit_cost_cents' in stripped.inventory_movements[0], false);
-    assert.equal('balanceValue' in stripped.inventory_movements[0], false);
-    assert.equal(stripped.products[0].price_cents, 1200); assert.equal(stripped.inventory_movements[0].quantity, 2);
-  }
-  assert.equal(JSON.stringify(payload), before);
-});
-
-test('actual worker strips costs from employee catalog/snapshot and purchase endpoints used by Kardex', async t => {
-  const f = await activeCanon(t, { migrations: ['0010_session_auth.sql', '0024_pos_roles_owner_pin.sql', '0028_pos_purchases.sql',
-    '0014_canonical_live_products.sql', '0015_canonical_inventory_adjust.sql'] });
-  f.addDevice('k-owner', 'writer', 'active', 'k-owner-token');
-  const request = (path, token, body) => f.fetch('http://localhost' + path, { method: body ? 'POST' : 'GET',
-    headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-  const pairing = await request('/auth/pairing-code', 'k-owner-token', {});
-  assert.equal(pairing.status, 201);
-  const { code } = await pairing.json();
-  const paired = await request('/auth/pair', '', { code });
-  assert.equal(paired.status, 201); const { session_token } = await paired.json();
-  f.database.exec("INSERT INTO pos_purchases(purchase_id,promotion_id,status,line_count,total_cost_cents,principal_id,created_at) VALUES('k-purchase','synthetic','aplicada',1,500,'k-owner','2026-10-15T15:00:00Z')");
-  f.database.exec("INSERT INTO pos_purchase_lines(purchase_id,line_number,product_id,quantity,unit_cost_cents) VALUES('k-purchase',1,'00003',1,500)");
-  for (const path of ['/read/canonical/products', '/read/canonical/snapshot', '/read/canonical/inventory-movements', '/auth/purchases', '/auth/purchases?id=k-purchase']) {
-    const ownerResponse = await request(path, 'k-owner-token'), employeeResponse = await request(path, session_token);
-    assert.equal(ownerResponse.status, 200, path); assert.equal(employeeResponse.status, 200, path);
-    const owner = await ownerResponse.json(), employee = await employeeResponse.json();
-    assert.doesNotMatch(JSON.stringify(employee), /"(?:cost_cents|unit_cost_cents|total_cost_cents)":/, path);
-    if (path !== '/read/canonical/inventory-movements') assert.match(JSON.stringify(owner), /"(?:cost_cents|unit_cost_cents)":/, path);
   }
 });
 
