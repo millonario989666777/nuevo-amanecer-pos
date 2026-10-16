@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Fix urgente (#720): «Más opciones» de Inventario visible sobre los controles; Cargar fotos alcanzable; cerrar Fotos quita .open. Worker sin cambios.",
-  "retry_attempt": 139,
-  "retry_reason": "Deploy de base 16237aed (#720). Rollback: 2cbcf6576ea98fcbf3acca3f18ef0a688ce19e27 (build de 138).",
-  "requested_at_utc": "2026-10-15T22:41:23Z",
-  "approved_base": "16237aeda3572c0011c374e444fca584eecda60c"
+  "note": "#722 contraste oscuro Fotos múltiples + título Inventario <390px; #723 filtro Con deuda/Sin deuda/Todos en Clientes; #724 revisión solo-owner de fotos sin coincidencia. Worker 41 ya live.",
+  "retry_attempt": 140,
+  "retry_reason": "Deploy de base 128f07cc (#722, #723, #724, #727). Rollback: ef98793b (build de 139).",
+  "requested_at_utc": "2026-10-16T01:32:17Z",
+  "approved_base": "128f07cc5d779e8126df3e1cc39f1b09be1b8609"
 }
