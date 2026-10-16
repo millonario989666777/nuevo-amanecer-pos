@@ -288,10 +288,10 @@
   function ownerAllowed() {
     var roles = root.NA_ROLES, permissions = root.NA_PERMISSIONS;
     return !!(roles && typeof roles.isOwner === 'function' && roles.isOwner() && permissions &&
-      typeof permissions.canAccessScreen === 'function' && permissions.canAccessScreen('owner', PAGE_ID));
+      typeof permissions.canAccessScreen === 'function' && permissions.canAccessScreen(roles.role, PAGE_ID));
   }
   function costsAllowed() {
-    return !!(ownerAllowed() && typeof root.NA_PERMISSIONS.canDo === 'function' && root.NA_PERMISSIONS.canDo('owner', 'purchases.costs.view'));
+    return !!(ownerAllowed() && typeof root.NA_PERMISSIONS.canDo === 'function' && root.NA_PERMISSIONS.canDo(root.NA_ROLES.role, 'purchases.costs.view'));
   }
   function discardPurchases() { purchaseTicket++; purchases = []; purchaseState = 'idle'; purchasesTruncated = false; }
   function renderPurchases() {

@@ -225,7 +225,7 @@ function renderHarness(extra = {}) {
   const nodes = Object.fromEntries(['content', 'status', 'controls', 'products', 'search', 'from', 'to', 'export'].map(k => [`[data-kardex-${k}]`, new Node()]));
   const page = { querySelector: s => nodes[s] || null };
   const c = context({ document: { readyState: 'loading', addEventListener() {}, getElementById: () => page, createElement: () => new Node() },
-    NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS, productos: [product], ventas: [], inventoryMovements: [], ...extra });
+    NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS, productos: [product], ventas: [], inventoryMovements: [], ...extra });
   return { api: c.NA_KARDEX, c, nodes };
 }
 const renderedTable = content => content.children.find(n => n.className === 'kardex-table-wrap').children[0];
@@ -270,7 +270,7 @@ test('all quantity and cost headers carry the numeric alignment class, including
 
 test('render inserts escaped text, uses the canonical snapshot and clears sensitive state before denied reads', () => {
   let owner = true, snapshots = 0;
-  const h = renderHarness({ NA_ROLES: { isOwner: () => owner },
+  const h = renderHarness({ NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner },
     productos: [{ ...product, name: '<img src=x onerror=alert(1)>' }],
     inventoryMovements: [move('local', 100)],
     NuevoAmanecerCanonical: { enabled: () => true, snapshot: () => { snapshots++; return { inventoryMovements: [move('canon', -2, { referenceId: '<svg onload=alert(1)>' })] }; },
@@ -300,7 +300,7 @@ test('unlocked Kardex is owner-only in the shared client/server table; unconfirm
   for (const roles of [undefined, { role: 'owner', confirmed: false }, { isOwner: () => false }]) {
     assert.equal(context({ NA_ROLES: roles, NA_PERMISSIONS: PERMISSIONS }).NA_KARDEX.ownerAllowed(), false);
   }
-  assert.equal(context({ NA_ROLES: { isOwner: () => true } }).NA_KARDEX.ownerAllowed(), false);
+  assert.equal(context({ NA_ROLES: { role: 'owner', isOwner: () => true } }).NA_KARDEX.ownerAllowed(), false);
 });
 
 test('integrated page, precache and navigation permit the card without adding side-menu items', () => {
@@ -312,7 +312,7 @@ test('integrated page, precache and navigation permit the card without adding si
     for (const roles of [undefined, { role: 'owner' }, { role: 'empleado', isOwner: () => false }]) {
       c.NA_ROLES = roles; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), false);
     }
-    c.NA_ROLES = { isOwner: () => true }; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), true);
+    c.NA_ROLES = { role: 'owner', isOwner: () => true }; assert.equal(c.NA_MENU_NAVIGATION.canShowDrawerPage('pageKardex'), true);
   }
   assert.doesNotMatch(nav.slice(nav.indexOf('function renderDrawerItems()'), nav.indexOf('function renderDrawerItems()') + 2500), /pageKardex/);
   const html = read('POS/index.html'), sw = read('POS/sw.js');
@@ -395,7 +395,7 @@ test('purchase costs join only durable operation and product ids, including appl
 });
 
 test('CSV adds costs only for confirmed permitted owners, with every required formula prefix guarded', () => {
-  const owner = context({ NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS }).NA_KARDEX;
+  const owner = context({ NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: PERMISSIONS }).NA_KARDEX;
   const report = owner.buildLedger({ ...product, stock: 1 }, [move('a', 1, { unit_cost_cents: 250 })], [], options);
   assert.match(owner.toCsv(report), /Costo entrada \(S\/\)/);
   assert.match(owner.toCsv(report), /Valor saldo \(S\/\)/);
@@ -407,7 +407,7 @@ test('CSV adds costs only for confirmed permitted owners, with every required fo
   }
   assert.ok(source.includes('/^[=+@\\t\\r\\n-]/'));
   for (const extra of [{ NA_ROLES: { isOwner: () => false }, NA_PERMISSIONS: PERMISSIONS },
-    { NA_ROLES: { isOwner: () => true }, NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => false } }]) {
+    { NA_ROLES: { role: 'owner', isOwner: () => true }, NA_PERMISSIONS: { ...PERMISSIONS, canDo: () => false } }]) {
     assert.doesNotMatch(context(extra).NA_KARDEX.toCsv(report), /Costo entrada|Valor saldo/);
   }
 });
@@ -452,7 +452,7 @@ test('actual worker strips costs from employee catalog/snapshot and purchase end
 test('purchase loading disables export, joins costs read-only and discards a late response after role revocation', async () => {
   let owner = true, resolve, reads = 0;
   const h = renderHarness({
-    NA_ROLES: { isOwner: () => owner, api: (path, body, method) => {
+    NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner, api: (path, body, method) => {
       assert.equal(path, '/auth/purchases'); assert.equal(body, undefined); assert.equal(method, 'GET');
       reads++; return new Promise(done => { resolve = done; });
     } },
@@ -468,7 +468,7 @@ test('purchase loading disables export, joins costs read-only and discards a lat
   assert.equal(reads, 1);
 
   let late;
-  const revoked = renderHarness({ NA_ROLES: { isOwner: () => owner, api: () => new Promise(done => { late = done; }) } });
+  const revoked = renderHarness({ NA_ROLES: { role: owner ? 'owner' : 'empleado', isOwner: () => owner, api: () => new Promise(done => { late = done; }) } });
   revoked.api.render(); revoked.nodes['[data-kardex-products]'].children[0].click();
   owner = false; revoked.api.render();
   late({ purchases: [{ purchase_id: 'secret', lines: [{ unit_cost_cents: 99999 }] }] });
