@@ -90,6 +90,7 @@
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
     <link rel="stylesheet" href="css/cliente-historial-compras.css">
+    <link rel="stylesheet" href="css/kardex.css">
     <link rel="stylesheet" href="css/ventas-stock.css">
     <link rel="stylesheet" href="css/reporte-arqueo.css">
     <link rel="stylesheet" href="css/historial-compras.css">
@@ -483,6 +484,30 @@
     <div data-ch-content></div>
   </div>
 </div>
+<div class="page" id="pageKardex" aria-labelledby="kardexTitle">
+  <div class="kardex-shell">
+    <header>
+      <h1 id="kardexTitle">Kardex por producto</h1>
+      <p>Consulta entradas, salidas y saldo de stock en unidades físicas.</p>
+    </header>
+    <div data-kardex-controls hidden>
+      <div class="kardex-filters">
+        <label>Producto<input type="search" data-kardex-search aria-label="Buscar producto" placeholder="Nombre o código" autocomplete="off"></label>
+        <label>Desde<input type="date" data-kardex-from aria-label="Desde"></label>
+        <label>Hasta<input type="date" data-kardex-to aria-label="Hasta"></label>
+      </div>
+      <div class="kardex-products" data-kardex-products aria-label="Productos encontrados"></div>
+      <div class="kardex-actions">
+        <button type="button" data-kardex-refresh>Actualizar Kardex</button>
+        <button type="button" data-kardex-export disabled>Exportar CSV</button>
+      </div>
+    </div>
+    <p class="kardex-method">El saldo inicial se calcula desde el stock actual y el historial disponible. El saldo al cierre corresponde al rango elegido; el stock actual se muestra por separado. Se conservan ventas y devoluciones registradas; las ventas anuladas sin movimiento se excluyen.</p>
+    <p data-kardex-status role="status" aria-live="polite"></p>
+    <div data-kardex-content></div>
+  </div>
+</div>
+
 <div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
   <div class="abc-shell">
     <header>
@@ -1239,6 +1264,7 @@
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
 <script src="js/modules/cliente-historial-compras.js"></script>
+<script src="js/modules/kardex.js"></script>
 <script src="js/modules/ventas-stock.js"></script>
 <script src="js/modules/reporte-arqueo.js"></script>
 <script src="js/inventory/historial-compras.js"></script>

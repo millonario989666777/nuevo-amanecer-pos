@@ -7,7 +7,7 @@ const source = readFileSync('POS/js/modules/proximamente.js', 'utf8');
 const registrySource = readFileSync('POS/js/modules/proximamente-registry.js', 'utf8');
 const permissionsSource = readFileSync('POS/js/config/pos-permissions.js', 'utf8');
 const indexHtml = readFileSync('POS/index.html', 'utf8');
-const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'clientes-filtro-deuda': 'pageClientes', 'valorizacion-inventario': 'pageValorizacion', 'rotacion-abc': 'pageRotacionAbc', 'reporte-ventas-stock': 'pageVentasStock', 'reporte-arqueo': 'pageReporteArqueo', 'historial-compras-producto': 'pageHistorialCompras', 'cliente-historial-compras': 'pageClienteHistorial' };
+const unlocked = { 'creditos-vencimiento': 'pageClientes', gastos: 'pageGastos', reportes: 'pageVentas', 'filtro-fechas-export': 'pageVentas', 'clientes-filtro-deuda': 'pageClientes', 'valorizacion-inventario': 'pageValorizacion', 'rotacion-abc': 'pageRotacionAbc', kardex: 'pageKardex', 'reporte-ventas-stock': 'pageVentasStock', 'reporte-arqueo': 'pageReporteArqueo', 'historial-compras-producto': 'pageHistorialCompras', 'cliente-historial-compras': 'pageClienteHistorial' };
 const MODULES = ['Ventas', 'Caja', 'Inventario', 'Clientes', 'Comprobantes', 'Extras'];
 
 function loaded() {
@@ -51,10 +51,10 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
 
 test('server lock is keyed by feature id, default-deny, and unlocking is a one-line change', () => {
   const c = loaded(); const P = c.NA_PERMISSIONS;
-  assert.equal(P.featureLocked('kardex'), true);
+  assert.equal(P.featureLocked('kardex'), false);
   assert.equal(P.featureLocked('no-such-feature'), true);
   assert.equal(P.featureLocked('gastos'), false);
-  assert.deepEqual(Array.from(P.routeRoles('/features/kardex', 'POST')), ['owner', 'empleado']);
+  assert.deepEqual(Array.from(P.routeRoles('/features/kardex', 'POST')), ['owner']);
   assert.deepEqual(Array.from(P.routeRoles('/features/no-such-feature/items', 'GET')), ['owner', 'empleado']);
   assert.deepEqual(Array.from(P.routeRoles('/features/gastos', 'GET')), ['owner']);
   for (const id of Object.keys(P.FEATURE_LOCKS)) assert.match(permissionsSource, new RegExp(`^    '${id}': (true|false),?$`, 'm'), id + ' lock is one line');

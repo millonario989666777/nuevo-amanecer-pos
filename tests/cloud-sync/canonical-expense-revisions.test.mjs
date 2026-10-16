@@ -145,7 +145,7 @@ test('create shares server Lima date limits, closed shift/day locks, and revisio
 });
 test('feature routes authenticate before disclosing lock state',async t=>{
  const {f}=await setup(t);
- for(const path of ['/features/kardex','/features/gastos','/features/unknown']){
+ for(const path of ['/features/balanza','/features/gastos','/features/unknown']){
   for(const headers of [{},{authorization:'Bearer invalid'}])assert.equal((await f.fetch('http://localhost'+path,{headers})).status,401);
   const res=await f.fetch('http://localhost'+path,{headers:{authorization:'Bearer expense-owner-token'}});
   assert.equal(res.status,path.endsWith('/gastos')?404:403);
