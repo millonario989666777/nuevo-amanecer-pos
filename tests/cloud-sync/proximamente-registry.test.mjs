@@ -24,7 +24,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
   assert.equal(api.list().length, 0, 'nothing built until load()');
   await api.load();
   const ids = api.list().map(f => f.id);
-  assert.equal(ids.length, 96);
+  assert.equal(ids.length, 97);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(api.list().map(f => f.name.toLowerCase())).size, ids.length, 'no duplicate titles');
   assert.equal(JSON.stringify(Object.keys(P.FEATURE_LOCKS).sort()), JSON.stringify(ids.slice().sort()), 'every registry id has exactly one server lock entry');
@@ -44,7 +44,7 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
     }
   }
   const prioritized = api.list().filter(f => f.priority);
-  assert.equal(prioritized.length, 44);
+  assert.equal(prioritized.length, 45);
   assert.deepEqual(Array.from(api.list().filter(f=>f.uncertain).map(f=>f.id)).sort(), 'app-android-nativa cpe-sin-internet venta-granel gaveta-dinero comprobante-por-correo app-almaceneros equipos-pos shopify-woocommerce bandeja-multicanal plan-distribuidor multi-ruc balanza calendario-gastos gasto-a-cuenta tipo-cierre firma-digital sunat-comprobantes'.split(' ').sort());
   for (const id of ['cuotas', 'cobro-multiple', 'lista-ventas', 'precios-mayor', 'limite-credito', 'compras', 'stock-lotes-fefo']) assert.equal(api.get(id), undefined, id + ' already exists in the POS');
 });
@@ -206,7 +206,7 @@ test('configuration shortcut lives in the owner-only Configuración nav', () => 
   assert.match(v9, /var go = t\.closest\('#na9Nav \[data-go\]'\); if \(go\) \{ if \(canEdit\(\) && typeof root\.goPage === 'function'\) root\.goPage\(go\.dataset\.go\); return; \}/);
 });
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual'];
 test('new candidates stay locked and attendance keeps its owner policy when unlocked', async () => {
   const c = loaded(); await c.NA_PROXIMAMENTE.load();
   for (const id of addedIds) {
@@ -229,4 +229,38 @@ test('new candidates stay locked and attendance keeps its owner policy when unlo
   assert.deepEqual(h.navigated, []);
   assert.equal(cardsOf(host).length, 0);
   assert.equal(h.doc.getElementById('naProxPreview'), null);
+});
+
+test('Asistente virtual is owner-only and opens only a disabled preview', async () => {
+  const c = loaded(); await c.NA_PROXIMAMENTE.load();
+  const entry = c.NA_PROXIMAMENTE.get('asistente-virtual');
+  assert.equal(entry.name, 'Asistente virtual');
+  assert.equal(entry.description, 'Asistente 3D animado que te ayuda con todo el POS: vender, productos y stock, compras, caja, clientes y crédito, reportes y configuración. Te guía paso a paso en cualquier función.');
+  assert.equal(entry.module, 'Extras');
+  assert.equal(entry.priority, 'media');
+  assert.deepEqual(Array.from(entry.roles), ['owner']);
+  assert.equal(c.NA_PROXIMAMENTE.isEnabled(entry.id), false);
+  assert.deepEqual(Array.from(c.NA_PERMISSIONS.FEATURE_ROLES[entry.id]), ['owner']);
+  assert.deepEqual(Array.from(c.NA_PERMISSIONS.routeRoles('/features/' + entry.id, 'POST')), ['owner']);
+  const h = renderHarness([entry], { [entry.id]: true });
+  const host = new h.doc.body.constructor('div');
+  await h.api.render(host);
+  const [card] = cardsOf(host);
+  assert.equal(card.className, 'na-prox-card');
+  assert.equal(card.dataset.featureId, entry.id);
+  assert.equal(card.querySelector('.na-prox-badge').textContent, '🔒 Próximamente · Prioridad media');
+  card.events.click();
+  const preview = h.doc.getElementById('naProxPreview');
+  assert.ok(preview);
+  assert.equal(preview.querySelector('.na-prox-banner').textContent, 'Función en preparación, aún no guarda datos');
+  assert.ok(preview.querySelector('.na-prox-actions').children.find(n => n.textContent === 'Guardar').disabled);
+  for (const label of preview.querySelector('.na-prox-form').children) assert.ok(label.children[0].disabled);
+  assert.deepEqual(h.navigated, []);
+  preview.close();
+  h.ctx.NA_ROLES.canConfigure = () => false;
+  await h.api.render(host);
+  h.api.openFeature(entry);
+  h.api.openPreview(entry.id);
+  assert.equal(h.doc.getElementById('naProxPreview'), null);
+  assert.deepEqual(h.navigated, []);
 });

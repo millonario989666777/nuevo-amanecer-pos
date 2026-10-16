@@ -151,8 +151,10 @@ async function removeRules(page: Page) {
       const rules = Array.from(sheet.cssRules) as CSSStyleRule[];
       let start = -1; rules.forEach((r, i) => { if (r.selectorText === marker) start = i; }); // la última: theme-dark.css ya tenía una «body.dark .cfg-toggle»
       if (start < 0) return -1;
-      const n = rules.length - start;
-      for (let i = rules.length - 1; i >= start; i--) sheet.deleteRule(i);
+      const followups = rules.findIndex((r, i) => i > start && (r.selectorText || '').includes('body.dark .f10-btn.primary'));
+      const end = followups > start ? followups : rules.length;
+      const n = end - start;
+      for (let i = end - 1; i >= start; i--) sheet.deleteRule(i);
       return n;
     }
     return -1;

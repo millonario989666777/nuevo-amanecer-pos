@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { activeCanon } from './canon-browser-harness.mjs';
 import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
-const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas'];
+const addedIds = ['venta-exitosa-comprobante', 'clonar-venta', 'nota-credito-parcial-compras', 'clientes-dias-credito', 'credito-cuotas', 'reparto-abono-multiples-deudas', 'asistente-virtual'];
 
 test('real Worker authenticates then returns feature_locked for every locked registry id without writes', async t => {
   const f = await activeCanon(t, { migrations: ['0024_pos_roles_owner_pin.sql'] });
@@ -24,12 +24,14 @@ test('real Worker authenticates then returns feature_locked for every locked reg
       assert.equal((await response.json()).error, 'feature_locked', id);
     }
   }
-  for (const method of ['GET', 'POST']) {
-    const denied = await f.fetch('http://localhost/features/asistencia-empleados', { method, headers: { authorization: 'Bearer feature-employee-token' } });
-    assert.equal(denied.status, 403);
-    assert.equal((await denied.json()).error, 'forbidden_role');
+  for (const id of ['asistencia-empleados', 'asistente-virtual']) {
+    for (const method of ['GET', 'POST']) {
+      const denied = await f.fetch('http://localhost/features/' + id, { method, headers: { authorization: 'Bearer feature-employee-token' } });
+      assert.equal(denied.status, 403, id);
+      assert.equal((await denied.json()).error, 'forbidden_role', id);
+    }
+    assert.equal(PERMISSIONS.routeRoles('/features/' + id, 'GET').includes('empleado'), false, 'role restriction is independent of the lock');
   }
-  assert.equal(PERMISSIONS.routeRoles('/features/asistencia-empleados', 'GET').includes('empleado'), false, 'role restriction is independent of the lock');
   const missing = await f.fetch('http://localhost/features/' + addedIds[0]);
   assert.equal(missing.status, 401);
   assert.deepEqual(f.database.prepare('SELECT * FROM canonical_control').all(), before);

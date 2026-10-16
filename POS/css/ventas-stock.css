@@ -65,3 +65,8 @@ body.dark #pageVentasStock .vs-sin_stock { color: #fee2e2; background: #7f1d1d; 
 body.dark #pageVentasStock .vs-reponer { color: #fef3c7; background: #78350f; }
 body.dark #pageVentasStock .vs-sin_movimiento, body.dark #pageVentasStock .vs-sin_control { color: #f1f5f9; background: #475569; }
 body.dark #pageVentasStock .vs-ok { color: #ccfbf1; background: #134e4a; }
+
+#pageVentasStock .vs-badge.vs-sin_movimiento { white-space: nowrap; }
+@media (min-width: 600px) and (max-width: 1023px) {
+  #pageVentasStock .vs-badge.vs-sin_movimiento { padding-left: 3px; padding-right: 3px; }
+}

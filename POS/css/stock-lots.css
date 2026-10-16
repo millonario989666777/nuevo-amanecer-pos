@@ -26,3 +26,17 @@
 .na-lots-receipt :focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
 body.dark .na-lots-receipt { color-scheme: dark; }
 body.dark .na-lots-receipt button { color: var(--bg); }
+
+.na-pur-box .na-pur-ocr {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0 14px;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 800;
+  color: #0f766e;
+  background: #f1f5f9;
+  cursor: pointer;
+}

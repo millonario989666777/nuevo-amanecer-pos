@@ -859,7 +859,7 @@ body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr,
 body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:hover,
 body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:active,
 body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:focus,
-body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:focus-visible {-webkit-appearance:none;appearance:none;background:#334155;color:#f1f5f9;border-color:#64748b;border-style:solid}
+body.dark .na-pur-overlay .na-pur-box button.na-pur-ocr:focus-visible {-webkit-appearance:none;appearance:none;background:#334155;color:#f1f5f9;border-color:#64748b;border-style:solid;border-width:1px;border-radius:10px;padding:0 14px;min-height:44px;font:inherit;font-weight:800;cursor:pointer}
 body.dark .na-pur-box .na-pur-hist,
 body.dark .na-pur-box .na-pur-cancel,
 body.dark .na-pur-box .na-pur-close {background:#334155!important;color:#f8fafc!important}
@@ -875,3 +875,13 @@ body.dark #naCfgV9.na9.na9-dk .na9-btn:not(.sec):not(.red) {color:#0f172a}
 /* 8. Próximamente: las bloqueadas siguen atenuadas, pero legibles. */
 body.dark .na-prox-card:not(.is-enabled) {opacity:.82}
 body.dark .na-prox-card:not(.is-enabled) .na-prox-description {color:#cbd5e1}
+
+/* ==== fix/followups-156 — dark contrast follow-ups (color only) ====
+   merge after PR #774. */
+body.dark .f10-btn.primary,
+body.dark #pageProximamente .na-prox-chip.is-active { color: #042f2e; }
+body.dark .vkpi.amber .vkpi-val { color: #fbbf24; }
+/* _naSecCashClosing asigna style.cssText: el navegador serializa #15803d como rgb. */
+body.dark #cajContent span[style*="color: rgb(21, 128, 61)"] { color: #4ade80 !important; }
+body.dark #pageInventario .top-btn-nuevo:is(.na-pur-btn,[onclick^="abrirModalProd"]) { background-color: #c2410c; }
+/* ==== end fix/followups-156 ==== */

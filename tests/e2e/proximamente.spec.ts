@@ -106,6 +106,39 @@ test('every registry entry: server lock exists; locked ones show the lock and pr
   await employee.close();
 });
 
+test('Asistente virtual is visible for owner and locked; clicking only opens a disabled preview', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner');
+  const writes: string[] = [];
+  page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
+  await page.evaluate(() => window.goPage('pageProximamente'));
+  const card = page.locator('.na-prox-section[data-module="Extras"] [data-feature-id="asistente-virtual"]');
+  await expect(card).toBeVisible();
+  await expect(card).toHaveClass('na-prox-card');
+  await expect(card).toHaveAttribute('type', 'button');
+  await expect(card.locator('.na-prox-name')).toHaveText('Asistente virtual');
+  await expect(card.locator('.na-prox-description')).toHaveText('Asistente 3D animado que te ayuda con todo el POS: vender, productos y stock, compras, caja, clientes y crédito, reportes y configuración. Te guía paso a paso en cualquier función.');
+  await expect(card.locator('.na-prox-badge')).toHaveText('🔒 Próximamente · Prioridad media');
+  await expect(card.locator('.na-prox-available')).toHaveCount(0);
+  expect(await page.evaluate(() => {
+    const api = (window as any).NA_PROXIMAMENTE, feature = api.get('asistente-virtual');
+    return { locked: (window as any).NA_PERMISSIONS.featureLocked(feature.id), enabled: api.isEnabled(feature.id), page: feature.page, roles: feature.roles };
+  })).toEqual({ locked: true, enabled: false, page: null, roles: ['owner'] });
+  await card.click();
+  const preview = page.locator('#naProxPreview');
+  await expect(preview).toBeVisible();
+  await expect(preview.locator('#naProxPreviewTitle')).toHaveText('Asistente virtual');
+  await expect(preview.locator('.na-prox-banner')).toHaveText('Función en preparación, aún no guarda datos');
+  const save = preview.getByRole('button', { name: 'Guardar', exact: true });
+  await expect(save).toBeDisabled();
+  for (const input of await preview.locator('input').all()) await expect(input).toBeDisabled();
+  await save.click({ force: true });
+  await expect(page.locator('#pageProximamente')).toHaveClass(/\bactive\b/);
+  await preview.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(preview).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
 test('priority chips and search filter the cards', async ({ page }) => {
   await rolePage(page, 'owner');
   await page.evaluate(() => window.goPage('pageProximamente'));
