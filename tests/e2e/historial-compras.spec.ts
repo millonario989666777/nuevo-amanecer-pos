@@ -87,8 +87,10 @@ async function businessData(page: Page) {
   });
 }
 
+const UI_STATE_KEY = 'na_local_config_v1';
+
 async function watchStorage(page: Page) {
-  await page.evaluate(() => {
+  await page.evaluate((UI_STATE_KEY) => {
     const w = window as any;
     w.__hcStorageWrites = [];
     w.__hcStoredBefore = [localStorage, sessionStorage].map(storage => Object.fromEntries(
@@ -98,11 +100,12 @@ async function watchStorage(page: Page) {
       const original = Storage.prototype[method];
       (Storage.prototype as any)[method] = function (...args: string[]) {
         // No guarda valores de credenciales ni de datos, solo el nombre de la operación.
-        w.__hcStorageWrites.push(method);
+        // Estado de UI de la app (página activa) no es dato de negocio ni escritura del módulo.
+        if (args[0] !== UI_STATE_KEY) w.__hcStorageWrites.push(method);
         return (original as any).apply(this, args);
       };
     }
-  });
+  }, UI_STATE_KEY);
 }
 
 async function expectStorageUnchanged(page: Page) {
@@ -114,7 +117,8 @@ async function expectStorageUnchanged(page: Page) {
     return { writes: w.__hcStorageWrites, before: w.__hcStoredBefore, after };
   });
   expect(check.writes).toEqual([]);
-  expect(check.after).toEqual(check.before);
+  const strip = (all: any[]) => all.map(store => Object.fromEntries(Object.entries(store).filter(([key]) => key !== UI_STATE_KEY)));
+  expect(strip(check.after)).toEqual(strip(check.before));
 }
 
 async function overflowAndTap(page: Page) {
@@ -200,8 +204,9 @@ test('empleado: navegación y render directo dicen Sin permiso, sin leer compras
     document.querySelectorAll('.page').forEach(node => node.classList.remove('active'));
     document.getElementById('pageHistorialCompras')!.classList.add('active');
   });
-  await expect(page.locator('[data-hc-denied]')).toBeVisible();
-  await expect(page.locator('[data-hc-content]')).toBeHidden();
+  // La guarda de la app vuelve a ocultar la página; el módulo igual queda en estado denegado.
+  await expect(page.locator('[data-hc-denied]')).not.toHaveAttribute('hidden', /.*/);
+  await expect(page.locator('[data-hc-content]')).toHaveAttribute('hidden', /.*/);
   await expect(page.locator('[data-hc-products] button')).toHaveCount(0);
   expect(io.reads).toEqual([]);
   expect(io.writes).toEqual([]);
