@@ -44,12 +44,18 @@ function displayDoc(v) { const doc = String(v ?? '').trim(); return !doc || isPl
 function _naDocumentValue(v) { return isPlaceholderDoc(v) ? '' : String(v ?? '').trim(); }
 if (typeof window !== 'undefined') window.NA_DOC = { isPlaceholderDoc, displayDoc };
 
+// Crédito anulado: anulado:true o status/estado/source_status que empiece por 'anul' (anulado, anulada, ANULADO), sin distinguir
+// mayúsculas y recortando espacios. Los estados de sincronización CANON (LIVE, RECONCILED) nunca cuentan.
+// Única regla para ficha, filtro, reporte, índice, deudaT, puntaje y «Por cobrar». Vive aquí porque utils.js carga primero.
+function _naIsCreditVoided(cr){if(!cr)return false;if(cr.anulado===true)return true;return[cr.status,cr.estado,cr.source_status].some(v=>String(v??'').trim().toLowerCase().startsWith('anul'));}
+if (typeof window !== 'undefined') window._naIsCreditVoided = _naIsCreditVoided;
+
 // Presentation computations for Inicio; no mutation of credits or cash state.
 function _naInicioMoney(v) { return 'S/ ' + _naNumber(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function _naInicioCredits(records) {
   const active = records.filter(cr => {
     const states = [cr.status, cr.estado].map(v => String(v || '').toLowerCase());
-    return !cr.anulado && !cr.anulada && !cr.voided && !states.some(s => ['cancelado','pagado','paid','anulado','anulada','annulled','void','voided'].includes(s)) && _naInicioBalance(cr) > 0;
+    return !_naIsCreditVoided(cr) && !cr.anulado && !cr.anulada && !cr.voided && !states.some(s => ['cancelado','pagado','paid','anulado','anulada','annulled','void','voided'].includes(s)) && _naInicioBalance(cr) > 0;
   });
   return { active, debt: Number(active.reduce((sum, cr) => sum + _naInicioBalance(cr), 0).toFixed(2)) };
 }

@@ -816,7 +816,7 @@ function setMovType(btn,tipo){invMovT=tipo;document.querySelectorAll('.mov-type-
 let clientes=[];
 let creditos=[];
 let cliTab='todos',cliCredId=null,pagoCredId=null,cobradoHoy=0,pagoProc=false;
-const deudaT=c=>creditos.filter(x=>String(x.cliId)===String(c.id)&&!x.anulado&&_naSyncCreditStatus(x)!=='cancelado').reduce((a,x)=>a+Math.max(0,_naNumber(x.monto)-_naNumber(x.pagado)),0);
+const deudaT=c=>creditos.filter(x=>String(x.cliId)===String(c.id)&&!(typeof _naIsCreditVoided==='function'?_naIsCreditVoided(x):(x.anulado))&&_naSyncCreditStatus(x)!=='cancelado').reduce((a,x)=>a+Math.max(0,_naNumber(x.monto)-_naNumber(x.pagado)),0);
 
 function cliSetTab(btn,tab){document.querySelectorAll('#pageClientes .tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');cliTab=tab;cliRender();}
 function _baseCliRender(){

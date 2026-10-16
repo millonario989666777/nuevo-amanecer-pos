@@ -214,12 +214,13 @@ function _naClassifyProductCategory(name,current='abarrotes'){
 }
 async function reclasificarCatalogo(showMessage=true){let changed=0;productos.forEach(p=>{const next=_naClassifyProductCategory(p.name,p.cat);if(next!==p.cat){p.cat=next;changed++;}});renderCategorySelects();posRender();invRender();const message=`Catálogo reclasificado: ${changed} producto${changed===1?'':'s'} actualizado${changed===1?'':'s'}`;if(showMessage)await _naFinalizeOperationPersistence(message,'No se pudo guardar la reclasificación');else await saveAllData();return changed;}
 const _naSetSaveStatus=(ok=true,msg='Guardado local')=>{const el=document.getElementById('saveStatus');if(!el)return;el.classList.remove('saved','error');el.classList.add(ok?'saved':'error');if(window.NA_ICON_TEXT)NA_ICON_TEXT(el,ok?'save':'alert',msg);else el.textContent=ok?`💾 ${msg}`:`⚠️ ${msg}`;};
-const _naSyncCreditStatus=cr=>{if(!cr)return'vigente';cr.monto=Math.max(0,_naNumber(cr.monto));cr.pagado=Math.min(cr.monto,Math.max(0,_naNumber(cr.pagado)));if(cr.anulado){cr.status='anulado';return cr.status;}if(cr.pagado>=cr.monto&&cr.monto>0)cr.status='cancelado';else{const d=diasHasta(cr.vence);cr.status=d!==null&&d<0?'vencido':'vigente';}return cr.status;};
+// _naIsCreditVoided vive en js/core/utils.js (carga antes que este archivo).
+const _naSyncCreditStatus=cr=>{if(!cr)return'vigente';if(cr.anulado!==true&&_naIsCreditVoided(cr))return'anulado';cr.monto=Math.max(0,_naNumber(cr.monto));cr.pagado=Math.min(cr.monto,Math.max(0,_naNumber(cr.pagado)));if(cr.anulado){cr.status='anulado';return cr.status;}if(cr.pagado>=cr.monto&&cr.monto>0)cr.status='cancelado';else{const d=diasHasta(cr.vence);cr.status=d!==null&&d<0?'vencido':'vigente';}return cr.status;};
 // NUEVO FASE 6: modelo completo de créditos, pagos y desglose por producto.
 const _NA_CREDIT_METHOD_LABELS={efectivo:'💵 Efectivo',yape:'📲 Yape',plin:'📲 Plin',transferencia:'🏦 Transferencia'};
 function _naCreditSchedule(date=new Date()){const h=date.getHours();return h>=6&&h<12?'Mañana':h>=12&&h<18?'Tarde':'Noche';}
 function _naCreditDayName(date=new Date()){return['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][date.getDay()];}
-function _naCreditStatusLabel(cr){_naSyncCreditStatus(cr);return cr.status==='cancelado'?'PAGADO':cr.status==='anulado'?'ANULADO':cr.status==='vencido'?'VENCIDO':'VIGENTE';}
+function _naCreditStatusLabel(cr){_naSyncCreditStatus(cr);return _naIsCreditVoided(cr)?'ANULADO':cr.status==='cancelado'?'PAGADO':cr.status==='anulado'?'ANULADO':cr.status==='vencido'?'VENCIDO':'VIGENTE';}
 function _naCreditOutstanding(cr){return Math.max(0,Number((_naNumber(cr?.monto)-_naNumber(cr?.pagado)).toFixed(2)));}
 function _naCreditItemKey(item,index){return _naClean(item?.itemKey||`${item?.productoId??item?.id??'concepto'}:${index}`);}
 function _naNormalizeCreditItem(raw,index,creditAmount=0){const qty=Math.max(0.0001,_naNumber(raw?.cantidad??raw?.qty,1)),unit=Math.max(0,_naNumber(raw?.precioUnitario??raw?.precio)),subtotal=Math.max(0,_naNumber(raw?.subtotal,unit*qty)),finalSubtotal=Number((subtotal||(index===0?creditAmount:0)).toFixed(2)),finalUnit=unit||Number((finalSubtotal/qty).toFixed(4));return{itemKey:_naCreditItemKey(raw,index),productoId:raw?.productoId??raw?.id??null,id:raw?.id??raw?.productoId??null,sku:_naClean(raw?.sku||''),nombre:_naClean(raw?.nombre||raw?.name||raw?.desc||`Concepto ${index+1}`),name:_naClean(raw?.name||raw?.nombre||raw?.desc||`Concepto ${index+1}`),cantidad:qty,qty,precioUnitario:finalUnit,precio:finalUnit,subtotal:finalSubtotal,modo:_naClean(raw?.modo||raw?.ventaModo||'minorista'),ventaModo:_naClean(raw?.ventaModo||raw?.modo||'unidad')};}
@@ -718,7 +719,7 @@ function _naRebuildClientCreditIndex(){
     const key=String(cr.cliId??cr.clienteId??'');
     if(!key)return;
     const allList=allByClient.get(key)||[];allList.push(cr);allByClient.set(key,allList);
-    if(cr.anulado||String(cr.status||cr.estado||'').toLowerCase()==='anulado')return;
+    if(_naIsCreditVoided(cr))return;
     const list=byClient.get(key)||[];list.push(cr);byClient.set(key,list);
     let row=summary.get(key);if(!row){row={debt:0,status:'ninguno'};summary.set(key,row);}
     const status=String(cr.status||cr.estado||'').toLowerCase();
@@ -742,7 +743,7 @@ function _naCreditReadOnlyCopy(cr){const copy={...cr};if(Array.isArray(cr.pagos)
 function _naClientCreditsReadOnly(clientId){
   const key=String(clientId);
   if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy).map(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return cr;});
-  return(Array.isArray(creditos)?creditos:[]).filter(cr=>cr&&String(cr.cliId??cr.clienteId??'')===key).map(_naCreditReadOnlyCopy).filter(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return!(cr.anulado||String(cr.status||cr.estado||'').toLowerCase()==='anulado');});
+  return(Array.isArray(creditos)?creditos:[]).filter(cr=>cr&&String(cr.cliId??cr.clienteId??'')===key).map(_naCreditReadOnlyCopy).filter(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return!_naIsCreditVoided(cr);});
 }
 function _naClientDebtFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.debt||0;}
 function _naClientStatusFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.status||'ninguno';}

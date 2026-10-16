@@ -261,6 +261,8 @@
       cajeroNombre: seller,
       status: text(c.source_status || c.status),
       estado: text(c.source_status || c.status),
+      // Estado real del crédito en CANON (VIGENTE, VENCIDO, PAGADO, ANULADO); status de CANON es el de sincronización.
+      source_status: text(c.source_status),
       anulado: false,
       pagos: payments,
       creditAccount: account,

@@ -16,7 +16,8 @@ function realV2() {
     _naNumber:(value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback };
   ctx.window = ctx;
   vm.createContext(ctx);
-  const status = legacy.slice(legacy.indexOf('const _naSyncCreditStatus='), legacy.indexOf('// NUEVO FASE 6'));
+  const voided = readFileSync(new URL('../../POS/js/core/utils.js', import.meta.url), 'utf8').match(/function _naIsCreditVoided\(cr\)\{[^\n]+/)[0];
+  const status = voided + '\n' + legacy.slice(legacy.indexOf('const _naSyncCreditStatus='), legacy.indexOf('// NUEVO FASE 6'));
   const outstanding = legacy.match(/function _naCreditOutstanding\(cr\)\{[^\n]+/)[0];
   const index = legacy.slice(legacy.indexOf('let _naClientCreditIndexRef='), legacy.indexOf('statusCli=function'));
   vm.runInContext(status + '\n' + outstanding + '\n' + index, ctx);
@@ -79,10 +80,12 @@ test('saldos de solo lectura idénticos a la ruta normal (que reconstruye y norm
   const rw = realV2(); Object.assign(rw.ctx, dataset());
   const readOnly = plain(balances(ro, true)), normal = plain(balances(rw, false));
   assert.deepEqual(readOnly, normal);
-  assert.deepEqual(readOnly.map(r => r.debt), [90, 25.25, 10, 70]);
+  // El crédito 41 (cliente 4) tiene status/estado 'anulado' sin anulado:true. Antes _naSyncCreditStatus lo
+  // reescribía a vigente y sumaba 70; ahora _naIsCreditVoided lo reconoce como anulado: deuda 0 y fuera del reporte.
+  assert.deepEqual(readOnly.map(r => r.debt), [90, 25.25, 10, 0]);
   const report = plain(ro.report.buildReport(ro.ctx.clientes, ro.api, null, 'saldo'));
-  assert.deepEqual(report.rows.map(r => [r.clientId, r.balance, r.openCredits]), [[1, 90, 2], [4, 70, 1], [2, 25.25, 1], [3, 10, 1]]);
-  assert.equal(report.total, 195.25);
+  assert.deepEqual(report.rows.map(r => [r.clientId, r.balance, r.openCredits]), [[1, 90, 2], [2, 25.25, 1], [3, 10, 1]]);
+  assert.equal(report.total, 125.25);
 });
 
 test('después de registrar un pago (escritura sobre el objeto vivo), la ficha y el filtro muestran el mismo saldo', () => {
@@ -147,9 +150,10 @@ test('pagos en cola: pending=null no descuenta nada; un lote pendiente que liqui
   const queueBefore = JSON.stringify(queued), before = snapshot(h);
   assert.equal(h.api.debtFilter.effectiveBalance(s, queued), 0, 'el duplicado del mismo operation_id cuenta una sola vez');
   const rows = h.ctx.clientes.map(c => ({ client:c, summary:h.api.summarizeClient(c, true) }));
-  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', queued).map(r => r.client.id), [3]);
-  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', null).map(r => r.client.id), []);
-  assert.deepEqual(h.api.debtFilter.filter(rows, 'con-deuda', null).map(r => r.client.id), [1, 2, 3, 4]);
+  // El cliente 4 solo tiene el crédito 41 (status/estado 'anulado' sin la bandera): ya no tiene deuda.
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', queued).map(r => r.client.id), [3, 4]);
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', null).map(r => r.client.id), [4]);
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'con-deuda', null).map(r => r.client.id), [1, 2, 3]);
   assert.equal(JSON.stringify(queued), queueBefore, 'la cola no se modifica');
   assert.equal(snapshot(h), before, 'ni los créditos ni sus pagos');
 });
@@ -175,4 +179,76 @@ test('índice fresco: un crédito anulado no aparece en solo lectura (lista ni s
   rw.ctx.creditos.push(credit(24, 2, 40, 0, { anulado:true, status:'anulado', estado:'anulado' }));
   assert.deepEqual(plain(balances(h, true))[1], plain(balances(rw, false))[1]);
   assert.deepEqual(plain(rw.run('_naClientCreditsFast(2)')).map(cr => String(cr.id)), ids);
+});
+
+const VOID_VARIANTS = [['status', 'anulado'], ['status', 'ANULADO'], ['estado', 'anulado'], ['estado', 'ANULADO'],
+  ['source_status', 'anulado'], ['source_status', 'ANULADO'], ['status', ' Anulado ']];
+for (const [field, value] of VOID_VARIANTS) {
+  test(`${field}=${JSON.stringify(value)} sin anulado:true cuenta como anulado en ficha, filtro, reporte e índice; el original no cambia`, () => {
+    const make = () => {
+      const extra = { status:'vigente', estado:'vigente', anulado:false }; extra[field] = value;
+      return { clientes:[client(5, 'Sintético Cinco')], creditos:[credit(51, 5, 80, 10, extra), credit(52, 5, 20, 5)] };
+    };
+    const h = realV2(); Object.assign(h.ctx, make());
+    const original = JSON.stringify(h.ctx.creditos[0]);
+    assert.equal(h.run('_naIsCreditVoided(creditos[0])'), true);
+    assert.equal(h.run('_naSyncCreditStatus(creditos[0])'), 'anulado');
+    assert.equal(JSON.stringify(h.ctx.creditos[0]), original, 'el estado del original no se pisa');
+    for (const fresh of [false, true]) {
+      if (fresh) h.run('_naEnsureClientCreditIndex(true)');
+      const s = plain(h.api.summarizeClient(h.ctx.clientes[0], true));
+      assert.equal(s.debt, 15);
+      assert.ok(![...s.all, ...s.active, ...s.closed].some(cr => String(cr.id) === '51'));
+      assert.equal(h.api.debtFilter.effectiveBalance(s, null), 15);
+      const row = plain(h.report.buildReport(h.ctx.clientes, h.api, null, 'saldo')).rows[0];
+      assert.deepEqual([row.balance, row.openCredits], [15, 1]);
+    }
+    assert.equal(h.api.summarizeClient(h.ctx.clientes[0], false).debt, 15);
+    assert.deepEqual(plain(h.run('_naClientCreditsFast(5)')).map(cr => String(cr.id)), ['52']);
+    assert.equal(h.run('_naClientDebtFast(5)'), 15);
+    assert.equal(JSON.stringify(h.ctx.creditos[0]), original, 'ni el índice ni la ficha modifican el anulado');
+    const rw = realV2(); Object.assign(rw.ctx, make());
+    assert.deepEqual(plain(balances(h, true)), plain(balances(rw, false)));
+  });
+}
+
+test('comparación por prefijo «anul»: "anulada" cuenta como anulada; "no anulado", LIVE, RECONCILED y demás no; saldos del resto intactos', () => {
+  const h = realV2();
+  Object.assign(h.ctx, { clientes:[client(6, 'Sintético Seis')], creditos:[credit(61, 6, 50, 0, { status:'anulada', estado:'anulada' }), credit(62, 6, 30, 10, { source_status:'vigente' }),
+    credit(63, 6, 40, 40), credit(64, 6, 25, 0, { estado:'no anulado' }), credit(65, 6, 12, 2, { status:'LIVE', source_status:'VENCIDO' }),
+    credit(66, 6, 8, 0, { status:'RECONCILED', estado:'RECONCILED' }), credit(67, 6, 5, 0, { source_status:' ANULADA ' })] });
+  const original = JSON.stringify(h.ctx.creditos);
+  assert.deepEqual(h.ctx.creditos.map(cr => h.run(`_naIsCreditVoided(creditos.find(c => c.id === ${cr.id}))`)), [true, false, false, false, false, false, true]);
+  // 62: 20 · 63: pagado · 64: 25 · 65: 10 · 66: 8 → 63 (los anulados 61 y 67 no suman).
+  assert.equal(h.api.summarizeClient(h.ctx.clientes[0], true).debt, 63);
+  assert.equal(JSON.stringify(h.ctx.creditos), original);
+  assert.equal(h.api.summarizeClient(h.ctx.clientes[0], false).debt, 63);
+});
+
+test('puente CANON → legacy: source_status llega al crédito legacy; LIVE/RECONCILED nunca es anulado; saldos de no anulados iguales', () => {
+  const h = realV2();
+  vm.runInContext(readFileSync(new URL('../../POS/js/adapters/canonical-ui-adapter.js', import.meta.url), 'utf8'), h.ctx);
+  const adapter = h.ctx.NuevoAmanecerCanonicalUIAdapter;
+  const customers = new Map([['C7', { id:'C7', nombre:'Sintético Siete', dni:'' }]]);
+  const canon = (id, status, source_status, original, balance) => ({ credit_id:id, customer_id:'C7', status, source_status,
+    original_amount_cents:original, current_balance_cents:balance, issued_value:'2026-09-01', due_value:'2026-11-30', concept:'Sintético' });
+  const rows = [canon('K1', 'LIVE', 'VIGENTE', 10000, 4000), canon('K2', 'RECONCILED', 'VENCIDO', 5000, 5000), canon('K3', 'RECONCILED', 'PAGADO', 3000, 0),
+    canon('K4', 'LIVE', null, 2000, 1500), canon('K5', 'RECONCILED', 'ANULADO', 7000, 7000), canon('K6', 'LIVE', 'anulada', 900, 900)];
+  const before = JSON.stringify(rows);
+  const legacy = rows.map(c => adapter.credit(c, customers, new Map(), new Map()));
+  assert.equal(JSON.stringify(rows), before, 'el puente no modifica el snapshot CANON');
+  assert.deepEqual(plain(legacy.map(cr => [cr.id, cr.status, cr.source_status, cr.monto, cr.pagado])), [
+    ['K1', 'VIGENTE', 'VIGENTE', 100, 60], ['K2', 'VENCIDO', 'VENCIDO', 50, 0], ['K3', 'PAGADO', 'PAGADO', 30, 30],
+    ['K4', 'LIVE', '', 20, 5], ['K5', 'ANULADO', 'ANULADO', 70, 0], ['K6', 'anulada', 'anulada', 9, 0]]);
+  h.ctx.clientes = [{ id:'C7', nombre:'Sintético Siete', dni:'', creditCategories:[] }];
+  h.ctx.creditos = legacy;
+  assert.deepEqual(legacy.map(cr => h.run(`_naIsCreditVoided(creditos.find(c => c.id === '${cr.id}'))`)), [false, false, false, false, true, true]);
+  assert.equal(h.run(`_naIsCreditVoided({ status:'LIVE' })`), false);
+  assert.equal(h.run(`_naIsCreditVoided({ status:'RECONCILED', estado:'RECONCILED', source_status:'' })`), false);
+  // Deuda = solo no anulados: K1 40 + K2 50 + K4 15 = 105 (K3 pagado; K5 y K6 anulados).
+  const ro = h.api.summarizeClient(h.ctx.clientes[0], true);
+  assert.equal(ro.debt, 105);
+  assert.ok(!ro.all.some(cr => ['K5', 'K6'].includes(String(cr.id))));
+  assert.equal(h.api.summarizeClient(h.ctx.clientes[0], false).debt, 105);
+  assert.equal(h.run('_naClientDebtFast("C7")'), 105);
 });
