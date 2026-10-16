@@ -90,6 +90,7 @@
 
   var FRIENDLY = {
     already_compensated: 'Ese abono ya fue anulado (quizá desde otro equipo). No se hizo nada más.',
+    credit_voided: 'Este crédito está anulado: no se pueden anular sus abonos. No se anuló nada.',
     compensation_target_not_found: 'Ese abono no existe en CANON. Actualiza la pantalla.',
     compensation_credit_mismatch: 'Ese abono no pertenece a este crédito. No se anuló nada.',
     stale_credit: 'El crédito cambió en otro equipo. Se actualizó la pantalla: revisa y vuelve a intentar.',
