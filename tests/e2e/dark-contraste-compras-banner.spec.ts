@@ -65,9 +65,13 @@ test('modo oscuro 390px: los cuatro elementos alcanzan WCAG AA (≥ 4.5:1) sin c
     for (const sheet of Array.from(document.styleSheets)) {
       if (!/theme-dark\.css/.test(sheet.href || '')) continue;
       const rules = sheet.cssRules;
+      // El bloque de auditoría oscura (desde el último body.dark .cfg-toggle) también pinta el OCR:
+      // se quita igual para medir el "antes", pero solo se cuentan las 4 reglas originales.
+      const sels = Array.from(rules).map(r => (r as CSSStyleRule).selectorText || '');
+      const audit = sels.lastIndexOf('body.dark .cfg-toggle');
       for (let i = rules.length - 1; i >= 0; i--) {
         const sel = (rules[i] as CSSStyleRule).selectorText || '';
-        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); n++; }
+        if (/^body\.dark (\.na-pur-total|\.na-pur-box \.na-pur-ocr|\.na-pur-overlay \.na-pur-box button\.na-pur-ocr|#naStatusBanner\[)/.test(sel)) { sheet.deleteRule(i); if (audit < 0 || i < audit) n++; }
       }
     }
     return n;
