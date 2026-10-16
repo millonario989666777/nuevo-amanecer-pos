@@ -38,7 +38,7 @@ async function setup(page: Page, role: 'owner' | 'empleado' = 'owner', dark = fa
   }, role);
   await page.reload();
   await page.waitForFunction(role => (window as any).NA_ROLES?.role === role && (window as any).NA_ROLES.confirmed, role);
-  await page.waitForFunction(() => (window as any)._naFreeSaleShortcutState?.ready);
+  await page.waitForFunction(() => (0, eval)('typeof _naFreeSaleShortcutState !== "undefined" && _naFreeSaleShortcutState.ready'));
   expect(await page.locator('#pageCodigosDuplicados').count(), 'Integrar primero el HTML de entrega').toBe(1);
   expect(await page.evaluate(() => !!(window as any).NA_CODIGOS_DUPLICADOS), 'Integrar primero el script de entrega').toBe(true);
   await page.evaluate(({ products, sales, dark }) => {
