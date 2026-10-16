@@ -50,7 +50,7 @@
     }
     return '';
   }
-  // Segunda línea para filas 'VARIOS' sin código: prefijo corto del id sin 'GENERIC:'.
+  // Segunda línea para filas sin código: prefijo corto del id sin 'GENERIC:'.
   function visibleId(id) {
     var value = text(id).replace(/^generic:/i, '').replace(/[^0-9a-z-]/gi, '');
     return value ? 'ID ' + value.slice(0, 8) : '';
@@ -87,7 +87,8 @@
     function createRow(item, ref) {
       var code = shortCode(item);
       var name = text(item.name != null ? item.name : item.nombre) || code || 'Producto sin nombre';
-      if (!code && /^varios$/i.test(name)) code = visibleId(ref.id);
+      // Toda fila sin código (VARIOS, PRÉSTAMO, VIVERES…) muestra un id corto visible, nunca 'GENERIC:'.
+      if (!code) code = visibleId(ref.id);
       return { key: ref.key, id: ref.id, code: code, name: name,
         category: categoryKey(item.cat || item.categoria), revenueRaw: 0, transactions: 0 };
     }
