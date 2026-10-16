@@ -4,7 +4,7 @@
   var owner = ['owner'], both = ['owner', 'empleado'];
   var SCREENS = {};
   ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'].forEach(function (id) { SCREENS[id] = both; });
-  ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'pageVentasStock', 'pageReporteArqueo', 'pageHistorialCompras', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
+  ['pageGastos', 'pageConfig', 'pageProximamente', 'pageValorizacion', 'pageRotacionAbc', 'pageVentasStock', 'pageReporteArqueo', 'pageHistorialCompras', 'pageClienteHistorial', 'ventas:reportes'].forEach(function (id) { SCREENS[id] = owner; });
   var ACTIONS = {};
   ['cash.closes.view', 'purchases.costs.view', 'expense.create', 'expense.update', 'expense.void', 'settings.set', 'product-images.write', 'reports.view', 'devices.manage', 'owner-pin.set', 'pairing-code.create', 'reviews.resolve'].forEach(function (id) { ACTIONS[id] = owner; });
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
@@ -74,7 +74,7 @@
     'vendedor-en-venta': true,
     'comentarios-venta': true,
     'despacho-productos': true,
-    'cliente-historial-compras': true,
+    'cliente-historial-compras': false,
     'vendedor-por-cliente': true,
     'consulta-dni-ruc': true,
     'edicion-masiva-productos': true,

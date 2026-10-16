@@ -89,6 +89,7 @@
     <link rel="stylesheet" href="css/sales-reports.css">
     <link rel="stylesheet" href="css/valorizacion-inventario.css">
     <link rel="stylesheet" href="css/rotacion-abc.css">
+    <link rel="stylesheet" href="css/cliente-historial-compras.css">
     <link rel="stylesheet" href="css/ventas-stock.css">
     <link rel="stylesheet" href="css/reporte-arqueo.css">
     <link rel="stylesheet" href="css/historial-compras.css">
@@ -452,6 +453,34 @@
     </div>
     <p class="ra-status" data-ra-status role="status" aria-live="polite"></p>
     <div data-ra-content></div>
+  </div>
+</div>
+<div class="page" id="pageClienteHistorial" aria-labelledby="clienteHistorialTitle">
+  <div class="ch-shell">
+    <header>
+      <h1 id="clienteHistorialTitle">Ventas y productos por cliente</h1>
+      <p class="ch-description">Consulta cuánto consumió un cliente y los productos que compró.</p>
+    </header>
+    <div class="ch-controls" data-ch-controls hidden>
+      <label>Buscar por nombre o DNI
+        <input type="search" data-ch-search aria-label="Buscar por nombre o DNI" placeholder="Nombre o DNI" autocomplete="off">
+      </label>
+      <label>Cliente
+        <select data-ch-customer aria-label="Cliente"><option value="">Selecciona un cliente</option></select>
+      </label>
+      <label>Período
+        <select data-ch-period aria-label="Período">
+          <option value="30" selected>Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+          <option value="365">Últimos 365 días</option>
+          <option value="all">Todo el historial</option>
+        </select>
+      </label>
+      <button type="button" data-ch-refresh>Actualizar reporte</button>
+    </div>
+    <p class="ch-method">Consulta de solo lectura. Se excluyen ventas anuladas. Total consumido = total registrado de las ventas; importe por producto = subtotal de la línea o precio vendido × cantidad. Los abonos no se cuentan como compras.</p>
+    <p class="ch-status" data-ch-status role="status" aria-live="polite"></p>
+    <div data-ch-content></div>
   </div>
 </div>
 <div class="page" id="pageRotacionAbc" aria-labelledby="rotacionAbcTitle">
@@ -1209,6 +1238,7 @@
 <script src="js/modules/proximamente.js"></script>
 <script src="js/modules/valorizacion-inventario.js"></script>
 <script src="js/modules/rotacion-abc.js"></script>
+<script src="js/modules/cliente-historial-compras.js"></script>
 <script src="js/modules/ventas-stock.js"></script>
 <script src="js/modules/reporte-arqueo.js"></script>
 <script src="js/inventory/historial-compras.js"></script>
