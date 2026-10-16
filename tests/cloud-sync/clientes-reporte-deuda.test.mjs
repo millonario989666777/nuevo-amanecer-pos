@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { performance } from 'node:perf_hooks';
+import { PERMISSIONS } from '../../tools/cloudflare-lab/src/pos-permissions.js';
 
 const source = readFileSync(new URL('../../POS/js/modules/clientes-reporte-deuda.js', import.meta.url), 'utf8');
+const v2Source = readFileSync(new URL('../../POS/js/modules/client-credit-accounts-v2.js', import.meta.url), 'utf8');
+const legacySource = readFileSync(new URL('../../POS/js/legacy-inline/inline-02.js', import.meta.url), 'utf8');
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
@@ -30,11 +34,15 @@ function harness({ owner = true, canonical, api, withDOM = false } = {}) {
   let permitted = owner;
   const listeners = new Map();
   const nodes = {};
+  const timers = [];
   function el(tag) {
     return { tag, children:[], dataset:{}, style:{}, hidden:false, textContent:'', attrs:{},
       classList:{ contains:() => true },
-      append(...children) { this.children.push(...children); },
-      replaceChildren() { this.children = []; },
+      append(...children) { children.forEach(child => { child.parentNode = this; this.children.push(child); }); },
+      insertBefore(child) { this.append(child); },
+      replaceChildren(...children) { this.children = []; this.append(...children); },
+      contains(child) { return this.children.includes(child) || this.children.some(node => node.contains(child)); },
+      focus() { document.activeElement = this; },
       setAttribute(key, value) { this.attrs[key] = value; },
       addEventListener(name, fn) { this['on' + name] = fn; },
       querySelector(selector) { return this.selectors?.[selector] || null; },
@@ -45,20 +53,26 @@ function harness({ owner = true, canonical, api, withDOM = false } = {}) {
     '[data-rd-sort]':el('select'), '[data-rd-back]':el('button') };
   nodes.pageReporteDeuda.controls = [nodes.pageReporteDeuda.selectors['[data-rd-sort]']];
   const bar = el('div');
+  const chrome = el('div');
+  chrome.append(bar);
   const document = { readyState:'complete', createElement:el,
-    getElementById:id => nodes[id] || bar.children.find(n => n.id === id) || null,
+    getElementById:id => nodes[id] || chrome.children.find(n => n.id === id) || null,
     querySelector:selector => selector === '#pageClientes .filter-bar' ? bar : null };
-  const forbidden = () => { throw new Error('No writes allowed'); };
+  const writes = [];
+  const forbidden = () => { writes.push('write'); throw new Error('No writes allowed'); };
   const context = {
     clientes:clients, NA_ROLES:{ isOwner:() => permitted }, NuevoAmanecerCanonical:canonical,
     NA_CLIENT_CREDIT_ACCOUNTS_V2:api,
     localStorage:{ setItem:forbidden, removeItem:forbidden }, saveAllData:forbidden, fetch:forbidden,
     addEventListener(name, fn) { const list = listeners.get(name) || []; list.push(fn); listeners.set(name, list); },
-    setTimeout() { return 1; }
+    setTimeout(fn) { timers.push(fn); return timers.length; }
   };
   if (withDOM) context.document = document;
   vm.runInNewContext(source, context);
-  return { context, report:context.NA_CLIENTES_REPORTE_DEUDA, nodes, bar,
+  return { context, report:context.NA_CLIENTES_REPORTE_DEUDA, nodes, writes,
+    bar: { get children() { return chrome.children.filter(node => node !== bar); } },
+    emit(name) { (listeners.get(name) || []).forEach(fn => fn()); },
+    flush() { while (timers.length) timers.shift()(); },
     setOwner(value) { permitted = value; (listeners.get('na:role') || []).forEach(fn => fn()); } };
 }
 const buildReport = harness().report.buildReport;
@@ -119,26 +133,35 @@ test('empty clients produce a zero footer; unavailable or invalid summaries neve
   api.summarizeClient = () => { throw new Error('unavailable'); };
   assert.throws(() => buildReport(clients, api, null), /unavailable/);
   api.summarizeClient = c => summaries[c.id];
-  for (const value of [NaN, Infinity, -1]) {
+  for (const value of [NaN, Infinity, -1, null, undefined, '', '10', Number.MAX_SAFE_INTEGER]) {
     api.debtFilter.effectiveBalance = () => value;
     assert.throws(() => buildReport(clients, api, null), /no disponible/);
   }
 });
 
-test('render falls back to a null pending snapshot when canonical throws; it never calls persistence', () => {
+test('render reads one pending snapshot per projection; a failed read clears totals and never reads debt', () => {
   const snapshots = [];
+  let snapshotCalls = 0;
   const api = { summarizeClient:c => summaries[c.id],
     debtFilter:{ effectiveBalance(s, pending) { snapshots.push(pending); return s.debt; } } };
-  const h = harness({ withDOM:true, api, canonical:{ pendingSnapshot() { throw new Error('offline'); } } });
+  const pending = freeze({ command:'payment.create', state:'PENDING', payload:{ operation_id:'TEST-READ', credit_id:'1001', amount_cents:100 } });
+  const h = harness({ withDOM:true, api, canonical:{ pendingSnapshot() { snapshotCalls++; return pending; } } });
   assert.equal(h.report.render(), true);
-  assert.ok(snapshots.length >= 3);
-  assert.ok(snapshots.every(s => s === null));
+  assert.equal(snapshotCalls, 2, 'initialization and explicit refresh each read once');
+  assert.equal(snapshots.length, 6);
+  assert.ok(snapshots.every(s => s === pending));
   const content = h.nodes.pageReporteDeuda.selectors['[data-rd-content]'];
   assert.equal(content.children[0].children.length, 2);
   assert.equal(h.bar.children.length, 1, 'one native entry button');
   assert.equal(h.bar.children[0].hidden, false);
   assert.equal(h.report.init(), undefined);
   assert.equal(h.bar.children.length, 1, 'initialization is idempotent');
+  h.context.NuevoAmanecerCanonical.pendingSnapshot = () => { throw new Error('offline'); };
+  assert.equal(h.report.render(), false);
+  assert.equal(content.children.length, 0);
+  assert.equal(snapshots.length, 6, 'unavailable pending snapshot must stop before reading debt');
+  assert.match(h.nodes.pageReporteDeuda.selectors['[data-rd-status]'].textContent, /No se pudo cargar/);
+  assert.deepEqual(h.writes, [], 'caught write attempts must also fail the test');
 });
 
 test('employee, unknown and throwing roles fail closed without reading debt; role loss clears rendered data', () => {
@@ -206,4 +229,162 @@ test('open credits use monto − pagado, never a stale saldo field', () => {
   const report = ctx.NA_CLIENTES_REPORTE_DEUDA.buildReport([{ id: 7, nombre: 'Cliente sintético' }], api, null, 'saldo');
   assert.equal(report.rows[0].openCredits, 1);
   assert.equal(report.rows[0].oldestDate, '2024-02-01');
+});
+
+function realV2() {
+  const events = new Map();
+  const ctx = { clientes:[], creditos:[], document:{ getElementById:() => null, querySelector:() => null },
+    addEventListener(name, fn) { const list = events.get(name) || []; list.push(fn); events.set(name, list); },
+    setTimeout:() => 1, clearTimeout() {},
+    obtenerHoy:() => '2026-10-15', diasHasta:day => day === '2000-01-01' ? -1 : 1,
+    _naNumber:value => Number.isFinite(Number(value)) ? Number(value) : 0 };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  // Usa las funciones legacy reales, incluido el índice que normaliza in situ.
+  const status = legacySource.slice(legacySource.indexOf('const _naSyncCreditStatus='), legacySource.indexOf('// NUEVO FASE 6'));
+  const outstanding = legacySource.match(/function _naCreditOutstanding\(cr\)\{[^\n]+/)[0];
+  const index = legacySource.slice(legacySource.indexOf('let _naClientCreditIndexRef='), legacySource.indexOf('statusCli=function'));
+  vm.runInContext(status + '\n' + outstanding + '\n' + index, ctx);
+  vm.runInContext(v2Source, ctx);
+  return { ctx, api:ctx.NA_CLIENT_CREDIT_ACCOUNTS_V2,
+    emit(type, detail) { (events.get(type) || []).forEach(fn => fn({ type, detail })); },
+    warm() { vm.runInContext('_naEnsureClientCreditIndex(true)', ctx); } };
+}
+
+test('real V2: pending batch/replays/receipts do not double deduct or mutate a warm replica', () => {
+  const h = realV2();
+  h.ctx.clientes = plain(clients);
+  h.ctx.creditos = [credit(1001, 80), credit(1002, 20), credit(1003, 0),
+    credit(1004, 50, { cliId:102, vence:'2000-01-01' })];
+  h.warm();
+  freeze(h.ctx.clientes); freeze(h.ctx.creditos);
+  h.ctx._naEvaluateClientCredit = () => assert.fail('read-only summary must never evaluate client credit');
+  const pay = { operation_id:'TEST-REAL-PAY', credit_id:'1001', amount_cents:3000 };
+  const pending = freeze({ state:'PENDING', command:'payment.batch', payload:{ payments:[pay, pay,
+    { operation_id:'TEST-CLOSED', credit_id:'1003', amount_cents:99900 },
+    { operation_id:'TEST-UNRELATED', credit_id:'OTHER', amount_cents:99900 }] } });
+  const before = JSON.stringify({ clients:h.ctx.clientes, credits:h.ctx.creditos, pending });
+  let report = buildReport(h.ctx.clientes, h.api, pending);
+  assert.equal(report.total, 120);
+  assert.equal(report.rows[0].balance, 70);
+  assert.equal(report.rows[0].openCredits, 2);
+  assert.equal(report.rows[1].overdueDebt, 50);
+  h.emit('na:canonical-payment-receipt', { version:1, command:'payment.create', payload:pay,
+    receipt:{ operation_id:pay.operation_id, credit_id:pay.credit_id, status:'created', current_balance_cents:5000 } });
+  report = buildReport(h.ctx.clientes, h.api, pending);
+  assert.equal(report.total, 120, 'durable receipt and its still-pending intent count once');
+  assert.equal(JSON.stringify({ clients:h.ctx.clientes, credits:h.ctx.creditos, pending }), before);
+});
+
+test('forensic characterization P1: real V2 readOnly still normalizes originals when the shared index is cold', t => {
+  const h = realV2();
+  h.ctx.clientes = plain(clients);
+  h.ctx.creditos = [credit(1001, 10, { monto:'100', pagado:'90', status:'desfasado' })];
+  const before = JSON.stringify(h.ctx.creditos);
+  buildReport(h.ctx.clientes, h.api, null);
+  assert.notEqual(JSON.stringify(h.ctx.creditos), before);
+  assert.equal(typeof h.ctx.creditos[0].monto, 'number');
+  assert.equal(h.ctx.creditos[0].status, 'vigente');
+  t.diagnostic('P1 pendiente fuera de alcance: esta prueba demuestra la mutación; no certifica solo lectura con índice frío.');
+});
+
+test('forensic characterization P1: opening the actual account evaluates policy and normalizes live credits', t => {
+  const h = realV2();
+  h.ctx.clientes = plain(clients);
+  h.ctx.creditos = [credit(1001, 10)];
+  h.warm();
+  h.ctx.creditos[0].pagado = '90';
+  h.ctx.appConfig = { creditPolicy:{} };
+  h.ctx.ventas = []; h.ctx.productos = [];
+  h.ctx._naRoundMoney = value => Number((Number(value) || 0).toFixed(2));
+  h.ctx._naInt = (value, fallback) => Number.parseInt(value, 10) || fallback;
+  h.ctx._naDocumentValue = value => String(value || '');
+  h.ctx.NA_DOC = { displayDoc:() => '' };
+  const evaluation = readFileSync(new URL('../../POS/js/legacy-inline/inline-04.js', import.meta.url), 'utf8');
+  vm.runInContext(evaluation.slice(0, evaluation.indexOf('calcularScoreCredito=function')), h.ctx);
+  const before = JSON.stringify({ credits:h.ctx.creditos, config:h.ctx.appConfig });
+  const navigation = harness();
+  navigation.context.NA_MENU_NAVIGATION = { navigate:() => true };
+  navigation.context.naCanonOpenClientAccount = h.ctx.naCanonOpenClientAccount;
+  assert.equal(navigation.report.openClient(101), true);
+  assert.notEqual(JSON.stringify({ credits:h.ctx.creditos, config:h.ctx.appConfig }), before);
+  assert.equal(typeof h.ctx.creditos[0].pagado, 'number');
+  assert.equal(h.ctx.appConfig.creditPolicy.enabled, true);
+  t.diagnostic('P1 pendiente: la ficha pública usa resumen mutable y evaluación legacy; el reporte no puede hacer pura esa ruta.');
+});
+
+test('real V2 with 1000 clients and 10000 credits summarizes each client exactly once', t => {
+  const h = realV2();
+  h.ctx.clientes = Array.from({ length:1000 }, (_, i) => ({ id:i, nombre:'Cliente sintético ' + i }));
+  h.ctx.creditos = Array.from({ length:10000 }, (_, i) => credit(i, 10, { cliId:i % 1000 }));
+  h.warm();
+  freeze(h.ctx.creditos); freeze(h.ctx.clientes);
+  let calls = 0;
+  const api = { ...h.api, summarizeClient(c, readOnly) { calls++; return h.api.summarizeClient(c, readOnly); } };
+  const start = performance.now();
+  const result = buildReport(h.ctx.clientes, api, null);
+  t.diagnostic('Proyección V2 con índice preparado: ' + (performance.now() - start).toFixed(1) + ' ms (sin navegador).');
+  assert.equal(calls, 1000);
+  assert.equal(result.count, 1000);
+  assert.equal(result.total, 100000);
+  assert.ok(result.rows.every(row => row.openCredits === 10));
+});
+
+test('unchanged focus refresh preserves row identity; changed or removed rows retain keyboard focus', () => {
+  let balance = 99;
+  const api = { summarizeClient:c => summaries[c.id], debtFilter:{ effectiveBalance:s => s.debt === 99 ? balance : s.debt } };
+  const h = harness({ withDOM:true, api });
+  const content = h.nodes.pageReporteDeuda.selectors['[data-rd-content]'];
+  const row = content.children[0].children[0].children[0];
+  row.focus();
+  h.emit('focus'); h.emit('storage'); h.flush();
+  assert.equal(content.children[0].children[0].children[0], row);
+  assert.equal(h.context.document.activeElement, row);
+  balance = 98;
+  h.emit('na:canonical-updated'); h.flush();
+  const replacement = content.children[0].children[0].children[0];
+  assert.notEqual(replacement, row);
+  assert.equal(h.context.document.activeElement, replacement);
+  balance = 0;
+  h.report.render();
+  assert.equal(h.context.document.activeElement, h.nodes.pageReporteDeuda.selectors['[data-rd-sort]']);
+  assert.deepEqual(h.writes, []);
+});
+
+test('entry has its own row outside the fixed mobile search bar and opening moves keyboard focus', () => {
+  const h = harness({ withDOM:true, api:{ summarizeClient:c => summaries[c.id], debtFilter:{ effectiveBalance:s => s.debt } } });
+  const entry = h.bar.children[0];
+  assert.equal(entry.parentNode.children[0].children.length, 0, 'search bar has no appended report control');
+  h.context.NA_MENU_NAVIGATION = { navigate:() => true };
+  assert.equal(h.report.open(), true);
+  assert.equal(h.context.document.activeElement, h.nodes.pageReporteDeuda.selectors['[data-rd-back]']);
+});
+
+test('dates reject impossible days and fallback timestamps use Lima even across midnight', () => {
+  const api = { summarizeClient:() => ({ debt:10, overdueDebt:0,
+    active:[credit(1, 10, { fecha:'2024-02-30', timestamp:'2024-03-01T02:00:00Z' })] }),
+    debtFilter:{ effectiveBalance:s => s.debt } };
+  assert.equal(buildReport([clients[0]], api, null).rows[0].oldestDate, '2024-02-29');
+  api.summarizeClient = () => ({ debt:10, overdueDebt:0,
+    active:[credit(1, 10, { fecha:'', timestamp:'2024-03-01T02:00:00' })] });
+  assert.equal(buildReport([clients[0]], api, null).rows[0].oldestDate, '2024-03-01');
+});
+
+test('invalid source debt cannot silently become an empty report in the real balance filter', () => {
+  const h = realV2();
+  for (const debt of [NaN, Infinity, null, undefined, '']) {
+    const api = { ...h.api, summarizeClient:() => ({ debt, overdueDebt:0, active:[] }) };
+    assert.throws(() => buildReport(clients, api, null), /no disponible/);
+  }
+});
+
+test('shared browser/server screen policy grants the report only to owner; unlisted API remains default-deny', () => {
+  const ctx = {};
+  vm.runInNewContext(readFileSync(new URL('../../POS/js/config/pos-permissions.js', import.meta.url), 'utf8'), ctx);
+  for (const policy of [ctx.NA_PERMISSIONS, PERMISSIONS]) {
+    for (const role of ['owner', 'empleado', 'unknown', undefined]) {
+      assert.equal(policy.canAccessScreen(role, 'pageReporteDeuda'), role === 'owner');
+    }
+    assert.deepEqual(Array.from(policy.routeRoles('/read/canonical/reporte-deuda', 'GET')), ['owner']);
+  }
 });

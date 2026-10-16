@@ -66,8 +66,9 @@ async function setup(page: Page, role: 'owner' | 'empleado' = 'owner', dark = fa
 async function financialSnapshot(page: Page) {
   return page.evaluate(() => {
     const w = window as any;
-    const protectedKeys = ['na_canonical_sale_journal', 'na_canonical_sale_outbox_v1', 'na_canonical_binding'];
+    const protectedKeys = Object.keys(localStorage).filter(key => /^na_canonical_/.test(key)).sort();
     return JSON.stringify({ clientes, creditos, ventas, cajMovs, cajEstado, pending:w.__rdPending,
+      creditPolicy:appConfig.creditPolicy,
       storage:protectedKeys.map(key => [key, localStorage.getItem(key)]),
       layouts:['pagePOS', 'pageMenu'].map(id => document.getElementById(id)!.innerHTML) });
   });
@@ -94,6 +95,14 @@ for (const width of [1366, 768, 390]) for (const dark of [false, true]) {
     const before = await financialSnapshot(page);
     await expect(page.locator('#naClientesReporteDeudaBtn')).toBeVisible();
     await accessibleHit(page, '#naClientesReporteDeudaBtn');
+    if (width === 390) {
+      const search = page.locator('#cliSearch');
+      expect((await search.boundingBox())!.width).toBeGreaterThanOrEqual(80);
+      expect(await search.evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === node;
+      })).toBe(true);
+    }
     await page.locator('#naClientesReporteDeudaBtn').tap();
     const report = page.locator('#pageReporteDeuda');
     await expect(report).toHaveClass(/\bactive\b/);
@@ -110,6 +119,13 @@ for (const width of [1366, 768, 390]) for (const dark of [false, true]) {
     expect(await report.locator('.rd-row').first().evaluate(node => getComputedStyle(node).whiteSpace)).toBe('normal');
     if (width === 390) expect(await report.locator('.rd-row').first().evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length)).toBe(1);
     expect(await report.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(dark ? 'rgb(16, 26, 37)' : 'rgb(244, 247, 250)');
+    // El control de entrada debe mantener disponible la búsqueda a 390px.
+    expect(await page.locator('#naClientesReporteDeudaBtn').evaluate(node => !node.closest('.filter-bar'))).toBe(true);
+    await expect(report.locator('[data-rd-back]')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(report.locator('[data-rd-sort]')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(report.locator('.rd-row').first()).toBeFocused();
     await report.getByLabel('Ordenar por').selectOption('vencida');
     await expect(report.locator('.rd-row').first()).toHaveAttribute('data-client-id', '102');
     await expect(report.locator('[data-rd-total]')).toHaveText('S/ 120.00');
@@ -126,6 +142,21 @@ for (const width of [1366, 768, 390]) for (const dark of [false, true]) {
     await report.locator('[data-client-id="101"]').focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('#pageClientes')).toHaveClass(/\bactive\b/);
+    await expect(page.locator('#pageClientes .na-v2-client-head h2')).toContainText('SALDO MAYOR');
+    await page.evaluate(() => (window as any).NA_CLIENTES_REPORTE_DEUDA.open());
+    await expect(report.locator('[data-rd-back]')).toBeFocused();
+    await report.locator('[data-client-id="101"]').focus();
+    await page.evaluate(() => {
+      const row = document.querySelector('#pageReporteDeuda [data-client-id="101"]')!;
+      (window as any).__rdFocusedRow = row;
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(report.locator('[data-client-id="101"]')).toBeFocused();
+    expect(await page.evaluate(() => {
+      (window as any).NA_CLIENTES_REPORTE_DEUDA.render();
+      return (window as any).__rdFocusedRow === document.activeElement;
+    })).toBe(true);
+    await page.keyboard.press('Space');
     await expect(page.locator('#pageClientes .na-v2-client-head h2')).toContainText('SALDO MAYOR');
     expect(await financialSnapshot(page)).toBe(before);
     expect(writes).toEqual([]);
@@ -149,7 +180,55 @@ test('empleado: sin botón ni datos del reporte; acceso directo muestra Sin perm
   expect(writes).toEqual([]);
 });
 
-test('actualiza el saldo al cambiar pendientes; un error de snapshot usa null y un fallo de API no muestra totales parciales', async ({ page }) => {
+test('pérdida del rol owner borra inmediatamente datos y controles del reporte', async ({ page }) => {
+  await setup(page);
+  await page.locator('#naClientesReporteDeudaBtn').click();
+  await expect(page.locator('#pageReporteDeuda .rd-row')).toHaveCount(2);
+  await page.route('https://permissions.test/auth/me', route => route.fulfill({ status:200,
+    contentType:'application/json', body:JSON.stringify({ pos_role:'empleado', roles_ready:true }) }));
+  await page.evaluate(() => (window as any).NA_ROLES.refresh());
+  await expect(page.locator('#naClientesReporteDeudaBtn')).toBeHidden();
+  await expect(page.locator('#pageReporteDeuda .rd-row')).toHaveCount(0);
+  await expect(page.locator('#pageReporteDeuda [data-rd-total]')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).NA_CLIENTES_REPORTE_DEUDA.openClient(101))).toBe(false);
+});
+
+test('1000 clientes: filas/pie íntegros, sin recrear DOM por eventos de foco', async ({ page }) => {
+  await page.setViewportSize({ width:390, height:900 });
+  await setup(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    clientes = Array.from({ length:1000 }, (_, i) => ({ ...clientes[0], id:i + 10000,
+      nombre:'Cliente sintético extenso ' + i + ' ' + 'X'.repeat(120) }));
+    const template = creditos[0];
+    creditos = clientes.map((client, i) => ({ ...template, id:20000 + i, credit_id:String(20000 + i),
+      cliId:client.id, clienteId:client.id, clienteNombre:client.nombre, monto:10, pagado:0, saldo:10,
+      items:(template.items || []).map((item: any) => ({ ...item, precioUnitario:10, precio:10, subtotal:10 })) }));
+    w.__rdPending = null;
+    w._naEnsureClientCreditIndex(true);
+  });
+  const before = await financialSnapshot(page);
+  await page.locator('#naClientesReporteDeudaBtn').click();
+  await expect(page.locator('#pageReporteDeuda .rd-row')).toHaveCount(1000);
+  await expect(page.locator('#pageReporteDeuda [data-rd-total]')).toHaveText('S/ 10000.00');
+  await expect(page.locator('#pageReporteDeuda [data-rd-count]')).toHaveText('1000');
+  expect(await page.locator('#pageReporteDeuda').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  const first = page.locator('#pageReporteDeuda .rd-row').first();
+  await first.focus();
+  expect(await first.evaluate(node => {
+    performance.mark('rd-start');
+    (window as any).NA_CLIENTES_REPORTE_DEUDA.render();
+    performance.mark('rd-end');
+    performance.measure('rd-refresh-1000', 'rd-start', 'rd-end');
+    return node === document.querySelector('#pageReporteDeuda .rd-row');
+  })).toBe(true);
+  await expect(first).toBeFocused();
+  expect(await financialSnapshot(page)).toBe(before);
+  const duration = await page.evaluate(() => performance.getEntriesByName('rd-refresh-1000')[0].duration);
+  test.info().annotations.push({ type:'performance', description:`Refresh 1000 clientes: ${duration.toFixed(1)} ms` });
+});
+
+test('actualiza pendientes y limpia totales ante errores de snapshot o API, sin asumir outbox vacío', async ({ page }) => {
   await setup(page);
   await page.locator('#naClientesReporteDeudaBtn').click();
   await page.evaluate(() => {
@@ -164,9 +243,11 @@ test('actualiza el saldo al cambiar pendientes; un error de snapshot usa null y 
     w.NuevoAmanecerCanonical = { ...w.NuevoAmanecerCanonical, pendingSnapshot:() => { throw new Error('offline fixture'); } };
     w.NA_CLIENTES_REPORTE_DEUDA.render();
   });
-  await expect(page.locator('#pageReporteDeuda [data-rd-total]')).toHaveText('S/ 160.00');
+  await expect(page.locator('#pageReporteDeuda [data-rd-total]')).toHaveCount(0);
+  await expect(page.locator('#pageReporteDeuda [data-rd-status]')).toContainText('No se pudo cargar');
   await page.evaluate(() => {
     const w = window as any;
+    w.NuevoAmanecerCanonical = { ...w.NuevoAmanecerCanonical, pendingSnapshot:() => w.__rdPending };
     w.NA_CLIENT_CREDIT_ACCOUNTS_V2 = { ...w.NA_CLIENT_CREDIT_ACCOUNTS_V2,
       summarizeClient:() => { throw new Error('unavailable fixture'); } };
     w.NA_CLIENTES_REPORTE_DEUDA.render();

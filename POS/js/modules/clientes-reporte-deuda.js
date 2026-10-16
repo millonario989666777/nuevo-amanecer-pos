@@ -7,30 +7,43 @@
   var sortMode = 'saldo';
   var refreshTimer = null;
   var initialized = false;
+  var renderedReport = null;
 
   function amount(value) {
-    var number = Number(value);
-    if (!Number.isFinite(number) || number < 0) throw new Error('Saldo no disponible');
-    return number;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 ||
+        !Number.isSafeInteger(Math.round(value * 100))) throw new Error('Saldo no disponible');
+    return value;
   }
 
-  // Misma regla visual que labCreditVisualDate de V2: fecha, luego timestamp.
+  function calendarDate(value) {
+    var day = String(value || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return '';
+    var parsed = new Date(day + 'T12:00:00Z');
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day ? day : '';
+  }
+
+  // Fecha registrada, luego día del timestamp en Lima, independiente del aparato.
   // No usar vence: es el vencimiento, no la fecha de creación del crédito.
   function creditDate(credit) {
-    var direct = String(credit && credit.fecha || '').slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
-    var fallback = String(credit && credit.timestamp || '').slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(fallback) ? fallback : '';
+    var direct = calendarDate(credit && credit.fecha);
+    if (direct) return direct;
+    var timestamp = String(credit && credit.timestamp || '');
+    if (!calendarDate(timestamp)) return '';
+    if (timestamp.length === 10) return timestamp;
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(timestamp)) return '';
+    if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp)) timestamp += '-05:00';
+    var instant = Date.parse(timestamp);
+    return Number.isFinite(instant) ? new Date(instant - 5 * 60 * 60 * 1000).toISOString().slice(0, 10) : '';
   }
 
-  // Mismo criterio que V2 (labCreditPending): _naCreditOutstanding o monto − pagado.
+  // Mismo redondeo que _naCreditOutstanding; no delegar en helpers mutables.
   function outstanding(credit) {
-    try { if (typeof _naCreditOutstanding === 'function') return Math.max(0, Number(_naCreditOutstanding(credit)) || 0); } catch (_) {}
-    return Math.max(0, (Number(credit.monto) || 0) - (Number(credit.pagado) || 0));
+    return Math.max(0, Number(((Number(credit.monto) || 0) - (Number(credit.pagado) || 0)).toFixed(2)));
   }
 
-  // Pura respecto de sus entradas. V2 es la única autoridad del saldo;
-  // únicamente se suman los saldos finales de las filas para el pie.
+  // Este módulo no escribe sus entradas. V2 es la única autoridad del saldo;
+  // su ruta readOnly todavía requiere corregir el índice legacy compartido.
+  // Únicamente se suman los saldos finales de las filas para el pie.
   function buildReport(clients, api, pending, order) {
     if (!api || typeof api.summarizeClient !== 'function' || !api.debtFilter ||
         typeof api.debtFilter.effectiveBalance !== 'function') {
@@ -40,6 +53,9 @@
     (Array.isArray(clients) ? clients : []).forEach(function (client) {
       if (!client) return;
       var summary = api.summarizeClient(client, true);
+      // effectiveBalance convierte deudas no finitas en cero: no ocultar una
+      // fuente financiera inválida como si fuera un cliente sin deuda.
+      amount(summary && summary.debt);
       var balance = amount(api.debtFilter.effectiveBalance(summary, pending));
       if (balance === 0) return;
       // summary.active de V2 ya excluye créditos cancelados (pendiente <= 0,001 según
@@ -47,13 +63,18 @@
       var active = (Array.isArray(summary.active) ? summary.active : []).filter(function (credit) {
         return credit && outstanding(credit) > 0.001;
       });
-      var dates = active.map(creditDate).filter(Boolean).sort();
+      var oldest = '';
+      active.forEach(function (credit) {
+        var date = creditDate(credit);
+        if (date && (!oldest || date < oldest)) oldest = date;
+      });
       rows.push({ clientId:client.id, name:String(client.nombre || 'Cliente'), balance:balance,
-        overdueDebt:amount(summary.overdueDebt), oldestDate:dates[0] || '', openCredits:active.length });
+        overdueDebt:amount(summary.overdueDebt), oldestDate:oldest, openCredits:active.length });
     });
     var key = order === 'vencida' ? 'overdueDebt' : 'balance';
     rows.sort(function (a, b) { return b[key] - a[key] || b.balance - a.balance; });
     var cents = rows.reduce(function (sum, row) { return sum + Math.round(row.balance * 100); }, 0);
+    if (!Number.isSafeInteger(cents)) throw new Error('Saldo no disponible');
     return { rows:rows, total:cents / 100, count:rows.length };
   }
 
@@ -63,10 +84,10 @@
   }
 
   function pendingSnapshot() {
-    try {
-      var canonical = root.NuevoAmanecerCanonical;
-      return canonical && typeof canonical.pendingSnapshot === 'function' ? canonical.pendingSnapshot() : null;
-    } catch (_) { return null; }
+    var canonical = root.NuevoAmanecerCanonical;
+    // Ausencia de CANON (modo local) permite null. Un error de lectura del
+    // outbox no demuestra que esté vacío: no publicar saldos sin pendientes.
+    return canonical && typeof canonical.pendingSnapshot === 'function' ? canonical.pendingSnapshot() : null;
   }
 
   function navigate(pageId) {
@@ -80,7 +101,11 @@
   function open() {
     if (!isOwner()) return false;
     render();
-    return navigate(PAGE_ID);
+    if (!navigate(PAGE_ID)) return false;
+    var page = doc && doc.getElementById(PAGE_ID);
+    var back = page && page.querySelector('[data-rd-back]');
+    if (back) back.focus({ preventScroll:true });
+    return true;
   }
 
   function openClient(clientId) {
@@ -114,10 +139,11 @@
     var content = page.querySelector('[data-rd-content]');
     var status = page.querySelector('[data-rd-status]');
     if (!content || !status) return false;
-    content.replaceChildren();
     var allowed = isOwner();
     page.querySelectorAll('[data-rd-owner-control]').forEach(function (control) { control.hidden = !allowed; });
     if (!allowed) {
+      content.replaceChildren();
+      renderedReport = null;
       status.textContent = 'Sin permiso. Este reporte está disponible solo para el dueño.';
       return false;
     }
@@ -126,10 +152,19 @@
       report = buildReport(typeof clientes !== 'undefined' ? clientes : [],
         root.NA_CLIENT_CREDIT_ACCOUNTS_V2, pendingSnapshot(), sortMode);
     } catch (_) {
+      content.replaceChildren();
+      renderedReport = null;
       status.textContent = 'No se pudo cargar el reporte de deuda. Vuelve a abrirlo para reintentar.';
       return false;
     }
     status.textContent = report.count ? '' : 'No hay clientes con deuda pendiente.';
+    var signature = JSON.stringify(report);
+    // Eventos focus/pageshow/storage suelen traer los mismos datos. Mantener
+    // botones y foco, y evitar recrear miles de nodos sin un cambio visible.
+    if (signature === renderedReport) return true;
+    var focused = doc.activeElement;
+    var focusedId = focused && content.contains(focused) ? focused.dataset.clientId : undefined;
+    var focusTarget = null;
     var list = element('ul', 'rd-list');
     list.setAttribute('aria-label', 'Clientes con deuda pendiente');
     report.rows.forEach(function (data) {
@@ -137,6 +172,7 @@
       var row = element('button', 'rd-row');
       row.type = 'button';
       row.dataset.clientId = String(data.clientId);
+      if (row.dataset.clientId === focusedId) focusTarget = row;
       row.setAttribute('aria-label', 'Abrir ficha de ' + data.name + ', saldo pendiente ' + money(data.balance) +
         ', deuda vencida ' + money(data.overdueDebt) + ', crédito impago más antiguo ' + dateLabel(data.oldestDate) +
         ', créditos abiertos ' + data.openCredits);
@@ -160,7 +196,11 @@
     var countBox = element('div');
     countBox.append(element('span', '', 'Clientes que deben'), count);
     footer.append(totalBox, countBox);
-    content.append(list, footer);
+    content.replaceChildren(list, footer);
+    renderedReport = signature;
+    if (focusedId !== undefined) {
+      (focusTarget || page.querySelector('[data-rd-sort]')).focus({ preventScroll:true });
+    }
     return true;
   }
 
@@ -169,14 +209,14 @@
     if (!bar) return;
     var entry = doc.getElementById('naClientesReporteDeudaBtn');
     if (!entry && isOwner()) {
-      entry = element('button', 'f-select', 'Reporte de deuda');
+      entry = element('button', 'f-select rd-entry', 'Reporte de deuda');
       entry.id = 'naClientesReporteDeudaBtn';
       entry.type = 'button';
-      entry.style.minHeight = '44px';
-      entry.style.whiteSpace = 'normal';
       entry.setAttribute('aria-controls', PAGE_ID);
       entry.addEventListener('click', open);
-      bar.append(entry);
+      // La barra móvil usa nowrap y un select fijo de 112px. Una fila propia
+      // mantiene disponible la búsqueda, incluso a 390px.
+      bar.parentNode.insertBefore(entry, bar.nextSibling);
     }
     if (entry) entry.hidden = !isOwner();
   }

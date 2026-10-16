@@ -1,4 +1,19 @@
-/* Solo Reporte de deuda; Venta, Inicio y la lista de Clientes conservan sus estilos. */
+/* Reporte de deuda y su botón de entrada en Clientes. */
+#naClientesReporteDeudaBtn.rd-entry {
+  display: block;
+  flex: none;
+  width: calc(100% - 24px);
+  max-width: calc(100% - 24px);
+  height: auto;
+  min-height: 44px;
+  margin: 8px 12px;
+  padding: 10px 12px;
+  white-space: normal;
+  cursor: pointer;
+}
+#naClientesReporteDeudaBtn[hidden] { display: none !important; }
+#naClientesReporteDeudaBtn:focus-visible { outline: 3px solid #0f766e; outline-offset: 2px; }
+body.dark #naClientesReporteDeudaBtn:focus-visible { outline-color: #5eead4; }
 #pageReporteDeuda {
   --rd-surface: #fff;
   --rd-background: #f4f7fa;
