@@ -21,7 +21,7 @@ const PORT = Number(process.argv[2] || process.env.PORT || 4391);
 const store = createMemoryUsageStore();
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
-const env = { ASSISTANT_ENABLED: '1', DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '', DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || '', ASSISTANT_PER_MINUTE: process.env.ASSISTANT_PER_MINUTE || '', ASSISTANT_CONFIRM_SECRET: randomBytes(24).toString('hex'), ASSISTANT_DEMO: '1' };
+const env = { ASSISTANT_OWNER_BOOTSTRAP: '1', ASSISTANT_ENABLED: '1', DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '', DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL || '', ASSISTANT_PER_MINUTE: process.env.ASSISTANT_PER_MINUTE || '', ASSISTANT_CONFIRM_SECRET: randomBytes(24).toString('hex'), ASSISTANT_DEMO: '1' };
 // SOLO PROTOTIPO LOCAL: aprobación del dueño de mentira (cualquier PIN de 4-8 dígitos), en memoria, ligada al operation_id y de un solo uso.
 // En el Worker real la da POST /auth/owner-approval (pos-roles.js) con el PIN verdadero y se gasta con consumeApproval.
 const demoApprovals = new Map();

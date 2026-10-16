@@ -4,7 +4,7 @@
   "chat": "/auth/assistant/chat",
   "confirm": "/auth/assistant/confirm",
   "tool": null,
-  "audit": null
+  "audit": "/auth/assistant/audit"
  },
  "campos": {
   "mensaje": "text",

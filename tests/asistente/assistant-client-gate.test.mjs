@@ -241,7 +241,7 @@ test('confirm que se corta por tiempo: «Pulsa Confirmar otra vez», sigue pendi
   const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); if (++n === 1) { const e = new Error('timeout'); e.timeout = true; throw e; } return { ok: true, operation_id: 'AST-9', proposal: p }; } });
   const gate = C.createGate(d); const k = gate.add({ ...ajuste, id: 'u-t', confirm_token: 'tok-1' });
   const r1 = await gate.execute(k, { confirmed: true });
-  assert.equal(r1.ok, false); assert.match(r1.msg, /Pulsa Confirmar otra vez/); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.stock, []);
+  assert.equal(r1.ok, false); assert.match(r1.msg, /Volver a intentar/); assert.equal(C.confirmFailureView(r1).button, 'Volver a intentar'); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.stock, []);
   const r2 = await gate.execute(k, { confirmed: true });
   assert.equal(r2.ok, true); assert.deepEqual(tokens, ['tok-1', 'tok-1']); assert.equal(calls.stock.length, 1);
 });
@@ -271,4 +271,57 @@ test('lista de pedido: la del empleado usa SOLO las filas del servidor (sin cost
   assert.ok(!/3\.33|Costo|Inversi/i.test(emp.html.replace(/no actualiza el costo/g, '')), 'sin costos'); assert.ok(emp.html.includes('Arroz') && emp.html.includes('NO ES COMPROBANTE SUNAT'));
   const own = await C.buildDocument({ type: 'documento', tipo: 'lista_pedido', title: 'Pedido' }, { productos: local }, 'B');
   assert.ok(own.html.includes('S/ 3.33') && /Inversi/.test(own.html) && own.html.includes('S/ 29.97'));
+});
+
+test('tarjeta nunca trabada: 422 review_required marca filas, 429 «Volver a intentar», sin aprobación vuelve a pedir PIN; siempre «Pedir de nuevo»', async () => {
+  const answers = [
+    { ok: false, error: 'review_required', rows: [0, 2], operation_id: 'AST-R' },
+    { ok: false, error: 'rate_limited', retry_after_s: 12 },
+    { ok: false, error: 'owner_approval_required' },
+    { ok: true, operation_id: 'AST-R' },
+  ];
+  const tokens = []; const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); return answers.shift(); } });
+  const g = C.createGate(d); const k = g.add({ ...ajuste, id: 'nt-1', confirm_token: 'tok-nt' });
+  const r1 = await g.execute(k, { confirmed: true });
+  assert.equal(r1.ok, false); assert.equal(r1.code, 'review_required'); assert.deepEqual(r1.rows, [0, 2]); assert.equal(g.state(k), 'pending');
+  const v1 = C.confirmFailureView(r1);
+  assert.deepEqual([v1.kind, v1.rows, v1.button, v1.keepApproval, v1.again], ['review', [0, 2], 'Confirmar', true, true]);
+  const r2 = await g.execute(k, { confirmed: true });
+  const v2 = C.confirmFailureView(r2);
+  assert.equal(r2.code, 'rate_limited'); assert.equal(g.state(k), 'pending');
+  assert.equal(v2.msg, 'Espera un momento y vuelve a intentar.'); assert.equal(v2.button, 'Volver a intentar'); assert.equal(v2.keepApproval, true); assert.equal(v2.again, true);
+  assert.equal(C.confirmFailureView({ ok: false, code: 'HTTP_429' }).kind, 'wait');
+  const r3 = await g.execute(k, { confirmed: true });
+  const v3 = C.confirmFailureView(r3);
+  assert.equal(v3.kind, 'pin'); assert.equal(v3.keepApproval, false, 'la aprobación se descarta y se pide el PIN otra vez'); assert.equal(g.state(k), 'pending');
+  assert.equal(calls.stock.length, 0, 'nada se abrió mientras el servidor no aceptó');
+  const r4 = await g.execute(k, { confirmed: true });
+  assert.equal(r4.ok, true); assert.equal(calls.stock.length, 1);
+  assert.deepEqual(tokens, ['tok-nt', 'tok-nt', 'tok-nt', 'tok-nt'], '«Volver a intentar» reenvía la MISMA tarjeta');
+  for (const r of [r1, r2, r3]) assert.equal(C.confirmFailureView(r).again, true);
+  assert.equal(C.confirmFailureView({ ok: true }), null);
+  assert.deepEqual(C.confirmFailureView({ ok: false, code: 'review_required', rows: [1, -1, 'x', 2.5] }).rows, [1], 'solo índices válidos');
+});
+
+test('reintentos automáticos con tope; reenvío idempotente: already_confirmed abre una sola vez', async () => {
+  assert.equal(C.CONFIRM_ATTEMPTS, 2);
+  let n = 0; const { d, calls } = deps(owner, { confirm: async () => { if (++n === 1) throw new Error('network'); return { ok: true, operation_id: 'AST-I', already_confirmed: true }; } });
+  const g = C.createGate(d); const k = g.add({ ...ajuste, id: 'id-1', confirm_token: 'tok-i' });
+  const r1 = await g.execute(k, { confirmed: true });
+  assert.equal(r1.code, 'network'); assert.equal(C.confirmFailureView(r1).kind, 'network');
+  assert.equal((await g.execute(k, { confirmed: true })).ok, true); assert.equal(calls.stock.length, 1);
+  const r3 = await g.execute(k, { confirmed: true });
+  assert.equal(r3.ok, true); assert.match(r3.msg, /No se repitió/); assert.equal(calls.stock.length, 1); assert.equal(n, 2);
+});
+
+test('pantalla de la tarjeta: «Pedir de nuevo», reenvío sin PIN con aprobación vigente y tope de reintentos en el envío', async () => {
+  const fs = await import('node:fs');
+  const ui = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  assert.match(ui, /data-again hidden>Pedir de nuevo</);
+  assert.match(ui, /C\.confirmFailureView\(r\)/);
+  assert.match(ui, /if \(pinEl && !approvals\[p\.id\]\)/, 'con aprobación vigente no vuelve a pedir el PIN');
+  assert.match(ui, /if \(!f\.keepApproval\) delete approvals\[p\.id\]/);
+  assert.match(ui, /t\.textContent = limit \? 'Fuera del límite: quita la fila o corrige la factura' : 'Revisa este dato'/);
+  assert.match(ui, /i < \(C\.CONFIRM_ATTEMPTS \|\| 2\)/);
+  assert.match(ui, /gate\.cancel\(key\); delete approvals\[p\.id\];[^\n]*\n[^\n]*\n\s*res\.textContent = 'Pidiendo una tarjeta nueva…'; send\(prompt\)/);
 });

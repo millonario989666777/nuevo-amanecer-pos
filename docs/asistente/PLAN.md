@@ -50,7 +50,14 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 - **Hueco de raíz (heredado, no del asistente): registrar una compra NO actualiza el costo del producto.** El asistente no lo arregla por su cuenta: muestra «Costo actual S/ X → factura S/ Y» y ofrece «Actualizar costo» como tarjeta aparte por `product.update` con PIN. El arreglo de fondo en `/auth/purchases` queda para el jefe.
 - **Pendientes heredados de Reportes** (se anotan también al pie de los documentos): el cierre de caja no separa bien efectivo de digital en todos los casos, y por el hueco anterior el inventario valorizado puede usar costos viejos.
 - **El dueño real hoy no tiene fila `owner`**: el POS trata «sin fila» como dueño, el asistente no. Por eso existe el registro del dueño (abajo). Mientras no se active, el teléfono sin rol solo ve «Registrar este teléfono como dueño» (en el prototipo local se simula el dueño).
-- **Inicio del dueño**: la tarjeta va debajo del contenido que ya existe para no mover nada (las maquetas la ponen arriba; arriba movería la pantalla porque el asistente carga después del POS).
+- **Inicio del dueño**: la tarjeta va ARRIBA, como en las maquetas. Para que no mueva la pantalla, el cargador reserva un hueco de alto fijo solo si el último ping guardado dijo dueño (ese dato solo reserva espacio). Medición de CLS en `scratch/shots-final.log`.
+- **Empleado apagado**: no baja nada del asistente (0 archivos). Por eso tampoco ve la tarjeta «Este teléfono ya es de empleado»; esa tarjeta solo la ve un empleado con el asistente encendido.
+- **Compras desde el asistente (Bot 2)**: tope duro en el camino del asistente (cantidad 5000, costo por unidad S/ 10,000, fila S/ 50,000, compra S/ 200,000). «Está bien» no lo salta: hay que corregir la factura o quitar la fila. **La ruta de compras del POS (`/auth/purchases`, `pos-purchases.js`) no tiene tope**; no se tocó porque el núcleo está congelado.
+- **Productos sin control de inventario**: el asistente no propone ajustes ni filas de compra para ellos (lo revisa al proponer y otra vez al confirmar, contra la base).
+- **Compra pagada desde caja: no está hecho.** La compra que prepara el asistente no mueve la caja.
+- **La compra no actualiza el costo**: el dueño usa la tarjeta aparte «Actualizar costo» (product.update con PIN).
+- **Bitácora de herramientas (A20)**: cada propuesta, descarte y confirmación queda anotada (sin textos ni datos personales) en `pos_settings`, últimas 1000; la lee solo el dueño en `/auth/assistant/audit`. Sin migración nueva.
+- **Arreglos de Bot 5 (P1)**: la aprobación del dueño se gasta justo antes de guardar la tarjeta (un 422 o 429 ya no la queman); el cambio de nivel de empleado ya no acepta PIN suelto y revisa el aparato destino antes de gastar la aprobación; `product.create`, `assistant.employee_access` y `assistant.owner_device` están en `OWNER_COMMANDS` (piden `operation_id`); el registro de dueños escribe rol, aprobación y bitácora en un solo `db.batch`.
 
 ## 5. Cambios que necesitan el visto bueno del jefe (no aplicados en ningún lado)
 1. **`product.create` en el servidor del POS** (commit aparte `f5b3587c`): pasa por `ownerGate` (dueño, o PIN del dueño ligado al `operation_id`). Hoy cualquier aparato puede crear productos.
@@ -58,12 +65,15 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 3. **Migraciones escritas y NO aplicadas** (antes de aplicarlas: copia de respaldo en R2 y OK del jefe):
    - `0034_pos_assistant_access_log.sql`: bitácora de cambios de nivel de empleados. Sin la tabla los cambios funcionan pero no quedan anotados (`logged:false`).
    - `0035_pos_owner_device_log.sql`: bitácora del registro de dueños. Sin la tabla las rutas de dueño fallan cerrado (503): no se registra nada sin bitácora.
-4. Acciones nuevas en `APPROVAL_ACTIONS` (`pos-roles.js`, aditivo): `assistant.employee_access`, `assistant.owner_device`.
+4. Acciones nuevas en `APPROVAL_ACTIONS` (`pos-roles.js`, aditivo): `assistant.employee_access`, `assistant.owner_device`; y en `OWNER_COMMANDS`: `product.create`, `assistant.employee_access`, `assistant.owner_device`.
+5. **Pendiente del jefe (no se cambió):** quitar un aparato dueño lo deja como **empleado** (no le borra la fila). Hay que decidir si debe quedar sin rol.
+6. **Pendiente del jefe (no se cambió):** el tope global de **20 PIN fallidos** es compartido por todos los aparatos; un aparato puede gastar ese cupo y bloquear el PIN del dueño en los demás.
+7. **Pendiente del jefe (núcleo congelado):** la ruta de compras del POS (`pos-purchases.js`) no tiene tope de cantidad ni de costo; el tope solo existe en el camino del asistente.
 
 ## 6. Siguientes pasos
 1. Que el dueño lo pruebe con el servidor local y datos inventados.
 2. Decidir si se acepta que los datos pasen por China.
-3. Decidir los 4 puntos de la sección 5.
+3. Decidir los puntos de la sección 5.
 4. Probar con una clave real de DeepSeek en un entorno de prueba con tope de gasto bajo.
 5. Abonos: no hay herramienta a propósito; si se quiere, irían por `canonical-credit-payment-bridge`.
 6. Recién después, un PR en borrador para revisión. Nada a producción sin aprobación.

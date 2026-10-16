@@ -18,6 +18,24 @@
   if (!on) return;
   var loaded = false, asking = false, lastAsk = 0;
   function ls(k, v) { try { if (v === undefined) return root.localStorage.getItem(k); if (v === null) root.localStorage.removeItem(k); else root.localStorage.setItem(k, v); } catch (_) {} return null; }
+  // Tarjeta de Inicio del dueño ARRIBA (debajo del saludo, antes de los totales) con alto FIJO: el hueco se reserva en cuanto corre
+  // este archivo SOLO si el último ping dijo «dueño». Empleado o sin dato: no se reserva nada. Las alturas viven solo aquí.
+  var SLOT_CSS = '#naAsstHero{box-sizing:border-box;flex:none;height:320px;margin:4px 0 16px;border-radius:22px;overflow:hidden;contain:strict}' +
+    '#naAsstHero:empty{background:rgba(34,197,94,.07);border:1px solid rgba(21,128,61,.18)}' +
+    '@media (min-width:700px){#naAsstHero{height:300px;margin:4px 0 18px}}@media (min-width:1100px){#naAsstHero{height:292px}}' +
+    // La tarjeta va en lugar de «Hola, ¿qué quieres hacer hoy?» del celular (como en las maquetas v2); el resto de Inicio no cambia.
+    'html.na-asst-owner #naMobileWelcome{display:none!important}';
+  function slotCss() { var d = root.document; if (d.getElementById('naAsstSlotCss')) return; var st = d.createElement('style'); st.id = 'naAsstSlotCss'; st.textContent = SLOT_CSS; d.head.appendChild(st); }
+  function reserve() {
+    var d = root.document, m = d.getElementById('pageMenu'), host = m && m.querySelector('.main-scroll'); if (!host || d.getElementById('naAsstHero')) return;
+    var at = host.querySelector(':scope > .quick-stats'), slot = d.createElement('section'); slot.id = 'naAsstHero'; slot.className = 'na-asst-hero'; slot.setAttribute('aria-label', 'Asistente');
+    host.insertBefore(slot, at || host.firstChild); d.documentElement.classList.add('na-asst-owner');
+    if (root.performance && root.performance.mark) root.performance.mark('na-asst-slot');
+  }
+  function unreserve() { var e = root.document.getElementById('naAsstHero'); if (e) e.remove(); root.document.documentElement.classList.remove('na-asst-owner'); }
+  slotCss();
+  if (ls('na_asistente_acc') === 'owner') reserve();
+  root.NA_ASISTENTE_SLOT = { reserve: reserve, unreserve: unreserve };
   function load() {
     if (loaded) return; loaded = true;
     var d = root.document, l = d.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/asistente.css'; d.head.appendChild(l);
@@ -37,9 +55,9 @@
     var ctl = root.AbortController ? new root.AbortController() : null, t = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : 0; if (ctl) init.signal = ctl.signal;
     root.fetch(url, init).then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { st: r.status, d: d || {} }; }); }).then(function (x) {
       clearTimeout(t); asking = false;
-      if (x.st === 200 && x.d.ok) { ls('na_asistente_acc', x.d.role === 'owner' ? 'owner' : 'on'); load(); return; }
-      if (x.st === 403 && x.d.reason === 'sin_rol') { ls('na_asistente_acc', null); load(); return; }
-      if (x.st === 401 || x.st === 403 || x.st === 404) ls('na_asistente_acc', null); // apagado: no se baja nada
+      if (x.st === 200 && x.d.ok) { ls('na_asistente_acc', x.d.role === 'owner' ? 'owner' : 'on'); if (x.d.role !== 'owner') unreserve(); load(); return; }
+      if (x.st === 403 && x.d.reason === 'sin_rol') { ls('na_asistente_acc', null); unreserve(); load(); return; }
+      if (x.st === 401 || x.st === 403 || x.st === 404) { ls('na_asistente_acc', null); unreserve(); } // apagado: no se baja nada y el hueco (si lo había) se quita
     }, function () { clearTimeout(t); asking = false; if (ls('na_asistente_acc') === 'owner') load(); });
   }
   root.NA_ASISTENTE_LOADER = { ask: ask, loaded: function () { return loaded; } };

@@ -27,6 +27,7 @@
     return capContext({ screen: screen || null, products: ranked.map(function (p) {
       var o = { id: String(p.id), nombre: redactText(String(p.name || p.nombre || '')).slice(0, 60), precio: Number(p.precio) || 0, stock: Number(p.stock) || 0 };
       if (costs && Number(p.costo) > 0) o.costo = Number(p.costo);
+      if (!tracksStock(p)) o.controla = false;
       return o;
     }) }, 2000, 25);
   }
@@ -160,7 +161,8 @@
     ajuste: function (p, d) {
       var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
       if (!prod) return { ok: false, msg: 'Ese producto ya no está en el inventario.' };
-      if (!d.openStockMove(prod.id, p.tipo, p.cantidad, p.motivo)) return { ok: false, msg: 'No se pudo abrir «Registrar movimiento».' };
+      var o = d.openStockMove(prod.id, p.tipo, p.cantidad, p.motivo);
+      if (o !== true) return { ok: false, msg: typeof o === 'string' && o ? o : 'No se pudo abrir «Registrar movimiento». Ábrelo desde Inventario.' };
       return { ok: true, msg: 'Abrí «Registrar movimiento» de ' + pname(prod) + ' lleno. Revisa y pulsa Guardar.' };
     },
     producto: function (p, d) {
@@ -192,6 +194,24 @@
     finally { clearTimeout(timer); }
   }
   var TIMEOUTS = { chat: 30000, confirm: 12000, approval: 15000 };
+  // Reintentos AUTOMÁTICOS de red al confirmar: tope fijo (1 envío + 1 reintento). Después decide la persona con «Volver a intentar».
+  // Reenviar es seguro: mismo token y operation_id; si el servidor ya lo guardó responde already_confirmed y no se repite.
+  var CONFIRM_ATTEMPTS = 2;
+  // Qué muestra la tarjeta cuando confirm no pasa. Una tarjeta NUNCA queda trabada con «Confirmar»:
+  //  - 422 review_required: filas en rojo «Revisa este dato»; se reenvía la MISMA tarjeta y la MISMA aprobación (no pide PIN).
+  //  - 429: «Espera un momento y vuelve a intentar» + «Volver a intentar» (misma tarjeta y aprobación).
+  //  - owner_approval_required: vuelve a pedir el PIN (la aprobación anterior ya no sirve).
+  //  - Siempre: «Pedir de nuevo» = propuesta NUEVA (token y operation_id nuevos, vuelve a pedir el PIN).
+  function confirmFailureView(r) {
+    if (!r || r.ok) return null;
+    var code = r.code || (r.retry ? 'network' : 'error');
+    if (code === 'review_required') return { kind: 'review', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', keepApproval: true, again: true, msg: 'Revisa este dato en las filas marcadas y vuelve a confirmar.' };
+    if (code === 'over_limit') return { kind: 'limit', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', keepApproval: true, again: true, msg: r.msg || 'Fuera del límite: corrige la factura o quita la fila.' };
+    if (code === 'rate_limited' || code === 'HTTP_429') return { kind: 'wait', rows: [], button: 'Volver a intentar', keepApproval: true, again: true, msg: 'Espera un momento y vuelve a intentar.' };
+    if (code === 'owner_approval_required') return { kind: 'pin', rows: [], button: 'Confirmar', keepApproval: false, again: true, msg: 'Escribe tu PIN de dueño otra vez.' };
+    if (code === 'network') return { kind: 'network', rows: [], button: 'Volver a intentar', keepApproval: true, again: true, msg: r.msg };
+    return { kind: 'other', rows: [], button: 'Confirmar', keepApproval: true, again: true, msg: r.msg };
+  }
 
   // Contexto chico (~2 KB): primero los productos que coinciden con lo escrito, después el resto hasta el tope.
   function capContext(ctx, maxBytes, maxItems) {
@@ -202,6 +222,28 @@
     return { screen: ctx.screen, products: out };
   }
 
+  // Mismo criterio que el POS (Inicio/Kardex): sin control = controlInventario/trackStock/track_stock/tracks_inventory en falso, o servicio.
+  function tracksStock(p) {
+    if (!p) return false;
+    if (p.controlInventario === false || p.trackStock === false || p.track_stock === false || p.tracks_inventory === false || p.tracks_inventory === 0) return false;
+    return ![p.tipo, p.type, p.unidad, p.cat].some(function (v) { return /^(servicio|service)$/i.test(String(v || '')); });
+  }
+  // Revisión ANTES de pedir el PIN y de gastar la tarjeta: si el POS no puede abrir la pantalla, se dice por qué y no se gasta nada.
+  var PRECHECK = {
+    ajuste: function (p, d) {
+      var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
+      if (!prod) return 'Ese producto ya no está en el inventario.';
+      if (!tracksStock(prod)) return '«' + pname(prod) + '» no controla inventario: no se puede registrar un movimiento de stock. Si debe controlarlo, actívalo en su ficha.';
+      var why = d.stockMoveReady ? d.stockMoveReady(prod.id) : null;
+      return why || null;
+    },
+    compra: function (p, d) {
+      var list = d.productos() || [], bad = [];
+      (p.lineas || []).forEach(function (l) { if (!l.product_id) return; var prod = list.find(function (x) { return String(x.id) === String(l.product_id); }); if (prod && !tracksStock(prod)) bad.push(pname(prod)); });
+      return bad.length ? 'No controlan inventario: ' + bad.map(function (n) { return '«' + n + '»'; }).join(', ') + '. Quítalos de la compra o pide la compra de nuevo.' : null;
+    }
+  };
+  function precheck(p, d) { var f = PRECHECK[p && p.type]; try { return f ? f(p, d) : null; } catch (_) { return 'No se pudo revisar la tarjeta en este aparato.'; } }
   function createGate(deps) {
     var items = Object.create(null);
     async function run(it) {
@@ -209,11 +251,12 @@
       if (!perm.ok) { it.state = 'denied'; return perm; }
       if (it.p.needsConfirm && deps.online && !deps.online()) { it.state = 'pending'; return { ok: false, msg: 'Asistente no disponible sin internet.' }; }
       if (it.p.needsConfirm) {
+        var pre = precheck(it.p, deps); if (pre) { it.state = 'pending'; return { ok: false, code: 'precheck', msg: pre }; }
         if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar (falta el permiso del servidor).' }; }
         var c;
-        try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, msg: 'Se cortó la conexión. Pulsa Confirmar otra vez: no se duplicará.' }; }
-        if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'admin_only' || c.error === 'proposal_changed')) ? 'denied' : 'pending';
-          return { ok: false, msg: ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', admin_only: 'El asistente es solo para el dueño.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa las filas marcadas antes de confirmar.', owner_approval_required: 'Falta el PIN del dueño.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento antes de confirmar otra.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
+        try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, code: 'network', msg: 'Se cortó la conexión. Pulsa «Volver a intentar»: no se duplicará.' }; }
+        if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'admin_only' || c.error === 'proposal_changed' || c.error === 'sin_control_stock')) ? 'denied' : 'pending';
+          return { ok: false, code: (c && c.error) || 'error', rows: c && Array.isArray(c.rows) ? c.rows : null, retry_after_s: c && c.retry_after_s || null, msg: (c && (c.error === 'over_limit' || c.error === 'sin_control_stock') && c.message) || ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', admin_only: 'El asistente es solo para el dueño.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa este dato en las filas marcadas y vuelve a confirmar.', empty_after_review: 'Quitaste todas las filas. Pide la compra de nuevo.', owner_approval_required: 'Escribe tu PIN de dueño otra vez.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento y vuelve a intentar.', HTTP_429: 'Espera un momento y vuelve a intentar.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
         it.operationId = c.operation_id;
         // Se aplica la propuesta que el servidor verificó para ESTE token, nunca otra que esté en memoria.
         if (c.proposal) { if (c.proposal.id !== it.p.id || c.proposal.type !== it.p.type) { it.state = 'denied'; return { ok: false, msg: 'La propuesta no coincide. Pídela otra vez.' }; } it.applied = c.proposal; }
@@ -255,7 +298,7 @@
     };
   }
 
-  var api = { request: request, TIMEOUTS: TIMEOUTS, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  var api = { tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

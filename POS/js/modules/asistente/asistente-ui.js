@@ -144,9 +144,9 @@
     var hdr = approvals[p.id] ? { 'x-owner-approval': approvals[p.id] } : null;
     var lastErr;
     // Cada intento se corta a los ~12 s; 2 intentos y después «Pulsa Confirmar otra vez» (mismo token y operation_id).
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < (C.CONFIRM_ATTEMPTS || 2); i++) {
       try { var body = { token: p.confirm_token, proposal: clean }; if (review) body.review = review;
-        var d = await post('/auth/assistant/confirm', body, hdr, C.TIMEOUTS.confirm); return d.ok ? d : { ok: false, error: d.error, rows: d.rows }; }
+        var d = await post('/auth/assistant/confirm', body, hdr, C.TIMEOUTS.confirm); return d.ok ? d : { ok: false, error: d.error, rows: d.rows, retry_after_s: d.retry_after_s, message: typeof d.message === 'string' ? d.message.slice(0, 400) : null }; }
       catch (e) { lastErr = e; if (i === 0) await new Promise(function (r) { setTimeout(r, 600); }); }
     }
     throw lastErr || new Error('network');
@@ -204,13 +204,19 @@
       i.value = Number(v.costo != null ? v.costo : v.precio).toFixed(2); i.dispatchEvent(new Event('input', { bubbles: true })); mark(i);
     },
     // Ventana EXISTENTE «Registrar movimiento» (abrirMovInv). Guarda la persona (inventory.adjust con PIN).
+    // Antes de pedir el PIN: ¿el POS puede abrir «Registrar movimiento» aquí? Devuelve el motivo o null.
+    stockMoveReady: function () {
+      if (typeof g('abrirMovInv') !== 'function') return 'Este aparato no tiene la pantalla «Registrar movimiento». Ábrela desde Inventario.';
+      if (!doc.getElementById('mMovInv')) return 'La ventana «Registrar movimiento» no está cargada. Recarga la página e inténtalo otra vez.';
+      return null;
+    },
     openStockMove: function (id, tipo, cantidad, motivo) {
-      var f = g('abrirMovInv'); if (typeof f !== 'function') return false;
-      f(id, tipo); var m = doc.getElementById('mMovInv'); if (!m) return false;
+      var f = g('abrirMovInv'); if (typeof f !== 'function') return 'Este aparato no tiene la pantalla «Registrar movimiento». Ábrela desde Inventario.';
+      f(id, tipo); var m = doc.getElementById('mMovInv'); if (!m) return 'La ventana «Registrar movimiento» no está cargada. Recarga la página e inténtalo otra vez.';
       var b = m.querySelector('.mov-type-btn[data-type="' + tipo + '"]'), st = g('setMovType'); if (b && typeof st === 'function') st(b, tipo);
       var q = doc.getElementById('mMovCant'); if (q) { q.value = cantidad; q.dispatchEvent(new Event('input', { bubbles: true })); mark(q); }
       var r = doc.getElementById('mMovMotivo'); if (r && motivo) { Array.prototype.forEach.call(r.options, function (o) { if (o.text === motivo || o.value === motivo) r.value = o.value; }); mark(r); }
-      return m.classList.contains('open');
+      return m.classList.contains('open') ? true : 'El POS no abrió «Registrar movimiento» (puede que el producto no controle inventario). Revisa la ficha del producto.';
     },
     // Formulario EXISTENTE «Nuevo producto» (abrirModalProd). Guarda la persona (product.create).
     openNewProduct: function (p) {
@@ -261,7 +267,8 @@
       var why = flag ? l.revisar.map(function (k) { return REVIEW_TEXT[k] || k; }).join(', ') : '';
       var diff = l.costo_actual != null && l.costo_unitario != null && Math.abs(l.costo_unitario - l.costo_actual) > Math.max(0.01, l.costo_actual * 0.01);
       return '<tr' + (flag ? ' class="flag" data-row="' + i + '"' : '') + '><td>' + E(l.cantidad) + ' × ' + E(l.nombre) + (l.product_id ? '' : ' <b class="nr">(no registrado)</b>') +
-        (flag ? '<div class="flag-t">Revisa este dato: ' + E(why) + '</div><div class="flag-a"><button type="button" data-accept="' + i + '">Está bien</button><button type="button" data-drop="' + i + '">Quitar fila</button></div>' : '') +
+        (l.limite && l.limite.length ? '<div class="flag-t">Fuera del límite: ' + E(why) + '. Corrige la factura o quita la fila.</div><div class="flag-a"><button type="button" data-drop="' + i + '">Quitar fila</button></div>'
+          : flag ? '<div class="flag-t">Revisa este dato: ' + E(why) + '</div><div class="flag-a"><button type="button" data-accept="' + i + '">Está bien</button><button type="button" data-drop="' + i + '">Quitar fila</button></div>' : '') +
         '</td><td class="r">' + (l.costo_actual != null ? soles(l.costo_actual) : '-') + '</td><td class="r' + (diff ? ' chg' : '') + '">' + (l.costo_unitario != null ? soles(l.costo_unitario) : '-') + '</td></tr>'; }).join('');
     if (p.type === 'precio') rows = '<tr><td>' + E(p.nombre) + '</td><td class="r">' + soles(p.precio_actual) + ' → <b>' + soles(p.precio_nuevo) + '</b></td></tr>';
     if (p.type === 'costo') rows = '<tr><td>' + E(p.nombre) + '<div class="note">Costo</div></td><td class="r">' + (p.costo_actual != null ? soles(p.costo_actual) : 'sin costo') + ' → <b>' + soles(p.costo_nuevo) + '</b></td></tr>';
@@ -270,6 +277,8 @@
     if (p.type === 'producto') rows = [['Nombre', E(p.nombre)], ['Precio', soles(p.precio)], ['Costo', p.costo != null ? soles(p.costo) : '-'], ['Stock inicial', p.stock_inicial != null ? E(p.stock_inicial) : '-'],
       ['Stock mínimo', p.stock_minimo != null ? E(p.stock_minimo) : '-'], ['Categoría', E(p.categoria || '-')], ['Código', E(p.codigo_barras || '-')]].map(function (r) { return '<tr><td>' + r[0] + '</td><td class="r">' + r[1] + '</td></tr>'; }).join('');
     var warn = '';
+    if (p.type === 'compra' && p.fueraDeLimite) warn += '<div class="warn">' + p.fueraDeLimite + ' fila(s) fuera del límite: «Está bien» no las deja pasar. Corrige la factura o quítalas.</div>';
+    if (p.type === 'compra' && p.omitidas && p.omitidas.length) warn += '<div class="warn">No se incluyó (no controla inventario): ' + p.omitidas.map(function (o) { return E(o.nombre); }).join(', ') + '.</div>';
     if (p.type === 'compra' && p.sinProducto) warn += '<div class="warn">' + p.sinProducto + ' línea(s) sin producto registrado: revísalas.</div>';
     if (p.type === 'precio' && p.cambioGrande) warn += '<div class="warn">Cambio grande (más de 50%). Revisa bien.</div>';
     if ((p.type === 'precio' || p.type === 'producto') && p.bajoCosto) warn += '<div class="warn">El precio queda por debajo del costo.</div>';
@@ -285,7 +294,8 @@
       '<div class="meta"><span>Vence en <b data-left>5:00</b></span><span>Se usa una sola vez</span></div>' +
       '<div class="na-asst-pin"><label>Escribe tu PIN de dueño</label><input type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN del dueño"></div>' +
       '<div class="res" aria-live="polite"></div>' +
-      '<div class="acts"><button type="button" class="na-asst-ok" data-ok>Confirmar</button><button type="button" class="na-asst-no" data-no>Cancelar</button></div>';
+      '<div class="acts"><button type="button" class="na-asst-ok" data-ok>Confirmar</button><button type="button" class="na-asst-no" data-no>Cancelar</button>' +
+      '<button type="button" class="na-asst-again" data-again hidden>Pedir de nuevo</button></div>';
   }
   var APPROVAL = { precio: 'product.update', costo: 'product.update', compra: 'inventory.adjust', ajuste: 'inventory.adjust', producto: 'product.create' };
   var REVIEW_TEXT = { cantidad: 'cantidad fuera de lo normal', costo: 'costo por unidad fuera de lo normal', total: 'total de la fila muy alto', costo_raro: 'costo muy distinto al de tu inventario' };
@@ -310,7 +320,7 @@
     }
     approvals[p.id] = d.approval_id; return { ok: true };
   }
-  function addCard(p) {
+  function addCard(p, prompt) {
     var key = gate.add(p); if (!key) return;
     var c = el('div', 'na-asst-card', cardHtml(p)); c.dataset.type = p.type; c.dataset.st = 'pending'; msgsEl.appendChild(c);
     var res = c.querySelector('.res');
@@ -324,7 +334,30 @@
     var decided = {};
     function pendingRows() { return Array.prototype.filter.call(c.querySelectorAll('tr.flag'), function (tr) { return !decided[tr.dataset.row]; }).length; }
     function review() { if (p.type !== 'compra') return null; var a = [], d = []; Object.keys(decided).forEach(function (k) { (decided[k] === 'drop' ? d : a).push(Number(k)); }); return { op: tokenOp(p), accept: a, drop: d }; }
-    function syncOk() { if (!ok || c.dataset.st !== 'pending') return; var n = pendingRows(); ok.disabled = n > 0; ok.textContent = n > 0 ? 'Revisa ' + n + (n === 1 ? ' fila' : ' filas') : 'Confirmar'; }
+    function syncOk() { if (!ok || c.dataset.st !== 'pending') return; var n = pendingRows(); ok.disabled = n > 0; ok.textContent = n > 0 ? 'Revisa ' + n + (n === 1 ? ' fila' : ' filas') : (c.dataset.btn || 'Confirmar'); }
+    var again = c.querySelector('[data-again]'), pinBox = c.querySelector('.na-asst-pin');
+    // Con una aprobación vigente para ESTA tarjeta (422/429/corte) se reenvía igual, sin volver a pedir el PIN.
+    function syncPin() { if (pinBox) pinBox.hidden = !!approvals[p.id]; }
+    // 422: el servidor dice qué filas faltan revisar; se marcan en rojo «Revisa este dato» (aunque el celular no las hubiera marcado).
+    function markRows(idx, limit) {
+      var trs = c.querySelectorAll('table tr');
+      idx.forEach(function (i) {
+        var tr = c.querySelector('tr[data-row="' + i + '"]') || trs[i + 1]; if (!tr) return;
+        tr.classList.add('flag'); tr.dataset.row = String(i); tr.removeAttribute('data-decision'); delete decided[i];
+        var td = tr.querySelector('td'); if (!td) return;
+        var t = tr.querySelector('.flag-t'); if (!t) { t = el('div', 'flag-t'); td.appendChild(t); }
+        t.textContent = limit ? 'Fuera del límite: quita la fila o corrige la factura' : 'Revisa este dato';
+        var a = tr.querySelector('.flag-a'); if (!a) { a = el('div', 'flag-a'); td.appendChild(a); }
+        a.innerHTML = (limit ? '' : '<button type="button" data-accept="' + i + '">Está bien</button>') + '<button type="button" data-drop="' + i + '">Quitar fila</button>';
+      });
+    }
+    // «Pedir de nuevo»: deja esta tarjeta y pide una NUEVA (token, operation_id y PIN nuevos).
+    if (again) again.onclick = function () {
+      if (!prompt) { res.textContent = 'Escribe otra vez lo que necesitas.'; return; }
+      gate.cancel(key); delete approvals[p.id]; c.dataset.st = 'cancelled';
+      [ok, no, again].forEach(function (b) { if (b) b.disabled = true; }); if (ok) ok.textContent = 'Reemplazada';
+      res.textContent = 'Pidiendo una tarjeta nueva…'; send(prompt);
+    };
     c.addEventListener('click', function (e) {
       var b = e.target.closest('[data-accept],[data-drop]'); if (!b || c.dataset.st !== 'pending') return;
       var i = b.getAttribute('data-accept') != null ? b.getAttribute('data-accept') : b.getAttribute('data-drop'), tr = c.querySelector('tr[data-row="' + i + '"]');
@@ -335,7 +368,7 @@
     function tick() {
       if (!left) return; var ms = exp - (Date.now() + clockOffset); if (!exp) { left.textContent = '-'; return; }
       if (ms <= 0 && ok && ok.textContent === 'Confirmando…') { left.textContent = '0:00'; return; } // en curso: el servidor decide (ya usada = mismo id)
-      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; if (ok) { ok.textContent = 'Vencida'; ok.disabled = true; } if (no) no.disabled = true; } left.textContent = '0:00'; return; }
+      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; if (ok) { ok.textContent = 'Vencida'; ok.disabled = true; } if (no) no.disabled = true; if (again) { again.hidden = false; again.disabled = false; } } left.textContent = '0:00'; return; }
       var sec = Math.ceil(ms / 1000); left.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
     syncOk();
@@ -343,20 +376,32 @@
     if (ok) ok.onclick = async function () {
       if (c.dataset.st !== 'pending') return;
       ok.disabled = true; no.disabled = true; ok.textContent = 'Confirmando…'; setState('concentrado');
-      if (pinEl) {
+      if (again) again.disabled = true;
+      // Antes del PIN: si el POS no puede abrir la pantalla, se dice el motivo real y no se gasta ni el PIN ni la tarjeta.
+      var pre = C.precheck ? C.precheck(p, deps) : null;
+      if (pre) { res.textContent = pre; no.disabled = false; ok.disabled = false; ok.textContent = c.dataset.btn || 'Confirmar'; if (again) { again.hidden = false; again.disabled = false; } c.dataset.fail = 'precheck'; syncOk(); setState('error', 2000); return; }
+      if (pinEl && !approvals[p.id]) {
         var v = await verifyOwnerPin(pinEl.value.trim(), p); pinEl.value = '';
-        if (!v.ok) { res.textContent = v.msg; no.disabled = false; ok.textContent = 'Confirmar'; ok.disabled = false; syncOk(); setState('error', 2000); return; }
+        if (!v.ok) { res.textContent = v.msg; no.disabled = false; ok.textContent = c.dataset.btn || 'Confirmar'; ok.disabled = false; if (again) again.disabled = false; syncOk(); setState('error', 2000); return; }
       }
+      syncPin();
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
         if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Vencida' }[c.dataset.st] || 'Confirmar';
-        if (r.ok) { setState('feliz', 2600); setTimeout(closePanel, 1400); }
-        else { setState('error', 2600); if (c.dataset.st === 'pending') { ok.disabled = false; no.disabled = false; ok.textContent = 'Confirmar'; syncOk(); } }
+        if (r.ok) { delete approvals[p.id]; if (again) again.hidden = true; setState('feliz', 2600); setTimeout(closePanel, 1400); return; }
+        setState('error', 2600);
+        var f = C.confirmFailureView(r) || { kind: 'other', rows: [], button: 'Confirmar', keepApproval: true, again: true };
+        c.dataset.fail = f.kind;
+        if (!f.keepApproval) delete approvals[p.id];
+        if (f.kind === 'review' || f.kind === 'limit') markRows(f.rows, f.kind === 'limit');
+        if (again) { again.hidden = !f.again; again.disabled = false; }
+        if (c.dataset.st === 'pending') { c.dataset.btn = f.button; ok.disabled = false; no.disabled = false; ok.textContent = f.button; syncOk(); }
+        syncPin(); if (f.kind === 'pin' && pinEl) { try { pinEl.focus(); } catch (_) {} }
       });
     };
     scrollEnd();
   }
-  var ERRORS = { rate_limited: 'Vas muy rápido. Espera un minuto.', daily_limit: 'Llegaste al límite de hoy en este aparato.', monthly_cap: 'Se alcanzó el tope del mes del asistente. Avisa al dueño.',
+  var ERRORS = { forbidden_document: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', rate_limited: 'Vas muy rápido. Espera un minuto.', daily_limit: 'Llegaste al límite de hoy en este aparato.', monthly_cap: 'Se alcanzó el tope del mes del asistente. Avisa al dueño.',
     image_too_large: 'La foto es muy grande.', bad_image: 'No pude leer esa foto.', upstream_timeout: 'El asistente tardó mucho. Inténtalo otra vez.', upstream_error: 'El asistente no respondió. Inténtalo otra vez.',
     upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', admin_only: 'El asistente es solo para el dueño.', assistant_off: 'El dueño no activó el asistente en este aparato.', unauthorized: 'Este aparato no tiene sesión.' };
   async function send(text, image) {
@@ -377,7 +422,7 @@
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
-      (d.proposals || []).forEach(addCard);
+      (d.proposals || []).forEach(function (x) { addCard(x, text); });
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
     } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
     finally { busy = false; sendBtn.disabled = root.navigator.onLine === false; photoBtn.disabled = root.navigator.onLine === false; }
@@ -423,7 +468,7 @@
     pinging = post('/auth/assistant/chat', { ping: true }, null, 8000).then(function (d) {
       if (d && d.ok) { access = { role: d.role === 'owner' ? 'owner' : 'empleado', level: d.level }; adminOff = false; }
       else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) { access = null; }
-      noRole = !!(d && d.reason === 'sin_rol');
+      noRole = !!(d && d.reason === 'sin_rol'); bootstrapOn = !!(d && d.owner_bootstrap);
       try { if (d && d.ok) root.localStorage.setItem('na_asistente_acc', d.role === 'owner' ? 'owner' : 'on'); else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) root.localStorage.removeItem('na_asistente_acc'); } catch (_) {}
       return access;
     }, function () { return access; }).then(function (a) {
@@ -448,7 +493,7 @@
   // Solo se dibuja cuando el SERVIDOR confirmó el permiso. A un empleado sin permiso no se le dibuja nada (ni espacio).
   // Va al FINAL de Inicio: no empuja ni mueve lo que ya está. Sin internet: «Asistente no disponible sin internet»
   // solo si este aparato ya fue confirmado como dueño o el rol guardado del POS es dueño; el resto de Inicio sigue igual.
-  var heroEl = null, noRole = false;
+  var heroEl = null, noRole = false, bootstrapOn = false;
   // Último rol que confirmó el servidor (lo guarda el cargador): solo 'owner' muestra la tarjeta sin internet.
   function cachedOwner() { try { return root.localStorage.getItem('na_asistente_acc') === 'owner'; } catch (_) { return false; } }
   function renderHero() {
@@ -456,10 +501,11 @@
     var off = root.navigator.onLine === false;
     // Solo el dueño tiene tarjeta en Inicio (la tarjeta reemplaza a la burbuja). El empleado con nivel encendido ve solo la burbuja con sus atajos.
     var mode = isOwnerAccess() ? (off ? 'offline' : 'owner') : (off && cachedOwner() && !adminOff ? 'offline' : null);
-    if (!mode) { if (heroEl) { heroEl.remove(); heroEl = null; } return; }
-    if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.setAttribute('aria-label', 'Asistente');
-      // Al final de la columna que se desplaza de Inicio (no en la grilla del menú): no mueve nada de lo que ya está.
-      (menu.querySelector('.main-scroll') || menu).appendChild(heroEl); }
+    if (!heroEl) heroEl = doc.getElementById('naAsstHero'); // hueco que reservó el cargador (último ping: dueño)
+    if (!mode) { if (heroEl) { heroEl.remove(); heroEl = null; } doc.documentElement.classList.remove('na-asst-owner'); return; }
+    if (!heroEl) { // sin hueco reservado (primera vez de este dueño en este aparato): se agrega arriba una sola vez; desde el próximo arranque ya está reservado
+      var S = root.NA_ASISTENTE_SLOT; if (S) S.reserve(); heroEl = doc.getElementById('naAsstHero');
+      if (!heroEl) { heroEl = el('section', 'na-asst-hero'); heroEl.id = 'naAsstHero'; heroEl.setAttribute('aria-label', 'Asistente'); var host = menu.querySelector('.main-scroll') || menu; host.insertBefore(heroEl, host.querySelector(':scope > .quick-stats') || host.firstChild); } }
     if (heroEl.dataset.mode === mode && heroEl.dataset.lvl === String(access && access.level)) return;
     heroEl.dataset.mode = mode; heroEl.dataset.lvl = String(access && access.level);
     // Estilo de las maquetas v2 de Bot 4: píldora, título, subtítulo, la MISMA burbuja CSS (con brillo y órbita), campo con onda de voz y 3 chips.
@@ -570,7 +616,18 @@
   // ---------- «Registrar este teléfono como dueño»: solo en un aparato SIN rol (el POS lo trata como dueño pero el asistente no),
   // nunca automático: botón + PIN. Si ya hay dueño queda «esperando aprobación». El servidor decide todo (bandera, 0 dueños, límite de PIN).
   function decorateRegister() {
-    if (!noRole || isOwnerAccess() || root.navigator.onLine === false) return;
+    if (!bootstrapOn || isOwnerAccess() || root.navigator.onLine === false) return;
+    // Teléfono de empleado (con el asistente encendido; uno en Apagado no baja este código): aviso fijo, sin botón ni PIN.
+    if (access && access.role === 'empleado') {
+      doc.querySelectorAll('#naDevList').forEach(function (list) {
+        var host = list.parentElement; if (!host || host.querySelector('.na-asst-reg')) return;
+        var box = el('div', 'na-asst-reg'); box.dataset.state = 'emp';
+        box.innerHTML = '<h4>Este teléfono</h4><p class="st" role="status">Este teléfono ya es de empleado y no puede pasar a dueño así.</p><p>Si de verdad debe ser del dueño, el dueño lo cambia desde su teléfono en Usuarios y Aparatos.</p>';
+        host.insertBefore(box, host.firstChild);
+      });
+      return;
+    }
+    if (!noRole) return;
     doc.querySelectorAll('#naDevList').forEach(function (list) {
       var host = list.parentElement; if (!host || host.querySelector('.na-asst-reg')) return;
       var box = el('div', 'na-asst-reg');
