@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#749 lote 2 de Clientes: nombre de ficha sin cortar, contador de filas mostradas, estado sincronizado en lectura con índice fresco. Worker 44 sin cambios.",
-  "retry_attempt": 147,
-  "retry_reason": "Deploy de base e02276dfcd5da42f6504fc1924f3250680c630ad (#749). Rollback: web 146 3890005f3d5e529402aa6cd853b1cd33a1b0e9ef (merge efa91db36951ef4aff73c6c72fb3a46d8923b4a4).",
-  "requested_at_utc": "2026-10-16T05:27:26Z",
-  "approved_base": "e02276dfcd5da42f6504fc1924f3250680c630ad"
+  "note": "#754 hotfix ficha de cliente: nombre sin elipsis prematura («MIS…») a 1366/1024 px. Solo CSS. Worker 44 sin cambios.",
+  "retry_attempt": 148,
+  "retry_reason": "Deploy de base 7716e4cc7df3bce15c7b24105e1e824036b64d28 (#754). Rollback: web 147 d029ca016286bcdc90c72e31826a4cb2438f7032 (merge e02276dfcd5da42f6504fc1924f3250680c630ad).",
+  "requested_at_utc": "2026-10-16T05:52:27Z",
+  "approved_base": "7716e4cc7df3bce15c7b24105e1e824036b64d28"
 }
