@@ -90,6 +90,7 @@ export function sanitizeContext(raw, role) {
     const id = safeId(p?.id); if (!id) return null;
     const item = { id, nombre: cleanText(p.nombre ?? p.name, 80), precio: money(p.precio ?? p.price), stock: Number.isFinite(Number(p.stock)) ? Number(p.stock) : null };
     if (seesCosts(role) && money(p.costo ?? p.cost) != null) item.costo = money(p.costo ?? p.cost);
+    if (p.controla === false) item.controla = false; // producto SIN control de inventario (el servidor lo vuelve a mirar en su base)
     return item.nombre ? item : null;
   }).filter(Boolean);
   const screen = SCREEN_IDS.includes(ctx.screen) ? ctx.screen : null;
@@ -159,6 +160,52 @@ function matchLine(line, idx) {
 // ---------- Revisión de compras (factura leída de una foto) ----------
 // Datos fuera de rango NO se descartan: se marcan «Revisa este dato». Confirm exige aceptarlos o quitarlos fila por fila.
 export const PURCHASE_BOUNDS = Object.freeze({ maxQty: 1000, maxUnitCost: 2000, maxLineTotal: 20000, costRatio: 3 });
+// Tope DURO (Bot 2): por encima de esto ninguna fila pasa, ni con «Está bien». El dueño corrige la factura o quita la fila.
+// Solo en el camino del asistente; la ruta de compras del POS (pos-purchases.js, congelada) no tiene tope: pendiente del jefe (PLAN.md).
+export const PURCHASE_HARD_LIMITS = Object.freeze({ maxQty: 5000, maxUnitCost: 10000, maxLineTotal: 50000, maxTotal: 200000 });
+const LIMIT_TEXT = { cantidad: 'cantidad mayor a ' + PURCHASE_HARD_LIMITS.maxQty, costo: 'costo por unidad mayor a S/ ' + PURCHASE_HARD_LIMITS.maxUnitCost, total: 'total de la fila mayor a S/ ' + PURCHASE_HARD_LIMITS.maxLineTotal };
+export function hardLimitLine(l) {
+  const r = [], q = Number(l?.cantidad), c = l?.costo_unitario == null ? null : Number(l.costo_unitario);
+  if (!(q > 0) || q > PURCHASE_HARD_LIMITS.maxQty) r.push('cantidad');
+  if (c != null && c > PURCHASE_HARD_LIMITS.maxUnitCost) r.push('costo');
+  if (c != null && q > 0 && q * c > PURCHASE_HARD_LIMITS.maxLineTotal) r.push('total');
+  return r;
+}
+// Filas que pasan el tope duro + total de la compra. {rows:[índices], total:bool, reasons:{i:[...]}}
+export function overLimit(lineas) {
+  const rows = [], reasons = {}; let sum = 0;
+  (Array.isArray(lineas) ? lineas : []).forEach((l, i) => { const r = hardLimitLine(l); if (r.length) { rows.push(i); reasons[i] = r; } if (l?.costo_unitario != null) sum += Number(l.cantidad) * Number(l.costo_unitario); });
+  return { rows, reasons, total: sum > PURCHASE_HARD_LIMITS.maxTotal };
+}
+const overLimitMessage = (o, lineas) => [
+  ...o.rows.map((i) => '«' + (lineas[i]?.nombre || 'fila ' + (i + 1)) + '»: ' + o.reasons[i].map((k) => LIMIT_TEXT[k]).join(', ')),
+  ...(o.total ? ['total de la compra mayor a S/ ' + PURCHASE_HARD_LIMITS.maxTotal] : [])].join('; ') + '. Fuera del límite: corrige la factura o quita la fila.';
+// Productos que NO controlan inventario: ni compra ni ajuste de stock desde el asistente (Bot 2).
+export const NO_STOCK_TEXT = (n) => '«' + n + '» no controla inventario: el asistente no prepara compras ni ajustes de stock para ese producto.';
+// Mapa id -> controla (false = sin control). Base del servidor primero; si no hay, lo que mandó el aparato.
+export async function stockControlMap(reader, ctx) {
+  const m = new Map();
+  for (const p of (ctx?.products || [])) if (p.controla === false) m.set(String(p.id), false);
+  if (reader && typeof reader.products === 'function') { try { for (const p of await reader.products()) m.set(String(p.id), !!p.controla); } catch { /* sin base: queda lo del aparato */ } }
+  return m;
+}
+// Quita filas/tarjetas de productos sin control de inventario. Devuelve los nombres omitidos (para el mensaje).
+export function applyStockControl(proposals, dropped, map) {
+  const skipped = [];
+  for (let k = proposals.length - 1; k >= 0; k--) {
+    const p = proposals[k];
+    if (p.type === 'ajuste' && map.get(String(p.product_id)) === false) { skipped.push(p.nombre); dropped.push({ dropped: 'sin_control_stock', tool: 'proponer_ajuste_stock' }); proposals.splice(k, 1); continue; }
+    if (p.type !== 'compra') continue;
+    const keep = p.lineas.filter((l) => !(l.product_id && map.get(String(l.product_id)) === false));
+    if (keep.length === p.lineas.length) continue;
+    p.lineas.filter((l) => !keep.includes(l)).forEach((l) => skipped.push(l.nombre));
+    p.omitidas = p.lineas.filter((l) => !keep.includes(l)).map((l) => ({ nombre: l.nombre, motivo: 'no controla inventario' }));
+    p.lineas = keep;
+    if (!keep.length) { dropped.push({ dropped: 'sin_control_stock', tool: 'preparar_compra' }); proposals.splice(k, 1); continue; }
+    p.sinProducto = keep.filter((l) => !l.product_id).length; p.revisarFilas = keep.filter((l) => l.revisar).length;
+  }
+  return [...new Set(skipped)].reverse();
+}
 export function reviewPurchaseLine(l, known) {
   const r = [], q = Number(l?.cantidad), c = l?.costo_unitario == null ? null : Number(l.costo_unitario);
   if (!(q > 0) || q > PURCHASE_BOUNDS.maxQty) r.push('cantidad');
@@ -200,6 +247,8 @@ export function toProposal(call, role, ctx, n) {
   if (name === 'proponer_ajuste_stock') {
     const p = idx.get(safeId(args.product_id)), q = qty(args.cantidad);
     if (!p || !q || !['entrada', 'salida'].includes(args.tipo)) return { dropped: 'bad_adjust', tool: name };
+    if (q > PURCHASE_HARD_LIMITS.maxQty) return { dropped: 'over_limit', tool: name, nombre: p.nombre };
+    if (p.controla === false) return { dropped: 'sin_control_stock', tool: name, nombre: p.nombre };
     const motivo = STOCK_REASONS.includes(args.motivo) ? args.motivo : 'Ajuste de inventario';
     const despues = p.stock == null ? null : Math.round((p.stock + (args.tipo === 'entrada' ? q : -q)) * 1000) / 1000;
     return { id, type: 'ajuste', needsConfirm: true, requiresRole: 'owner', title: args.tipo === 'entrada' ? 'Entrada de stock' : 'Salida de stock', product_id: p.id, nombre: p.nombre,
@@ -224,12 +273,14 @@ export function toProposal(call, role, ctx, n) {
       const line = { product_id: m.product_id, nombre: m.nombre, cantidad: q, costo_unitario: seesCosts(role) ? money(l?.costo_unitario) : null, costo_actual: seesCosts(role) && known && known.costo != null ? known.costo : null };
       const flags = reviewPurchaseLine(line, known);
       if (flags.length) line.revisar = flags;
+      const hard = hardLimitLine(line);
+      if (hard.length) line.limite = hard; // fuera del tope duro: «Está bien» no la deja pasar; solo «Quitar fila»
       lineas.push(line);
     }
     if (!lineas.length) return { dropped: 'empty', tool: name };
     return { id, type: 'compra', needsConfirm: true, title: name === 'leer_factura_compra' ? 'Compra leída de la foto' : 'Preparar compra',
       proveedor: cleanText(args.proveedor, 120), documento: cleanText(args.documento, 80), fecha: cleanText(args.fecha, 20), lineas,
-      sinProducto: lineas.filter((l) => !l.product_id).length, revisarFilas: lineas.filter((l) => l.revisar).length };
+      sinProducto: lineas.filter((l) => !l.product_id).length, revisarFilas: lineas.filter((l) => l.revisar).length, fueraDeLimite: lineas.filter((l) => l.limite).length };
   }
   if (name === 'proponer_cambio_precio') {
     const p = idx.get(safeId(args.product_id)); const nuevo = money(args.precio_nuevo);
@@ -434,6 +485,20 @@ export async function assistantConfirmRoute(request, env, auth, json, deps = {})
     const lineas = body.proposal.lineas.filter((_, i) => !drop.includes(i));
     if (!lineas.length) return json({ error: 'empty_after_review' }, 422);
     applied = { ...body.proposal, lineas, aceptadas: accept, quitadas: drop };
+    // Tope duro: «Está bien» no lo salta. Las filas fuera del límite hay que quitarlas (o corregir la factura y pedirla de nuevo).
+    const o = overLimit(body.proposal.lineas), keptOver = o.rows.filter((i) => !drop.includes(i));
+    const oTotal = overLimit(lineas).total;
+    if (keptOver.length || oTotal) return json({ error: 'over_limit', rows: keptOver, total: oTotal, limits: PURCHASE_HARD_LIMITS,
+      message: overLimitMessage({ rows: keptOver, reasons: o.reasons, total: oTotal }, body.proposal.lineas), operation_id: tok.op }, 422);
+  }
+  if (tok.t === 'ajuste' && !(Number(applied.cantidad) > 0 && Number(applied.cantidad) <= PURCHASE_HARD_LIMITS.maxQty)) return json({ error: 'over_limit', rows: [], limits: PURCHASE_HARD_LIMITS, message: 'La cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.' }, 422);
+  // Control de inventario: se vuelve a mirar en la base del servidor (pudo cambiar después de la tarjeta).
+  if (tok.t === 'ajuste' || tok.t === 'compra') {
+    const rd = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
+    const map = await stockControlMap(rd, null);
+    const lines = tok.t === 'ajuste' ? [applied] : applied.lineas;
+    const bad = lines.filter((l) => l.product_id && map.get(String(l.product_id)) === false).map((l) => l.nombre);
+    if (bad.length) return json({ error: 'sin_control_stock', nombres: bad, message: bad.map(NO_STOCK_TEXT).join(' ') }, 409);
   }
   // Límite de confirmaciones por aparato y minuto.
   const minute = Math.floor(now / 60000), devKey = USAGE_PREFIX + 'w:' + tok.d;
@@ -514,10 +579,21 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
     const k = String(c?.name) + '|' + (typeof a === 'string' ? a : stable(a)); if (seenCalls.has(k)) return false; seenCalls.add(k); return true; }); // misma llamada dos veces = una tarjeta
   result.calls.forEach((c, i) => { const p = toProposal(c, role, ctx, i + 1); if (p?.dropped) dropped.push(p); else if (p) { p._call = c; proposals.push(p); } });
   // Compra con costos distintos a los del inventario: tarjetas APARTE «Actualizar costo» (product.update con PIN). La compra del POS no cambia el costo.
+  const reader = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
+  // Sin control de inventario: fuera antes de firmar (y se vuelve a mirar al confirmar).
+  let noStock = [];
+  if (proposals.some((p) => p.type === 'ajuste' || p.type === 'compra') || dropped.some((d) => d.dropped === 'sin_control_stock')) {
+    noStock = [...dropped.filter((d) => d.dropped === 'sin_control_stock' && d.nombre).map((d) => d.nombre), ...applyStockControl(proposals, dropped, await stockControlMap(reader, ctx))];
+  }
+  const overNames = dropped.filter((d) => d.dropped === 'over_limit' && d.nombre).map((d) => d.nombre);
   for (const p of proposals.slice()) if (p.type === 'compra' && role === 'owner') proposals.push(...costProposals(p));
+  // Empleado que pide un documento solo del dueño: 403 (no 200 con la tarjeta descartada).
+  if (role !== 'owner' && dropped.some((d) => d.dropped === 'forbidden_document')) {
+    await (deps.audit || auditWrite)(deps.db, dropped.map((d) => ({ device_id: auth.principalId, role, tool: d.tool, outcome: 'dropped:' + d.dropped })));
+    return json({ error: 'forbidden_document', message: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', allowed: EMPLOYEE_DOC_TYPES }, 403);
+  }
   // Consultas: el Worker lee su base (solo lectura) y manda al modelo SOLO un resumen chico, nunca el inventario completo.
   const consultas = [], toolMsgs = [];
-  const reader = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
   // Empleado: las filas de la lista de precios / pedido las pone el servidor, sin costos (el aparato no usa sus datos locales).
   if (role !== 'owner') for (const p of proposals.filter((x) => x.type === 'documento')) {
     let d; try { d = reader ? await employeeDocumentRows(reader, p.tipo) : { error: 'no_reader' }; } catch { d = { error: 'query_failed' }; }
@@ -556,6 +632,8 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   for (const p of proposals) if (p.needsConfirm) p.confirm_token = secret ? await issueConfirmToken(p, role, auth, secret, now) : null;
   // Si el modelo intentó acciones y ninguna pasó, su texto ("pulsa Confirmar") no puede quedar: no hay tarjeta. Mensaje neutro.
   if (!proposals.length && dropped.length) reply = 'No puedo hacer eso desde el asistente. Hazlo en su pantalla normal.';
+  const notes = [...[...new Set(noStock)].map(NO_STOCK_TEXT), ...[...new Set(overNames)].map((n) => '«' + n + '»: la cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.')];
+  if (notes.length) reply = (proposals.length ? (reply ? reply + ' ' : '') : '') + notes.join(' ');
   if (!reply && proposals.length) reply = 'Listo. Revisa y pulsa Confirmar.';
   if (!reply) reply = 'No entendí bien. ¿Me lo dices de otra forma?';
   // Auditoría (A20): una fila por llamada a herramienta. Sin textos ni argumentos.

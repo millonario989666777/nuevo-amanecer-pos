@@ -27,7 +27,7 @@ async function setup(t, { log = false } = {}) {
     if (a.status >= 300) return a;
     return call(tok, '/auth/assistant/employee-access', { device_id: device, level: lvl, operation_id: op }, { 'x-owner-approval': (await a.json()).approval_id });
   };
-  const chat = async (tok, text) => { const r = await call(tok, '/auth/assistant/chat', { text, context: { products: [{ id: '00002', nombre: 'Synthetic 00002', precio: 12.34, costo: 0.29, stock: 1 }] } }); return { status: r.status, body: await r.json() }; };
+  const chat = async (tok, text) => { const r = await call(tok, '/auth/assistant/chat', { text, context: { products: [{ id: '00003', nombre: 'Synthetic 00003', precio: 12.34, costo: 0.29, stock: 1 }] } }); return { status: r.status, body: await r.json() }; };
   const confirm = async (tok, p, approval) => { const { confirm_token, ...proposal } = p; const r = await call(tok, '/auth/assistant/confirm', { token: confirm_token, proposal }, approval ? { 'x-owner-approval': approval } : {}); return { status: r.status, body: await r.json() }; };
   const approve = async (tok, action, op, pin = PIN) => { const r = await call(tok, '/auth/owner-approval', { pin, action, operation_id: op }); return { status: r.status, body: await r.json() }; };
   return { f, call, level, chat, confirm, approve };
@@ -77,7 +77,7 @@ test('Solo consultas: stock y por reponer sí; costos, ventas, deudas y document
   const doc = await chat('tok-emp', 'imprime la lista de precios'); assert.ok(!doc.body.proposals.some((p) => p.type === 'documento'));
   assert.ok(!JSON.stringify(low.body).includes('0.29'), 'sin costos');
   // Propuesta de cambio: el empleado no la ejecuta sin el PIN del dueño.
-  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00002')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card);
+  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card);
   const no = await confirm('tok-emp', card); assert.equal(no.status, 403); assert.equal(no.body.error, 'owner_approval_required');
   const otra = await approve('tok-emp', 'inventory.adjust', 'AST-otra-operacion'); assert.ok(otra.status < 300, JSON.stringify(otra.body));
   assert.equal((await confirm('tok-emp', card, otra.body.approval_id)).status, 403, 'aprobación de otra operación');
@@ -91,14 +91,15 @@ test('Consultas y documentos: lista de precios y pedido sí; inventario valoriza
   assert.equal((await level('session:emp', 'consultas_documentos')).status, 200);
   const ok = await chat('tok-emp', 'imprime la lista de precios'); assert.equal(ok.body.proposals[0]?.type, 'documento'); assert.equal(ok.body.proposals[0].tipo, 'lista_precios');
   for (const q of ['imprime el inventario valorizado', 'cierre de caja de hoy', 'reporte de deudas de clientes', 'estado de cuenta de Rosa']) {
-    const r = await chat('tok-emp', q); assert.ok(!r.body.proposals.some((p) => p.type === 'documento'), q);
+    const r = await chat('tok-emp', q); assert.ok(!(r.body.proposals || []).some((p) => p.type === 'documento'), q);
+    if (/inventario valorizado|cierre|estado de cuenta/.test(q)) { assert.equal(r.status, 403, q); assert.equal(r.body.error, 'forbidden_document'); }
   }
 });
 
 test('quitar el permiso aplica al instante: tarjeta emitida antes y chat siguiente reciben 403', async (t) => {
   const { level, chat, confirm, approve } = await setup(t);
   assert.equal((await level('session:emp', 'consultas_documentos')).status, 200);
-  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00002')).body.proposals.find((p) => p.type === 'ajuste');
+  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste');
   const apr = await approve('tok-emp', 'inventory.adjust', opOf(card));
   assert.equal((await level('session:emp', 'off')).status, 200);
   const c = await confirm('tok-emp', card, apr.body.approval_id); assert.equal(c.status, 403); assert.equal(c.body.error, 'assistant_off');
@@ -171,7 +172,7 @@ test('cambio de nivel: el PIN suelto en el cuerpo ya no sirve; un aparato destin
 
 test('A20 auditoría: una fila por llamada a herramienta y por confirmación; solo el dueño la lee; sin textos, PIN ni DNI', async (t) => {
   const { f, call, chat, confirm, approve } = await setup(t);
-  const a = await chat('tok-dueno', 'merma de 2 Synthetic 00002 DNI 45678912');
+  const a = await chat('tok-dueno', 'merma de 2 Synthetic 00003 DNI 45678912');
   assert.equal(a.status, 200, JSON.stringify(a.body));
   const card = a.body.proposals.find((p) => p.confirm_token);
   const apr = await approve('tok-dueno', 'inventory.adjust', opOf(card));
