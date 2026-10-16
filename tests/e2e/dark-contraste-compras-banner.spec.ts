@@ -121,39 +121,42 @@ for (const dark of [true, false]) {
   });
 }
 
-// data-tone (danger/warn): la regla oscura funciona solo con el atributo, y los [style*=] siguen de respaldo.
-async function setBannerSelectors(page: Page, keep: 'data-tone' | 'style') {
-  return page.evaluate(keep => {
-    let n = 0;
-    for (const sheet of Array.from(document.styleSheets)) {
-      if (!/theme-dark\.css/.test(sheet.href || '')) continue;
-      for (const rule of Array.from(sheet.cssRules) as CSSStyleRule[]) {
-        const sel = rule.selectorText || '';
-        if (!/^body\.dark #naStatusBanner\[/.test(sel)) continue;
-        const parts = sel.split(/,\s*(?=body\.dark)/).map(s => s.trim()).filter(s => keep === 'data-tone' ? s.includes('[data-tone=') : s.includes('[style*='));
-        rule.selectorText = parts.join(', '); n += parts.length;
-      }
-    }
-    return n;
-  }, keep);
-}
+// data-tone (danger/warn) es el único gancho del modo oscuro: los respaldos [style*="254, 226, 226"] y
+// [style*="254, 243, 199"] se quitaron (render() es el único que pinta la franja y siempre pone data-tone).
+test('theme-dark.css: las reglas de #naStatusBanner usan solo [data-tone], sin [style*=]', async ({ page }) => {
+  await boot(page, true);
+  const selectors = await page.evaluate(() => {
+    const out: string[] = [];
+    const walk = (rules: CSSRuleList) => { for (const r of Array.from(rules)) { const sel = (r as CSSStyleRule).selectorText; if (sel && sel.includes('#naStatusBanner')) out.push(sel); if ((r as CSSGroupingRule).cssRules) walk((r as CSSGroupingRule).cssRules); } };
+    for (const sheet of Array.from(document.styleSheets)) if (/theme-dark\.css/.test(sheet.href || '')) walk(sheet.cssRules);
+    return out;
+  });
+  expect(selectors).toEqual(['body.dark #naStatusBanner[data-tone="danger"]', 'body.dark #naStatusBanner[data-tone="warn"]']);
+});
 
+const DARK_BANNER = { danger: ['rgb(254, 202, 202)', 'rgb(127, 29, 29)'], warn: ['rgb(253, 230, 138)', 'rgb(69, 26, 3)'] };
+const LIGHT_BANNER = { danger: ['rgb(153, 27, 27)', 'rgb(254, 226, 226)'], warn: ['rgb(146, 64, 14)', 'rgb(254, 243, 199)'] };
 for (const tone of ['danger', 'warn'] as const) {
-  for (const keep of ['data-tone', 'style'] as const) {
-    test(`franja ${tone} 390px, oscuro: se pinta igual solo con ${keep === 'data-tone' ? 'data-tone' : 'el respaldo [style*=]'}`, async ({ page }) => {
-      await boot(page, true);
-      if (tone === 'danger') await showCashBanner(page); else await showAmberBanner(page);
-      const banner = page.locator('#naStatusBanner');
-      await expect(banner).toHaveAttribute('data-tone', tone);
-      const full = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
-      expect(await setBannerSelectors(page, keep)).toBe(2);
-      if (keep === 'style') await banner.evaluate(el => el.removeAttribute('data-tone'));
-      const s = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
-      expect([s.fg, s.bg]).toEqual([full.fg, full.bg]);
-      expect(s.box).toEqual(full.box);
-      expect(s.ratio).toBeGreaterThanOrEqual(4.5);
-    });
-  }
+  test(`franja ${tone} 390px, oscuro: la pinta data-tone; sin el atributo ya no hay respaldo por estilo inline`, async ({ page }) => {
+    await boot(page, true);
+    const show = () => tone === 'danger' ? showCashBanner(page) : showAmberBanner(page);
+    await show();
+    const banner = page.locator('#naStatusBanner');
+    await expect(banner).toHaveAttribute('data-tone', tone);
+    const s = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+    expect([s.fg, s.bg]).toEqual(DARK_BANNER[tone]);
+    expect(s.ratio).toBeGreaterThanOrEqual(4.5);
+    // Sin data-tone la regla oscura no aplica: quedan los colores inline claros (no hay [style*=]).
+    await banner.evaluate(el => el.removeAttribute('data-tone'));
+    const bare = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+    expect([bare.fg, bare.bg]).toEqual(LIGHT_BANNER[tone]);
+    expect(bare.box).toEqual(s.box);
+    // Cada render() vuelve a poner el atributo.
+    await page.evaluate(() => (window as any).NuevoAmanecerStatusBanner.render());
+    await expect(banner).toHaveAttribute('data-tone', tone);
+    const again = await sample(page, '#naStatusBanner .na-sb-text', 'color', '#naStatusBanner');
+    expect([again.fg, again.bg]).toEqual(DARK_BANNER[tone]);
+  });
 }
 
 test('modo claro 390px: data-tone presente y sin efecto en los colores', async ({ page }) => {

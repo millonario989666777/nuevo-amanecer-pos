@@ -8,14 +8,25 @@
   var READ_PATH = '/auth/purchases';
   // El servidor devuelve como máximo las 300 compras más recientes (más las incompletas).
   var PURCHASE_LIMIT = 300;
-  // Avisa solo si el servidor cortó la lista. Con `truncated` (worker nuevo) manda el flag;
-  // sin él (worker anterior) se cuentan solo las compras no incompletas: las «en_curso»
-  // se agregan aparte del límite de 300 y no prueban que haya corte.
-  function limitReached(purchases, truncated) {
-    if (typeof truncated === 'boolean') return truncated;
-    if (!Array.isArray(purchases)) return false;
-    return purchases.filter(function (p) { return p && p.status !== 'en_curso'; }).length >= PURCHASE_LIMIT;
+  // Qué devuelve GET /auth/purchases (worker 45 y anterior, mismo armado):
+  //   - un bloque con las 300 compras más recientes de CUALQUIER estado (las «en_curso» incluidas);
+  //   - y, aparte, las «en_curso» más antiguas que no entraron en ese bloque.
+  // Sin corte, el bloque trae todas las compras (≤ 300) y no hay extras. Por eso, sin `truncated`
+  // (worker anterior), 300 filas o más prueban que el bloque está lleno: no se descuentan las
+  // «en_curso», que también ocupan lugar en el bloque. Las extras son las filas más allá de las
+  // 300 más recientes por fecha; el aviso las cuenta para que el número mostrado sea el real.
+  function limitInfo(purchases, truncated) {
+    var rows = Array.isArray(purchases) ? purchases.filter(Boolean) : [];
+    var reached = typeof truncated === 'boolean' ? truncated : rows.length >= PURCHASE_LIMIT;
+    if (!reached) return { reached: false, olderOpen: 0, label: '' };
+    var older = rows.slice().sort(function (a, b) {
+      var ta = Date.parse(a.created_at) || 0, tb = Date.parse(b.created_at) || 0; return tb - ta;
+    }).slice(PURCHASE_LIMIT).filter(function (p) { return p.status === 'en_curso'; }).length;
+    var label = 'Mostrando las últimas ' + PURCHASE_LIMIT + ' compras';
+    if (older) label += ' y ' + older + (older === 1 ? ' incompleta más antigua' : ' incompletas más antiguas');
+    return { reached: true, olderOpen: older, label: label };
   }
+  function limitReached(purchases, truncated) { return limitInfo(purchases, truncated).reached; }
   function text(value) { return value == null ? '' : String(value); }
   function normalize(value) { return text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
   function productId(product) { return text(product && (product.id != null ? product.id : product.product_id)); }
@@ -139,7 +150,7 @@
     if (!result || !Array.isArray(result.purchases)) throw new Error('Respuesta de compras no válida');
     return { purchases: result.purchases, ready: result.ready !== false, truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined };
   }
-  root.NA_HISTORIAL_COMPRAS = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaLabel: limaLabel, buildHistory: buildHistory, summarize: summarize, money: money, ownerAllowed: ownerAllowed, readPurchases: readPurchases, limitReached: limitReached, PURCHASE_LIMIT: PURCHASE_LIMIT });
+  root.NA_HISTORIAL_COMPRAS = Object.freeze({ searchProducts: searchProducts, timestamp: timestamp, limaLabel: limaLabel, buildHistory: buildHistory, summarize: summarize, money: money, ownerAllowed: ownerAllowed, readPurchases: readPurchases, limitReached: limitReached, limitInfo: limitInfo, PURCHASE_LIMIT: PURCHASE_LIMIT });
   if (!root.document) return;
   var doc = root.document;
   function init() {
@@ -188,7 +199,8 @@
         var box = el('div', 'hc-stat'); box.append(el('dt', '', pair[0]), el('dd', '', pair[1])); stats.append(box);
       });
       result.append(stats);
-      if (limitReached(purchases, purchasesTruncated)) result.append(el('p', 'hc-note hc-limit', 'Mostrando las últimas ' + PURCHASE_LIMIT + ' compras'));
+      var limit = limitInfo(purchases, purchasesTruncated);
+      if (limit.reached) result.append(el('p', 'hc-note hc-limit', limit.label));
       if (summary.missingCostQuantity) result.append(el('p', 'hc-note', 'Promedio calculado sobre ' + summary.costedQuantity + ' unidades con costo registrado. ' + summary.missingCostQuantity + ' unidades sin costo registrado.'));
       if (history.excludedLines) result.append(el('p', 'hc-note', history.excludedLines + ' línea(s) sin aplicación confirmada excluidas del resumen.'));
       if (!history.rows.length) { result.append(el('p', 'hc-empty', 'Sin compras registradas')); return; }

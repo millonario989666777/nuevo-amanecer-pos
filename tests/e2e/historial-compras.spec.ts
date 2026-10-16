@@ -36,7 +36,7 @@ function limitPurchases() {
   return fixture.purchases.concat(filler);
 }
 
-async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean; atLimit?: boolean; truncated?: boolean } = {}) {
+async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: boolean; delay?: boolean; notReady?: boolean; atLimit?: boolean; truncated?: boolean; purchases?: any[] } = {}) {
   const writes: string[] = [], reads: string[] = [];
   let release: (() => void) | undefined;
   const hold = options.delay ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
@@ -51,7 +51,7 @@ async function setup(page: Page, role: 'owner' | 'empleado', options: { fail?: b
     if (url.pathname === '/auth/purchases' && !url.search) {
       reads.push(url.pathname);
       await hold;
-      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: options.atLimit ? limitPurchases() : fixture.purchases, ...(options.truncated === undefined ? {} : { truncated: options.truncated }) }) });
+      return route.fulfill({ status: options.fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify(options.fail ? { error: 'unavailable' } : options.notReady ? { purchases: [], ready: false } : { purchases: options.purchases || (options.atLimit ? limitPurchases() : fixture.purchases), ...(options.truncated === undefined ? {} : { truncated: options.truncated }) }) });
     }
     return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'test_endpoint_unavailable' }) });
   });
@@ -333,4 +333,48 @@ test('truncated:true del servidor: aviso aunque lleguen pocas filas', async ({ p
   await page.locator('[data-hc-search]').fill('paracetamol');
   await page.locator('[data-hc-products] button[data-product-id="101"]').click();
   await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveText('Mostrando las últimas 300 compras');
+});
+
+// Respuesta como la arma el worker: bloque de las 300 más recientes de cualquier estado + en_curso más antiguas aparte.
+function blockPurchases(openInBlock: number, openOlder: number) {
+  const at = (i: number) => new Date(Date.UTC(2026, 8, 30) - i * 3600e3).toISOString();
+  const fill = (id: string, status: string, i: number) => ({ purchase_id: id, status, created_at: at(i), supplier: 'Relleno', total_cost_cents: 400,
+    lines: [{ purchase_id: id, line_number: 1, product_id: '202', quantity: 1, unit_cost_cents: 400 }] });
+  const appliedFixture = fixture.purchases.filter(p => p.status === 'aplicada');
+  const block = [
+    ...appliedFixture,
+    ...Array.from({ length: openInBlock }, (_, i) => fill('PUR-e2e-open-in-' + i, 'en_curso', i)),
+    ...Array.from({ length: 300 - appliedFixture.length - openInBlock }, (_, i) => fill('PUR-e2e-blk-' + i, 'aplicada', openInBlock + i))
+  ];
+  const older = Array.from({ length: openOlder }, (_, i) => fill('PUR-e2e-open-old-' + i, 'en_curso', 1000 + i));
+  return older.concat(block);
+}
+
+for (const truncated of [undefined, true] as const) {
+  test(`bloque de 300 con 8 en_curso dentro, ${truncated === undefined ? 'sin truncated (worker anterior)' : 'truncated:true'}: avisa`, async ({ page }) => {
+    const io = await setup(page, 'owner', { purchases: blockPurchases(8, 0), truncated });
+    await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+    await page.locator('[data-hc-search]').fill('paracetamol');
+    await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+    await expect(page.locator('.hc-table tbody tr')).toHaveCount(2);
+    await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveText('Mostrando las últimas 300 compras');
+    expect(io.writes).toEqual([]);
+  });
+
+  test(`300 recientes + 3 en_curso más antiguas, ${truncated === undefined ? 'sin truncated' : 'truncated:true'}: el aviso las cuenta`, async ({ page }) => {
+    await setup(page, 'owner', { purchases: blockPurchases(2, 3), truncated });
+    await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+    await page.locator('[data-hc-search]').fill('paracetamol');
+    await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+    await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveText('Mostrando las últimas 300 compras y 3 incompletas más antiguas');
+  });
+}
+
+test('menos de 300 en total, con en_curso y sin truncated: sin aviso', async ({ page }) => {
+  await setup(page, 'owner', { purchases: blockPurchases(8, 0).slice(0, 299) });
+  await page.evaluate(() => (window as any).goPage('pageHistorialCompras'));
+  await page.locator('[data-hc-search]').fill('paracetamol');
+  await page.locator('[data-hc-products] button[data-product-id="101"]').click();
+  await expect(page.locator('.hc-table tbody tr')).toHaveCount(2);
+  await expect(page.locator('#pageHistorialCompras .hc-limit')).toHaveCount(0);
 });
