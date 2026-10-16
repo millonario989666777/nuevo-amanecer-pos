@@ -107,3 +107,4 @@ body.dark #pageReporteDeuda {
 @media (min-width: 1000px) {
   #pageReporteDeuda .rd-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 1fr); }
 }
+#pageReporteDeuda .rd-note { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--rd-muted); }

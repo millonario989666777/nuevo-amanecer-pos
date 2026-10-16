@@ -100,7 +100,8 @@ test('delegates every balance to the public API, with readOnly=true and the same
 
 test('sort by overdue debt desc; ties remain stable and inputs are never reordered', () => {
   const api = { summarizeClient:c => summaries[c.id], debtFilter:{ effectiveBalance:s => s.debt } };
-  assert.deepEqual(Array.from(buildReport(clients, api, null, 'vencida').rows, r => r.clientId), [102, 101]);
+  // 102 tiene overdueDebt 20 pero saldo 1: su deuda vencida queda limitada a 1.
+  assert.deepEqual(Array.from(buildReport(clients, api, null, 'vencida').rows, r => r.clientId), [101, 102]);
   const same = { summarizeClient:() => ({ debt:10, overdueDebt:0, active:[] }), debtFilter:{ effectiveBalance:s => s.debt } };
   assert.deepEqual(Array.from(buildReport(clients, same, null).rows, r => r.clientId), [101, 102, 103]);
   assert.deepEqual(clients.map(c => c.id), [101, 102, 103]);
@@ -109,7 +110,7 @@ test('sort by overdue debt desc; ties remain stable and inputs are never reorder
 test('effective balance controls zero exclusion, one-cent debts and footer totals in cents', () => {
   const api = { summarizeClient:c => summaries[c.id], debtFilter:{ effectiveBalance:s => s.debt === 99 ? 0 : s.debt ? 0.01 : 0 } };
   assert.deepEqual(plain(buildReport(clients, api, null)), { rows:[{ clientId:102, name:clients[1].nombre,
-    balance:0.01, overdueDebt:20, oldestDate:'2022-12-31', openCredits:1 }], total:0.01, count:1 });
+    balance:0.01, overdueDebt:0.01, oldestDate:'2022-12-31', openCredits:1 }], total:0.01, count:1 });
   const decimals = { summarizeClient:c => ({ debt:c.id === 101 ? 0.1 : 0.2, overdueDebt:0, active:[] }),
     debtFilter:{ effectiveBalance:s => s.debt } };
   assert.equal(buildReport(clients.slice(0, 2), decimals, null).total, 0.3);
@@ -387,4 +388,36 @@ test('shared browser/server screen policy grants the report only to owner; unlis
     }
     assert.deepEqual(Array.from(policy.routeRoles('/read/canonical/reporte-deuda', 'GET')), ['owner']);
   }
+});
+
+test('overdue debt is capped at the effective balance, in the row and in the overdue sort', () => {
+  const data = { 1:{ debt:100, overdueDebt:90, active:[] }, 2:{ debt:60, overdueDebt:60, active:[] }, 3:{ debt:5, overdueDebt:0, active:[] } };
+  const api = { summarizeClient:c => data[c.id],
+    // Pago en cola de 50 sobre el cliente 1: saldo efectivo 50, por debajo de su vencido (90).
+    debtFilter:{ effectiveBalance:s => s === data[1] ? 50 : s.debt } };
+  const list = [{ id:1, nombre:'Sintético 1' }, { id:2, nombre:'Sintético 2' }, { id:3, nombre:'Sintético 3' }];
+  const report = plain(buildReport(list, api, null, 'vencida'));
+  assert.deepEqual(report.rows.map(r => [r.clientId, r.balance, r.overdueDebt]), [[2, 60, 60], [1, 50, 50], [3, 5, 0]]);
+  for (const row of report.rows) assert.ok(row.overdueDebt <= row.balance);
+});
+
+test('open-credit criterion: Clientes counts every non-annulled credit, the report only those with balance > 0.001', () => {
+  const h = realV2();
+  h.ctx.clientes = [{ id:201, nombre:'Cliente sintético', dni:'', creditCategories:[] }];
+  const mine = extra => ({ cliId:201, clienteId:201, clienteNombre:'Cliente sintético', ...extra });
+  // Dos abiertos, uno pagado (saldo 0) y uno con saldo residual de 0,001; uno anulado no cuenta en ninguno.
+  h.ctx.creditos = [credit(2001, 40, mine({})), credit(2002, 10, mine({})), credit(2003, 0, mine({})),
+    credit(2004, 0, mine({ monto:100, pagado:99.999 })), credit(2005, 30, mine({ anulado:true, status:'anulado', estado:'anulado' }))];
+  h.warm();
+  const summary = h.api.summarizeClient(h.ctx.clientes[0], true);
+  assert.equal(summary.all.length, 4, 'la tarjeta de Clientes muestra «4 créditos» (no anulados, incluidos pagados)');
+  const report = buildReport(h.ctx.clientes, h.api, null);
+  assert.equal(report.rows[0].openCredits, 2);
+  assert.equal(report.rows[0].balance, 50);
+});
+
+test('the report explains the open-credit criterion in a tooltip and a note', () => {
+  assert.match(source, /OPEN_CREDITS_NOTE = 'Créditos abiertos cuenta solo los créditos con saldo pendiente\. /);
+  assert.match(source, /metric\(row, 'Créditos abiertos', data\.openCredits, '', OPEN_CREDITS_NOTE\)/);
+  assert.match(source, /element\('p', 'rd-note', OPEN_CREDITS_NOTE\)/);
 });

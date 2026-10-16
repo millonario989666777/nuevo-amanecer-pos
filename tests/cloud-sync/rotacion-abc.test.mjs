@@ -196,3 +196,18 @@ test('rendered rows never print the internal id', () => {
   assert.doesNotMatch(src, /element\('small', '', row\.id\)/);
   assert.match(src, /element\('small', '', row\.code\)/);
 });
+
+test("filas 'VARIOS' muestran una segunda línea (código corto o id visible) sin 'GENERIC:'", () => {
+  const report = api.buildReport([
+    sale([
+      { id: 'GENERIC:7f3c2a91-5b1e-4d0a-9c7e-2f8b6a1d4e55', name: 'VARIOS', precio: 4, qty: 1 },
+      { id: 'GENERIC:aa11bb22-cc33-dd44-ee55-ff6677889900', name: 'VARIOS', precio: 3, qty: 1 },
+      { id: 'GENERIC:0011', name: 'Varios', generic_line: { name: 'Varios', code: '278' }, precio: 2, qty: 1 },
+      { id: 'GENERIC:', name: 'VARIOS', precio: 1, qty: 1 }
+    ])
+  ], [], options);
+  const rows = report.groups.flatMap(g => g.rows);
+  assert.deepEqual(plain(rows.map(r => [r.name, r.code])).sort(),
+    [['VARIOS', 'ID 7f3c2a91'], ['VARIOS', 'ID aa11bb22'], ['Varios', '278'], ['VARIOS', '']].sort());
+  for (const r of rows) { assert.doesNotMatch(r.name, /GENERIC/i); assert.doesNotMatch(r.code, /GENERIC/i); }
+});
