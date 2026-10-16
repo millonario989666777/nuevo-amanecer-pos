@@ -1111,3 +1111,14 @@ body.dark #pageClientes .na-client-account-screen .na-v2-row{background:var(--na
 body.dark #pageClientes .na-client-account-screen .na-v2-row strong{color:#f1f5f9}
 body.dark #pageClientes .na-client-account-screen .na-v2-row small{color:#cbd5e1}
 body.dark #pageClientes .na-client-account-screen .na-v2-module-icon{background:var(--na-dk-surface-2,#0f172a);border-color:rgba(148,163,184,.25);color:#e2e8f0}
+
+/* Ficha: el nombre del encabezado corta solo entre palabras (no «MISAE / L»).
+   .na-v2-screen hereda overflow-wrap:anywhere; aquí se anula y una palabra que no
+   cabe entera muestra puntos suspensivos en lugar de partirse. */
+#pageClientes .na-v2-client-head h2{
+  overflow-wrap:normal;
+  word-break:normal;
+  hyphens:none;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}

@@ -123,6 +123,8 @@ _baseCliRender=function(){
     const matches=sinTildes((client.nombre||'').toLowerCase()).includes(search)||_naDocumentValue(client.dni).includes(search),status=statusCli(client);
     return cliTab==='vencidos'?matches&&status==='vencido':cliTab==='proximos'?matches&&status==='proximo':cliTab==='vigentes'?matches&&status==='vigente':matches;
   });
+  // La tarjeta «Clientes» cuenta la lista filtrada (pestaña + búsqueda); V2 la ajusta tras su filtro de deuda.
+  {const shown=document.getElementById('cliS0');if(shown)shown.textContent=String(rows.length);}
   if(sort==='deuda')rows.sort((a,b)=>_naClientDebtFast(b)-_naClientDebtFast(a));else rows.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   const list=document.getElementById('cliList');
   if(!list)return;

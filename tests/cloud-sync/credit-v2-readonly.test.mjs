@@ -103,3 +103,53 @@ test('después de registrar un pago (escritura sobre el objeto vivo), la ficha y
   assert.equal(h.api.debtFilter.filter([{ client:c1, summary:h.api.summarizeClient(c1, true) }], 'con-deuda', null).length, 1);
   assert.equal(snapshot(h), before);
 });
+
+test('pago que liquida un crédito con índice fresco: la copia queda cancelada y cerrada, el original no se toca', () => {
+  const h = realV2();
+  Object.assign(h.ctx, dataset());
+  const c1 = h.ctx.clientes[0];
+  h.run('_naEnsureClientCreditIndex(true)');
+  // La escritura existente liquida el crédito 11 sobre el objeto vivo sin reconstruir el índice (sigue fresco).
+  const live = h.run('_naClientCreditsFast(1)').find(cr => String(cr.id) === '11');
+  live.pagado = 100; live.pagos.push({ id:'P-SETTLE', monto:60, fecha:'2026-10-15' });
+  const statusBefore = live.status;
+  assert.equal(h.run('_naClientCreditIndexFresh()'), true);
+  const before = snapshot(h), index = h.run('[_naClientCreditIndexRef,_naClientCreditsIndex,_naClientSummaryIndex]');
+  const rows = h.run('_naClientCreditsReadOnly(1)');
+  const settled = rows.find(cr => String(cr.id) === '11');
+  assert.equal(settled.status, 'cancelado', 'la copia refleja el pago que liquidó el crédito');
+  assert.notEqual(settled, live);
+  assert.equal(live.status, statusBefore, 'el original conserva su estado: solo lectura no normaliza');
+  const ro = plain(h.api.summarizeClient(c1, true));
+  assert.equal(snapshot(h), before);
+  h.run('[_naClientCreditIndexRef,_naClientCreditsIndex,_naClientSummaryIndex]').forEach((v, i) => assert.equal(v, index[i]));
+  assert.ok(ro.closed.some(cr => String(cr.id) === '11'));
+  assert.ok(!ro.active.some(cr => String(cr.id) === '11'));
+  assert.equal(ro.debt, 30);
+  // Mismo saldo y mismos estados que la ruta normal sobre los mismos datos.
+  const rw = realV2(); Object.assign(rw.ctx, dataset());
+  rw.ctx.creditos[0].pagado = 100; rw.ctx.creditos[0].pagos.push({ id:'P-SETTLE', monto:60, fecha:'2026-10-15' });
+  assert.deepEqual(plain(balances(h, true))[0], plain(balances(rw, false))[0]);
+  assert.equal(h.api.debtFilter.filter([{ client:c1, summary:h.api.summarizeClient(c1, true) }], 'con-deuda', null).length, 1);
+});
+
+test('pagos en cola: pending=null no descuenta nada; un lote pendiente que liquida deja al cliente sin deuda sin tocar la cola', () => {
+  const h = realV2();
+  Object.assign(h.ctx, dataset());
+  h.run('_naEnsureClientCreditIndex(true)');
+  const c3 = h.ctx.clientes[2];
+  const s = h.api.summarizeClient(c3, true);
+  assert.equal(h.api.debtFilter.effectiveBalance(s, null), 10);
+  assert.equal(h.api.debtFilter.effectiveBalance(s, [null, undefined]), 10);
+  const queued = { command:'payment.batch', state:'PENDING', payload:{ payments:[
+    { operation_id:'OP-Q1', credit_id:'32', amount_cents:1000 },
+    { operation_id:'OP-Q1', credit_id:'32', amount_cents:1000 }] } };
+  const queueBefore = JSON.stringify(queued), before = snapshot(h);
+  assert.equal(h.api.debtFilter.effectiveBalance(s, queued), 0, 'el duplicado del mismo operation_id cuenta una sola vez');
+  const rows = h.ctx.clientes.map(c => ({ client:c, summary:h.api.summarizeClient(c, true) }));
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', queued).map(r => r.client.id), [3]);
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'sin-deuda', null).map(r => r.client.id), []);
+  assert.deepEqual(h.api.debtFilter.filter(rows, 'con-deuda', null).map(r => r.client.id), [1, 2, 3, 4]);
+  assert.equal(JSON.stringify(queued), queueBefore, 'la cola no se modifica');
+  assert.equal(snapshot(h), before, 'ni los créditos ni sus pagos');
+});
