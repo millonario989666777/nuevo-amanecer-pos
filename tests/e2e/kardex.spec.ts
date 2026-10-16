@@ -361,3 +361,54 @@ test('purchase endpoint costs are joined by operation id and late responses cann
   expect(await page.evaluate(() => (window as any).NA_KARDEX.toCsv({ product: { name: 'p', code: 'c' }, rows: [] })))
     .not.toContain('Costo');
 });
+
+for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: Kardex amount cells render on a single line`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner'); await seed(page);
+    await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
+    await openCard(page);
+    const screen = page.locator('#pageKardex');
+    await screen.locator('[data-product-id="k-1"]').click();
+    await expect(screen.locator('[data-kardex-row="k-in"] [data-label="Costo entrada"]')).toContainText('S/ 20.00');
+    await page.evaluate(() => document.fonts.ready);
+    const cells = await screen.locator('td.kardex-num').evaluateAll(nodes => nodes.filter(n => /S\//.test(n.textContent || '')).map(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const style = getComputedStyle(node);
+      return { text: node.textContent, lines: range.getClientRects().length, height: range.getBoundingClientRect().height,
+        lineHeight: parseFloat(style.lineHeight), whiteSpace: style.whiteSpace, align: style.textAlign };
+    }));
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell.lines, cell.text!).toBe(1);
+      expect(cell.height, cell.text!).toBeLessThanOrEqual(cell.lineHeight + 2);
+      expect(cell.whiteSpace).toBe('nowrap');
+      expect(cell.align).toBe('right');
+    }
+  });
+}
+
+test('390px card: a balance with «sin costo» wraps inside its card and keeps «S/ amount» together', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); await seed(page);
+  await page.evaluate(() => (window as any).eval(`inventoryMovements.push({id:'k-uncosted',productId:'k-1',type:'ENTRADA',delta:1234,
+    fecha:NA_KARDEX.periodRange().to,timestamp:NA_KARDEX.periodRange().to+'T15:00:00',referenceId:'sin-costo-sintetico'})`));
+  await openCard(page);
+  const screen = page.locator('#pageKardex');
+  await screen.locator('[data-product-id="k-1"]').click();
+  const balance = screen.locator('[data-label="Valor saldo"]').filter({ hasText: 'sin costo' }).first();
+  await expect(balance).toBeVisible();
+  const m = await balance.evaluate(node => {
+    const card = node.closest('tr')!.getBoundingClientRect(), rect = node.getBoundingClientRect();
+    const text = node.firstChild as Text, raw = text.textContent || '', at = raw.indexOf('S/');
+    const range = document.createRange(); range.setStart(text, at); range.setEnd(text, raw.indexOf(' ', at + 3) < 0 ? raw.length : raw.indexOf(' ', at + 3));
+    const tops = new Set(Array.from(range.getClientRects()).map(r => Math.round(r.top)));
+    return { inside: rect.left >= card.left - 1 && rect.right <= card.right + 1, scroll: node.scrollWidth <= node.clientWidth + 1,
+      amountLines: tops.size, whiteSpace: getComputedStyle(node).whiteSpace };
+  });
+  expect(m.whiteSpace).toBe('normal');
+  expect(m.inside).toBe(true);
+  expect(m.scroll).toBe(true);
+  expect(m.amountLines).toBe(1);
+  await noOverflow(page);
+});

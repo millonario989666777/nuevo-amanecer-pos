@@ -335,7 +335,8 @@
     return node;
   }
   function quantity(value) { return value == null ? 'No disponible' : value.toLocaleString('es-PE', { maximumFractionDigits: 6 }); }
-  function money(value) { return value == null ? 'sin costo' : 'S/ ' + value.toFixed(2); }
+  // Espacio no separable: «S/» y el número nunca se separan, ni en modo tarjeta.
+  function money(value) { return value == null ? 'sin costo' : 'S/\u00a0' + value.toFixed(2); }
   function movementValue(row, incoming) {
     if (!(incoming ? row.incoming : row.outgoing)) return '—';
     return money(incoming ? row.incomingValue : row.outgoingValue) +

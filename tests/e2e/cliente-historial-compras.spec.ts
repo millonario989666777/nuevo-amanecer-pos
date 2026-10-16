@@ -220,6 +220,9 @@ for (const dark of [false, true]) {
         fits
       };
     });
+    const sales = screen.locator('[data-ch-table="sales"]');
+    await expect(sales.getByRole('columnheader', { name: 'Total', exact: true })).toHaveCSS('text-align', 'right');
+    await expect(sales.locator('tbody td[data-label="Total"]').first()).toHaveCSS('text-align', 'right');
     expect(result.headsOneLine).toBe(true);
     expect(result.numsRight).toBe(true);
     expect(new Set(result.numLabels)).toEqual(new Set(['Total', 'Cantidad', 'Importe']));

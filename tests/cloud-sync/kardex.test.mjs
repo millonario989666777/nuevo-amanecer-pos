@@ -425,7 +425,7 @@ test('purchase loading disables export, joins costs read-only and discards a lat
   resolve({ purchases: [{ purchase_id: 'PUR', document_ref: 'F001-000009', lines: [{ line_number: 1, product_id: 'p1', unit_cost_cents: 500 }] }] });
   await new Promise(done => setImmediate(done));
   assert.equal(h.nodes['[data-kardex-export]'].disabled, false);
-  assert.match(h.nodes['[data-kardex-content]'].textContent, /S\/ 10\.00/);
+  assert.match(h.nodes['[data-kardex-content]'].textContent, /S\/\s10\.00/);
   assert.match(h.nodes['[data-kardex-content]'].textContent, /F001-000009/);
   assert.equal(reads, 1);
 
@@ -463,4 +463,12 @@ test('Kardex table columns override the global mobile hide rule before mobile ca
   assert.ok(css.includes(rule));
   assert.ok(css.indexOf(rule) < css.indexOf('@media'));
   assert.match(css.slice(css.indexOf('@media (max-width: 599px)')), /#pageKardex \.kardex-table td \{ display: block/);
+});
+
+test('kardex money keeps S/ and the number joined with a non-breaking space; card mode can wrap', () => {
+  const src = readFileSync('POS/js/modules/kardex.js', 'utf8');
+  assert.match(src, /'S\/\\u00a0' \+ value\.toFixed\(2\)/);
+  const css = readFileSync('POS/css/kardex.css', 'utf8');
+  const mobile = css.slice(css.indexOf('@media (max-width: 599px)'), css.indexOf('@media (min-width: 600px)'));
+  assert.match(mobile, /\.kardex-num \{[^}]*white-space: normal/);
 });

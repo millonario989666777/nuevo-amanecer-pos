@@ -56,7 +56,8 @@ body.dark #pageKardex { --kardex-bg: #0f172a; --kardex-surface: #1e293b; --karde
   #pageKardex .kardex-table td { display: block; padding: 0; border: 0; }
   #pageKardex .kardex-table td:nth-child(3) { grid-column: 1 / -1; }
   #pageKardex .kardex-table td::before { content: attr(data-label); display: block; color: var(--kardex-muted); font-size: 12px; }
-  #pageKardex .kardex-table .kardex-num { text-align: left; white-space: nowrap; }
+  /* En tarjeta la celda puede envolver; el monto queda unido por el espacio no separable. */
+  #pageKardex .kardex-table .kardex-num { text-align: left; white-space: normal; overflow-wrap: normal; word-break: normal; }
 }
 @media (min-width: 600px) {
   #pageKardex { padding: 24px; }
