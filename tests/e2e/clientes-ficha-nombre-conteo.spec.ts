@@ -63,3 +63,42 @@ test('la tarjeta «Clientes» cuenta lo mismo que la lista filtrada (Vigentes 30
   await expect.poll(shown).toBe(10);
   await expect(card).toHaveText('10');
 });
+
+// Hotfix post-#749: con «Deuda total S/ 4125.00» la columna del nombre no debe encogerse
+// hasta mostrar «MIS…» cuando sobra espacio; la elipsis solo aparece si el nombre de verdad no entra.
+async function openFichaConDeuda(page: Page, width: number, name: string) {
+  await openClientes(page, width);
+  await page.evaluate(name => {
+    (window as any).eval(`clientes=[{id:'ficha-deuda',nombre:${JSON.stringify(name)},dni:'',tel:'',creditCategories:[]}];
+      creditos=[{id:'cr-ficha',credit_id:'cr-ficha',cliId:'ficha-deuda',clienteId:'ficha-deuda',monto:4125,pagado:0,fecha:'2026-09-01',vence:'2099-01-01',status:'vigente',estado:'vigente',anulado:false,pagos:[]}];`);
+    (window as any).naCanonOpenClientAccount('ficha-deuda');
+  }, name);
+  await expect(page.locator('.na-v2-client-head h2')).toBeVisible();
+  await expect(page.locator('.na-v2-head-money strong')).toContainText('4125.00');
+}
+
+for (const width of [1366, 1024, 390]) {
+  test(`ficha ${width}px: «MISAEL» se ve completo junto a la deuda, sin elipsis`, async ({ page }) => {
+    await openFichaConDeuda(page, width, 'MISAEL');
+    const h2 = page.locator('.na-v2-client-head h2');
+    await expect(h2).toHaveText('MISAEL');
+    const fit = await h2.evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+    // El monto tampoco se recorta ni se desborda.
+    const money = await page.locator('.na-v2-head-money strong').evaluate(el => el.scrollWidth <= el.clientWidth + 1);
+    expect(money).toBe(true);
+    expect(await wordsSplit(page)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  });
+
+  test(`ficha ${width}px: nombre muy largo puede llevar elipsis pero nunca parte una palabra`, async ({ page }) => {
+    await openFichaConDeuda(page, width, 'MISAELMONTENEGROQUISPEHUAMANCHUMODELASFLORESYCASTILLO PEREZ');
+    const h2 = page.locator('.na-v2-client-head h2');
+    expect(await wordsSplit(page)).toEqual([]);
+    const css = await h2.evaluate(el => { const s = getComputedStyle(el); return [s.textOverflow, s.overflowX]; });
+    expect(css).toEqual(['ellipsis', 'hidden']);
+    const money = await page.locator('.na-v2-head-money strong').evaluate(el => el.scrollWidth <= el.clientWidth + 1);
+    expect(money).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  });
+}
