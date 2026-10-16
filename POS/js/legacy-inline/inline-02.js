@@ -741,7 +741,7 @@ function _naClientCreditIndexFresh(){return _naClientCreditIndexRef===creditos&&
 function _naCreditReadOnlyCopy(cr){const copy={...cr};if(Array.isArray(cr.pagos))copy.pagos=cr.pagos.map(p=>p&&typeof p==='object'?{...p}:p);if(Array.isArray(cr.items))copy.items=cr.items.map(i=>i&&typeof i==='object'?{...i}:i);return copy;}
 function _naClientCreditsReadOnly(clientId){
   const key=String(clientId);
-  if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy);
+  if(_naClientCreditIndexFresh())return(_naClientCreditsIndex.get(key)||[]).map(_naCreditReadOnlyCopy).map(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return cr;});
   return(Array.isArray(creditos)?creditos:[]).filter(cr=>cr&&String(cr.cliId??cr.clienteId??'')===key).map(_naCreditReadOnlyCopy).filter(cr=>{try{_naSyncCreditStatus(cr);}catch(_){}return!(cr.anulado||String(cr.status||cr.estado||'').toLowerCase()==='anulado');});
 }
 function _naClientDebtFast(client){_naEnsureClientCreditIndex();return _naClientSummaryIndex.get(String(client?.id??client))?.debt||0;}
