@@ -144,6 +144,30 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
   });
 }
 
+for (const width of [390, 650]) {
+  test(`owner sees every Kardex ${width === 650 ? 'header and table' : 'card'} cell at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await openCard(page);
+    const screen = page.locator('#pageKardex');
+    await screen.locator('[data-product-id="k-1"]').click();
+    await expect(screen.locator('tbody tr')).toHaveCount(7);
+
+    const tables = screen.locator('table');
+    expect(await tables.count()).toBeGreaterThan(0);
+    for (const table of await tables.all()) {
+      const cells = table.locator(width === 650 ? 'th, td' : 'td');
+      expect(await cells.count()).toBeGreaterThan(0);
+      for (const cell of await cells.all()) {
+        await expect(cell).toBeVisible();
+        expect(await cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+        await expect(cell).toHaveCSS('display', width === 650 ? 'table-cell' : 'block');
+      }
+    }
+  });
+}
+
 test('employee cannot open Kardex from navigation or card; direct render exposes no product data', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado'); await seed(page);
@@ -175,4 +199,11 @@ test('role revocation clears a previously opened ledger and prevents CSV export'
   await expect(page.locator('#pageKardex [data-kardex-content]')).toBeEmpty();
   await expect(page.locator('#pageKardex [data-kardex-products]')).toBeEmpty();
   await expect(page.locator('#pageKardex [data-kardex-export]')).toBeDisabled();
+});
+
+test('picking a product moves focus to the Kardex heading', async ({ page }) => {
+  await rolePage(page, 'owner'); await seed(page); await openCard(page);
+  await page.locator('#pageKardex [data-kardex-search]').fill('K-01');
+  await page.locator('#pageKardex [data-product-id="k-1"]').click();
+  await expect(page.locator('#pageKardex [data-kardex-content] h2')).toBeFocused();
 });

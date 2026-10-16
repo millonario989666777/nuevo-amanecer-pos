@@ -134,7 +134,7 @@
   function toCsv(report) {
     function cell(value) {
       var raw = value == null ? '' : String(value);
-      if (typeof value === 'string' && /^[=+@\t\r-]/.test(raw.replace(/^ +/, ''))) raw = "'" + raw;
+      if (typeof value === 'string' && /^[=+@\t\r\n-]/.test(raw.replace(/^ +/, ''))) raw = "'" + raw;
       return /[",\r\n]/.test(raw) ? '"' + raw.replace(/"/g, '""') + '"' : raw;
     }
     var lines = [['Producto', 'Código', 'Fecha (Lima)', 'Movimiento', 'Documento / referencia', 'Entrada', 'Salida', 'Saldo']];
@@ -183,7 +183,13 @@
       var button = element('button', 'kardex-product'); button.type = 'button';
       button.setAttribute('data-product-id', productId(p)); button.setAttribute('aria-pressed', String(selectedId === productId(p)));
       button.appendChild(element('strong', '', productName(p))); button.appendChild(element('small', '', productCode(p)));
-      button.addEventListener('click', function () { if (ownerAllowed()) selectedId = productId(p); render(); });
+      button.addEventListener('click', function () {
+        if (ownerAllowed()) selectedId = productId(p);
+        render();
+        // El botón pulsado se recrea al renderizar: llevar el foco al encabezado del kardex (o a la búsqueda).
+        var heading = page.querySelector('[data-kardex-content] h2');
+        if (heading && typeof heading.focus === 'function') { heading.tabIndex = -1; heading.focus(); } else if (search && typeof search.focus === 'function') search.focus();
+      });
       matches.appendChild(button);
     });
     if (!products.length) matches.appendChild(element('p', 'kardex-note', 'No se encontraron productos.'));
@@ -239,7 +245,7 @@
       render(); if (!lastReport) return;
       var url = root.URL.createObjectURL(new root.Blob([toCsv(lastReport)], { type: 'text/csv;charset=utf-8' }));
       var link = element('a'); link.href = url; link.download = 'kardex-' + lastReport.range.from + '-a-' + lastReport.range.to + '.csv';
-      root.document.body.appendChild(link); link.click(); link.remove(); root.URL.revokeObjectURL(url);
+      root.document.body.appendChild(link); link.click(); link.remove(); root.setTimeout(function () { root.URL.revokeObjectURL(url); }, 1000);
     });
     if (typeof root.MutationObserver === 'function') new root.MutationObserver(update).observe(page, { attributes: true, attributeFilter: ['class'] });
     root.addEventListener('na:role', function () { if (!ownerAllowed()) render(); else update(); });

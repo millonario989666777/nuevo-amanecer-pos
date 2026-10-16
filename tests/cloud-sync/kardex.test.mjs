@@ -128,6 +128,19 @@ test('CSV quotes text, guards formulas in names/codes/references and preserves n
   assert.ok(api.toCsv(r).includes("'\t=1")); assert.ok(api.toCsv(r).includes(',0,0,-2\r\n'));
 });
 
+test('CSV guards cells starting with a newline, including a newline alone', () => {
+  for (const value of ['\n=1+1', '\n']) {
+    const report = api.buildLedger(product, [], [], options);
+    // Set raw export values after buildLedger, which trims user strings.
+    report.product.name = value;
+    report.product.code = value;
+    report.rows[0].reference = value;
+    const csv = api.toCsv(report);
+    assert.ok(csv.includes(`\r\n"'${value}","'${value}",`));
+    assert.ok(csv.includes(`,"'${value}",0,0,10\r\n`));
+  }
+});
+
 test('even frozen pending sales/movements/catalog are never mutated', () => {
   function freeze(v) { if (v && typeof v === 'object') { Object.values(v).forEach(freeze); Object.freeze(v); } return v; }
   const p = freeze({ ...product, _canonicalPendingStock: true }), movements = freeze([move('m', 1)]);

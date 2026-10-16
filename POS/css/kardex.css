@@ -37,6 +37,7 @@
 #pageKardex .kardex-summary-card span { display: block; color: var(--kardex-muted); }
 #pageKardex .kardex-summary-card strong { display: block; font-size: 22px; }
 #pageKardex .kardex-table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--kardex-surface); }
+#pageKardex .kardex-table :is(th,td){display:table-cell}
 #pageKardex .kardex-table :is(th, td) { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--kardex-border); white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 #pageKardex .kardex-table thead th { color: var(--kardex-muted); font-size: 12px; }
 #pageKardex .kardex-table th:nth-child(3) { width: 28%; }
