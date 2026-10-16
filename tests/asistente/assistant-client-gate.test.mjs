@@ -325,3 +325,21 @@ test('pantalla de la tarjeta: «Pedir de nuevo», reenvío sin PIN con aprobaci�
   assert.match(ui, /i < \(C\.CONFIRM_ATTEMPTS \|\| 2\)/);
   assert.match(ui, /gate\.cancel\(key\); delete approvals\[p\.id\];[^\n]*\n[^\n]*\n\s*res\.textContent = 'Pidiendo una tarjeta nueva…'; send\(prompt\)/);
 });
+
+test('revisión visual Bot 4: SVG en vez de emoji, ids de SVG únicos, Venció con «Pedir de nuevo», puntos de Pensando, Quitar apagado, espacio bajo la burbuja', async () => {
+  const fs = await import('node:fs');
+  const ui = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../../POS/css/asistente.css', import.meta.url), 'utf8');
+  assert.ok(!/📷/.test(ui), 'sin emoji de cámara'); assert.match(ui, /aria-label="Enviar foto"><svg /);
+  assert.ok(!/id="naAsst(Iris|EyeL|EyeR)/.test(ui), 'sin ids fijos'); assert.match(ui, /var u = 'naA' \+ \(\+\+charSeq\)/);
+  assert.match(ui, /function expire\(\)[\s\S]{0,400}ok\.textContent = 'Venció'; ok\.disabled = true;[\s\S]{0,200}pinEl\.disabled = true;[\s\S]{0,120}again\.hidden = false/);
+  assert.match(ui, /if \(r\.code === 'confirm_expired'\) \{ delete approvals\[p\.id\]; expire\(\);/);
+  assert.ok(!/data-st="expired"\] \.na-asst-ok,[^{]*\{display:none/.test(css), 'vencida: botones a la vista, apagados');
+  assert.match(ui, /na-asst-dots/); assert.match(css, /@keyframes na-asst-dot/);
+  assert.match(ui, /d\.owners\.length <= 1 \? '<button type="button" class="na-asst-quitar" data-quitar="1" disabled/);
+  assert.match(ui, /function padPage\(bottom\)/); assert.match(ui, /padPage\(posActive \? 0 : bottom\)/);
+  assert.ok(!/data-st="done"\]\{[^}]*opacity/.test(css), 'hecha sin opacidad');
+  assert.match(css, /\.na-asst-seg span\{[^}]*min-height:44px/);
+  assert.match(css, /\.na-asst-card \.acts \.na-asst-no\{background:#e2e8f0;color:#0f172a/);
+  assert.match(css, /\.na-asst-hero\[data-paused="1"\] \.h-glow/); assert.match(css, /prefers-reduced-motion:reduce\)\{\.na-asst-hero \.h-glow/);
+});

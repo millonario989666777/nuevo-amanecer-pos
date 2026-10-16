@@ -25,7 +25,9 @@
 
   // ---------- Personaje ----------
   function bits() { var a = ''; for (var i = 0; i < 16; i++) { for (var k = 0; k < 18; k++) a += Math.random() > .5 ? '1' : '0'; a += '<br>'; } return a; }
+  var charSeq = 0; // ids de SVG únicos por personaje (hay hasta 3 a la vez: burbuja, cabecera del panel, tarjeta de Inicio)
   function charHtml() {
+    var u = 'naA' + (++charSeq);
     var orbit = '', conf = '', colors = ['#22c55e', '#facc15', '#38bdf8', '#f472b6', '#a3e635'];
     for (var i = 0; i < 12; i++) orbit += '<i style="transform:translate(-50%,-50%) rotate(' + (i * 30) + 'deg) translateY(calc(var(--asst-size) * -.62)) rotate(-' + (i * 30) + 'deg)">' + (i % 3 ? (i % 2) : '01') + '</i>';
     for (var j = 0; j < 10; j++) { var a = j / 10 * Math.PI * 2; conf += '<b style="--dx:' + Math.round(Math.cos(a) * 46) + 'px;--dy:' + Math.round(Math.sin(a) * 46 - 18) + 'px;background:' + colors[j % 5] + '"></b>'; }
@@ -33,11 +35,11 @@
       '<div class="na-asst-orbit" aria-hidden="true">' + orbit + '</div>' +
       '<div class="na-asst-sphere"><div class="na-asst-bits"><div>' + bits() + bits() + '</div></div>' +
       '<svg class="na-asst-face" viewBox="0 0 100 100" aria-hidden="true"><defs>' +
-      '<radialGradient id="naAsstIris" cx="40%" cy="35%"><stop offset="0" stop-color="#bbf7d0"/><stop offset=".45" stop-color="#22c55e"/><stop offset="1" stop-color="#14532d"/></radialGradient>' +
-      '<radialGradient id="naAsstIrisB" cx="40%" cy="35%"><stop offset="0" stop-color="#bfdbfe"/><stop offset=".5" stop-color="#2563eb"/><stop offset="1" stop-color="#1e3a8a"/></radialGradient>' +
-      '<clipPath id="naAsstEyeL"><ellipse cx="33" cy="45" rx="13.5" ry="15.5"/></clipPath><clipPath id="naAsstEyeR"><ellipse cx="67" cy="45" rx="13.5" ry="15.5"/></clipPath></defs>' +
+      '<radialGradient id="' + u + 'Iris" cx="40%" cy="35%"><stop offset="0" stop-color="#bbf7d0"/><stop offset=".45" stop-color="#22c55e"/><stop offset="1" stop-color="#14532d"/></radialGradient>' +
+      '<radialGradient id="' + u + 'IrisB" cx="40%" cy="35%"><stop offset="0" stop-color="#bfdbfe"/><stop offset=".5" stop-color="#2563eb"/><stop offset="1" stop-color="#1e3a8a"/></radialGradient>' +
+      '<clipPath id="' + u + 'EyeL"><ellipse cx="33" cy="45" rx="13.5" ry="15.5"/></clipPath><clipPath id="' + u + 'EyeR"><ellipse cx="67" cy="45" rx="13.5" ry="15.5"/></clipPath></defs>' +
       '<ellipse cx="22" cy="63" rx="6" ry="3.2" fill="#bbf7d0" opacity=".45"/><ellipse cx="78" cy="63" rx="6" ry="3.2" fill="#bbf7d0" opacity=".45"/>' +
-      eye('L', 33) + eye('R', 67) +
+      eye('L', 33, u) + eye('R', 67, u) +
       '<path class="brow" d="M21 27 L42 32 M58 32 L79 27" stroke="#052e16" stroke-width="3" stroke-linecap="round"/>' +
       '<path class="m m-smile" d="M43 66 Q50 72 57 66" fill="none" stroke="#052e16" stroke-width="2.6" stroke-linecap="round"/>' +
       '<g class="m m-open"><path d="M40 64 Q50 82 60 64 Z" fill="#7f1d1d" stroke="#052e16" stroke-width="1.5"/><ellipse cx="50" cy="73" rx="5.5" ry="3.2" fill="#fb7185"/></g>' +
@@ -47,9 +49,9 @@
       '<div class="na-asst-tint"></div><div class="na-asst-gloss"></div><div class="na-asst-gloss2"></div><div class="na-asst-rim"></div></div></div></div>' +
       '<div class="na-asst-dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="na-asst-confetti">' + conf + '</div><div class="na-asst-badge" aria-hidden="true"></div></div>';
   }
-  function eye(s, cx) {
-    return '<g clip-path="url(#naAsstEye' + s + ')"><ellipse cx="' + cx + '" cy="45" rx="13.5" ry="15.5" fill="#f8fafc"/>' +
-      '<g class="pupils"><circle cx="' + cx + '" cy="47" r="9.5" fill="url(#naAsstIris)"/><g class="iris-think"><circle cx="' + cx + '" cy="47" r="9.5" fill="url(#naAsstIrisB)"/>' +
+  function eye(s, cx, u) {
+    return '<g clip-path="url(#' + u + 'Eye' + s + ')"><ellipse cx="' + cx + '" cy="45" rx="13.5" ry="15.5" fill="#f8fafc"/>' +
+      '<g class="pupils"><circle cx="' + cx + '" cy="47" r="9.5" fill="url(#' + u + 'Iris)"/><g class="iris-think"><circle cx="' + cx + '" cy="47" r="9.5" fill="url(#' + u + 'IrisB)"/>' +
       '<text x="' + cx + '" y="50.5" font-size="8.5" font-family="monospace" font-weight="700" text-anchor="middle" fill="#dbeafe">01</text></g>' +
       '<circle cx="' + cx + '" cy="47" r="4.2" fill="#052e16"/><circle cx="' + (cx - 3.4) + '" cy="42.6" r="2.8" fill="#fff"/><circle cx="' + (cx + 3) + '" cy="51" r="1.2" fill="#fff" opacity=".8"/></g>' +
       '<rect class="lid" x="' + (cx - 15) + '" y="29" width="30" height="33" fill="#1fb456"/></g>';
@@ -94,6 +96,8 @@
   function applyPause() {
     var busyNow = busyPos() && panelEl && panelEl.hidden, p = doc.hidden || busyNow || offscreen || (sleeping && state === 'listo') ? '1' : '0';
     chars().forEach(function (c) { if (c.dataset.paused !== p) c.dataset.paused = p; });
+    var hp = doc.hidden || offscreen || (sleeping && state === 'listo') || busyNow ? '1' : '0'; // la tarjeta de Inicio descansa igual que la burbuja
+    if (heroEl && heroEl.dataset.paused !== hp) heroEl.dataset.paused = hp;
     if (rootEl && rootEl.dataset.paused !== p) rootEl.dataset.paused = p;
     if (rootEl) rootEl.style.visibility = busyNow ? 'hidden' : '';
     if (rootEl) { var show = allowedHere() && !(heroEl && pageId() === 'pageMenu'); rootEl.style.display = show ? '' : 'none'; // en Inicio la tarjeta hace de lanzador
@@ -103,6 +107,17 @@
 
   // ---------- Posición: nunca tapar Cobrar ni el carrito ----------
   function visible(el) { if (!el) return null; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' ? r : null; }
+  // Espacio abajo en TODA página donde se ve la burbuja: la última fila o la última opción siempre se pueden subir por encima de ella.
+  // Solo agrega relleno inferior a la página activa si el suyo no alcanza; al salir de la página se devuelve el valor original.
+  var padded = null;
+  function padPage(bottom) {
+    var pg = doc.querySelector('.page.active'), shown = rootEl && rootEl.style.display !== 'none' && !rootEl.hidden && bottom > 0;
+    if (padded && (padded !== pg || !shown)) { var o = padded.dataset.naAsstPb || ''; padded.style.removeProperty('padding-bottom'); if (o) padded.style.paddingBottom = o; delete padded.dataset.naAsstPb; padded = null; }
+    if (!pg || !shown || padded === pg) return;
+    var b = rootEl.querySelector('.na-asst-bubble'), h = b ? b.getBoundingClientRect().height : 72, need = Math.round(h + bottom + 24);
+    if (parseFloat(getComputedStyle(pg).paddingBottom) >= need) return;
+    pg.dataset.naAsstPb = pg.style.paddingBottom || ''; pg.style.setProperty('padding-bottom', need + 'px', 'important'); padded = pg; // el POS fija el suyo con !important
+  }
   function place() {
     if (!rootEl) return;
     var vw = root.innerWidth, vh = root.innerHeight, right = 14, bottom = 16;
@@ -113,6 +128,7 @@
       else if (foot && foot.top < vh) bottom = Math.round(vh - foot.top + 12); // teléfono: encima de Total/Cobrar
     }
     rootEl.style.setProperty('--asst-right', right + 'px'); rootEl.style.setProperty('--asst-bottom', bottom + 'px');
+    padPage(posActive ? 0 : bottom);
     if (panelEl) panelEl.style.setProperty('--asst-panel-right', (right > 14 ? right : 16) + 'px');
   }
 
@@ -365,10 +381,17 @@
       if (tr) { tr.dataset.decision = decided[i]; var t = tr.querySelector('.flag-t'); if (t) t.textContent = decided[i] === 'drop' ? 'Fila quitada: no se agregará.' : 'Revisado: lo aceptaste.'; }
       syncOk();
     });
+    // Vencida (por la hora o porque el servidor dijo 410): Confirmar y el PIN quedan a la vista pero apagados, «Venció», y se ofrece «Pedir de nuevo».
+    function expire() {
+      c.dataset.st = 'expired'; if (timer) clearInterval(timer); if (left) left.textContent = '0:00';
+      res.textContent = 'Esta propuesta venció. Pídela otra vez.';
+      if (ok) { ok.textContent = 'Venció'; ok.disabled = true; } if (no) no.disabled = true; if (pinEl) { pinEl.value = ''; pinEl.disabled = true; }
+      if (again) { again.hidden = false; again.disabled = false; }
+    }
     function tick() {
       if (!left) return; var ms = exp - (Date.now() + clockOffset); if (!exp) { left.textContent = '-'; return; }
       if (ms <= 0 && ok && ok.textContent === 'Confirmando…') { left.textContent = '0:00'; return; } // en curso: el servidor decide (ya usada = mismo id)
-      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); c.dataset.st = 'expired'; res.textContent = 'Esta propuesta venció. Pídela otra vez.'; if (ok) { ok.textContent = 'Vencida'; ok.disabled = true; } if (no) no.disabled = true; if (again) { again.hidden = false; again.disabled = false; } } left.textContent = '0:00'; return; }
+      if (ms <= 0) { clearInterval(timer); if (c.dataset.st === 'pending') { gate.cancel(key); expire(); if (again) { again.hidden = false; again.disabled = false; } } left.textContent = '0:00'; return; }
       var sec = Math.ceil(ms / 1000); left.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
     syncOk();
@@ -387,7 +410,8 @@
       syncPin();
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
-        if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Vencida' }[c.dataset.st] || 'Confirmar';
+        if (r.code === 'confirm_expired') { delete approvals[p.id]; expire(); setState('error', 2600); return; }
+        if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Venció' }[c.dataset.st] || 'Confirmar';
         if (r.ok) { delete approvals[p.id]; if (again) again.hidden = true; setState('feliz', 2600); setTimeout(closePanel, 1400); return; }
         setState('error', 2600);
         var f = C.confirmFailureView(r) || { kind: 'other', rows: [], button: 'Confirmar', keepApproval: true, again: true };
@@ -410,7 +434,8 @@
     text = String(text || '').trim(); if (!text && !image) return;
     var chips = panelEl.querySelector('.na-asst-chips'); if (chips) chips.hidden = true; // menos desplazamiento tras el primer mensaje
     addMsg('u', text || 'Foto', image); inputEl.value = ''; busy = true; sendBtn.disabled = true; photoBtn.disabled = true; setState(image ? 'concentrado' : 'pensando');
-    var thinking = addMsg('a', image ? 'Concentrado… leyendo la foto' : 'Pensando…'); thinking.classList.add('na-asst-thinking');
+    var thinking = addMsg('a', image ? 'Concentrado, leyendo la foto' : 'Pensando'); thinking.classList.add('na-asst-thinking');
+    var dots = el('span', 'na-asst-dots'); dots.setAttribute('aria-hidden', 'true'); dots.innerHTML = '<i></i><i></i><i></i>'; thinking.appendChild(dots);
     var screen = (doc.querySelector('.page.active') || {}).id || null;
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
@@ -579,7 +604,9 @@
         var own = d.owners.map(function (o) {
           return '<div class="na-asst-own-r" data-dev="' + C.esc(o.device_id) + '"><span class="ic" aria-hidden="true">' + devIcon(o.label) + '</span><div><strong>' + C.esc(o.label || 'Aparato de dueño') +
             (o.this_device ? ' <em>Este teléfono</em>' : '') + '</strong><small class="st" role="status">' + (o.last_seen_at ? 'Último uso: ' + C.esc(String(o.last_seen_at).slice(0, 16).replace('T', ' ')) : '') + '</small></div>' +
-            '<button type="button" class="na-asst-quitar" data-quitar="1">Quitar</button></div>'; }).join('');
+            (d.owners.length <= 1 ? '<button type="button" class="na-asst-quitar" data-quitar="1" disabled aria-disabled="true" title="Es el único aparato dueño">Quitar</button></div>' +
+              '<p class="na-asst-own-only">Es el único aparato dueño. Registra otro antes de quitarlo.</p>'
+              : '<button type="button" class="na-asst-quitar" data-quitar="1">Quitar</button></div>'); }).join('');
         var pend = (d.pending || []).map(function (p) {
           return '<div class="na-asst-own-r pend" data-dev="' + C.esc(p.device_id) + '"><span class="ic" aria-hidden="true">' + PHONE_SVG + '</span><div><strong>' + C.esc(p.label || 'Teléfono nuevo') + '</strong><small class="st" role="status">Pidió ser dueño: ' + C.esc(String(p.requested_at || '').slice(0, 16).replace('T', ' ')) + '</small></div></div>' +
             '<div class="na-asst-own-a" data-dev="' + C.esc(p.device_id) + '"><button type="button" class="na-asst-ok" data-decision="approve">Aprobar</button><button type="button" class="na-asst-no" data-decision="reject">Rechazar</button></div>'; }).join('');
@@ -703,7 +730,7 @@
     panelEl.innerHTML = '<div class="na-asst-head">' + charHtml() + '<div class="na-asst-head-t"><b>Burbuja</b><small>' + (isOwnerAccess() ? 'Gestión · dueño · prueba aislada' : 'Consultas · empleado · prueba aislada') + '</small></div><button type="button" class="na-asst-x" aria-label="Cerrar asistente">✕</button></div>' +
       '<div class="na-asst-offline" hidden>Asistente no disponible sin internet</div><div class="na-asst-msgs" aria-live="polite"></div>' +
       '<div class="na-asst-chips">' + chipsHtml() + '</div>' +
-      '<div class="na-asst-input"><button type="button" class="na-asst-photo" aria-label="Enviar foto">📷</button><input type="file" accept="image/*" capture="environment" hidden>' +
+      '<div class="na-asst-input"><button type="button" class="na-asst-photo" aria-label="Enviar foto"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg></button><input type="file" accept="image/*" capture="environment" hidden>' +
       '<textarea rows="1" placeholder="Escribe aquí…" aria-label="Mensaje para el asistente"></textarea><button type="button" class="na-asst-send" aria-label="Enviar">➤</button></div>';
     doc.body.appendChild(rootEl); doc.body.appendChild(panelEl);
     msgsEl = panelEl.querySelector('.na-asst-msgs'); inputEl = panelEl.querySelector('textarea'); sendBtn = panelEl.querySelector('.na-asst-send');

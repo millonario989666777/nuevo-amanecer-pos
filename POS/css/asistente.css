@@ -146,7 +146,7 @@
 .na-asst-card .acts{display:flex;gap:8px}
 .na-asst-card .acts button{flex:1;min-height:52px;border-radius:12px;border:0;font-size:18px;font-weight:800;cursor:pointer}
 .na-asst-ok{background:#166534;color:#fff}.na-asst-no{background:#e2e8f0;color:#0f172a}
-.na-asst-card[data-st="done"]{border-color:#cbd5e1;opacity:.8}.na-asst-card[data-st="done"] .acts,.na-asst-card[data-st="cancelled"] .acts{display:none}.na-asst-card[data-st="denied"] .na-asst-ok,.na-asst-card[data-st="denied"] .na-asst-no,.na-asst-card[data-st="denied"] .na-asst-pin{display:none}
+.na-asst-card[data-st="done"]{border-color:#cbd5e1;background:#f8fafc;color:#334155}.na-asst-card[data-st="done"] .acts,.na-asst-card[data-st="cancelled"] .acts{display:none}.na-asst-card[data-st="denied"] .na-asst-ok,.na-asst-card[data-st="denied"] .na-asst-no,.na-asst-card[data-st="denied"] .na-asst-pin{display:none}
 .na-asst-card .res{font-weight:800;color:#166534}.na-asst-card[data-st="denied"] .res{color:#991b1b}
 .na-asst-chips{display:flex;gap:8px;padding:0 12px 8px;flex-wrap:wrap}
 .na-asst-chips button{min-height:44px;border-radius:999px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;font-size:15px;font-weight:700;padding:0 14px;cursor:pointer}
@@ -182,7 +182,7 @@ body.dark .na-asst-offline{background:#422006;color:#fde68a}
 .na-asst-pin{display:flex;flex-direction:column;gap:4px}
 .na-asst-pin label{font-weight:800;font-size:15px}
 .na-asst-pin input{min-height:48px;border:2px solid #cbd5e1;border-radius:12px;padding:0 12px;font-size:20px;letter-spacing:6px}
-.na-asst-card[data-st="expired"]{border-color:#cbd5e1}.na-asst-card[data-st="expired"] .na-asst-ok,.na-asst-card[data-st="expired"] .na-asst-no,.na-asst-card[data-st="expired"] .na-asst-pin{display:none}
+.na-asst-card[data-st="expired"]{border-color:#cbd5e1}.na-asst-card[data-st="expired"] .na-asst-ok:disabled,.na-asst-card[data-st="expired"] .na-asst-no:disabled{background:#e5e7eb;color:#374151;cursor:not-allowed}.na-asst-card[data-st="expired"] .na-asst-pin input:disabled{background:#f1f5f9;border-color:#cbd5e1}
 .na-asst-card .acts .na-asst-again{min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer}
 .na-asst-card [data-again][hidden],.na-asst-card .na-asst-pin[hidden]{display:none!important}
 .na-asst-card[data-fail="wait"] .res{color:#92400e;font-weight:800}.na-asst-card[data-fail="review"] .res,.na-asst-card[data-fail="pin"] .res{color:#991b1b;font-weight:800}
@@ -273,7 +273,7 @@ html[data-na-theme="azul"] body:not(.dark) .na-asst-hero{--hbg:linear-gradient(1
 .na-asst-acc-r strong{display:block;font-size:14px}.na-asst-acc-r small{display:block;font-size:12px;color:#166534;min-height:15px}
 .na-asst-seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden;max-width:100%}
 .na-asst-seg label{position:relative;cursor:pointer}.na-asst-seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
-.na-asst-seg span{display:block;padding:9px 12px;font-size:13px;font-weight:600;color:#334155;background:#fff;min-height:40px;box-sizing:border-box;line-height:22px}
+.na-asst-seg span{display:block;padding:9px 12px;font-size:13px;font-weight:600;color:#334155;background:#fff;min-height:44px;box-sizing:border-box;line-height:26px}
 .na-asst-seg label+label span{border-left:1px solid #cbd5e1}
 .na-asst-seg input:checked+span{background:#166534;color:#fff}.na-asst-seg input:focus-visible+span{outline:3px solid #86efac;outline-offset:-3px}
 body.dark .na-asst-acc-n{color:#94a3b8}body.dark .na-asst-acc-r{border-color:#334155}body.dark .na-asst-seg span{background:#0f172a;color:#e2e8f0}body.dark .na-asst-seg{border-color:#334155}
@@ -287,7 +287,7 @@ html[data-na-theme="azul"] .na-asst-seg input:checked+span{background:#1e40af}
 .na-asst-own-r>div{flex:1;min-width:0}.na-asst-own-r strong{display:block;font-size:15px}.na-asst-own-r small{display:block;color:#4b6355;font-size:13px}
 .na-asst-own-r em{display:inline-block;white-space:nowrap;font-style:normal;font-size:11px;font-weight:700;background:#dcfce7;color:#14532d;border-radius:999px;padding:2px 8px;margin-left:4px}
 .na-asst-own-r .ic{flex:none;width:36px;height:36px;border-radius:10px;background:#f0fdf4;color:#15803d;display:flex;align-items:center;justify-content:center;font-size:18px}
-.na-asst-quitar,.na-asst-no{min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid #dc2626;background:#fff;color:#b91c1c;font-weight:700;cursor:pointer}
+.na-asst-quitar,.na-asst-own .na-asst-no{min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid #dc2626;background:#fff;color:#b91c1c;font-weight:700;cursor:pointer}
 .na-asst-own-a{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 0}
 .na-asst-own-a .na-asst-ok,.na-asst-reg .na-asst-ok{min-height:44px;border-radius:12px;border:0;background:#15803d;color:#fff;font-weight:700;cursor:pointer}
 .na-asst-own-w{margin:10px 0 0;padding:10px 12px;border-radius:12px;background:#fff4e0;color:#7a3d00;font-size:13px;font-weight:600;line-height:1.35}
@@ -302,7 +302,7 @@ html[data-na-theme="azul"] .na-asst-seg input:checked+span{background:#1e40af}
 body.dark .na-asst-own,body.dark .na-asst-reg{background:#112219;border-color:#2c4a37;color:#ecfdf3}
 body.dark .na-asst-own-r{border-color:#22392b}body.dark .na-asst-own-r small,body.dark .na-asst-reg p{color:#b7d3c2}
 body.dark .na-asst-own-r .ic{background:#17301f;color:#86efac}
-body.dark .na-asst-quitar,body.dark .na-asst-no{background:transparent;color:#fca5a5;border-color:#f87171}
+body.dark .na-asst-quitar,body.dark .na-asst-own .na-asst-no{background:transparent;color:#fca5a5;border-color:#f87171}
 body.dark .na-asst-own-a .na-asst-ok,body.dark .na-asst-reg .na-asst-ok{background:#22c55e;color:#052e16}
 body.dark .na-asst-own-w{background:#3a2a10;color:#fde2b0}
 body.dark .na-asst-reg input{background:#0f1b15;border-color:#2c4a37}
@@ -319,3 +319,23 @@ body.dark .na-asst-reg input{background:#0f1b15;border-color:#2c4a37}
 @media (min-width:700px) and (max-width:1099px){#naAsstHero.na-asst-hero{padding:20px 24px;grid-template-columns:minmax(0,1fr) 190px}#naAsstHero h2{font-size:26px}#naAsstHero .na-asst-hero-v{width:190px;height:150px}
   #naAsstHero .h-glow,#naAsstHero .h-ring{width:170px;height:170px;margin:-85px 0 0 -85px}#naAsstHero .h-bb{--asst-size:96px;width:96px;height:96px;margin:-52px 0 0 -48px}#naAsstHero .c2{top:96px}}
 @media (min-width:1100px){#naAsstHero.na-asst-hero{padding:24px 32px}#naAsstHero .na-asst-hero-v{height:230px}}
+
+/* ---- Revisión visual Bot 4 ---- */
+/* Cancelar del chat: botón secundario neutro (el rojo queda solo para Quitar/Rechazar en Configuración). */
+.na-asst-card .acts .na-asst-no{background:#e2e8f0;color:#0f172a;border:1px solid #94a3b8}
+body.dark .na-asst-card .acts .na-asst-no{background:#1f3b2b;color:#e5f3ea;border-color:#3f6b52}
+/* Tarjeta hecha: colores sólidos (contraste >= 4.5:1), sin opacidad. */
+body.dark .na-asst-card[data-st="done"]{background:#0f1f16;color:#cbd5e1;border-color:#334155}
+body.dark .na-asst-card[data-st="expired"] .na-asst-ok:disabled,body.dark .na-asst-card[data-st="expired"] .na-asst-no:disabled{background:#334155;color:#e2e8f0}
+/* Puntos de «Pensando». */
+.na-asst-dots{display:inline-flex;gap:4px;margin-left:6px;vertical-align:middle}
+.na-asst-dots i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.35;animation:na-asst-dot 1.2s ease-in-out infinite}
+.na-asst-dots i:nth-child(2){animation-delay:.2s}.na-asst-dots i:nth-child(3){animation-delay:.4s}
+@keyframes na-asst-dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+/* Último aparato dueño: Quitar se ve apagado. */
+.na-asst-quitar:disabled{border-color:#9ca3af;color:#4b5563;background:#f3f4f6;cursor:not-allowed}
+body.dark .na-asst-quitar:disabled{border-color:#475569;color:#cbd5e1;background:#1e293b}
+.na-asst-own-only{margin:-4px 0 6px 46px;font-size:13px;color:#4b5563}body.dark .na-asst-own-only{color:#cbd5e1}
+/* Tarjeta de Inicio: brillo e iconos descansan con la burbuja; sin movimiento si el sistema lo pide. */
+.na-asst-hero[data-paused="1"] .h-glow,.na-asst-hero[data-paused="1"] .h-card{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.na-asst-hero .h-glow,.na-asst-hero .h-card,.na-asst-dots i{animation:none!important}.na-asst-dots i{opacity:.7}}
