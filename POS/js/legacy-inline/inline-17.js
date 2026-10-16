@@ -547,7 +547,7 @@ function _naV10SaleTotal(sale){return Number((Array.isArray(sale?.items)?sale.it
 function _naV10NormalizedCredit(raw){
   const cr=_naV10Clone(raw)||{};
   cr.monto=Math.max(0,_naNumber(cr.monto));cr.pagado=Math.min(cr.monto,Math.max(0,_naNumber(cr.pagado)));
-  if(cr.anulado)cr.status='anulado';
+  if((typeof _naIsCreditVoided==='function'?_naIsCreditVoided(cr):(cr.anulado)))cr.status='anulado'; // copia (_naV10Clone): normaliza solo la copia
   else if(cr.pagado>=cr.monto&&cr.monto>0)cr.status='cancelado';
   else{const d=_naV10DaysUntil(cr.vence,_naV10Today());cr.status=d!==null&&d<0?'vencido':'vigente';}
   return cr;
@@ -576,7 +576,7 @@ function _naV10CreditCompletionDate(cr){
   return Number.isFinite(fallback.getTime())&&_naV10CreditOutstanding(cr)<=.001?fallback:null;
 }
 function _naV10CreditHistoryMetrics(data,clientId){
-  const list=(Array.isArray(data?.creditos)?data.creditos:[]).filter(raw=>String(raw?.cliId??raw?.clienteId)===String(clientId)&&!raw.anulado&&raw.status!=='anulado');
+  const list=(Array.isArray(data?.creditos)?data.creditos:[]).filter(raw=>String(raw?.cliId??raw?.clienteId)===String(clientId)&&!(typeof _naIsCreditVoided==='function'?_naIsCreditVoided(raw):(raw.anulado||raw.status==='anulado')));
   let punctual=0,late=0,unknown=0,completed=0,partial=0,overdueActive=0,debt=0;
   for(const raw of list){
     const cr=_naV10NormalizedCredit(raw),pending=_naV10CreditOutstanding(cr);debt+=pending;
