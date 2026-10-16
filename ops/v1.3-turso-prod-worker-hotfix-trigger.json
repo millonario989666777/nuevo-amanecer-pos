@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base d8f12ddbb561c547ad67a2ad325e625aa5aa5465: #786 cierres de caja solo dueño en el servidor (pos-permissions.js, /auth/cash-closes). No schema changes. Rollback to 8f6891d5 (worker 51, Cloudflare version c529bf97, currently live). Web stays at 160 (161 not deployed yet).",
-  "target_commit": "d8f12ddbb561c547ad67a2ad325e625aa5aa5465",
-  "rollback_ref": "8f6891d5ffd7a053b2547c23d2a0a07f24c6be05",
+  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK) deploy of base fffaf2ad4c97c30efa0b2de123c2879c230496a3: #788 pulido-159 (arqueo 6 columnas a <=700px, texto; touches pos-permissions.js). No schema changes. Rollback to d8f12ddb (worker 52, Cloudflare version 5334c8b1, currently live). Web stays at 161 (162 not deployed yet).",
+  "target_commit": "fffaf2ad4c97c30efa0b2de123c2879c230496a3",
+  "rollback_ref": "d8f12ddbb561c547ad67a2ad325e625aa5aa5465",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 52,
-  "optimization": "ARQUEO_OWNER_ONLY_SERVER_786"
+  "attempt": 53,
+  "optimization": "PULIDO_159_788"
 }
