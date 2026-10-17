@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { stripKnownBackgroundKeys } from './helpers/known-background-keys';
+import { isKnownBackgroundWrite, stripKnownBackgroundKeys } from './helpers/known-background-keys';
 
 test.use({ timezoneId: 'UTC', serviceWorkers: 'block' });
 const screenId = '#pageReporteProductosVencer';
@@ -90,7 +90,10 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     await seed(page, true, dark);
     const before = await state(page);
     const writes: string[] = [];
-    page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
+    page.on('request', request => {
+      if (isKnownBackgroundWrite(request.method(), request.url())) return;
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url());
+    });
     await openReport(page);
     const screen = page.locator(screenId), rows = screen.locator('tbody tr'), horizon = screen.locator('[data-rpv-horizon]');
     await expect(horizon).toHaveValue('30');
@@ -145,7 +148,10 @@ test('owner CSV contains active horizon, dd/mm/yyyy, expired first and protected
   await seed(page);
   const before = await state(page);
   const writes: string[] = [];
-  page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method()); });
+  page.on('request', request => {
+    if (isKnownBackgroundWrite(request.method(), request.url())) return;
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method());
+  });
   await openReport(page);
   await page.locator(`${screenId} [data-rpv-horizon]`).selectOption('60');
   const downloadPromise = page.waitForEvent('download');
