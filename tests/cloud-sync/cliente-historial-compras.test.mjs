@@ -180,3 +180,32 @@ test('integrated page, assets, registry and navigation follow ABC without a draw
   }
   assert.doesNotMatch(source, /\bfetch\s*\(|XMLHttpRequest|localStorage|indexedDB|\b(?:POST|PUT|PATCH|DELETE)\b|\b(?:save|guardar|persist)\w*\s*\(/);
 });
+
+test('page heading and Próximamente card share the name; numeric cells are marked and CSS stays scoped', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(read('POS/js/modules/proximamente-registry.js'), ctx);
+  const entry = ctx.NA_PROXIMAMENTE_REGISTRY.find(f => f.id === 'cliente-historial-compras');
+  assert.equal(entry.name, 'Historial de compras por cliente');
+  assert.equal(entry.page, 'pageClienteHistorial');
+  const heading = read('POS/index.html').match(/<h1 id="clienteHistorialTitle">([^<]+)<\/h1>/)[1];
+  assert.equal(heading, entry.name);
+  const report = api.buildReport([sale()], 'c1', options);
+  const html = api.reportHtml(report, { name: 'Cliente' });
+  for (const label of ['Total', 'Cantidad', 'Importe']) assert.match(html, new RegExp('<th scope="col" class="ch-num">' + label + '</th>'));
+  assert.doesNotMatch(html, /<th scope="col" class="ch-num">(Fecha|Producto|Comprobante \/ ID|Método de pago)</);
+  const css = read('POS/css/cliente-historial-compras.css');
+  css.replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(r => r.split('{')[0].trim()).filter(s => s && !s.startsWith('@'))
+    .forEach(sel => sel.split(/,(?![^(]*\))/).forEach(part => assert.match(part.trim(), /#pageClienteHistorial\b/, part)));
+  const outside = css.split('@media')[0];
+  assert.match(outside, /#pageClienteHistorial \.ch-table :is\(th, td\) \{ display: table-cell; \}/);
+  assert.match(outside, /\.ch-table thead th \{[^}]*white-space: nowrap/);
+  assert.match(outside, /\.ch-table \.ch-num \{[^}]*text-align: right[^}]*white-space: nowrap/);
+  assert.match(outside, /\.ch-table tbody th \{[^}]*text-transform: none/);
+});
+
+test('kardex amount cells never break between S/ and the number', () => {
+  const css = read('POS/css/kardex.css');
+  const outside = css.split('@media')[0];
+  assert.match(outside, /#pageKardex \.kardex-table :is\(th,td\)\{display:table-cell\}/);
+  assert.match(outside, /#pageKardex \.kardex-table \.kardex-num \{[^}]*white-space: nowrap/);
+});

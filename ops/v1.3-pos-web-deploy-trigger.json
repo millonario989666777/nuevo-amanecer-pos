@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "#800 kardex valorizado (promedio ponderado, costos solo dueño vía /auth/purchases) + pulido kardex. Solo web, sin cambios de worker (worker 55 e7329e2f sigue live).",
-  "retry_attempt": 165,
-  "retry_reason": "Deploy de base 5119c763f08d8b5d009932e27b70f3f0d789789b (#800). Rollback: web 164 (Cloudflare 74e8ab6d, build 8ae8e4f7, base 1354350a6430419a7ffdcb32c124e861d8fc7a4c).",
-  "requested_at_utc": "2026-10-16T21:17:00Z",
-  "approved_base": "5119c763f08d8b5d009932e27b70f3f0d789789b"
+  "note": "Web 167: #802 pulido historial de compras por cliente + Kardex (merge d2800fe3). Rollback: web 166 (Cloudflare 3c823204, build b56047f7).",
+  "retry_attempt": 167,
+  "retry_reason": "Deploy de base d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f (incluye #802 merge d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f). Rollback: web 166 (Cloudflare 3c823204, build b56047f7, base b56047f7901fdfc809ef2035673cfc969ec9e08b).",
+  "requested_at_utc": "2026-10-17T00:37:04Z",
+  "approved_base": "d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f"
 }

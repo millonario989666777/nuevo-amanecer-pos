@@ -1,4 +1,4 @@
-/* Ventas y productos por cliente: consulta de solo lectura de ventas y clientes locales. */
+/* Historial de compras por cliente: consulta de solo lectura de ventas y clientes locales. */
 (function (root) {
   'use strict';
 
@@ -177,11 +177,13 @@
     report.products.forEach(function (product) { rows.push([product.name, product.quantity, product.amount.toFixed(2)]); });
     return '\ufeff' + rows.map(function (row) { return row.map(csvCell).join(','); }).join('\r\n');
   }
-  function tableHtml(title, kind, labels, rows) {
+  function tableHtml(title, kind, labels, rows, numeric) {
+    numeric = numeric || [];
+    function cls(i) { return numeric.indexOf(i) >= 0 ? ' class="ch-num"' : ''; }
     return '<section class="ch-section"><h2>' + escapeHtml(title) + '</h2><table class="ch-table" data-ch-table="' + kind + '"><caption class="ch-sr-only">' + escapeHtml(title) + '</caption><thead><tr>' +
-      labels.map(function (label) { return '<th scope="col">' + escapeHtml(label) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      labels.map(function (label) { return '<th scope="col"' + cls(labels.indexOf(label)) + '>' + escapeHtml(label) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       rows.map(function (row) { return '<tr>' + row.map(function (value, i) {
-        return i === 0 ? '<th scope="row">' + escapeHtml(value) + '</th>' : '<td data-label="' + escapeHtml(labels[i]) + '">' + escapeHtml(value) + '</td>';
+        return i === 0 ? '<th scope="row">' + escapeHtml(value) + '</th>' : '<td' + cls(i) + ' data-label="' + escapeHtml(labels[i]) + '">' + escapeHtml(value) + '</td>';
       }).join('') + '</tr>'; }).join('') + '</tbody></table></section>';
   }
   function reportHtml(report, customer) {
@@ -193,11 +195,11 @@
     if (!report.purchases) return html + '<p class="ch-empty">Este cliente no tiene compras en el período.</p>';
     html += tableHtml('Ventas del cliente', 'sales', ['Fecha', 'Comprobante / ID', 'Total', 'Método de pago'], report.sales.map(function (sale) {
       return [dateLabel(sale.day), sale.reference, money(sale.total), paymentLabel(sale.method)];
-    }));
+    }), [2]);
     if (!report.products.length) return html + '<p class="ch-empty">Las ventas no tienen productos detallados.</p>';
     return html + tableHtml('Productos comprados', 'products', ['Producto', 'Cantidad', 'Importe'], report.products.map(function (product) {
       return [product.name, product.quantity.toLocaleString('es-PE', { maximumFractionDigits: 3 }), money(product.amount)];
-    }));
+    }), [1, 2]);
   }
   function ownerAllowed() {
     var roles = root.NA_ROLES, permissions = root.NA_PERMISSIONS;
