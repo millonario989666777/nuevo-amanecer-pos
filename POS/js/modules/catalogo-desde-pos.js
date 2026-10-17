@@ -87,7 +87,11 @@
     var categories = (Array.isArray(base) ? base : []).concat(config && Array.isArray(config.customCategories) ? config.customCategories : []);
     var selected = select.children.length ? select.value : '*';
     var catalog = buildCatalog(products, { categories: categories });
-    if (selected !== '*' && !catalog.categories.some(function (c) { return c.value === selected; })) selected = '*';
+    // Conserva el filtro aunque ya no queden productos ni una categoría configurada.
+    if (selected !== '*' && !catalog.categories.some(function (c) { return c.value === selected; })) {
+      var previous = Array.from(select.children).find(function (option) { return option.value === selected; });
+      catalog.categories.push({ value: selected, label: previous ? previous.textContent : categoryTitle(selected) });
+    }
     select.replaceChildren();
     var all = element('option', '', 'Todas'); all.value = '*'; select.appendChild(all);
     catalog.categories.forEach(function (category) {

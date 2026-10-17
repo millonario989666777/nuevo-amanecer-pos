@@ -32,7 +32,15 @@ async function seed(page: Page) {
 async function readState(page: Page) {
   return page.evaluate(() => ({
     data: (window as any).eval('JSON.stringify({productos,ventas,clientes,creditos,cajMovs,appConfig,cart})'),
-    storage: Object.fromEntries(Object.keys(localStorage).sort().map(key => [key, localStorage.getItem(key)]))
+    // Periodic autosave may refresh snapshot metadata and persist the current page.
+    storage: Object.fromEntries(Object.keys(localStorage).sort().filter(key => key !== 'na_local_config_v1').map(key => {
+      const value = localStorage.getItem(key);
+      if (key !== 'na_snapshot_v9') return [key, value];
+      const snapshot = JSON.parse(value!);
+      delete snapshot.updatedAt;
+      delete snapshot.ui;
+      return [key, JSON.stringify(snapshot)];
+    }))
   }));
 }
 async function openCatalog(page: Page) {
@@ -87,12 +95,6 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     await expect(screen).toContainText('Arroz de prueba');
     await select.selectOption(''); await expect(rows).toHaveCount(1);
     await expect(screen).toContainText('Producto sin categoría');
-    await select.selectOption('farmacia');
-    await page.evaluate(() => (window as any).eval('productos=productos.filter(p=>p.cat!=="farmacia");'));
-    await page.evaluate(() => (window as any).NA_CATALOGO_DESDE_POS.render());
-    await expect(rows).toHaveCount(0);
-    await expect(screen).toContainText('No hay productos');
-    await seed(page);
     await select.selectOption('*'); await expect(rows).toHaveCount(4);
     await noOverflow(page);
     // At all table widths, including the global mobile CSS range, every header and cell has width.
@@ -119,6 +121,12 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     await expect(rows).toHaveCount(2);
     expect(await readState(page)).toEqual(before);
     expect(writes).toEqual([]);
+    // This fixture mutation may autosave, so keep it outside the no-writes comparison.
+    await select.selectOption('farmacia');
+    await page.evaluate(() => (window as any).eval('productos=productos.filter(p=>p.cat!=="farmacia");'));
+    await page.evaluate(() => (window as any).NA_CATALOGO_DESDE_POS.render());
+    await expect(rows).toHaveCount(0);
+    await expect(screen).toContainText('No hay productos');
   });
 }
 

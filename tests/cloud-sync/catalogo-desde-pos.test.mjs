@@ -129,6 +129,30 @@ test('render uses textContent, category changes/Todas/empty filter work, only pu
   assert.match(nodes.content.textContent, /No hay productos/);
 });
 
+test('render retains a selected category after its last product disappears, reading reassigned lexical products without writes', () => {
+  for (const category of ['farmacia', '']) {
+    const { c, nodes } = harness();
+    c._naBaseCategories = Object.freeze([]);
+    c.appConfig = Object.freeze({ customCategories: Object.freeze([]) });
+    vm.runInContext('let productos = globalThis.productos;', c);
+    c.NA_CATALOGO_DESDE_POS.render();
+    nodes.category.value = category;
+    c.NA_CATALOGO_DESDE_POS.render();
+    const label = nodes.category.children.find(option => option.value === category).textContent;
+    vm.runInContext('productos = productos.filter(p => (p.cat || "") !== ' + JSON.stringify(category) + ');', c);
+    const before = vm.runInContext('JSON.stringify({productos, appConfig})', c);
+    for (let i = 0; i < 2; i++) {
+      assert.equal(c.NA_CATALOGO_DESDE_POS.render(), true);
+      assert.equal(nodes.category.value, category);
+      assert.equal(nodes.category.children.find(option => option.value === category).textContent, label);
+      assert.match(nodes.content.textContent, /No hay productos/);
+      assert.equal(nodes.content.children[0].tagName, 'p');
+    }
+    assert.equal(c.productos, products);
+    assert.equal(vm.runInContext('JSON.stringify({productos, appConfig})', c), before);
+  }
+});
+
 test('owner guard denies before memory reads and clears already rendered products/categories on role revocation', () => {
   const h = harness(); h.c.NA_CATALOGO_DESDE_POS.init();
   assert.ok(h.nodes.content.textContent.includes('Paracetamol'));
