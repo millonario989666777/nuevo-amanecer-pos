@@ -468,18 +468,31 @@
       <label>Buscar por nombre o DNI
         <input type="search" data-ch-search aria-label="Buscar por nombre o DNI" placeholder="Nombre o DNI" autocomplete="off">
       </label>
-      <label>Cliente
-        <select data-ch-customer aria-label="Cliente"><option value="">Selecciona un cliente</option></select>
-      </label>
+      <div class="ch-filter-row">
+        <label>Cliente
+          <select data-ch-customer aria-label="Cliente"><option value="">Selecciona un cliente</option></select>
+        </label>
+        <label>Desde
+          <input type="date" data-ch-from aria-label="Desde">
+        </label>
+        <label>Hasta
+          <input type="date" data-ch-to aria-label="Hasta">
+        </label>
+        <label>Vendedor
+          <select data-ch-seller aria-label="Vendedor"><option value="">Todos</option></select>
+        </label>
+      </div>
       <label>Período
         <select data-ch-period aria-label="Período">
           <option value="30" selected>Últimos 30 días</option>
           <option value="90">Últimos 90 días</option>
           <option value="365">Últimos 365 días</option>
           <option value="all">Todo el historial</option>
+          <option value="custom">Personalizado</option>
         </select>
       </label>
       <button type="button" data-ch-refresh>Actualizar reporte</button>
+      <button type="button" data-ch-export disabled hidden>Exportar CSV</button>
     </div>
     <p class="ch-method">Consulta de solo lectura. Se excluyen ventas anuladas. Total consumido = total registrado de las ventas; importe por producto = subtotal de la línea o precio vendido × cantidad. Los abonos no se cuentan como compras.</p>
     <p class="ch-status" data-ch-status role="status" aria-live="polite"></p>
