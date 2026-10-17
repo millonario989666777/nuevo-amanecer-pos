@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Web 171: #809 reporte de productos por vencer (merge c45f39f4) + #815 historial cliente: vendedor sin id y guard CSV (merge 63d13220). Worker 58 (Cloudflare 3b05a3e0) ya live con live check OK; smoke 99/99 en d0924c0a. Rollback: web 170 (Cloudflare df0f25c9, build 7e9c8355).",
-  "retry_attempt": 171,
-  "retry_reason": "Deploy de base d0924c0a7681892b81e184bf280a1bb8c53b653b (incluye #809 merge c45f39f4418e4e372cd4372f6a015b3ff256eef6 y #815 merge 63d13220d8b0312c78518cdf5cff769d5a6738a4). Rollback: web 170 (Cloudflare df0f25c9, build 7e9c8355, base 7e9c83554f2407e06cd6b0da00ee368bb21f5411).",
-  "requested_at_utc": "2026-10-17T03:45:06Z",
-  "approved_base": "d0924c0a7681892b81e184bf280a1bb8c53b653b"
+  "note": "Web 172: #819 clientes-frecuencia KPIs 2×2 a 600–770 px e importe en una línea (merge 68021169). Solo web, sin cambios de Worker. Rollback: web 171 (Cloudflare 0a562e24, build 99dd0e78).",
+  "retry_attempt": 172,
+  "retry_reason": "Deploy de base 6802116989a540a59aceb9f17a7488146b4c06a0 (incluye #819 merge 6802116989a540a59aceb9f17a7488146b4c06a0). Rollback: web 171 (Cloudflare 0a562e24, build 99dd0e78, base 99dd0e784499013dbe2263b23102f51b26cbd595).",
+  "requested_at_utc": "2026-10-17T06:23:54Z",
+  "approved_base": "6802116989a540a59aceb9f17a7488146b4c06a0"
 }
