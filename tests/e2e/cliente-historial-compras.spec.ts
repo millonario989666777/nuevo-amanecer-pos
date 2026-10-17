@@ -410,7 +410,7 @@ for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
       const box = (selector: string) => row.querySelector(selector)!.closest('label')!.getBoundingClientRect();
       const from = box('[data-ch-from]'), to = box('[data-ch-to]'), seller = box('[data-ch-seller]');
       const rect = node.getBoundingClientRect();
-      return { fromTop: from.top, toTop: to.top, sellerTop: seller.top, toBottom: to.bottom,
+      return { fromTop: from.top, toTop: to.top, sellerTop: seller.top, toBottom: to.bottom, hintGridRow: getComputedStyle(node).gridRowStart,
         fieldsBottom: Math.max(from.bottom, to.bottom, seller.bottom), hintTop: rect.top, hintHeight: rect.height,
         hintRects: node.getClientRects().length, display: getComputedStyle(node).display, rowBottom: row.getBoundingClientRect().bottom };
     });
@@ -423,7 +423,13 @@ for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
       expect(Math.abs(all.toTop - all.fromTop)).toBeLessThanOrEqual(1);
       expect(Math.abs(all.sellerTop - all.fromTop)).toBeLessThanOrEqual(1);
       expect(all.hintTop).toBeGreaterThanOrEqual(all.fieldsBottom - 1);
+      expect(all.hintGridRow).toBe('3');
     } else {
+      // Orden visual vigente en web 171 a 390 y 650 px (una columna): Desde, Hasta, nota y Vendedor, de arriba abajo.
+      expect(all.hintGridRow).toBe('auto');
+      expect(all.fromTop).toBeLessThan(all.toTop);
+      expect(all.toTop).toBeLessThan(all.hintTop);
+      expect(all.hintTop).toBeLessThan(all.sellerTop);
       expect(all.hintTop).toBeGreaterThanOrEqual(all.toBottom - 1);
     }
     expect(await contrastRatio(hint)).toBeGreaterThanOrEqual(4.5);
