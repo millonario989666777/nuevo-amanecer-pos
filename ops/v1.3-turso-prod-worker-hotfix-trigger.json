@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK, e2e 462/464 flaky conocidos, Worker 403/404/401 checks OK) deploy of base 511f95a7c4b9785d53c150a69e6f67e7773c68c9: #795 clientes-frecuencia (frecuencia de compra del cliente). No schema changes. Rollback to 1354350a (worker 55, Cloudflare version e7329e2f, currently live). Web NOT deployed (pending asistente 5 live check).",
-  "target_commit": "511f95a7c4b9785d53c150a69e6f67e7773c68c9",
-  "rollback_ref": "1354350a6430419a7ffdcb32c124e861d8fc7a4c",
+  "authorization_context": "Owner authorized (standing permission to merge+deploy after team OKs; 2026-10-16 Lima; asistente 2 code OK 9cc5dddd, asistente 3 spec OK, asistente 4 LOCAL OK, e2e 472/472 single pass, proximamente.spec 27/27 x3, Node full, registry 136/84 prioritized, 8 new owner-only locked, Venta/Inicio identical) deploy of base 57f3054c62d15278bfd79600e27d7876fba80698: #803 proximamente-7-casamarket (touches pos-permissions.js). No schema changes. Rollback to 511f95a7 (worker 56, Cloudflare version b602afde, currently live). Web NOT deployed (pending asistente 5 live check).",
+  "target_commit": "57f3054c62d15278bfd79600e27d7876fba80698",
+  "rollback_ref": "511f95a7c4b9785d53c150a69e6f67e7773c68c9",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 56,
-  "optimization": "CLIENTES_FRECUENCIA_795"
+  "attempt": 57,
+  "optimization": "PROXIMAMENTE_7_CASAMARKET_803"
 }

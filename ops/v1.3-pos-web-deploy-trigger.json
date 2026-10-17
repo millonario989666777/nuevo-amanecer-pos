@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Web 167: #802 pulido historial de compras por cliente + Kardex (merge d2800fe3). Rollback: web 166 (Cloudflare 3c823204, build b56047f7).",
-  "retry_attempt": 167,
-  "retry_reason": "Deploy de base d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f (incluye #802 merge d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f). Rollback: web 166 (Cloudflare 3c823204, build b56047f7, base b56047f7901fdfc809ef2035673cfc969ec9e08b).",
-  "requested_at_utc": "2026-10-17T00:37:04Z",
-  "approved_base": "d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f"
+  "note": "Web 168: #803 proximamente-7-casamarket (Próximamente con 136 entradas, merge 57f3054c). Worker 57 (Cloudflare d6d2b8be) ya live con live check OK. Rollback: web 167 (Cloudflare 8081da74, build b1ec7282).",
+  "retry_attempt": 168,
+  "retry_reason": "Deploy de base 1679ba398111e4fecfc63578a5acb0a6d4db5c10 (incluye #803 merge 57f3054c62d15278bfd79600e27d7876fba80698). Rollback: web 167 (Cloudflare 8081da74, build b1ec7282, base b1ec72825e40035cd1310b1db5e4c425cde298a9).",
+  "requested_at_utc": "2026-10-17T01:38:35Z",
+  "approved_base": "1679ba398111e4fecfc63578a5acb0a6d4db5c10"
 }
