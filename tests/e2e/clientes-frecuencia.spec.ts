@@ -191,6 +191,31 @@ async function openFrequency(page: Page, width: number, dark = false) {
   await expect(screen.locator('.cf-table')).toBeVisible();
   return screen;
 }
+for (const width of [650, 700, 1000]) {
+  test(`${width}px: Última compra and Días sin comprar remain visible in customer frequency`, async ({ page }) => {
+    const screen = await openFrequency(page, width);
+    await expect(screen.locator('.cf-table')).toHaveCSS('display', width < 900 ? 'block' : 'table');
+    await expect(screen.locator('tbody tr')).toHaveCount(4);
+    for (const label of ['Última compra', 'Días sin comprar']) {
+      const cells = screen.locator(`.cf-table tbody td[data-label="${label}"]`);
+      await expect(cells).toHaveCount(4);
+      for (const cell of await cells.all()) {
+        await expect(cell).toBeVisible();
+        await expect(cell).toHaveCSS('display', width < 900 ? 'block' : 'table-cell');
+        await expect.poll(() => cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+      }
+    }
+    if (width === 1000) {
+      const cells = screen.locator('.cf-table :is(th, td):is(:nth-child(4), :nth-child(5))');
+      await expect(cells).toHaveCount(10);
+      for (const cell of await cells.all()) {
+        await expect(cell).toBeVisible();
+        await expect(cell).toHaveCSS('display', 'table-cell');
+        await expect.poll(() => cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+      }
+    }
+  });
+}
 test('1366px: numeric headers Compras, Días sin comprar e Importe align right like their numbers', async ({ page }) => {
   const screen = await openFrequency(page, 1366);
   for (const label of ['Compras', 'Días sin comprar', 'Importe']) {

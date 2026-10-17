@@ -444,6 +444,46 @@ test(`390px card: an entry cost with «${c.label}» wraps inside its card and ke
 });
 }
 
+test('390px card: Valor saldo with uncosted units stays visible inside its card without overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); await seed(page);
+  // Stock matches the entry: opening is zero and all 1,234 balance units remain uncosted.
+  await page.evaluate(() => (window as any).eval(`
+    productos.push({id:'k-3',name:'Producto sintético con saldo sin costo',sku:'K-03',stock:1234,controlInventario:true});
+    inventoryMovements.push({id:'k-uncosted-balance',productId:'k-3',type:'ENTRADA',delta:1234,
+      fecha:NA_KARDEX.periodRange().to,timestamp:NA_KARDEX.periodRange().to+'T15:00:00',referenceId:'saldo-sin-costo-sintetico'});
+  `));
+  await openCard(page);
+  const screen = page.locator('#pageKardex');
+  await screen.locator('[data-product-id="k-3"]').click();
+  const balance = screen.locator('[data-kardex-row="k-uncosted-balance"] [data-label="Valor saldo"]').filter({ hasText: 'sin costo' });
+  await expect(balance).toBeVisible();
+  expect(await balance.textContent()).toBe('S/\u00a00.00 · 1,234 u sin costo');
+  await balance.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  const metrics = await balance.evaluate(node => {
+    const rect = node.getBoundingClientRect(), cardRect = node.closest('tr')!.getBoundingClientRect();
+    const within = (inner: DOMRect, outer: DOMRect) => inner.width > 0 && inner.height > 0 &&
+      inner.left >= outer.left - 1 && inner.right <= outer.right + 1 &&
+      inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+    const text = node.firstChild as Text, start = text.textContent!.indexOf('sin costo');
+    const range = document.createRange();
+    range.setStart(text, start); range.setEnd(text, start + 'sin costo'.length);
+    const rects = Array.from(range.getClientRects());
+    return {
+      cellInsideCard: within(rect, cardRect), scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+      textInside: rects.length > 0 && rects.every(r => within(r, rect) && within(r, cardRect)),
+      textInViewport: rects.length > 0 && rects.every(r => r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight),
+    };
+  });
+  expect(metrics.cellInsideCard).toBe(true);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.textInside).toBe(true);
+  expect(metrics.textInViewport).toBe(true);
+  await expect(balance.getByText('sin costo', { exact: false })).toBeVisible();
+  await noOverflow(page);
+});
+
 for (const dark of [false, true]) {
   test(`650px ${dark ? 'dark' : 'light'}: Kardex summary cards use 2 columns and never split words`, async ({ page }) => {
     await page.setViewportSize({ width: 650, height: 900 });
