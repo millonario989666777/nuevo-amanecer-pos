@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { isKnownBackgroundWrite, stripKnownBackgroundKeys } from './helpers/known-background-keys';
+import { assertKnownBackgroundWrites, captureKnownBackgroundSettings, isKnownBackgroundWrite,
+  stripKnownBackgroundKeys, type KnownBackgroundWrite } from './helpers/known-background-keys';
 
 test.use({ timezoneId: 'UTC', serviceWorkers: 'block' });
 const screenId = '#pageReporteProductosVencer';
@@ -88,10 +89,15 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     await page.setViewportSize({ width, height: 900 });
     await rolePage(page, 'owner');
     await seed(page, true, dark);
+    const settingsBefore = await captureKnownBackgroundSettings(page);
     const before = await state(page);
     const writes: string[] = [];
+    const backgroundWrites: KnownBackgroundWrite[] = [];
     page.on('request', request => {
-      if (isKnownBackgroundWrite(request.method(), request.url())) return;
+      if (isKnownBackgroundWrite(request.method(), request.url())) {
+        backgroundWrites.push({ method: request.method(), url: request.url(), postData: request.postDataJSON() });
+        return;
+      }
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method() + ' ' + request.url());
     });
     await openReport(page);
@@ -134,6 +140,7 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     await screen.locator('[data-rpv-refresh]').click();
     await expect(rows).toHaveCount(4);
     expect(await state(page)).toEqual(before);
+    assertKnownBackgroundWrites(backgroundWrites, settingsBefore);
     expect(writes).toEqual([]);
     if (width === 390) {
       await page.evaluate(() => (window as any).goMenu());
@@ -146,10 +153,15 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
 test('owner CSV contains active horizon, dd/mm/yyyy, expired first and protected product/lot strings without writes', async ({ page }) => {
   await rolePage(page, 'owner');
   await seed(page);
+  const settingsBefore = await captureKnownBackgroundSettings(page);
   const before = await state(page);
   const writes: string[] = [];
+  const backgroundWrites: KnownBackgroundWrite[] = [];
   page.on('request', request => {
-    if (isKnownBackgroundWrite(request.method(), request.url())) return;
+    if (isKnownBackgroundWrite(request.method(), request.url())) {
+      backgroundWrites.push({ method: request.method(), url: request.url(), postData: request.postDataJSON() });
+      return;
+    }
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.method());
   });
   await openReport(page);
@@ -165,6 +177,7 @@ test('owner CSV contains active horizon, dd/mm/yyyy, expired first and protected
   expect(csv).toContain('"\'\n=Producto CSV",\'\t+Lote,');
   expect(csv).toMatch(/,-44,5\r\n/);
   expect(await state(page)).toEqual(before);
+  assertKnownBackgroundWrites(backgroundWrites, settingsBefore);
   expect(writes).toEqual([]);
 });
 
