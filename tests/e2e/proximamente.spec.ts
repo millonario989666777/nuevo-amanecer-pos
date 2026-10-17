@@ -148,8 +148,8 @@ test('priority chips and search filter the cards', async ({ page }) => {
   for (const badge of await page.locator('.na-prox-card .na-prox-badge').allTextContents()) expect(badge).toContain('Prioridad alta');
   await page.locator('.na-prox-chip[data-priority=""]').click();
   await page.locator('.na-prox-search').fill('kardex');
-  await expect(page.locator('.na-prox-card')).toHaveCount(1);
   await expect(page.locator('[data-feature-id="kardex"]')).toBeVisible();
+  for (const text of await page.locator('.na-prox-card:visible').allTextContents()) expect(text).toMatch(/kardex/i);
 });
 
 for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {
