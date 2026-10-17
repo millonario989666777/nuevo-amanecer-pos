@@ -88,20 +88,23 @@ export function redactText(value) {
 // larga; lo que empieza con el monto mide menos de 48 (la cola de siempre). Nunca sale a medias, corte donde sea.
 // Sin esas palabras el empleado recibe igual que antes, y el dueño no pasa por aquí (lo ve todo, a la misma velocidad).
 const NOT_LETTER = '(?![a-záéíóúñ])';
-const OWNER_WORD = '(?:cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|precio\\s+(?:de(?:l)?\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|utilidad(?:es)?)' + NOT_LETTER;
+const OWNER_WORD = '(?:cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|cto\\.?|precio\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|gan(?:aste|amos|é|ó|aron)|utilidad(?:es)?|inversi(?:ó|o)n(?:es)?|invert(?:í|i|imos|iste|ió|io|ieron))' + NOT_LETTER;
 const BUY_WORD = '(?:(?:lo|la|los|las)\\s+)?compr(?:é|e|amos|aron|ó)' + NOT_LETTER;
 const OWNER_AMOUNT = '(?:S\\/\\.?\\s?)?-?(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?:\\s?(?:%|por\\s?ciento|soles))?';
+// Entre la palabra y el monto no puede haber un cambio de idea («pero», «aunque», «sino», «mientras») ni el precio de venta («venta»,
+// «vende», «precio», «PVP»): así «El costo no lo tengo, pero el precio de venta es S/ 2.50» deja ver el precio de venta.
+const OWNER_GAP = '(?:(?!pero\\b|aunque\\b|sino\\b|mientras\\b|venta|vend|precio|pvp\\b)[^\\d\\n.;])';
 const OWNER_DATA = [
   // primero las que empiezan con el monto (cortas), después «compré a … monto» y «palabra … monto»
   new RegExp('(?:S\\/\\.?\\s?)\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
   new RegExp('\\d{1,3}(?:[.,]\\d{1,2})?\\s?(?:%|por\\s?ciento)\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
-  new RegExp('\\b' + BUY_WORD + '[^\\d\\n.;]{0,40}?\\b(?:a|por|en)\\s+' + OWNER_AMOUNT, 'gi'),
-  new RegExp('\\b' + OWNER_WORD + '[^\\d\\n.;]{0,60}?' + OWNER_AMOUNT, 'gi')
+  new RegExp('\\b' + BUY_WORD + OWNER_GAP + '{0,40}?\\b(?:a|por|en)\\s+' + OWNER_AMOUNT, 'gi'),
+  new RegExp('\\b' + OWNER_WORD + OWNER_GAP + '{0,60}?' + OWNER_AMOUNT, 'gi')
 ];
 export const OWNER_DATA_LABEL = '[dato del dueño]';
 // Encabezados del dueño, también abreviados: Costo, Costo unit., C. unit, Cto., P. compra, P.compra, P compra, Pr. compra, Prec. compra,
 // Precio de compra, Proveedor, Margen, Ganancia, Utilidad, Cost. Sin acentos ni mayúsculas. «Precio», «P. venta», «P. unit» quedan visibles.
-const OWNER_HEADER_RE = /cost|\bcto\b|\bc\s*\.?\s*unit|\bp(?:r|rec|recio)?\s*\.?\s*(?:de\s*)?compra|proveedor|\bprov\b|margen|ganancia|utilidad/;
+const OWNER_HEADER_RE = /cost|\bcto\b|invers|\bc\s*\.?\s*unit|\bp(?:r|rec|recio)?\s*\.?\s*(?:de\s*)?compra|proveedor|\bprov\b|margen|ganancia|utilidad/;
 const OWNER_HEADER = { test: (c) => OWNER_HEADER_RE.test(String(c).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')) };
 // Tabla: una línea con | (o tabulador) y 2+ celdas cuyo encabezado nombra un dato del dueño; las filas siguientes de esa tabla llevan la
 // celda tapada (la fila separadora --- queda). Una celda a medio llegar ya sale tapada: lo de antes de la celda no cambia.
@@ -319,6 +322,7 @@ export function flaggedRows(proposal) {
   return out;
 }
 
+export const CUSTOMER_DOC_TYPES = Object.freeze(['estado_cuenta']);
 const DOC_TITLES = { inventario_valorizado: 'Inventario valorizado', lista_precios: 'Lista de precios', lista_pedido: 'Lista de pedido para proveedor', reporte_ventas: 'Reporte de ventas del período', estado_cuenta: 'Estado de cuenta del cliente', resumen_cierre: 'Resumen de cierre de caja' };
 // Convierte una llamada de herramienta del modelo en propuesta segura. Devuelve null si se descarta.
 // Una sola tarjeta de confirmación por acción (pedido del dueño): si el modelo propone dos veces el mismo cambio para el mismo producto
@@ -410,7 +414,8 @@ export function toProposal(call, role, ctx, n) {
     if (role !== 'owner' && !EMPLOYEE_DOC_TYPES.includes(tipo)) return { dropped: 'forbidden_document', tool: name };
     const D = /^\d{4}-\d{2}-\d{2}$/;
     return { id, type: 'documento', needsConfirm: false, title: DOC_TITLES[tipo], tipo, desde: D.test(args.desde || '') ? args.desde : null, hasta: D.test(args.hasta || '') ? args.hasta : null,
-      cliente: cleanText(args.cliente, 60) || null, fiscal: false };
+      // El nombre del cliente solo viaja en documentos de UN cliente (estado de cuenta); en listas de precios u otros, nunca (Bot 2).
+      cliente: CUSTOMER_DOC_TYPES.includes(tipo) ? cleanText(args.cliente, 60) || null : null, fiscal: false };
   }
   return { dropped: 'unknown_tool', tool: name };
 }

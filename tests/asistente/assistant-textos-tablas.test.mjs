@@ -39,7 +39,7 @@ test('Bot 2: aviso de compra grande en una sola frase corta; sin control de stoc
 });
 
 test('Bot 2: lista de precios sin la etiqueta «Cliente:»', () => {
-  assert.ok(!/Cliente:/.test(UI)); assert.match(UI, /\(p\.cliente \? ' · ' \+ p\.cliente : ''\)/);
+  assert.match(UI, /\(p\.cliente && CUSTOMER_DOCS\.indexOf\(p\.tipo\) >= 0 \? ' · Cliente: ' \+ p\.cliente : ''\)/); assert.match(UI, /var CUSTOMER_DOCS = \['estado_cuenta'\];/);
 });
 
 test('Bot 4: la burbuja también mira la última celda visible de las tablas (TOTAL de Valorización, «—» de Ventas/stock) y toma la más baja', () => {

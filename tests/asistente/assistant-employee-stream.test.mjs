@@ -241,3 +241,53 @@ for (const n of [1, 2, 47, 48, 49, 100]) {
     assert.equal(emitSplit(T, n, 'owner'), T);
   });
 }
+
+// ---------- Bot 2 sobre 81d526d3: el precio de venta nunca se tapa; más palabras del dueño ----------
+const SALE = [
+  ['El costo no lo tengo, pero el precio de venta es S/ 2.50', [], ['S/ 2.50']],
+  ['El costo es alto y el precio de venta es S/ 2.50', [], ['S/ 2.50']],
+  ['Costo desconocido, P. venta S/ 2.50', [], ['S/ 2.50']],
+  ['El costo no lo sé; se vende a S/ 2.50', [], ['S/ 2.50']],
+  ['El costo aún falta, aunque el PVP es S/ 2.50', [], ['S/ 2.50']],
+  ['el costo es S/ 1.80, pero el precio de venta es S/ 2.50', ['1.80'], ['S/ 2.50']],
+  ['costo S/ 1.80 y venta S/ 2.50', ['1.80'], ['S/ 2.50']],
+  ['precio de venta S/ 2.50, costo S/ 1.80', ['1.80'], ['S/ 2.50']],
+  ['Costo: S/ 1.80, precio de venta S/ 2.50', ['1.80'], ['S/ 2.50']]
+];
+const MORE = ['el precio al proveedor es S/ 1.10', 'La inversión fue de S/ 500', 'Invertí S/ 300 en mercadería', 'Invertimos 300 soles', 'Ganaste S/ 40 hoy',
+  'Ganamos 15% este mes', 'Gané S/ 12', 'Cto. 3.50', 'Cto 3.50 por caja'];
+for (const n of [1, 2, 47, 48, 49, 100]) {
+  test('3) trozos de ' + n + ': el precio de venta queda visible (también junto a un costo, en cualquier orden); el costo se tapa', () => {
+    for (const [txt, hide, show] of SALE) {
+      const full = 'Arroz. ' + txt + '. Hay 40 unidades.';
+      const emp = emitSplit(full, n, 'empleado:consultas');
+      for (const h of hide) assert.ok(!emp.includes(h), 'salió ' + h + ': ' + emp);
+      for (const v of show) assert.ok(emp.includes(v), 'se tapó el precio de venta: ' + emp);
+      assert.equal(emp, redactOwnerData(redactText(full))); assert.ok(emp.endsWith('Hay 40 unidades.'));
+      assert.equal(emitSplit(full, n, 'owner'), full);
+    }
+  });
+  test('3) trozos de ' + n + ': precio al proveedor, inversión/invertí, ganaste/ganamos/gané y Cto. con monto fuera de tablas se tapan', () => {
+    for (const txt of MORE) {
+      const full = 'Hola. ' + txt + '. Hay 40 unidades.';
+      const emp = emitSplit(full, n, 'empleado:consultas');
+      assert.ok(!/1\.10|500|300|40 hoy|15%|12|3\.50/.test(emp.replace('Hay 40 unidades.', '')), 'salió en: ' + emp);
+      assert.match(emp, /\[dato del dueño\]/); assert.equal(emp, redactOwnerData(redactText(full)));
+      assert.equal(emitSplit(full, n, 'owner'), full);
+    }
+  });
+}
+
+test('4) tarjeta de documento: el nombre del cliente solo en el estado de cuenta (con «Cliente:»); la lista de precios nunca lo muestra ni lo recibe', async () => {
+  const { toProposal } = await import('../../tools/cloudflare-lab/src/pos-assistant.js');
+  const lp = toProposal({ name: 'preparar_documento', arguments: { tipo: 'lista_precios', cliente: 'Rosa Quispe' } }, 'owner', { products: [] }, 1);
+  const ec = toProposal({ name: 'preparar_documento', arguments: { tipo: 'estado_cuenta', cliente: 'Rosa Quispe' } }, 'owner', { products: [] }, 2);
+  assert.equal(lp.cliente, null, 'la lista de precios no lleva cliente'); assert.equal(ec.cliente, 'Rosa Quispe');
+  const UI = (await import('node:fs')).readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  const line = UI.match(/if \(p\.type === 'documento'\) return[\s\S]*?data-open>Abrir documento<\/button><\/div>';/)[0];
+  const E = (v) => String(v), cardDoc = new Function('p', 'E', 'CUSTOMER_DOCS', line.replace(/^if \(p\.type === 'documento'\) /, ''));
+  const html = (p) => cardDoc({ title: 'T', ...p }, E, ['estado_cuenta']);
+  assert.ok(!html({ tipo: 'lista_precios', cliente: 'Rosa Quispe' }).includes('Rosa'), 'lista de precios sin nombre aunque llegue');
+  assert.match(html({ tipo: 'estado_cuenta', cliente: 'Rosa Quispe' }), /Cliente: Rosa Quispe/);
+  assert.ok(!html({ tipo: 'lista_pedido', cliente: 'Rosa' }).includes('Rosa'));
+});
