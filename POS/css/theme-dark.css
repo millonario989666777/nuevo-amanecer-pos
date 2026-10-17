@@ -890,3 +890,14 @@ body.dark #pageInventario .top-btn-nuevo:is(.na-pur-btn,[onclick^="abrirModalPro
 body.dark #pageClientes .ss.amber .ss-num{color:#fcd34d}
 body.dark #mMasterPermissions .btn-close-m{color:#f8fafc;background-color:#1e293b;border:1px solid rgba(255,255,255,.6)}
 /* ==== end fix/pulido-159 ==== */
+/* Reporte de productos por vencer: colores con contraste para lotes vencidos. */
+body.dark #pageReporteProductosVencer {
+  --rpv-bg: #0f172a;
+  --rpv-surface: #1e293b;
+  --rpv-text: #f8fafc;
+  --rpv-muted: #cbd5e1;
+  --rpv-border: #64748b;
+  --rpv-expired-text: #fee2e2;
+  --rpv-expired-bg: #7f1d1d;
+  color-scheme: dark;
+}
