@@ -149,8 +149,7 @@ test('priority chips and search filter the cards', async ({ page }) => {
   await page.locator('.na-prox-chip[data-priority=""]').click();
   await page.locator('.na-prox-search').fill('kardex');
   await expect(page.locator('[data-feature-id="kardex"]')).toBeVisible();
-  // Search includes descriptions, so several cards may legitimately match.
-  for (const card of await page.locator('.na-prox-card:visible').all()) await expect(card).toContainText(/kardex/i);
+  for (const text of await page.locator('.na-prox-card:visible').allTextContents()) expect(text).toMatch(/kardex/i);
 });
 
 for (const [width, columns] of [[1366, 3], [768, 2], [390, 1]]) {

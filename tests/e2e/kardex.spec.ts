@@ -361,3 +361,111 @@ test('purchase endpoint costs are joined by operation id and late responses cann
   expect(await page.evaluate(() => (window as any).NA_KARDEX.toCsv({ product: { name: 'p', code: 'c' }, rows: [] })))
     .not.toContain('Costo');
 });
+
+for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: Kardex amount cells render on a single line`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner'); await seed(page);
+    await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
+    await openCard(page);
+    const screen = page.locator('#pageKardex');
+    await screen.locator('[data-product-id="k-1"]').click();
+    await expect(screen.locator('[data-kardex-row="k-in"] [data-label="Costo entrada"]')).toContainText('S/ 20.00');
+    await page.evaluate(() => document.fonts.ready);
+    const cells = await screen.locator('td.kardex-num').evaluateAll(nodes => nodes.filter(n => /S\//.test(n.textContent || '')).map(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const style = getComputedStyle(node);
+      return { text: node.textContent, lines: range.getClientRects().length, height: range.getBoundingClientRect().height,
+        lineHeight: parseFloat(style.lineHeight), whiteSpace: style.whiteSpace, align: style.textAlign };
+    }));
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell.lines, cell.text!).toBe(1);
+      expect(cell.height, cell.text!).toBeLessThanOrEqual(cell.lineHeight + 2);
+      expect(cell.whiteSpace).toBe('nowrap');
+      expect(cell.align).toBe('right');
+    }
+  });
+}
+
+// k-1 ya tiene costo promedio: su entrada sin costo usa «costo estimado» (correcto).
+// k-2 no tiene entradas con costo previas: su entrada queda «sin costo».
+for (const c of [{ product: 'k-1', label: 'costo estimado' }, { product: 'k-2', label: 'sin costo' }]) {
+test(`390px card: an entry cost with «${c.label}» wraps inside its card and keeps «S/ amount» together`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rolePage(page, 'owner'); await seed(page);
+  await page.evaluate(code => (window as any).eval(code), `inventoryMovements.push({id:'k-uncosted',productId:'${c.product}',type:'ENTRADA',delta:1234,
+    fecha:NA_KARDEX.periodRange().to,timestamp:NA_KARDEX.periodRange().to+'T15:00:00',referenceId:'sin-costo-sintetico'})`);
+  await openCard(page);
+  const screen = page.locator('#pageKardex');
+  await screen.locator(`[data-product-id="${c.product}"]`).click();
+  const balance = screen.locator('[data-label="Costo entrada"]').filter({ hasText: c.label }).first();
+  await expect(balance).toBeVisible();
+  const card = balance.locator('xpath=ancestor::tr[1]');
+  await expect(card).toBeVisible();
+  const m = await balance.evaluate(node => {
+    const cardRect = node.closest('tr')!.getBoundingClientRect(), rect = node.getBoundingClientRect();
+    const within = (r: DOMRect) => r.width > 0 && r.height > 0 && r.left >= cardRect.left - 1 && r.right <= cardRect.right + 1 &&
+      r.top >= cardRect.top - 1 && r.bottom <= cardRect.bottom + 1;
+    const text = node.firstChild as Text, raw = text.textContent || '';
+    const rangeOf = (start: number, end: number) => { const r = document.createRange(); r.setStart(text, start); r.setEnd(text, end); return r; };
+    const at = raw.indexOf('S/'), amountEnd = raw.indexOf(' ', at + 3) < 0 ? raw.length : raw.indexOf(' ', at + 3);
+    const labels = ['sin costo', 'costo estimado'].filter(label => raw.includes(label)).map(label => {
+      const start = raw.indexOf(label), rects = Array.from(rangeOf(start, start + label.length).getClientRects());
+      return { label, lines: new Set(rects.map(r => Math.round(r.top))).size, inside: rects.length > 0 && rects.every(within),
+        insideCell: rects.every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+    });
+    // Ningún ancestro hasta la tarjeta recorta ni oculta el contenido.
+    const clip: string[] = [];
+    for (let el: HTMLElement | null = node as HTMLElement; el && el.tagName !== 'TR'; el = el.parentElement) {
+      const st = getComputedStyle(el);
+      if (st.visibility !== 'visible' || st.display === 'none' || Number(st.opacity) === 0) clip.push(el.tagName + ' hidden');
+      if (st.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1) clip.push(el.tagName + ' clipped-x');
+      if (st.clipPath !== 'none' || st.clip !== 'auto') clip.push(el.tagName + ' clip');
+      if (st.textOverflow === 'ellipsis') clip.push(el.tagName + ' ellipsis');
+    }
+    return { cellInside: within(rect), scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+      // Sin monto (solo «sin costo») no hay «S/ monto» que mantener junto.
+      amountLines: at < 0 ? 1 : new Set(Array.from(rangeOf(at, amountEnd).getClientRects()).map(r => Math.round(r.top))).size,
+      whiteSpace: getComputedStyle(node).whiteSpace, labels, clip };
+  });
+  expect(m.whiteSpace).toBe('normal');
+  expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth);
+  expect(m.cellInside).toBe(true);
+  expect(m.amountLines).toBe(1);
+  expect(m.clip).toEqual([]);
+  expect(m.labels.map(l => l.label)).toContain(c.label);
+  for (const l of m.labels) {
+    expect(l.inside, l.label).toBe(true);
+    expect(l.insideCell, l.label).toBe(true);
+  }
+  for (const l of m.labels) await expect(balance.getByText(l.label, { exact: false })).toBeVisible();
+  await noOverflow(page);
+});
+}
+
+for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: Kardex summary cards use 2 columns and never split words`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner'); await seed(page);
+    await page.evaluate(dark => document.body.classList.toggle('dark', dark), dark);
+    await openCard(page);
+    const screen = page.locator('#pageKardex');
+    await screen.locator('[data-product-id="k-1"]').click();
+    await expect(screen.locator('.kardex-summary-card').first()).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const grids = await screen.locator('.kardex-summary').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).gridTemplateColumns.split(' ').length));
+    expect(grids.length).toBeGreaterThan(0);
+    for (const columns of grids) expect(columns).toBe(2);
+    const values = await screen.locator('.kardex-summary-card :is(span, strong)').evaluateAll(nodes => nodes.map(n => {
+      const s = getComputedStyle(n);
+      return { text: n.textContent, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth, overflowWrap: s.overflowWrap, wordBreak: s.wordBreak };
+    }));
+    expect(values.length).toBeGreaterThan(0);
+    for (const v of values) {
+      expect(v.scrollWidth, v.text!).toBeLessThanOrEqual(v.clientWidth);
+      expect(v.overflowWrap, v.text!).toBe('normal');
+      expect(v.wordBreak, v.text!).toBe('normal');
+    }
+  });
+}
