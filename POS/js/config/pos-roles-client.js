@@ -152,8 +152,17 @@
   };
 
   // Configuración solo para el dueño, por cualquier camino de navegación.
+  // Si la tabla de permisos no cargó (sin internet), falla cerrado: solo las pantallas del empleado.
+  var EMPLOYEE_SCREENS = ['pageMenu', 'pagePOS', 'pageInventario', 'pageVentas', 'pageClientes', 'pageCaja'];
+  function employeeScreen(id) {
+    var p = root.NA_PERMISSIONS;
+    if (p && typeof p.canAccessScreen === 'function') {
+      try { return !!p.canAccessScreen('empleado', id); } catch (_) {}
+    }
+    return EMPLOYEE_SCREENS.indexOf(id) >= 0;
+  }
   function forbidden(id) {
-    return !root.NA_PERMISSIONS.canAccessScreen('empleado', id) && !canConfigure();
+    return !employeeScreen(id) && !canConfigure();
   }
   function backToSale() {
     try { if (root.NA_MENU_NAVIGATION) root.NA_MENU_NAVIGATION.navigate('pagePOS'); else root.goPage('pagePOS'); } catch (_) {}
@@ -170,8 +179,10 @@
   }
   function guardConfig() {
     doc.querySelectorAll('.page.active').forEach(function (page) {
-      if (forbidden(page.id)) { page.classList.remove('active'); backToSale(); noPermission(); }
-      else if (page.id === 'pageConfig' && !canConfigure()) { page.classList.remove('active'); backToSale(); offlineNotice(); }
+      try {
+        if (forbidden(page.id)) { page.classList.remove('active'); backToSale(); noPermission(); }
+        else if (page.id === 'pageConfig' && !canConfigure()) { page.classList.remove('active'); backToSale(); offlineNotice(); }
+      } catch (_) {}
     });
     if (forbidden('ventas:reportes')) {
       var tab = doc.querySelector('#pageVentas [onclick*="reportes"].active');

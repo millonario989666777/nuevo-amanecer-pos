@@ -158,7 +158,16 @@ const PRECACHE_URLS = [
   './js/config/pos-annul-client.js',
   './js/modules/discount-sheet.js','./js/config/pos-sale-note-client.js','./js/config/pos-purchases-client.js','./js/config/pos-dni-lookup-client.js','./js/config/config-v9.js','./js/config/config-v9-boot.js','./css/config-v9-screen.css',
   './js/config/pos-roles-client.js',
-  './js/core/lazy-assets.js'
+  './js/core/lazy-assets.js',
+  // Arranque sin internet: index.html los carga al abrir; sin ellos no hay productos ni permisos.
+  // tests/product-fixes/fix-offline-precache comprueba que todo lo que carga index.html esté aquí.
+  './css/theme-dark.css',
+  './css/inventory-form-polish.css',
+  './js/core/theme-state.js',
+  './js/config/pos-permissions.js',
+  './js/perf/cash-perf-probe.js',
+  // La carga menu-navigation.js al arrancar (versión en el menú del teléfono).
+  './js/config/build-info.js'
 ];
 const LAZY_URLS = [
   './css/product-image-review.css',
