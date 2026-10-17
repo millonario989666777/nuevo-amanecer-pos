@@ -388,15 +388,18 @@ for (const dark of [false, true]) {
   });
 }
 
-test('390px card: a balance with «sin costo» wraps inside its card and keeps «S/ amount» together', async ({ page }) => {
+// k-1 ya tiene costo promedio: su entrada sin costo usa «costo estimado» (correcto).
+// k-2 no tiene entradas con costo previas: su entrada queda «sin costo».
+for (const c of [{ product: 'k-1', label: 'costo estimado' }, { product: 'k-2', label: 'sin costo' }]) {
+test(`390px card: an entry cost with «${c.label}» wraps inside its card and keeps «S/ amount» together`, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'owner'); await seed(page);
-  await page.evaluate(() => (window as any).eval(`inventoryMovements.push({id:'k-uncosted',productId:'k-1',type:'ENTRADA',delta:1234,
-    fecha:NA_KARDEX.periodRange().to,timestamp:NA_KARDEX.periodRange().to+'T15:00:00',referenceId:'sin-costo-sintetico'})`));
+  await page.evaluate(code => (window as any).eval(code), `inventoryMovements.push({id:'k-uncosted',productId:'${c.product}',type:'ENTRADA',delta:1234,
+    fecha:NA_KARDEX.periodRange().to,timestamp:NA_KARDEX.periodRange().to+'T15:00:00',referenceId:'sin-costo-sintetico'})`);
   await openCard(page);
   const screen = page.locator('#pageKardex');
-  await screen.locator('[data-product-id="k-1"]').click();
-  const balance = screen.locator('[data-label="Valor saldo"]').filter({ hasText: 'sin costo' }).first();
+  await screen.locator(`[data-product-id="${c.product}"]`).click();
+  const balance = screen.locator('[data-label="Costo entrada"]').filter({ hasText: c.label }).first();
   await expect(balance).toBeVisible();
   const card = balance.locator('xpath=ancestor::tr[1]');
   await expect(card).toBeVisible();
@@ -422,7 +425,8 @@ test('390px card: a balance with «sin costo» wraps inside its card and keeps �
       if (st.textOverflow === 'ellipsis') clip.push(el.tagName + ' ellipsis');
     }
     return { cellInside: within(rect), scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
-      amountLines: new Set(Array.from(rangeOf(at, amountEnd).getClientRects()).map(r => Math.round(r.top))).size,
+      // Sin monto (solo «sin costo») no hay «S/ monto» que mantener junto.
+      amountLines: at < 0 ? 1 : new Set(Array.from(rangeOf(at, amountEnd).getClientRects()).map(r => Math.round(r.top))).size,
       whiteSpace: getComputedStyle(node).whiteSpace, labels, clip };
   });
   expect(m.whiteSpace).toBe('normal');
@@ -430,15 +434,15 @@ test('390px card: a balance with «sin costo» wraps inside its card and keeps �
   expect(m.cellInside).toBe(true);
   expect(m.amountLines).toBe(1);
   expect(m.clip).toEqual([]);
-  expect(m.labels.map(l => l.label)).toContain('sin costo');
+  expect(m.labels.map(l => l.label)).toContain(c.label);
   for (const l of m.labels) {
     expect(l.inside, l.label).toBe(true);
     expect(l.insideCell, l.label).toBe(true);
   }
-  await expect(balance.getByText('sin costo', { exact: false })).toBeVisible();
-  if (m.labels.some(l => l.label === 'costo estimado')) await expect(balance.getByText('costo estimado', { exact: false })).toBeVisible();
+  for (const l of m.labels) await expect(balance.getByText(l.label, { exact: false })).toBeVisible();
   await noOverflow(page);
 });
+}
 
 for (const dark of [false, true]) {
   test(`650px ${dark ? 'dark' : 'light'}: Kardex summary cards use 2 columns and never split words`, async ({ page }) => {

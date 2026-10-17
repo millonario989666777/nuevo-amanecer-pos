@@ -209,9 +209,9 @@ for (const dark of [false, true]) {
       const nums = [...node.querySelectorAll('.ch-table .ch-num')];
       const rowTh = [...node.querySelectorAll('tbody th')].map(el => getComputedStyle(el));
       const select = node.querySelector<HTMLSelectElement>('[data-ch-customer]')!;
-      const probe = document.createElement('span'); probe.style.font = getComputedStyle(select).font; probe.style.whiteSpace = 'nowrap';
-      probe.textContent = select.selectedOptions[0].textContent; document.body.appendChild(probe);
-      const fits = probe.getBoundingClientRect().width + 40 <= select.clientWidth; probe.remove();
+      // Mide el ancho real del texto (un span heredaría display:block y mediría el contenedor).
+      const ctx = document.createElement('canvas').getContext('2d')!; ctx.font = getComputedStyle(select).font;
+      const fits = ctx.measureText(select.selectedOptions[0].textContent || '').width + 40 <= select.clientWidth;
       return {
         headsOneLine: heads.every(el => getComputedStyle(el).whiteSpace === 'nowrap' && one(el)),
         numLabels: nums.map(el => (el.closest('table')!.querySelectorAll('thead th')[(el as HTMLTableCellElement).cellIndex] as HTMLElement).textContent),
