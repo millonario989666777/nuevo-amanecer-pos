@@ -118,6 +118,26 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
       await expect(summary.nth(1)).toContainText(count);
     }
     await expect(products).toContainText('Histórico anterior');
+    if (width === 390) {
+      const dates = sales.locator('tbody th .ch-date');
+      await expect(dates).toHaveCount(5);
+      for (const date of await dates.all()) {
+        const result = await date.evaluate(cell => {
+          // El Range mide solo la fecha, sin la etiqueta ::before de la tarjeta.
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          const lines = [...range.getClientRects()];
+          const card = cell.closest('tr')!.getBoundingClientRect();
+          return {
+            lineCount: lines.length,
+            fits: lines.every(rect => rect.width > 0 && rect.left >= card.left - 1 && rect.right <= card.right + 1
+              && rect.top >= card.top - 1 && rect.bottom <= card.bottom + 1)
+          };
+        });
+        expect(result.lineCount, await date.textContent() || 'Fecha').toBe(1);
+        expect(result.fits, await date.textContent() || 'Fecha').toBe(true);
+      }
+    }
     await noOverflow(page);
     const refresh = screen.getByRole('button', { name: 'Actualizar reporte' });
     await refresh.scrollIntoViewIfNeeded();
@@ -172,6 +192,136 @@ test('owner sees every sales and products table cell at 650px', async ({ page })
     }
   }
 });
+
+test('date and seller filters update tables, summaries and CSV with full filter rows at 650px', async ({ page }) => {
+  await page.setViewportSize({ width: 650, height: 900 });
+  await rolePage(page, 'owner');
+  await seed(page);
+  await page.evaluate(() => (window as any).eval(`ventas=[
+    {id:'filter-start',clienteId:'hist-c1',fecha:'2026-10-13',cajeroNombre:'Ana',cajeroId:'v1',total:10,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:10}]},
+    {id:'filter-end',clienteId:'hist-c1',timestamp:'2026-10-16T04:30:00Z',cajero:'Ana',cajeroId:'v1',total:5,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:5}]},
+    {id:'filter-old',clienteId:'hist-c1',fecha:'2026-10-12',cajeroNombre:'Ana',cajeroId:'v1',total:7,items:[{id:'fp2',name:'Producto fuera de fecha',qty:1,subtotal:7}]},
+    {id:'filter-other',clienteId:'hist-c1',fecha:'2026-10-14',cajero:'Beatriz',total:9,items:[{id:'fp3',name:'Producto otro vendedor',qty:1,subtotal:9}]},
+    {id:'filter-missing',clienteId:'hist-c1',fecha:'2026-10-14',total:3,items:[]}
+  ];`));
+  const before = await readState(page);
+  await page.evaluate(() => (window as any).goPage('pageClienteHistorial'));
+  const screen = page.locator('#pageClienteHistorial');
+  await expect(screen).toBeVisible();
+  await screen.locator('[data-ch-period]').selectOption('all');
+  await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+  const seller = screen.getByRole('combobox', { name: 'Vendedor', exact: true });
+  await expect(seller.locator('option')).toHaveText(['Todos', 'Ana', 'Beatriz', 'No registrado']);
+  await screen.getByLabel('Desde', { exact: true }).fill('2026-10-13');
+  await screen.getByLabel('Desde', { exact: true }).blur();
+  await screen.getByLabel('Hasta', { exact: true }).fill('2026-10-15');
+  await screen.getByLabel('Hasta', { exact: true }).blur();
+  await seller.selectOption('id:v1');
+  const summary = screen.locator('.ch-summary-card');
+  await expect(summary.nth(0)).toContainText('S/ 15.00');
+  await expect(summary.nth(1)).toContainText('2');
+  await expect(summary.nth(2)).toContainText('15/10/2026');
+  const sales = screen.locator('[data-ch-table="sales"]');
+  await expect(sales.locator('tbody tr')).toHaveCount(2);
+  await expect(sales).toContainText('filter-start');
+  await expect(sales).toContainText('filter-end');
+  await expect(screen.locator('[data-ch-table="products"] tbody tr')).toHaveCount(1);
+  await expect(screen.locator('[data-ch-table="products"]')).toContainText('S/ 15.00');
+  // Cada filtro ocupa su propia fila; las tablas conservan todas las columnas a 650px.
+  const filters = await screen.locator('.ch-filter-row').evaluate(row => {
+    const box = row.getBoundingClientRect();
+    return [...row.querySelectorAll('label')].map(label => {
+      const rect = label.getBoundingClientRect();
+      return { width: rect.width, rowWidth: box.width, top: rect.top, bottom: rect.bottom };
+    });
+  });
+  expect(filters).toHaveLength(4);
+  filters.forEach((filter, index) => {
+    expect(Math.abs(filter.width - filter.rowWidth)).toBeLessThanOrEqual(1);
+    if (index) expect(filter.top).toBeGreaterThan(filters[index - 1].bottom);
+  });
+  for (const cell of await screen.locator('.ch-table :is(th,td)').all()) {
+    await expect(cell).toHaveCSS('display', 'table-cell');
+    expect(await cell.evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(0);
+  }
+  await noOverflow(page);
+  const downloadPromise = page.waitForEvent('download');
+  await screen.getByRole('button', { name: 'Exportar CSV' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('cliente-historial-compras.csv');
+  const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks).toString('utf8');
+  expect(csv).toContain('filter-start'); expect(csv).toContain('filter-end'); expect(csv).toContain('Producto elegido');
+  expect(csv).not.toMatch(/filter-old|filter-other|filter-missing|fuera de fecha|otro vendedor/);
+  await screen.getByLabel('Desde', { exact: true }).fill('2026-10-16');
+  await screen.getByLabel('Desde', { exact: true }).blur();
+  await expect(screen.getByLabel('Desde', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await expect(screen.getByRole('status')).toContainText('no puede ser posterior');
+  await expect(screen.getByRole('button', { name: 'Exportar CSV' })).toBeDisabled();
+  await screen.getByLabel('Desde', { exact: true }).fill('');
+  await screen.getByLabel('Desde', { exact: true }).blur();
+  await screen.getByLabel('Hasta', { exact: true }).fill('');
+  await screen.getByLabel('Hasta', { exact: true }).blur();
+  await expect(summary.nth(0)).toContainText('S/ 22.00');
+  await seller.selectOption('missing:');
+  await expect(summary.nth(0)).toContainText('S/ 3.00');
+  await expect(sales.locator('tbody tr')).toHaveCount(1);
+  await seller.selectOption('name:beatriz');
+  await expect(summary.nth(0)).toContainText('S/ 9.00');
+  await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c2');
+  await expect(seller.locator('option')).toHaveText(['Todos']);
+  await expect(seller).toHaveValue('');
+  expect(await readState(page)).toBe(before);
+});
+
+for (const dark of [false, true]) {
+  test(`Período fills Desde/Hasta, manual edits switch to Personalizado, Todo clears and the date error is readable (${dark ? 'Nocturno' : 'claro'})`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageClienteHistorial'); }, dark);
+    const screen = page.locator('#pageClienteHistorial');
+    const period = screen.locator('[data-ch-period]');
+    const from = screen.getByLabel('Desde', { exact: true }), to = screen.getByLabel('Hasta', { exact: true });
+    const range = (days: string) => page.evaluate(days => (window as any).NA_CLIENTE_HISTORIAL.periodDates(days), days);
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    await expect(period).toHaveValue('30');
+    const p30 = await range('30');
+    await expect(from).toHaveValue(p30.from); await expect(to).toHaveValue(p30.to);
+    await period.selectOption('90');
+    await expect(from).toHaveValue((await range('90')).from); await expect(to).toHaveValue(p30.to);
+    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('hist-90');
+    await expect(screen.locator('[data-ch-table="products"]')).toContainText('Histórico de 90 días');
+    await from.fill((await range('365')).from); await from.blur();
+    await expect(period).toHaveValue('365');
+    await from.fill('2026-01-02'); await from.blur();
+    await expect(period).toHaveValue('custom');
+    await expect(period.locator('option:checked')).toHaveText('Personalizado');
+    await period.selectOption('all');
+    await expect(from).toHaveValue(''); await expect(to).toHaveValue('');
+    await expect(screen.locator('[data-ch-status]')).toContainText('Todo el historial');
+    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('2020');
+    await to.fill('2020-01-01'); await to.blur();
+    await expect(period).toHaveValue('custom');
+    await from.fill('2026-10-15'); await from.blur();
+    const status = screen.locator('[data-ch-status]');
+    await expect(status).toContainText('no puede ser posterior');
+    await expect(status).toHaveClass(/ch-error/);
+    const ratio = await status.evaluate(node => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) || []).map(Number);
+      const lum = (c: number[]) => { const [r, g, b] = c.slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      let el: Element | null = node, bg = 'rgba(0, 0, 0, 0)';
+      while (el && (bg = getComputedStyle(el).backgroundColor) && (bg === 'transparent' || rgb(bg)[3] === 0)) el = el.parentElement;
+      const a = lum(rgb(getComputedStyle(node).color)), b = lum(rgb(bg));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    await noOverflow(page);
+  });
+}
 
 test('employee cannot open customer history and direct rendering clears customer details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

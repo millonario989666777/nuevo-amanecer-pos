@@ -14,7 +14,8 @@ function context(extra = {}) {
 }
 const api = context().NA_CLIENTE_HISTORIAL;
 const now = '2026-10-16T04:59:59Z'; // 15 de octubre en Lima.
-const options = { now };
+const period = days => ({ now, ...api.periodDates(String(days), now) });
+const options = period(30);
 const item = (id, precio, qty = 1, extra = {}) => ({ id, name: 'Producto ' + id, precio, qty, ...extra });
 const sale = (extra = {}) => ({ id: 'venta-prueba', clienteId: 'c1', fecha: '2026-10-15', total: 10, metodo: 'efectivo', items: [item('p1', 10)], ...extra });
 function freeze(value) {
@@ -49,7 +50,7 @@ test('matches durable customer id only; excludes void, invalid, future and out-o
   assert.equal(report.purchases, 2);
   assert.equal(report.lastPurchase, '2026-10-15');
   assert.deepEqual(plain(report.sales.map(s => s.reference)), ['end', 'start']);
-  assert.equal(api.buildReport(sales, 'c1', { ...options, days: 90 }).purchases, 3);
+  assert.equal(api.buildReport(sales, 'c1', period(90)).purchases, 3);
   assert.equal(JSON.stringify(sales), before);
 });
 
@@ -82,7 +83,8 @@ test('numeric ids, missing totals, empty data, malformed items and all-history b
     sale({ clienteId: 7, fecha: '2020-01-01', total: 0, items: null }),
     sale({ clienteId: 7, fecha: '2026-10-16' })];
   assert.equal(api.buildReport(sales, '7', options).total, 0.3);
-  assert.equal(api.buildReport(sales, '7', { ...options, days: 'all' }).purchases, 2);
+  // «Todo» = Desde/Hasta vacíos: sin límite de fechas.
+  assert.equal(api.buildReport(sales, '7', period('all')).purchases, 3);
   for (const input of [[], undefined, {}, [null]]) {
     const report = api.buildReport(input, 'c1', options);
     assert.equal(report.total, 0); assert.equal(report.purchases, 0); assert.equal(report.lastPurchase, '');
