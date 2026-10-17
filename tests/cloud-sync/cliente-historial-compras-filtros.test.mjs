@@ -59,7 +59,7 @@ test('seller options use recorded identity, distinct ids, legacy names and No re
     sale({ anulada: true, cajeroId: 'void', cajeroNombre: 'Anulada' }), sale({ status: 'void', cajeroId: 'void2' }), null];
   assert.deepEqual(plain(api.sellerOptions(sales, 'c1')), [
     { value: 'id:7', label: '7' }, { value: 'id:v1', label: 'Ana' }, { value: 'id:v2', label: 'Ana' },
-    { value: 'name:beatriz', label: 'Beatriz' }, { value: 'missing:', label: 'No registrado' }
+    { value: 'name:beatriz', label: 'Beatriz (sin id)' }, { value: 'missing:', label: 'No registrado' }
   ]);
   assert.deepEqual(plain(api.sellerOptions(sales, '')), []);
   assert.deepEqual(plain(api.sellerOptions(null, 'c1')), []);
@@ -241,8 +241,8 @@ test('sellers with id and name-only sales are grouped under the id, matching nam
     sale({ id: 'b1', cajeroId: undefined, cajeroNombre: 'Beatriz' }), sale({ id: 'b2', cajeroId: undefined, cajeroNombre: ' BEATRIZ' }),
     sale({ id: 'x1', cajeroId: 'x1', cajeroNombre: 'Dup' }), sale({ id: 'x2', cajeroId: 'x2', cajeroNombre: 'dup' }), sale({ id: 'x3', cajeroId: undefined, cajeroNombre: 'Dup' })];
   assert.deepEqual(plain(api.sellerOptions(ventas, 'c1')), [
-    { value: 'id:v1', label: 'Ana Pérez' }, { value: 'name:beatriz', label: 'Beatriz' },
-    { value: 'id:x2', label: 'dup' }, { value: 'id:x1', label: 'Dup' }, { value: 'name:dup', label: 'Dup' }
+    { value: 'id:v1', label: 'Ana Pérez' }, { value: 'name:beatriz', label: 'Beatriz (sin id)' },
+    { value: 'id:x2', label: 'dup' }, { value: 'id:x1', label: 'Dup' }, { value: 'name:dup', label: 'Dup (sin id)' }
   ]);
   assert.deepEqual(ids(api.filterSales(ventas, 'c1', { seller: 'id:v1' })), ['a1', 'a2', 'a3']);
   assert.deepEqual(ids(api.filterSales(ventas, 'c1', { seller: 'name:beatriz' })), ['b1', 'b2']);

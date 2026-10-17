@@ -23,6 +23,69 @@ function freeze(value) {
   return value;
 }
 
+test('name-only seller folds into the single id with the normalized name and prefers its label', () => {
+  const sales = freeze([
+    sale({ cajero: ' lUiS ' }),
+    sale({ cajeroId: 'v1', cajeroNombre: 'Luis' }),
+    sale({ cajeroId: 'v1', cajeroNombre: 'Luis' }),
+    sale({ clienteId: 'c2', cajeroId: 'v2', cajeroNombre: 'Luis' }),
+    sale({ anulada: true, cajeroId: 'v3', cajeroNombre: 'Luis' })
+  ]);
+  for (const rows of [sales, [...sales].reverse()]) {
+    assert.deepEqual(plain(api.sellerOptions(rows, 'c1')), [{ value: 'id:v1', label: 'Luis' }]);
+  }
+});
+
+test('name-only seller with zero matching ids has a stable sin id option', () => {
+  const sales = freeze([
+    sale({ cajeroNombre: 'Luis' }), sale({ cajero: ' Luis ' }),
+    sale({ clienteId: 'c2', cajeroId: 'v1', cajeroNombre: 'Luis' }),
+    sale({ status: 'void', cajeroId: 'v2', cajeroNombre: 'Luis' })
+  ]);
+  assert.deepEqual(plain(api.sellerOptions(sales, 'c1')), [{ value: 'name:luis', label: 'Luis (sin id)' }]);
+  assert.equal(api.filterSales(sales, 'c1', { seller: 'name:luis' }).length, 2);
+});
+
+test('two ids named Luis stay distinct from the name-only sin id option', () => {
+  const sales = freeze([
+    sale({ id: 'legacy', cajeroNombre: 'Luis' }),
+    sale({ id: 'first', cajeroId: 'v1', cajeroNombre: 'Luis' }),
+    sale({ id: 'second', cajeroId: 'v2', cajeroNombre: 'Luis' }),
+    sale({ id: 'repeat', cajeroId: 'v1', cajeroNombre: 'Luis' })
+  ]);
+  for (const rows of [sales, [...sales].reverse()]) {
+    assert.deepEqual(plain(api.sellerOptions(rows, 'c1')), [
+      { value: 'id:v1', label: 'Luis' }, { value: 'id:v2', label: 'Luis' },
+      { value: 'name:luis', label: 'Luis (sin id)' }
+    ]);
+  }
+  for (const [seller, expected] of [['name:luis', ['legacy']], ['id:v1', ['first', 'repeat']], ['id:v2', ['second']]]) {
+    assert.deepEqual(plain(api.filterSales(sales, 'c1', { seller }).map(row => row.id)), expected);
+  }
+});
+
+test('filtering by the folded seller includes both id and name-only sales', () => {
+  const sales = freeze([
+    sale({ id: 'legacy', cajeroNombre: ' LUIS ' }),
+    sale({ id: 'known', cajeroId: 'v1', cajeroNombre: 'Luis' }),
+    sale({ id: 'other', cajeroId: 'v2', cajeroNombre: 'Ana' })
+  ]);
+  assert.deepEqual(plain(api.filterSales(sales, 'c1', { seller: 'id:v1' }).map(row => row.id)), ['legacy', 'known']);
+  assert.equal(api.buildReport(sales, 'c1', { seller: 'id:v1' }).purchases, 2);
+});
+
+test('CSV guards formula prefixes after leading spaces while preserving spaces and quoting', () => {
+  for (const raw of ['  =1+1', ' +x', '  @a', ' -2', '\t=1', '\r=1', '\n=1', '  \t=1', '  \r=1', '  \n=1']) {
+    assert.equal(api.csvCell(raw), '"\'' + raw + '"');
+  }
+  for (const prefix of ['=', '+', '@', '-', '\t', '\r', '\n']) {
+    assert.equal(api.csvCell(prefix + 'prueba'), '"\'' + prefix + 'prueba"');
+  }
+  for (const raw of ['Luis', '  Texto normal', 'Texto =1+1', '  ', '']) assert.equal(api.csvCell(raw), '"' + raw + '"');
+  assert.equal(api.csvCell('a,b"c'), '"a,b""c"');
+  assert.equal(api.csvCell('  ="x"'), '"\'  =""x"""');
+});
+
 test('inclusive 30/90/365/all periods use Lima and validate leap days', () => {
   for (const [days, from] of [[30, '2026-09-16'], [90, '2026-07-18'], [365, '2025-10-16'], ['all', '']]) {
     assert.deepEqual(plain(api.periodRange(days, now)), { days, from, to: '2026-10-15' });

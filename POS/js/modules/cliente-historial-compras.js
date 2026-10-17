@@ -94,6 +94,7 @@
   function saleSeller(sale, ids) {
     var id = text(sale.cajeroId), label = text(sale.cajeroNombre) || text(sale.cajero), name = sellerName(label);
     if (!id && name && ids && ids.get(name)) id = ids.get(name);
+    if (!id && name) label += ' (sin id)';
     return { value: id ? 'id:' + id : name ? 'name:' + name : 'missing:', label: label.replace(/\s+/g, ' ') || id || 'No registrado', hasId: !!text(sale.cajeroId) };
   }
   function customerSales(sales, selectedId) {
@@ -165,7 +166,7 @@
   }
   function csvCell(value) {
     var raw = String(value == null ? '' : value);
-    if (/^[=+@\t\r\n-]/.test(raw)) raw = "'" + raw;
+    if (/^[=+@\t\r\n-]/.test(raw.replace(/^ +/, ''))) raw = "'" + raw;
     return '"' + raw.replace(/"/g, '""') + '"';
   }
   function toCsv(report, filters) {

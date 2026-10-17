@@ -199,7 +199,7 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await seed(page);
   await page.evaluate(() => (window as any).eval(`ventas=[
     {id:'filter-start',clienteId:'hist-c1',fecha:'2026-10-13',cajeroNombre:'Ana',cajeroId:'v1',total:10,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:10}]},
-    {id:'filter-end',clienteId:'hist-c1',timestamp:'2026-10-16T04:30:00Z',cajero:'Ana',cajeroId:'v1',total:5,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:5}]},
+    {id:'filter-end',clienteId:'hist-c1',timestamp:'2026-10-16T04:30:00Z',cajero:' ana ',total:5,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:5}]},
     {id:'filter-old',clienteId:'hist-c1',fecha:'2026-10-12',cajeroNombre:'Ana',cajeroId:'v1',total:7,items:[{id:'fp2',name:'Producto fuera de fecha',qty:1,subtotal:7}]},
     {id:'filter-other',clienteId:'hist-c1',fecha:'2026-10-14',cajero:'Beatriz',total:9,items:[{id:'fp3',name:'Producto otro vendedor',qty:1,subtotal:9}]},
     {id:'filter-missing',clienteId:'hist-c1',fecha:'2026-10-14',total:3,items:[]}
@@ -211,7 +211,7 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await screen.locator('[data-ch-period]').selectOption('all');
   await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
   const seller = screen.getByRole('combobox', { name: 'Vendedor', exact: true });
-  await expect(seller.locator('option')).toHaveText(['Todos', 'Ana', 'Beatriz', 'No registrado']);
+  await expect(seller.locator('option')).toHaveText(['Todos', 'Ana', 'Beatriz (sin id)', 'No registrado']);
   await screen.getByLabel('Desde', { exact: true }).fill('2026-10-13');
   await screen.getByLabel('Desde', { exact: true }).blur();
   await screen.getByLabel('Hasta', { exact: true }).fill('2026-10-15');
@@ -276,6 +276,56 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await expect(seller).toHaveValue('');
   expect(await readState(page)).toBe(before);
 });
+
+for (const width of [390, 768, 1366]) {
+  test(`seller select folds only a unique id and CSV guards leading spaces at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(() => (window as any).goPage('pageClienteHistorial'));
+    const screen = page.locator('#pageClienteHistorial');
+    await screen.locator('[data-ch-period]').selectOption('all');
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    const seller = screen.getByRole('combobox', { name: 'Vendedor', exact: true });
+    for (const count of [0, 1, 2]) {
+      await page.evaluate(count => {
+        (window as any).eval(`ventas=[
+          {id:'seller-legacy',clienteId:'hist-c1',fecha:'2026-10-15',cajero:' Luis ',total:5,items:[]}
+        ];`);
+        for (let index = 1; index <= count; index++) {
+          (window as any).eval(`ventas.push({id:'seller-id-${index}',clienteId:'hist-c1',fecha:'2026-10-15',cajeroNombre:'Luis',cajeroId:'v${index}',total:10,items:[]});`);
+        }
+        (window as any).NA_CLIENTE_HISTORIAL.render();
+      }, count);
+      const before = await readState(page);
+      const expected = count === 1 ? [{ value: '', label: 'Todos' }, { value: 'id:v1', label: 'Luis' }] : [
+        { value: '', label: 'Todos' },
+        ...(count === 2 ? [{ value: 'id:v1', label: 'Luis' }, { value: 'id:v2', label: 'Luis' }] : []),
+        { value: 'name:luis', label: 'Luis (sin id)' }
+      ];
+      expect(await seller.locator('option').evaluateAll(nodes => nodes.map(node => ({
+        value: (node as HTMLOptionElement).value, label: node.textContent
+      })))).toEqual(expected);
+      await seller.selectOption(count === 1 ? 'id:v1' : 'name:luis');
+      const sales = screen.locator('[data-ch-table="sales"]');
+      await expect(sales.locator('tbody tr')).toHaveCount(count === 1 ? 2 : 1);
+      await expect(sales).toContainText('seller-legacy');
+      if (count === 2) for (const index of [1, 2]) {
+        await seller.selectOption('id:v' + index);
+        await expect(sales.locator('tbody tr')).toHaveCount(1);
+        await expect(sales).toContainText('seller-id-' + index);
+        await expect(sales).not.toContainText('seller-legacy');
+      }
+      expect(await readState(page)).toBe(before);
+      await noOverflow(page);
+    }
+    // Reporte sintético: conservar los espacios para probar el guard usado por la exportación.
+    const csv = await page.evaluate(() => (window as any).NA_CLIENTE_HISTORIAL.toCsv({
+      sales: [{ day: '2026-10-15', reference: '  =1+1', total: 5, method: 'efectivo' }], products: []
+    }));
+    expect(csv).toContain('"15/10/2026","\'  =1+1","5.00","Efectivo"');
+  });
+}
 
 for (const dark of [false, true]) {
   test(`Período fills Desde/Hasta, manual edits switch to Personalizado, Todo clears and the date error is readable (${dark ? 'Nocturno' : 'claro'})`, async ({ page }) => {
