@@ -2,13 +2,13 @@
   "action": "DEPLOY_TURSO_CANON_WORKER_HOTFIX",
   "owner_authorized": true,
   "requested_by": "owner",
-  "authorization_context": "Owner authorized (standing permission to merge+deploy after team OKs; 2026-10-16 Lima; asistente 2 code OK 9cc5dddd, asistente 3 spec OK, asistente 4 LOCAL OK, e2e 472/472 single pass, proximamente.spec 27/27 x3, Node full, registry 136/84 prioritized, 8 new owner-only locked, Venta/Inicio identical) deploy of base 57f3054c62d15278bfd79600e27d7876fba80698: #803 proximamente-7-casamarket (touches pos-permissions.js). No schema changes. Rollback to 511f95a7 (worker 56, Cloudflare version b602afde, currently live). Web NOT deployed (pending asistente 5 live check).",
-  "target_commit": "57f3054c62d15278bfd79600e27d7876fba80698",
-  "rollback_ref": "511f95a7c4b9785d53c150a69e6f67e7773c68c9",
+  "authorization_context": "Owner authorized (standing permission to merge+deploy after team OKs; 2026-10-16 Lima; asistente 2 code OK, asistente 3 spec OK, asistente 4 LOCAL OK: #809 93a3cd4d 36/36, #815 cdd1d054 e2e 485/487 with 2 flaky passing 3/3; CI green on both heads) deploy of base 63d13220d8b0312c78518cdf5cff769d5a6738a4: #809 reporte-productos-vencer (touches pos-permissions.js, merge c45f39f4) + #815 historial cliente vendedor sin id y guard CSV (merge 63d13220). No schema changes. Rollback to 57f3054c (worker 57, Cloudflare version d6d2b8be, currently live). Web NOT deployed (pending asistente 5 live check).",
+  "target_commit": "63d13220d8b0312c78518cdf5cff769d5a6738a4",
+  "rollback_ref": "57f3054c62d15278bfd79600e27d7876fba80698",
   "turso_only": true,
   "no_schema_changes": true,
   "no_live_sale": true,
   "one_shot": true,
-  "attempt": 57,
-  "optimization": "PROXIMAMENTE_7_CASAMARKET_803"
+  "attempt": 58,
+  "optimization": "REPORTE_PRODUCTOS_VENCER_809_HISTORIAL_815"
 }
