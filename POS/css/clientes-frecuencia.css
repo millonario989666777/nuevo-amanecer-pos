@@ -30,7 +30,7 @@
 #pageClientesFrecuencia .cf-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
 #pageClientesFrecuencia .cf-summary-card { padding: 14px; border: 1px solid var(--cf-border); border-radius: 12px; background: var(--cf-surface); min-width: 0; }
 #pageClientesFrecuencia .cf-summary-card span { display: block; color: var(--cf-muted); }
-#pageClientesFrecuencia .cf-summary-card strong { display: block; font-size: 22px; overflow-wrap: anywhere; }
+#pageClientesFrecuencia .cf-summary-card strong { display: block; font-size: clamp(16px, 4.2vw, 22px); white-space: nowrap; font-variant-numeric: tabular-nums; }
 #pageClientesFrecuencia .cf-empty { padding: 16px; background: var(--cf-surface); border: 1px solid var(--cf-border); border-radius: 12px; }
 #pageClientesFrecuencia .cf-results { margin-bottom: 20px; padding: 16px; border: 1px solid var(--cf-border); border-radius: 14px; background: var(--cf-surface); }
 #pageClientesFrecuencia .cf-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -70,6 +70,10 @@ body.dark #pageClientesFrecuencia .cf-single { color: #f1f5f9; background: #4755
   #pageClientesFrecuencia .cf-controls { grid-template-columns: minmax(max-content, 1fr) minmax(0, 2fr); align-items: end; }
   #pageClientesFrecuencia .cf-controls button { grid-column: 1 / -1; }
   #pageClientesFrecuencia .cf-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* 600-770 px: 2 columnas para conservar los importes en una sola línea. */
+@media (min-width: 600px) and (max-width: 770px) {
+  #pageClientesFrecuencia .cf-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1000px) {
   #pageClientesFrecuencia .cf-controls { grid-template-columns: minmax(max-content, 1fr) minmax(0, 2fr) auto; }
