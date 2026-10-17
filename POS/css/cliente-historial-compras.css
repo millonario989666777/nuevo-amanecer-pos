@@ -25,7 +25,9 @@
 #pageClienteHistorial .ch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0 16px; }
 #pageClienteHistorial .ch-controls > label:first-child, #pageClienteHistorial .ch-filter-row { grid-column: 1 / -1; }
 #pageClienteHistorial .ch-filter-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-width: 0; }
-#pageClienteHistorial .ch-date-hint { grid-column: 2 / 4; grid-row: 2; margin: 0; font-size: 12px; color: var(--ch-muted); }
+/* «Sin límite de fechas» va en su propia fila, debajo de Desde, Hasta y Vendedor (fila 1: Cliente; fila 2: fechas y vendedor).
+   Sin display aquí: debe respetar [hidden] cuando el período no es «Todo el historial». */
+#pageClienteHistorial .ch-date-hint { grid-column: 1 / -1; grid-row: 3; margin: 0; font-size: 12px; color: var(--ch-muted); }
 #pageClienteHistorial label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
 #pageClienteHistorial input, #pageClienteHistorial select, #pageClienteHistorial button { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--ch-border); border-radius: 10px; font: inherit; color: var(--ch-text); background: var(--ch-surface); }
 #pageClienteHistorial button { cursor: pointer; font-weight: 700; }

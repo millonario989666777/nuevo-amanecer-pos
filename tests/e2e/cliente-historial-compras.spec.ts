@@ -395,6 +395,56 @@ for (const dark of [false, true]) {
   });
 }
 
+for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
+  test(`${width}px ${dark ? 'Nocturno' : 'claro'}: «Sin límite de fechas» va debajo de los filtros y oculto no ocupa espacio`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageClienteHistorial'); }, dark);
+    const screen = page.locator('#pageClienteHistorial');
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    const period = screen.locator('[data-ch-period]');
+    const hint = screen.locator('[data-ch-date-hint]');
+    const layout = () => hint.evaluate(node => {
+      const row = node.closest('.ch-filter-row')!;
+      const box = (selector: string) => row.querySelector(selector)!.closest('label')!.getBoundingClientRect();
+      const from = box('[data-ch-from]'), to = box('[data-ch-to]'), seller = box('[data-ch-seller]');
+      const rect = node.getBoundingClientRect();
+      return { fromTop: from.top, toTop: to.top, sellerTop: seller.top, toBottom: to.bottom,
+        fieldsBottom: Math.max(from.bottom, to.bottom, seller.bottom), hintTop: rect.top, hintHeight: rect.height,
+        hintRects: node.getClientRects().length, display: getComputedStyle(node).display, rowBottom: row.getBoundingClientRect().bottom };
+    });
+    await period.selectOption('all');
+    await expect(hint).toBeVisible();
+    const all = await layout();
+    expect(all.hintHeight).toBeGreaterThan(0);
+    if (width === 1366) {
+      // Desde, Hasta y Vendedor en la misma fila; la nota en su propia fila debajo.
+      expect(Math.abs(all.toTop - all.fromTop)).toBeLessThanOrEqual(1);
+      expect(Math.abs(all.sellerTop - all.fromTop)).toBeLessThanOrEqual(1);
+      expect(all.hintTop).toBeGreaterThanOrEqual(all.fieldsBottom - 1);
+    } else {
+      expect(all.hintTop).toBeGreaterThanOrEqual(all.toBottom - 1);
+    }
+    expect(await contrastRatio(hint)).toBeGreaterThanOrEqual(4.5);
+    await noOverflow(page);
+    await period.selectOption('30');
+    await expect(hint).toHaveAttribute('hidden', '');
+    await expect(hint).toBeHidden();
+    const other = await layout();
+    expect(other.display).toBe('none');
+    expect(other.hintRects).toBe(0);
+    expect(other.hintHeight).toBe(0);
+    // Oculta no deja fila vacía: la fila de filtros termina en los campos.
+    expect(Math.abs(other.rowBottom - other.fieldsBottom)).toBeLessThanOrEqual(1);
+    if (width === 1366) {
+      expect(Math.abs(other.toTop - other.fromTop)).toBeLessThanOrEqual(1);
+      expect(Math.abs(other.sellerTop - other.fromTop)).toBeLessThanOrEqual(1);
+    }
+    await noOverflow(page);
+  });
+}
+
 test('employee cannot open customer history and direct rendering clears customer details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado');
