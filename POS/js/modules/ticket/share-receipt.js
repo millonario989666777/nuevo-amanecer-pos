@@ -2,11 +2,18 @@
 (function(root){
   'use strict';
   const FORMATS=['image','text','pdf'];
+  // Aplicación de envío (solo texto, solo Android): auto = wa.me como siempre.
+  const APPS=['auto','whatsapp','business'];
+  const APP_PACKAGES={whatsapp:'com.whatsapp',business:'com.whatsapp.w4b'};
+  const APP_LABELS={auto:'Automático',whatsapp:'WhatsApp',business:'WhatsApp Business'};
   let active=null,version=0,busy=false,returnFocus=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
   function config(){try{if(typeof appConfig!=='undefined')return appConfig;}catch(_){}return root.appConfig||{};}
-  function settings(){const t=config().ticket||{};return{format:FORMATS.includes(t.shareFormat)?t.shareFormat:'text',ask:t.shareAsk!==false};}
-  function setSettings(value){if(!FORMATS.includes(value.format))throw new Error('Formato inválido');const c=config();c.ticket=c.ticket||{};c.ticket.shareFormat=value.format;c.ticket.shareAsk=value.ask!==false;}
+  function settings(){const t=config().ticket||{};return{format:FORMATS.includes(t.shareFormat)?t.shareFormat:'text',ask:t.shareAsk!==false,app:APPS.includes(t.shareApp)?t.shareApp:'auto'};}
+  // `app` es opcional: si no se indica se conserva el valor guardado.
+  function setSettings(value){if(!FORMATS.includes(value.format))throw new Error('Formato inválido');if(value.app!==undefined&&!APPS.includes(value.app))throw new Error('Aplicación inválida');const c=config();c.ticket=c.ticket||{};c.ticket.shareFormat=value.format;c.ticket.shareAsk=value.ask!==false;if(value.app!==undefined)c.ticket.shareApp=value.app;}
+  function userAgent(){try{return String(root.navigator?.userAgent||'');}catch(_){return'';}}
+  function isAndroid(ua=userAgent()){return/\bAndroid\b/i.test(String(ua||''));}
   function normalizePhone(value){
     const raw=String(value||'').trim();if(!/^[+\d\s().-]+$/.test(raw))return'';
     let n=raw.replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);
@@ -15,6 +22,17 @@
     return (raw.startsWith('+')||raw.startsWith('00'))&&/^[1-9]\d{8,14}$/.test(n)?n:'';
   }
   function textUrl(phone,text){const number=normalizePhone(phone);if(!number)throw new Error('Ingresa un número de WhatsApp válido, con código de país');return 'https://wa.me/'+number+'?text='+encodeURIComponent(text);}
+  // Enlace de envío según la app elegida. Solo Android usa intent://; iOS/escritorio y
+  // 'auto' conservan wa.me. El intent lleva S.browser_fallback_url a wa.me por si la app no está instalada.
+  function intentUrl(phone,text,app){
+    const pkg=APP_PACKAGES[app];if(!pkg)throw new Error('Aplicación inválida');
+    const number=normalizePhone(phone);if(!number)throw new Error('Ingresa un número de WhatsApp válido, con código de país');
+    return 'intent://send?phone='+number+'&text='+encodeURIComponent(text)+'#Intent;scheme=whatsapp;package='+pkg+';S.browser_fallback_url='+encodeURIComponent(textUrl(number,text))+';end';
+  }
+  function sendUrl(phone,text,app='auto',ua=userAgent()){
+    if(!APPS.includes(app))throw new Error('Aplicación inválida');
+    return app!=='auto'&&isAndroid(ua)?intentUrl(phone,text,app):textUrl(phone,text);
+  }
   // Mensaje de WhatsApp: saludo corto + comprobante en monoespaciado (```), para que las columnas
   // del ticket no se desalineen con la fuente proporcional de WhatsApp. Solo presentacion.
   function whatsappText(receipt){
@@ -236,21 +254,41 @@
     const label=el('label','fl','WhatsApp del cliente'),phone=el('input','fi');phone.id='naReceiptPhone';phone.type='tel';phone.placeholder='+51 987 654 321';phone.maxLength=32;label.htmlFor=phone.id;
     const formatLabel=el('label','fl','Formato'),format=el('select','fs');format.id='naReceiptFormat';formatLabel.htmlFor=format.id;
     [['image','Imagen PNG'],['text','Texto'],['pdf','PDF']].forEach(([value,text])=>{const opt=el('option','',text);opt.value=value;format.append(opt);});format.onchange=prepare;
+    const appRow=el('div','na-receipt-app'),appLabel=el('label','fl','Enviar desde'),app=el('select','fs');app.id='naReceiptApp';appLabel.htmlFor=app.id;
+    APPS.forEach(value=>{const opt=el('option','',value==='auto'?'Automático (wa.me)':APP_LABELS[value]);opt.value=value;app.append(opt);});app.onchange=changeApp;
+    const appNote=el('p','na-receipt-status');appNote.id='naReceiptAppNote';appRow.append(appLabel,app,appNote);
     const details=el('details','na-receipt-preview'),summary=el('summary','','Vista previa del comprobante'),pre=el('pre','');pre.id='naReceiptText';details.append(summary,pre);
     const status=el('p','na-receipt-status');status.id='naReceiptStatus';status.setAttribute('role','status');
     const buttons=el('div','mbtns'),cancel=el('button','mbtn mbtn-cancel','Cancelar'),send=el('button','mbtn mbtn-ok','Compartir');send.id='naReceiptSend';cancel.type=send.type='button';cancel.onclick=close;send.onclick=share;buttons.append(cancel,send);
     const download=el('button','na-receipt-download','Descargar comprobante');download.type='button';download.onclick=()=>{if(active?.file)downloadFile(active.file);};
-    body.append(name,label,phone,formatLabel,format,details,status,buttons,download);modal.append(head,body);overlay.append(modal);root.document.body.append(overlay);
+    body.append(name,label,phone,formatLabel,format,appRow,details,status,buttons,download);modal.append(head,body);overlay.append(modal);root.document.body.append(overlay);
     overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
     // Un clic / Enter: con el numero escrito, Enter en el campo envia igual que el boton.
     phone.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();if(!send.disabled)share();}});
     overlay.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();close();}if(e.key==='Tab'){const focusable=Array.from(modal.querySelectorAll('button,input,select,summary')).filter(n=>!n.disabled&&!n.hidden);const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&root.document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&root.document.activeElement===last){e.preventDefault();first.focus();}}});return overlay;
   }
+  // Selector 'Enviar desde': solo aplica al texto. En Android elige la app; en iOS/escritorio
+  // queda deshabilitado (siempre wa.me). La elección es persistente (ticket.shareApp).
+  function syncApp(format){
+    const row=root.document.querySelector('#naReceiptShare .na-receipt-app'),select=root.document.getElementById('naReceiptApp'),note=root.document.getElementById('naReceiptAppNote');if(!row||!select)return;
+    const android=isAndroid();row.hidden=format!=='text';select.value=settings().app;select.disabled=!android;
+    note.textContent=android?'':'Solo disponible en Android; aquí se abre WhatsApp con wa.me.';note.hidden=android;
+  }
+  async function changeApp(){
+    const select=root.document.getElementById('naReceiptApp'),previous=settings();if(select.disabled)return;
+    try{setSettings({...previous,app:select.value});}catch(_){select.value=previous.app;return;}
+    try{if(typeof root.guardarConfig==='function'&&await root.guardarConfig()!==true)throw new Error('Configuración no guardada');}catch(_){setSettings(previous);select.value=previous.app;notice('No se guardó la preferencia de aplicación');return;}
+    if(active)statusFor('text');
+  }
+  function statusFor(format){
+    const status=root.document.getElementById('naReceiptStatus');if(!status)return;const app=isAndroid()?settings().app:'auto';
+    status.textContent=format==='text'?(app==='auto'?'Se abrirá el chat del número indicado. Confirma el envío en WhatsApp.':'Se abrirá el chat del número indicado en '+APP_LABELS[app]+'. Confirma el envío.'):'Elige WhatsApp y el contacto en el menú de compartir. Si no está disponible, descarga el archivo.';
+  }
   async function prepare(){
     if(!active)return;const state=active,token=++version,format=root.document.getElementById('naReceiptFormat').value;state.format=format;state.file=null;
-    const status=root.document.getElementById('naReceiptStatus'),send=root.document.getElementById('naReceiptSend');send.disabled=true;status.textContent='Preparando comprobante…';
+    const status=root.document.getElementById('naReceiptStatus'),send=root.document.getElementById('naReceiptSend');send.disabled=true;status.textContent='Preparando comprobante…';syncApp(format);
     try{state.file=await fileFor(state.receipt,format);if(token!==version||active!==state)return;
-      status.textContent=format==='text'?'Se abrirá el chat del número indicado. Confirma el envío en WhatsApp.':'Elige WhatsApp y el contacto en el menú de compartir. Si no está disponible, descarga el archivo.';
+      statusFor(format);
       send.textContent=format==='text'?'Enviar por WhatsApp':'Compartir';send.disabled=false;
     }catch(error){if(token!==version||active!==state)return;status.textContent=error.message+' Puedes elegir texto.';}
   }
@@ -277,7 +315,7 @@
     const send=root.document.getElementById('naReceiptSend');send.disabled=true;
     try{
       if(state.format==='text'){
-        const url=textUrl(root.document.getElementById('naReceiptPhone').value,whatsappText(state.receipt));
+        const url=sendUrl(root.document.getElementById('naReceiptPhone').value,whatsappText(state.receipt),settings().app);
         const chat=root.open(url,'_blank');if(chat)chat.opener=null;else root.location.assign(url);
       }else if(root.navigator?.share&&root.navigator.canShare?.({files:[state.file]})){
         await root.navigator.share({title:'Comprobante Nuevo Amanecer',files:[state.file]});
@@ -336,5 +374,5 @@
     wrapped._naAccountSummary=true;root._naBuildThermalTicket=wrapped;return true;
   }
   installPrintedAccountSummary();
-  root.NAReceiptShare=Object.freeze({formatAsOf:nowLabel,placeLabel,accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,ticketExtrasForSale,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,whatsappText,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
+  root.NAReceiptShare=Object.freeze({formatAsOf:nowLabel,placeLabel,accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,ticketExtrasForSale,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,isAndroid,intentUrl,sendUrl,normalizePhone,textUrl,whatsappText,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
 })(globalThis);
