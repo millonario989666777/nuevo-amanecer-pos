@@ -17,8 +17,8 @@ async function rolePage(page: Page, role: 'owner' | 'empleado') {
   await page.reload();
   await page.waitForFunction(role => (window as any).NA_ROLES?.role === role && (window as any).NA_ROLES.confirmed, role);
 }
-async function seed(page: Page) {
-  await page.evaluate(() => {
+async function seed(page: Page, firstSalePrice = 10) {
+  await page.evaluate(firstSalePrice => {
     (window as any).eval(`
       productos=[{id:'cf-product',name:'Producto de prueba',stock:10}];
       clientes=[
@@ -43,7 +43,8 @@ async function seed(page: Page) {
       creditos=[{id:'cf-credit',cliId:'cf-current',monto:10,pagado:0,pagos:[{id:'cf-pending-payment',monto:2,pending:true}]}];
       cajMovs=[{id:'cf-cash',tipo:'ing',monto:10}];
     `);
-  });
+    (window as any).eval('ventas')[0].items[0].precio = firstSalePrice;
+  }, firstSalePrice);
 }
 async function readState(page: Page) {
   return page.evaluate(() => {
@@ -180,10 +181,10 @@ for (const width of [650, 1000]) {
   });
 }
 
-async function openFrequency(page: Page, width: number, dark = false) {
+async function openFrequency(page: Page, width: number, dark = false, firstSalePrice = 10) {
   await page.setViewportSize({ width, height: 900 });
   await rolePage(page, 'owner');
-  await seed(page);
+  await seed(page, firstSalePrice);
   if (dark) await page.evaluate(() => document.body.classList.add('dark'));
   await page.evaluate(() => (window as any).goPage('pageProximamente'));
   await page.locator('#pageProximamente [data-feature-id="clientes-frecuencia"]').click();
@@ -191,6 +192,53 @@ async function openFrequency(page: Page, width: number, dark = false) {
   await expect(screen.locator('.cf-table')).toBeVisible();
   return screen;
 }
+// The other six purchases add S/ 60.00 to the first sale within the 90-day period.
+const kpiCases = [
+  { width: 650, price: 2_166.10, total: 'S/ 2,226.10' },
+  { width: 650, price: 1_234_507.89, total: 'S/ 1,234,567.89' },
+  { width: 390, price: 1_234_507.89, total: 'S/ 1,234,567.89' },
+  ...[390, 768, 800, 900, 1366].map(width => ({ width, price: 2_226_040.10, total: 'S/ 2,226,100.10' })),
+];
+for (const { width, price, total } of kpiCases) for (const dark of [false, true]) {
+  test(`${width}px ${dark ? 'dark' : 'light'}: customer frequency KPIs with ${total} fit on one line`, async ({ page }) => {
+    const screen = await openFrequency(page, width, dark, price);
+    await expect(screen).toHaveCSS('background-color', dark ? 'rgb(15, 23, 42)' : 'rgb(248, 250, 252)');
+    await expect(screen.locator('.cf-summary-card', { hasText: 'Importe comprado' }).locator('strong')).toHaveText(total);
+    const values = screen.locator('.cf-summary-card strong');
+    await expect(values).toHaveCount(4);
+    for (const value of await values.all()) {
+      await expect(value).toBeVisible();
+      await expect.poll(() => value.evaluate(strong => {
+        const range = document.createRange();
+        range.selectNodeContents(strong);
+        const rect = strong.getBoundingClientRect();
+        const card = strong.closest('.cf-summary-card')!.getBoundingClientRect();
+        return {
+          oneLine: range.getClientRects().length === 1,
+          fits: strong.scrollWidth <= strong.clientWidth + 1,
+          insideCard: rect.left >= card.left - 1 && rect.right <= card.right + 1 &&
+            rect.top >= card.top - 1 && rect.bottom <= card.bottom + 1,
+        };
+      }), { message: `KPI ${await value.textContent()} at ${width}px must fit its card on one line` }).toEqual({ oneLine: true, fits: true, insideCard: true });
+    }
+  });
+}
+test('1366px dark: customer name in the table uses --cf-text, not the global th gray', async ({ page }) => {
+  const screen = await openFrequency(page, 1366, true);
+  await expect(screen.locator('.cf-table')).toHaveCSS('display', 'table');
+  const name = screen.locator('.cf-table tbody th').first();
+  await expect(name).toBeVisible();
+  const expected = await screen.evaluate(node => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--cf-text)';
+    node.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  expect(expected).toBe('rgb(248, 250, 252)');
+  await expect(name).toHaveCSS('color', expected);
+});
 for (const width of [650, 700, 1000]) {
   test(`${width}px: Última compra and Días sin comprar remain visible in customer frequency`, async ({ page }) => {
     const screen = await openFrequency(page, width);
