@@ -1,0 +1,62 @@
+#pageReporteProductosVencer {
+  --rpv-bg: #f8fafc;
+  --rpv-surface: #fff;
+  --rpv-text: #0f172a;
+  --rpv-muted: #475569;
+  --rpv-border: #cbd5e1;
+  --rpv-expired-text: #991b1b;
+  --rpv-expired-bg: #fee2e2;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--rpv-text);
+  background: var(--rpv-bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#pageReporteProductosVencer *, #pageReporteProductosVencer *::before, #pageReporteProductosVencer *::after { box-sizing: border-box; }
+#pageReporteProductosVencer [hidden] { display: none !important; }
+#pageReporteProductosVencer .rpv-shell { width: 100%; max-width: 1200px; margin: 0 auto; }
+#pageReporteProductosVencer h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; overflow-wrap: anywhere; }
+#pageReporteProductosVencer p { margin: 0 0 16px; }
+#pageReporteProductosVencer .rpv-description, #pageReporteProductosVencer .rpv-status { color: var(--rpv-muted); }
+#pageReporteProductosVencer .rpv-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0 12px; }
+#pageReporteProductosVencer label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+#pageReporteProductosVencer :is(select, button) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--rpv-border); border-radius: 10px; font: inherit; color: var(--rpv-text); background: var(--rpv-surface); }
+#pageReporteProductosVencer button { cursor: pointer; font-weight: 700; }
+#pageReporteProductosVencer :is(select, button):focus-visible { outline: 3px solid #0d9488; outline-offset: 3px; }
+#pageReporteProductosVencer .rpv-method, #pageReporteProductosVencer .rpv-empty { padding: 12px 16px; border: 1px solid var(--rpv-border); border-radius: 12px; background: var(--rpv-surface); }
+#pageReporteProductosVencer .rpv-status { overflow-wrap: anywhere; }
+#pageReporteProductosVencer .rpv-results { margin-bottom: 20px; padding: 12px; border: 1px solid var(--rpv-border); border-radius: 14px; background: var(--rpv-surface); }
+#pageReporteProductosVencer .rpv-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+/* Fuera de media queries: restaura también las columnas 4/5 ocultas por base.css a 650px. */
+#pageReporteProductosVencer .rpv-table :is(th, td) { display: table-cell; }
+#pageReporteProductosVencer .rpv-table :is(th, td) { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rpv-border); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+#pageReporteProductosVencer .rpv-table thead th { font-size: 12px; color: var(--rpv-muted); }
+#pageReporteProductosVencer .rpv-table .rpv-num { text-align: right; font-variant-numeric: tabular-nums; }
+#pageReporteProductosVencer .rpv-table thead th:first-child { width: 32%; }
+#pageReporteProductosVencer .rpv-table thead th:last-child { width: 12%; }
+#pageReporteProductosVencer .rpv-table [data-rpv-expired="true"] :is(th, td) { color: var(--rpv-expired-text); background: var(--rpv-expired-bg); }
+#pageReporteProductosVencer .rpv-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Las tarjetas van después de display:table-cell y conservan la misma especificidad. */
+@media (max-width: 599px) {
+  #pageReporteProductosVencer .rpv-table, #pageReporteProductosVencer .rpv-table tbody { display: block; }
+  #pageReporteProductosVencer .rpv-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #pageReporteProductosVencer .rpv-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 1px solid var(--rpv-border); padding: 12px 8px; }
+  #pageReporteProductosVencer .rpv-table :is(th, td) { display: block; width: auto; padding: 0; border: 0; }
+  #pageReporteProductosVencer .rpv-table th { grid-column: 1 / -1; }
+  #pageReporteProductosVencer .rpv-table td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--rpv-muted); }
+  #pageReporteProductosVencer .rpv-table .rpv-num { text-align: left; }
+  #pageReporteProductosVencer .rpv-table [data-rpv-expired="true"] { background: var(--rpv-expired-bg); }
+  #pageReporteProductosVencer .rpv-table [data-rpv-expired="true"] td::before { color: var(--rpv-expired-text); }
+}
+@media (min-width: 600px) {
+  #pageReporteProductosVencer { padding: 24px; }
+  #pageReporteProductosVencer .rpv-controls { grid-template-columns: minmax(max-content, 1fr) minmax(0, 1fr); align-items: end; }
+  #pageReporteProductosVencer .rpv-controls label { grid-column: 1 / -1; }
+}
+@media (min-width: 1000px) {
+  #pageReporteProductosVencer .rpv-controls { grid-template-columns: minmax(max-content, 1fr) auto auto; }
+  #pageReporteProductosVencer .rpv-controls label { grid-column: auto; }
+}
