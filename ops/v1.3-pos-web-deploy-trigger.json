@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Web 166: #795 clientes-frecuencia (frecuencia de compra del cliente, merge 511f95a7). Worker 56 (Cloudflare b602afde) ya live con live check OK. Rollback: web 165 (Cloudflare 71ca0b43, build b3dc70fd).",
-  "retry_attempt": 166,
-  "retry_reason": "Deploy de base b2f9b4073a07c25cbce7abb948ab9e5cc4ec736e (incluye #795 merge 511f95a7c4b9785d53c150a69e6f67e7773c68c9). Rollback: web 165 (Cloudflare 71ca0b43, build b3dc70fd, base b3dc70fded5cff3cfa1142b99b5335138595f2a5).",
-  "requested_at_utc": "2026-10-16T23:39:02Z",
-  "approved_base": "b2f9b4073a07c25cbce7abb948ab9e5cc4ec736e"
+  "note": "Web 167: #802 pulido historial de compras por cliente + Kardex (merge d2800fe3). Rollback: web 166 (Cloudflare 3c823204, build b56047f7).",
+  "retry_attempt": 167,
+  "retry_reason": "Deploy de base d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f (incluye #802 merge d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f). Rollback: web 166 (Cloudflare 3c823204, build b56047f7, base b56047f7901fdfc809ef2035673cfc969ec9e08b).",
+  "requested_at_utc": "2026-10-17T00:37:04Z",
+  "approved_base": "d2800fe30b6fd975ec580cb6bb6b15ff7739fd5f"
 }
