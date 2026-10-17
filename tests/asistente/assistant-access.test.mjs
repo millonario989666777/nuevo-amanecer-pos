@@ -81,8 +81,8 @@ test('cambiar el nivel: solo aparato dueño + PIN correcto; el empleado no puede
   // Sin la migración 0034 el nivel se guarda igual, solo no se anota.
 });
 
-test('Solo consultas: stock y por reponer sí; costos, ventas, deudas y documentos no; cambios piden PIN del dueño (estricto)', async (t) => {
-  const { level, chat, confirm, approve, call } = await setup(t);
+test('Solo consultas: stock y por reponer sí; costos, ventas, deudas y documentos no; SIN escritura (ni tarjetas ni confirmar)', async (t) => {
+  const { level, chat, confirm, call } = await setup(t);
   assert.equal((await level('session:emp', 'consultas')).status, 200);
   const ping = await (await call('tok-emp', '/auth/assistant/chat', { ping: true })).json(); assert.equal(ping.level, 'consultas');
   const low = await chat('tok-emp', '¿Qué me falta reponer?'); assert.equal(low.status, 200); assert.equal(low.body.proposals[0]?.type, 'consulta');
@@ -92,14 +92,31 @@ test('Solo consultas: stock y por reponer sí; costos, ventas, deudas y document
   const doc = await chat('tok-emp', 'imprime la lista de precios'); assert.ok(!(doc.body.proposals || []).some((p) => p.type === 'documento'));
   assert.equal(doc.status, 403, 'R25: «consultas» no tiene documentos -> 403 para todo el pedido'); assert.equal(doc.body.error, 'forbidden_document');
   assert.ok(!JSON.stringify(low.body).includes('0.29'), 'sin costos');
-  // Propuesta de cambio: el empleado no la ejecuta sin el PIN del dueño.
-  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card);
-  const no = await confirm('tok-emp', card); assert.equal(no.status, 403); assert.equal(no.body.error, 'owner_approval_required');
-  const otra = await approve('tok-emp', 'inventory.adjust', 'AST-otra-operacion'); assert.ok(otra.status < 300, JSON.stringify(otra.body));
-  assert.equal((await confirm('tok-emp', card, otra.body.approval_id)).status, 403, 'aprobación de otra operación');
-  const buena = await approve('tok-emp', 'inventory.adjust', opOf(card)); assert.ok(buena.status < 300);
-  const rs = await Promise.all([1, 2, 3].map(() => confirm('tok-emp', card, buena.body.approval_id)));
-  assert.equal(rs.filter((r) => r.status === 200 && !r.body.already_confirmed).length, 1, JSON.stringify(rs.map((r) => r.status)));
+  // Sin PIN el empleado NO gana escritura: no recibe tarjetas de cambio y no puede confirmar ninguna (ni una del dueño).
+  const m = await chat('tok-emp', 'merma de 1 Synthetic 00003'); assert.equal(m.status, 200);
+  assert.ok(!m.body.proposals.some((p) => p.needsConfirm || p.confirm_token), JSON.stringify(m.body.proposals));
+  assert.ok(m.body.dropped.some((d) => d.reason === 'forbidden_role'));
+  const own = (await chat('tok-dueno', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(own);
+  const no = await confirm('tok-emp', own); assert.equal(no.status, 403); assert.equal(no.body.error, 'forbidden_role');
+  for (const lvl of ['consultas', 'consultas_documentos']) assert.ok(!EMPLOYEE_TOOLS[lvl].some((n) => /proponer|preparar_compra|leer_factura/.test(n)), lvl);
+});
+
+// Pedido sin PIN: la sesión DUEÑO verificada por el servidor confirma con UN toque; un doble toque no repite; sin sesión dueño sigue bloqueado.
+test('sin PIN: el dueño confirma con un toque (sin x-owner-approval); doble toque o tres a la vez = un solo efecto; el resto sigue bloqueado', async (t) => {
+  const { f, chat, confirm, call } = await setup(t);
+  const card = (await chat('tok-dueno', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste'); assert.ok(card);
+  assert.equal(card.requiresRole, 'owner'); assert.ok(card.nombre && card.stock_actual != null && card.stock_despues != null, 'resumen: producto, antes y después');
+  const rs = await Promise.all([1, 2, 3].map(() => confirm('tok-dueno', card)));
+  assert.deepEqual(rs.map((r) => r.status), [200, 200, 200]);
+  assert.equal(rs.filter((r) => !r.body.already_confirmed).length, 1, 'un solo efecto'); assert.equal(new Set(rs.map((r) => r.body.operation_id)).size, 1);
+  const again = await confirm('tok-dueno', card); assert.equal(again.body.already_confirmed, true, 'reenvío tardío: mismo operation_id');
+  // la sesión debe ser dueño de verdad: fila owner + sesión owner del POS. Un aparato que el POS trata como dueño pero sin fila: bloqueado.
+  f.addDevice('sinrol', 'writer', 'active', 'tok-sinrol');
+  const r1 = await confirm('tok-sinrol', card); assert.equal(r1.status, 403); assert.equal(r1.body.error, 'assistant_off');
+  // si la fila deja de ser owner (el dueño pasó este aparato a empleado): bloqueado al instante
+  f.exec("UPDATE pos_device_roles SET pos_role='empleado' WHERE device_id='session:dueno'");
+  const card2 = { ...card }; const r2 = await confirm('tok-dueno', card2); assert.equal(r2.status, 403);
+  assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: 'x', proposal: {} })).status, 403);
 });
 
 test('Consultas y documentos: lista de precios y pedido sí; inventario valorizado, cierre y deudas no', async (t) => {
@@ -112,13 +129,13 @@ test('Consultas y documentos: lista de precios y pedido sí; inventario valoriza
   }
 });
 
-test('quitar el permiso aplica al instante: tarjeta emitida antes y chat siguiente reciben 403', async (t) => {
-  const { level, chat, confirm, approve } = await setup(t);
+test('quitar el permiso aplica al instante: confirm y chat siguientes reciben 403', async (t) => {
+  const { level, chat, confirm } = await setup(t);
   assert.equal((await level('session:emp', 'consultas_documentos')).status, 200);
-  const card = (await chat('tok-emp', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste');
-  const apr = await approve('tok-emp', 'inventory.adjust', opOf(card));
+  assert.equal((await chat('tok-emp', 'qué falta reponer')).status, 200);
+  const card = (await chat('tok-dueno', 'merma de 1 Synthetic 00003')).body.proposals.find((p) => p.type === 'ajuste');
   assert.equal((await level('session:emp', 'off')).status, 200);
-  const c = await confirm('tok-emp', card, apr.body.approval_id); assert.equal(c.status, 403); assert.equal(c.body.error, 'assistant_off');
+  const c = await confirm('tok-emp', card); assert.equal(c.status, 403); assert.equal(c.body.error, 'assistant_off');
   assert.equal((await chat('tok-emp', 'qué falta reponer')).status, 403);
   // Otro empleado nunca tuvo permiso: sigue apagado.
   assert.equal((await chat('tok-emp2', 'qué falta reponer')).status, 403);
@@ -225,13 +242,13 @@ test('A20: cajones con tope propio (dueño 1000, empleados 300, agrupados 300): 
 });
 
 test('A20: confirm rechazado queda anotado (422/403 sueltos; 429 agrupados); fallo al anotar: console.warn sin datos y write_errors', async (t) => {
-  const { f, call, chat, confirm, approve } = await setup(t);
+  const { f, call, chat, confirm } = await setup(t);
   const { auditWrite, auditStats } = await import('../../tools/cloudflare-lab/src/pos-assistant-audit.js');
   const a = await chat('tok-dueno', 'merma de 2 Synthetic 00003');
   const card = a.body.proposals.find((p) => p.confirm_token);
-  assert.equal((await confirm('tok-dueno', card)).status, 403); // sin aprobación
+  assert.equal((await confirm('tok-dueno', { ...card, cantidad: 999 })).status, 409); // tarjeta cambiada
   const g = await (await call('tok-dueno', '/auth/assistant/audit', null, {}, 'GET')).json();
-  assert.ok(g.entries.some((e) => e.outcome === 'rejected:owner_approval_required' && e.card_id === card.id), JSON.stringify(g.entries.slice(0, 4)));
+  assert.ok(g.entries.some((e) => e.outcome === 'rejected:proposal_changed' && e.card_id === card.id), JSON.stringify(g.entries.slice(0, 4)));
   // base que falla: no lanza, avisa y cuenta
   const warns = []; const orig = console.warn; console.warn = (...x) => warns.push(x.join(' '));
   const before = auditStats().write_errors;
@@ -374,19 +391,19 @@ test('Bot 5: rechazos del DUEÑO en su propio cajón (or); bad_token y bad_reque
   const cnt = (b) => f.all(`SELECT COUNT(*) AS n FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%'`)[0].n;
   const keys = (b) => f.all(`SELECT key FROM pos_settings WHERE key LIKE 'internal:asst:audit:${b}:%' ORDER BY key`).map((r) => r.key);
   const raw = (tok, path, body) => f.fetch('http://localhost' + path, { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json' }, body });
-  // rechazos del dueño: confirm sin aprobación, token malo y cuerpo malo (uno por uno, cajón or)
+  // rechazos del dueño: tarjeta cambiada, token malo y cuerpo malo (uno por uno, cajón or)
   const card = (await chat('tok-dueno', 'merma de 2 Synthetic 00003')).body.proposals.find((p) => p.confirm_token); const { confirm_token, ...proposal } = card;
-  assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: confirm_token, proposal })).status, 403);
+  assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: confirm_token, proposal: { ...proposal, cantidad: 999 } })).status, 409);
   assert.equal((await call('tok-dueno', '/auth/assistant/confirm', { token: 'malo', proposal })).status, 403);
   assert.equal((await raw('tok-dueno', '/auth/assistant/confirm', '{no es json')).status, 400);
   assert.equal((await raw('tok-dueno', '/auth/assistant/chat', '{no es json')).status, 400);
   const ownerRej = keys('or'); assert.equal(ownerRej.length, 4, JSON.stringify(ownerRej));
   const ownerOut = f.all("SELECT value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:or:%'").map((r) => JSON.parse(r.value_json).outcome).sort();
-  assert.deepEqual(ownerOut, ['rejected:bad_request', 'rejected:bad_request', 'rejected:bad_token', 'rejected:owner_approval_required']);
-  // diluvio de otros aparatos: empleado con nivel (llega a leer el token) y teléfono sin rol (se corta en el rol, antes del cuerpo)
+  assert.deepEqual(ownerOut, ['rejected:bad_request', 'rejected:bad_request', 'rejected:bad_token', 'rejected:proposal_changed']);
+  // diluvio de otros aparatos: empleado con nivel (sin PIN no confirma: 403 forbidden_role antes del cuerpo) y teléfono sin rol (se corta en el rol)
   assert.equal((await level('session:emp', 'consultas')).status, 200);
   for (let i = 0; i < 200; i++) assert.equal((await call('tok-emp', '/auth/assistant/confirm', { token: 'x' + i, proposal: {} })).status, 403);
-  for (let i = 0; i < 200; i++) assert.equal((await raw('tok-emp', '/auth/assistant/confirm', '{roto' + i)).status, 400);
+  for (let i = 0; i < 200; i++) assert.equal((await raw('tok-emp', '/auth/assistant/confirm', '{roto' + i)).status, 403);
   for (let i = 0; i < 200; i++) assert.equal((await raw('tok-sinrol', '/auth/assistant/confirm', '{roto' + i)).status, 403);
   for (let i = 0; i < 200; i++) assert.equal((await raw('tok-sinrol', '/auth/assistant/chat', '{roto' + i)).status, 403);
   assert.deepEqual(keys('or'), ownerRej, 'los rechazos del dueño siguen todos');

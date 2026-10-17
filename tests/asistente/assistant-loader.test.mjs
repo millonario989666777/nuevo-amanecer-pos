@@ -159,9 +159,9 @@ test('revisión Bot 4 sobre 1b87710d: relleno del contenedor que se desplaza, pa
   // 4) primera visita con Inicio a la vista: no se inserta arriba (se espera a salir de Inicio o al próximo arranque)
   assert.match(ui, /menu\.classList\.contains\('active'\) && menu\.offsetParent !== null\) \{ heroDeferred = true; return; \}/);
   assert.match(ui, /else if \(heroDeferred\) renderHero\(\)/);
-  // 5) textos: singular/plural, tarjeta hecha sin «Vence en», PIN apagado y visible tras el 410
+  // 5) textos: singular/plural, tarjeta hecha sin «Vence en»; sin PIN en la tarjeta (pedido del dueño: un toque de la sesión dueño)
   assert.match(ui, /' Te queda 1 intento\.'/); assert.match(css, /\.na-asst-card\[data-st="done"\] \.meta\{display:none\}/);
-  assert.match(ui, /if \(pinBox\) pinBox\.hidden = false;/); assert.match(ui, /pinBox\.hidden = c\.dataset\.st !== 'expired' && !!approvals/);
+  assert.ok(!/pinBox|na-asst-pin/.test(ui)); assert.ok(!/\.na-asst-pin/.test(css));
   // 6) 380-699: atajos en una fila con texto corto
   assert.match(css, /@media \(min-width:380px\) and \(max-width:699px\)\{#naAsstHero \.h-chips\{flex-wrap:nowrap/);
 });

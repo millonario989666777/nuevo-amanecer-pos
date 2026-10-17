@@ -5,16 +5,16 @@ Rama: `feature/asistente-aislado` (sale de `feature/v1.3-mobile-cloud`). No se u
 ## 1. Qué hace (cambio de alcance del jefe: solo gestión, nada de ventas)
 - Ayuda al **dueño** a gestionar: stock, compras, precios y documentos. No vende ni llena carritos.
 - Puede: consultar (stock, por reponer, productos sin costo, ventas, más vendidos, deudas, compras), proponer ajustes de stock, cambios de precio, compras (también desde la foto de la factura), productos nuevos, y preparar documentos internos (inventario valorizado, lista de precios, lista de pedido, reporte de ventas, estado de cuenta, resumen de cierre). Ningún documento es comprobante SUNAT.
-- Nada se hace solo: cada acción es una tarjeta con «Confirmar», vence en 5 minutos, se usa una vez y pide el PIN del dueño. Al confirmar se abre la pantalla que el POS ya tiene (movimiento de stock, ficha, nueva compra, nuevo producto) y se guarda por su ruta de siempre, con `ownerGate`/PIN. El asistente no tiene caminos de escritura propios.
+- Nada se hace solo: cada acción es una tarjeta con «Confirmar», vence en 5 minutos, se usa una vez y solo la confirma el dueño, con un toque (sin PIN; el servidor exige la sesión dueño real). Al confirmar se abre la pantalla que el POS ya tiene (movimiento de stock, ficha, nueva compra, nuevo producto) y se guarda por su ruta de siempre, con `ownerGate`/PIN. El asistente no tiene caminos de escritura propios.
 - Para preguntas, el Worker manda al modelo solo un resumen (top 10), nunca el inventario completo. Medido: primer pedido ~6,8 KB; resumen de la consulta ≤ 3,2 KB incluso con 3.000 productos.
 
 ## 2. Quién lo ve
 - **Dueño** (aparato con fila `owner`): tarjeta en Inicio «Puedo ayudarte con stock, compras, precios y documentos.» (en Inicio reemplaza a la burbuja) y burbuja flotante en el resto, abajo a la derecha sin tapar nada. Nunca sobre Cobrar.
-- **Empleados**, por aparato, 3 niveles que elige el dueño en Configuración > Personal y seguridad > Aparatos conectados (se guarda solo y pide el PIN del dueño):
+- **Empleados**, por aparato, 3 niveles que elige el dueño en Configuración > Personal y seguridad > Aparatos conectados (se guarda solo y pide el PIN del dueño; el PIN queda solo en Configuración):
   - **Apagado** (por defecto): no ve nada y su teléfono **no baja ningún archivo del asistente** (el cargador pregunta primero al servidor con un ping de 13 bytes). Su POS arranca igual que hoy.
   - **Solo consultas**: burbuja con atajos; stock, qué falta reponer, cómo se hace algo y precios de venta. Sin costos, márgenes, caja ni deudas.
   - **Consultas y documentos**: además Lista de precios y Lista de pedido, sin costos (el servidor arma las filas y solo deja producto, stock y cantidad sugerida).
-  - Un empleado puede **proponer** un ajuste, precio o compra, pero aplicarlo pide el PIN del dueño.
+  - Un empleado **no** propone ni aplica cambios (ajuste, precio, compra, producto): solo consulta y, según su nivel, documentos. Los cambios los hace el dueño desde su teléfono.
   - El servidor revisa el nivel en cada mensaje y en cada confirmación: apagar es inmediato, incluso con una tarjeta ya abierta.
 - La navegación del celular (menú desplegable) no se tocó.
 
@@ -85,7 +85,7 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 6. Recién después, un PR en borrador para revisión. Nada a producción sin aprobación.
 
 ## 7. Dónde ver las pruebas
-- Pruebas automáticas: `tests/asistente/` (85 pruebas, todas pasan), incluye niveles de empleado, revocación inmediata, lista de pedido sin costos, registro del dueño, último dueño y el cargador (empleado en Apagado = 0 archivos).
+- Pruebas automáticas: `tests/asistente/` (144 pruebas, todas pasan), incluye niveles de empleado, revocación inmediata, lista de pedido sin costos, registro del dueño, último dueño y el cargador (empleado en Apagado = 0 archivos).
 - Capturas: `/workspace/asistente-proto/shots-admin/` (390, 768 y 1280; verde, nocturno y azul).
 
 ## Sobre 1b87710d (revisión de Bots 2, 3, 4 y 5) — pendiente de decisión del jefe
@@ -97,3 +97,18 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 ## Notas sobre 50b6716b (17-10-2026)
 - Re-chequeo del permiso: el cargador mira Inicio con un MutationObserver sobre `#pageMenu` (no toca el menú). No hay evento «POS listo para vender» en el núcleo; se usa `load` + `requestIdleCallback`. Si jefe quiere un evento propio del núcleo, sería un cambio fuera del asistente (no hecho).
 - El servidor de prueba (`tools/asistente-proto/dev-server.mjs`) cambia el id del aparato con el rol simulado; por eso un `forbidden_role` del confirm se simuló en la verificación de navegador (en el Worker real el aparato es el mismo).
+
+## Pedido sin PIN y simplicidad (17-10-2026)
+- **Confirmar sin PIN:** la tarjeta mantiene el resumen (producto, antes → después) y «Confirmar» de un toque. El servidor sigue exigiendo la sesión dueño real (fila `owner` + sesión owner del POS); sin ella, 403. Un doble toque no repite (mismo `operation_id`).
+- **Empleados sin escritura:** siguen con «Solo consultas» o «Consultas y documentos» (ya sin PIN). No se creó ningún nivel nuevo de escritura.
+- **El PIN queda solo en Configuración:** cambiar el nivel de un empleado y registrar/aprobar/quitar aparatos dueño (a confirmar por el dueño si también lo quiere sin PIN).
+- **Pantallas del POS:** el asistente solo abre la pantalla que ya existe; si esa pantalla del POS pide su propio PIN al Guardar, eso es del núcleo (congelado) y no se tocó.
+- **Fácil y sin marear:** respuestas de 2-3 frases, español sencillo sin palabras técnicas, una sola pregunta si falta un dato, una sola tarjeta por acción (también filtrado en el servidor). Errores siempre en palabras simples con «Reintentar» cuando sirve; nunca un «Pensando» sin fin. Al empleado no se le muestra el botón de foto de factura ni tarjetas de cambio. Botones rápidos de 44 px o más.
+
+### Sugerencias pendientes de decisión del dueño (no implementadas)
+1. **Tiempo de inactividad:** pedir de nuevo la sesión dueño (o cerrar el asistente) tras X minutos sin usar el teléfono, por si queda desbloqueado en el mostrador.
+2. **PIN para montos grandes:** volver a pedir el PIN solo cuando el cambio pase un tope (por ejemplo, compra mayor a S/ X o cambio de precio mayor a 50 %).
+
+### Siguiente paso: respuesta en streaming (para que Bot 3 la mida)
+- Hoy la respuesta llega entera (DeepSeek sin `stream`). Objetivo: **primera palabra en 1-2 s** mostrando el texto mientras llega (SSE desde el Worker), y las tarjetas al final, cuando el servidor ya las firmó.
+- No se implementó en esta ronda. Bot 3 debería medir antes el tiempo hasta la primera palabra y hasta la respuesta completa (390 en 4G lenta y 1280) para comparar después.

@@ -34,7 +34,7 @@
 
   // ¿Puede ESTE aparato ejecutar ESTA propuesta? (el Worker ya filtró y vuelve a revisar al confirmar; esto es la segunda barrera).
   // Dueño: sí. Empleado: solo si el SERVIDOR le dio un nivel (roles.level viene del último ping, nunca de una caché local);
-  // y aun así las tarjetas que cambian algo piden el PIN del dueño. Documentos del empleado: solo lista de precios y pedido.
+  // y aun así NO recibe tarjetas que cambian algo (solo el dueño confirma). Documentos del empleado: solo lista de precios y pedido.
   var TYPES = ['compra', 'precio', 'costo', 'ajuste', 'producto', 'documento', 'consulta', 'pasos'];
   var EMP_LEVELS = ['consultas', 'consultas_documentos'], EMP_DOCS = ['lista_precios', 'lista_pedido'];
   function canExecute(roles, proposal) {
@@ -44,6 +44,7 @@
     if (role === 'empleado') {
       if (EMP_LEVELS.indexOf(roles.level) < 0) return { ok: false, msg: 'El asistente es solo para el dueño.' };
       if (proposal && proposal.type === 'costo') return { ok: false, msg: 'Solo el dueño puede cambiar costos.' };
+      if (proposal && (proposal.needsConfirm || ['compra', 'precio', 'ajuste', 'producto'].indexOf(proposal.type) >= 0)) return { ok: false, msg: 'Los cambios los hace el dueño desde su teléfono.' };
       if (proposal && proposal.type === 'documento' && (roles.level !== 'consultas_documentos' || EMP_DOCS.indexOf(proposal.tipo) < 0)) return { ok: false, msg: 'Ese documento es solo para el dueño.' };
     }
     if (!proposal || TYPES.indexOf(proposal.type) < 0) return { ok: false, msg: 'Acción desconocida.' };
@@ -194,23 +195,57 @@
     finally { clearTimeout(timer); }
   }
   var TIMEOUTS = { chat: 30000, confirm: 12000, approval: 15000 };
+  // Errores en palabras simples (pedido del dueño): la persona NUNCA ve un código (403, 409, 429, 503, assistant_off, forbidden_document…).
+  // Cada código conocido tiene su frase; uno desconocido o «HTTP_xxx» cae en la frase general. retry=true: se muestra «Reintentar».
+  var MSG = {
+    owner: 'Eso solo lo puede hacer el dueño.',
+    offline: 'Sin conexión. Toca «Reintentar» cuando vuelva el internet.',
+    wait: 'Espera un momento e intenta de nuevo.',
+    slow: 'Está tardando mucho. Toca «Reintentar».',
+    again: 'No se pudo completar. Toca «Reintentar».',
+    expired: 'Esta propuesta venció. Pídela otra vez.',
+    changed: 'La propuesta cambió. Pídela otra vez.'
+  };
+  var FRIENDLY = {
+    forbidden_role: [MSG.owner], admin_only: [MSG.owner], owner_approval_required: [MSG.owner], forbidden: [MSG.owner], HTTP_403: [MSG.owner],
+    assistant_off: ['El asistente está apagado en este aparato.'], unauthorized: ['Este aparato no tiene sesión. Entra de nuevo al sistema.'], HTTP_401: ['Este aparato no tiene sesión. Entra de nuevo al sistema.'],
+    forbidden_document: ['Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.'],
+    rate_limited: [MSG.wait, true], HTTP_429: [MSG.wait, true], upstream_busy: [MSG.wait, true],
+    daily_limit: ['Por hoy ya no quedan preguntas en este aparato. Mañana sigue.'], monthly_cap: ['El asistente llegó a su tope del mes. Avisa al dueño.'],
+    network: [MSG.offline, true], offline: [MSG.offline, true], timeout: [MSG.slow, true], upstream_timeout: [MSG.slow, true],
+    upstream_error: [MSG.again, true], stock_check_unavailable: ['No pude revisar el inventario ahora. Toca «Reintentar» en un momento.', true], HTTP_503: [MSG.again, true], HTTP_502: [MSG.again, true], HTTP_500: [MSG.again, true],
+    confirm_expired: [MSG.expired], HTTP_410: [MSG.expired], proposal_changed: [MSG.changed], proposal_id_mismatch: [MSG.changed], HTTP_409: [MSG.changed],
+    product_missing: ['Ese producto ya no está en el inventario.'], sin_control_stock: ['Ese producto no controla inventario.'],
+    review_required: ['Revisa este dato en las filas marcadas y vuelve a confirmar.'], over_limit: ['Fuera del límite: corrige la factura o quita la fila.'],
+    empty_after_review: ['Quitaste todas las filas. Pide la compra de nuevo.'], other_device: ['Esta propuesta es de otro aparato. Pídela aquí otra vez.'],
+    image_too_large: ['La foto es muy grande. Toma otra más cerca.'], bad_image: ['No pude leer esa foto. Toma otra con más luz.'],
+    not_found: ['El asistente no está disponible por ahora.'], HTTP_404: ['El asistente no está disponible por ahora.'], bad_request: [MSG.again, true], bad_token: [MSG.changed]
+  };
+  // ¿El texto trae algo que parece código? (palabra_con_guion_bajo, «HTTP», «error 403», «Error:»). Entonces no se muestra tal cual.
+  function looksTechnical(t) { return /[a-z0-9]+_[a-z0-9_]+|\berror\b|HTTP|\b(error|status|code)\b\s*:?\s*\d{3}\b|^\s*[45]\d\d\b|undefined|null|NaN|Exception|TypeError/i.test(String(t || '')); }
+  function friendlyError(code, serverMsg) {
+    var f = FRIENDLY[code];
+    if (!f && /^HTTP_5/.test(String(code))) f = [MSG.again, true];
+    if (!f && /^HTTP_4/.test(String(code))) f = [MSG.again, true];
+    // Los motivos que ya vienen en palabras del servidor (tope, inventario) se usan solo si no traen nada técnico.
+    var msg = serverMsg && typeof serverMsg === 'string' && !looksTechnical(serverMsg) ? serverMsg : (f ? f[0] : MSG.again);
+    return { msg: msg, retry: !!(f ? f[1] : true) };
+  }
   // Reintentos AUTOMÁTICOS de red al confirmar: tope fijo (1 envío + 1 reintento). Después decide la persona con «Volver a intentar».
   // Reenviar es seguro: mismo token y operation_id; si el servidor ya lo guardó responde already_confirmed y no se repite.
   var CONFIRM_ATTEMPTS = 2;
   // Qué muestra la tarjeta cuando confirm no pasa. Una tarjeta NUNCA queda trabada con «Confirmar»:
-  //  - 422 review_required: filas en rojo «Revisa este dato»; se reenvía la MISMA tarjeta y la MISMA aprobación (no pide PIN).
-  //  - 429: «Espera un momento y vuelve a intentar» + «Volver a intentar» (misma tarjeta y aprobación).
-  //  - owner_approval_required: vuelve a pedir el PIN (la aprobación anterior ya no sirve).
-  //  - Siempre: «Pedir de nuevo» = propuesta NUEVA (token y operation_id nuevos, vuelve a pedir el PIN).
+  //  - 422 review_required: filas en rojo «Revisa este dato»; se reenvía la MISMA tarjeta (un toque, sin PIN).
+  //  - 429: «Espera un momento y vuelve a intentar» + «Volver a intentar» (misma tarjeta).
+  //  - Siempre: «Pedir de nuevo» = propuesta NUEVA (token y operation_id nuevos).
   function confirmFailureView(r) {
     if (!r || r.ok) return null;
     var code = r.code || (r.retry ? 'network' : 'error');
-    if (code === 'review_required') return { kind: 'review', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', keepApproval: true, again: true, msg: 'Revisa este dato en las filas marcadas y vuelve a confirmar.' };
-    if (code === 'over_limit') return { kind: 'limit', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', keepApproval: true, again: true, msg: r.msg || 'Fuera del límite: corrige la factura o quita la fila.' };
-    if (code === 'rate_limited' || code === 'HTTP_429') return { kind: 'wait', rows: [], button: 'Volver a intentar', keepApproval: true, again: true, msg: 'Espera un momento y vuelve a intentar.' };
-    if (code === 'owner_approval_required') return { kind: 'pin', rows: [], button: 'Confirmar', keepApproval: false, again: true, msg: 'Escribe tu PIN de dueño otra vez.' };
-    if (code === 'network') return { kind: 'network', rows: [], button: 'Volver a intentar', keepApproval: true, again: true, msg: r.msg };
-    return { kind: 'other', rows: [], button: 'Confirmar', keepApproval: true, again: true, msg: r.msg };
+    if (code === 'review_required') return { kind: 'review', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', again: true, msg: 'Revisa este dato en las filas marcadas y vuelve a confirmar.' };
+    if (code === 'over_limit') return { kind: 'limit', rows: (r.rows || []).filter(function (n) { return Number.isInteger(n) && n >= 0; }), button: 'Confirmar', again: true, msg: r.msg || 'Fuera del límite: corrige la factura o quita la fila.' };
+    if (code === 'rate_limited' || code === 'HTTP_429') return { kind: 'wait', rows: [], button: 'Reintentar', again: true, msg: MSG.wait };
+    if (code === 'network') return { kind: 'network', rows: [], button: 'Reintentar', again: true, msg: friendlyError('network').msg };
+    return { kind: 'other', rows: [], button: 'Confirmar', again: true, msg: r.msg && !looksTechnical(r.msg) ? r.msg : friendlyError(code).msg };
   }
 
   // Contexto chico (~2 KB): primero los productos que coinciden con lo escrito, después el resto hasta el tope.
@@ -228,7 +263,7 @@
     if (p.controlInventario === false || p.trackStock === false || p.track_stock === false || p.tracks_inventory === false || p.tracks_inventory === 0) return false;
     return ![p.tipo, p.type, p.unidad, p.cat].some(function (v) { return /^(servicio|service)$/i.test(String(v || '')); });
   }
-  // Revisión ANTES de pedir el PIN y de gastar la tarjeta: si el POS no puede abrir la pantalla, se dice por qué y no se gasta nada.
+  // Revisión ANTES de enviar y de gastar la tarjeta: si el POS no puede abrir la pantalla, se dice por qué y no se gasta nada.
   var PRECHECK = {
     ajuste: function (p, d) {
       var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
@@ -252,11 +287,11 @@
       if (it.p.needsConfirm && deps.online && !deps.online()) { it.state = 'pending'; return { ok: false, msg: 'Asistente no disponible sin internet.' }; }
       if (it.p.needsConfirm) {
         var pre = precheck(it.p, deps); if (pre) { it.state = 'pending'; return { ok: false, code: 'precheck', msg: pre }; }
-        if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar (falta el permiso del servidor).' }; }
+        if (!it.p.confirm_token) { it.state = 'denied'; return { ok: false, msg: 'Esta propuesta no se puede confirmar. Pídela otra vez.' }; }
         var c;
-        try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, code: 'network', msg: 'Se cortó la conexión. Pulsa «Volver a intentar»: no se duplicará.' }; }
+        try { c = await deps.confirm(it.p, it.review || null); } catch (e) { it.state = 'pending'; return { ok: false, retry: true, code: 'network', msg: e && e.timeout ? MSG.slow : 'Se cortó la conexión. Toca «Reintentar»: no se duplicará.' }; }
         if (!c || !c.ok) { it.state = (c && (c.error === 'confirm_expired' || c.error === 'forbidden_role' || c.error === 'admin_only' || c.error === 'proposal_changed' || c.error === 'sin_control_stock')) ? 'denied' : 'pending';
-          return { ok: false, code: (c && c.error) || 'error', rows: c && Array.isArray(c.rows) ? c.rows : null, retry_after_s: c && c.retry_after_s || null, msg: (c && ['over_limit', 'sin_control_stock', 'stock_check_unavailable', 'product_missing'].indexOf(c.error) >= 0 && c.message) || ({ confirm_expired: 'La propuesta venció (5 min). Pídela otra vez.', forbidden_role: 'Solo el dueño puede hacer esto.', admin_only: 'El asistente es solo para el dueño.', proposal_changed: 'La propuesta cambió. Pídela otra vez.', review_required: 'Revisa este dato en las filas marcadas y vuelve a confirmar.', empty_after_review: 'Quitaste todas las filas. Pide la compra de nuevo.', owner_approval_required: 'Escribe tu PIN de dueño otra vez.', proposal_id_mismatch: 'La propuesta no coincide. Pídela otra vez.', rate_limited: 'Espera un momento y vuelve a intentar.', HTTP_429: 'Espera un momento y vuelve a intentar.' })[c && c.error] || 'El servidor no aceptó la confirmación.' }; }
+          return { ok: false, code: (c && c.error) || 'error', rows: c && Array.isArray(c.rows) ? c.rows : null, retry_after_s: c && c.retry_after_s || null, msg: friendlyError((c && c.error) || 'error', c && ['over_limit', 'sin_control_stock', 'stock_check_unavailable', 'product_missing'].indexOf(c.error) >= 0 ? c.message : null).msg }; }
         it.operationId = c.operation_id;
         // Se aplica la propuesta que el servidor verificó para ESTE token, nunca otra que esté en memoria.
         if (c.proposal) { if (c.proposal.id !== it.p.id || c.proposal.type !== it.p.type) { it.state = 'denied'; return { ok: false, msg: 'La propuesta no coincide. Pídela otra vez.' }; } it.applied = c.proposal; }
@@ -310,7 +345,7 @@
     return Math.max(0, over);
   }
 
-  var api = { padOverlap: padOverlap, tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  var api = { friendlyError: friendlyError, looksTechnical: looksTechnical, FRIENDLY: FRIENDLY, padOverlap: padOverlap, tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

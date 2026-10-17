@@ -83,7 +83,7 @@ test('UI: 403 assistant_off / forbidden_role / admin_only en chat o confirm quit
 });
 
 test('UI: 403 forbidden_document deja el panel abierto, quita las tarjetas de documento y baja el nivel guardado', () => {
-  const f = UI.slice(UI.indexOf('function levelLowered('), UI.indexOf('var ERRORS = {'));
+  const f = UI.slice(UI.indexOf('function levelLowered('), UI.indexOf('function errMsg('));
   assert.match(f, /access\.level === 'consultas_documentos'\) access\.level = 'consultas';/);
   assert.match(f, /\.na-asst-card\[data-type="documento"\]/); assert.match(f, /c\.remove\(\)/); assert.match(f, /doc\.querySelector\('\.na-asst-doc'\)/);
   assert.doesNotMatch(f, /closePanel|dropUi/); assert.match(f, /syncPanelForAccess\(\);/);
@@ -143,4 +143,17 @@ test('ping del cargador: corto (3 s, AbortController), en un momento libre DESPU
   loadCb(); assert.ok(idleUsed, 'se agenda en un momento libre'); assert.ok(signal, 'recién ahora el ping');
   const abort = timers.find((x) => x.ms === 3000); assert.ok(abort, 'corte a los 3 s'); abort.f(); await tick();
   assert.equal(signal.aborted, true); assert.deepEqual(added, [], 'empleado: con mala señal no se baja nada'); assert.equal(store.get('na_asistente_acc'), 'on', 'falla: queda lo que había');
+});
+
+// Pedido sin PIN (b): la tarjeta mantiene el resumen (producto, antes → después) y «Confirmar» de un toque; sin campo de PIN.
+test('tarjeta sin PIN: resumen antes → después, «Confirmar» de un toque que se apaga al instante, sin campo de PIN', () => {
+  const ui = readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
+  const card = ui.slice(ui.indexOf("if (p.type === 'precio') rows ="), ui.indexOf('Pedir de nuevo</button></div>'));
+  assert.ok(card.length > 500);
+  assert.match(card, /E\(p\.nombre\) \+ '<\/td><td class="r">' \+ soles\(p\.precio_actual\) \+ ' → <b>' \+ soles\(p\.precio_nuevo\)/, 'precio: producto, antes → después');
+  assert.match(card, /E\(p\.stock_actual\) \+ ' → <b>' \+ E\(p\.stock_despues\)/, 'ajuste: stock antes → después');
+  assert.match(card, /soles\(p\.costo_actual\) : 'sin costo'\) \+ ' → <b>' \+ soles\(p\.costo_nuevo\)/, 'costo: antes → después');
+  assert.match(card, /<span class="pill">Solo dueño<\/span>/); assert.match(card, /data-ok>Confirmar</);
+  assert.ok(!/type="password"|inputmode="numeric"|PIN/.test(card), 'sin campo de PIN en la tarjeta');
+  assert.match(ui, /if \(ok\) ok\.onclick = async function \(\) \{\n\s*if \(c\.dataset\.st !== 'pending'\) return;\n\s*ok\.disabled = true;/, 'un segundo toque no dispara otro envío');
 });

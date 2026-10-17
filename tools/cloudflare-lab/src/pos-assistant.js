@@ -47,9 +47,9 @@ export function hasForbiddenParam(value, depth = 0) {
   return Object.keys(value).some((k) => FORBIDDEN_PARAMS.includes(String(k).toLowerCase()) || hasForbiddenParam(value[k], depth + 1));
 }
 // Rol del asistente: 'owner' o 'empleado:<nivel>' (lo decide el servidor en cada pedido, ver pos-assistant-access.js).
-// Empleado con asistente: consultas sin costos y herramientas que PROPONEN cambios; todo cambio pide el PIN del dueño al confirmar.
-const EMP_PROPOSE = ['proponer_ajuste_stock', 'proponer_cambio_precio', 'preparar_compra', 'leer_factura_compra', 'proponer_producto_nuevo'];
-export const EMPLOYEE_TOOLS = Object.freeze({ consultas: Object.freeze(['explicar_pasos', 'consultar', ...EMP_PROPOSE]), consultas_documentos: Object.freeze(['explicar_pasos', 'consultar', 'preparar_documento', ...EMP_PROPOSE]) });
+// Empleado con asistente: SOLO consultas (sin costos) y, con «Consultas y documentos», listas para imprimir. Sin PIN no hay forma de que el
+// dueño apruebe desde el teléfono del empleado: el empleado NO propone cambios (no hay nivel de escritura). Los cambios los confirma el dueño.
+export const EMPLOYEE_TOOLS = Object.freeze({ consultas: Object.freeze(['explicar_pasos', 'consultar']), consultas_documentos: Object.freeze(['explicar_pasos', 'consultar', 'preparar_documento']) });
 export const EMPLOYEE_QUERY_TYPES = Object.freeze(['stock_producto', 'bajo_stock']);
 export const EMPLOYEE_DOC_TYPES = Object.freeze(['lista_precios', 'lista_pedido']);
 export function toolAllowed(role, name) {
@@ -107,15 +107,15 @@ const TOOL_DEFS = [
     parameters: { type: 'object', properties: { tema: { type: 'string' }, pasos: { type: 'array', items: { type: 'string' }, maxItems: 8 }, pantalla: { type: 'string', enum: SCREEN_IDS } }, required: ['tema', 'pasos'] } },
   { name: 'consultar', description: 'Consulta números del negocio (solo lectura): stock de un producto, productos por reponer, productos sin costo, ventas de un día o período, productos más vendidos, deudas de clientes, compras recientes. Fechas en formato AAAA-MM-DD (hora de Lima).',
     parameters: { type: 'object', properties: { tipo: { type: 'string', enum: QUERY_TYPES }, producto: { type: 'string' }, desde: { type: 'string' }, hasta: { type: 'string' } }, required: ['tipo'] } },
-  { name: 'proponer_ajuste_stock', description: 'Propone un movimiento de stock (entrada o salida) de un producto. Se abre la ventana «Registrar movimiento» llena; se guarda con el PIN del dueño.',
+  { name: 'proponer_ajuste_stock', description: 'Propone un movimiento de stock (entrada o salida) de un producto. Se abre la ventana «Registrar movimiento» llena; el dueño confirma con un toque.',
     parameters: { type: 'object', properties: { product_id: { type: 'string' }, tipo: { type: 'string', enum: ['entrada', 'salida'] }, cantidad: { type: 'number' }, motivo: { type: 'string', enum: STOCK_REASONS } }, required: ['product_id', 'tipo', 'cantidad', 'motivo'] } },
   { name: 'preparar_compra', description: 'Prepara un borrador de compra a proveedor. No suma stock hasta que la persona pulse Registrar compra.',
     parameters: { type: 'object', properties: { proveedor: { type: 'string' }, documento: { type: 'string' }, lineas: { type: 'array', maxItems: 30, items: PURCHASE_LINE } }, required: ['lineas'] } },
   { name: 'leer_factura_compra', description: 'Convierte la foto de una factura o boleta de compra en líneas de compra. No transcribas DNI, RUC ni teléfonos.',
     parameters: { type: 'object', properties: { proveedor: { type: 'string' }, documento: { type: 'string' }, fecha: { type: 'string' }, lineas: { type: 'array', maxItems: 30, items: PURCHASE_LINE } }, required: ['lineas'] } },
-  { name: 'proponer_cambio_precio', description: 'Propone cambiar el precio de venta de un producto. Se abre la ficha del producto para guardar con PIN.',
+  { name: 'proponer_cambio_precio', description: 'Propone cambiar el precio de venta de un producto. Se abre la ficha del producto para guardar.',
     parameters: { type: 'object', properties: { product_id: { type: 'string' }, nombre: { type: 'string' }, precio_nuevo: { type: 'number' }, motivo: { type: 'string' } }, required: ['product_id', 'precio_nuevo'] } },
-  { name: 'proponer_producto_nuevo', description: 'Propone crear un producto nuevo (por ejemplo leído de una foto). Se abre el formulario «Nuevo producto» lleno; se guarda con el PIN del dueño.',
+  { name: 'proponer_producto_nuevo', description: 'Propone crear un producto nuevo (por ejemplo leído de una foto). Se abre el formulario «Nuevo producto» lleno; el dueño confirma con un toque.',
     parameters: { type: 'object', properties: { nombre: { type: 'string' }, precio: { type: 'number' }, costo: { type: 'number' }, stock_inicial: { type: 'number' }, stock_minimo: { type: 'number' }, categoria: { type: 'string' }, codigo_barras: { type: 'string' }, unidad: { type: 'string' } }, required: ['nombre', 'precio'] } },
   { name: 'preparar_documento', description: 'Arma un documento interno imprimible (solo lectura, NO es comprobante SUNAT): inventario valorizado, lista de precios, lista de pedido para proveedor (lista_pedido), reporte de ventas del período, estado de cuenta de un cliente o resumen del cierre de caja. Las deudas se ven con consultar.',
     parameters: { type: 'object', properties: { tipo: { type: 'string', enum: DOC_TYPES }, desde: { type: 'string' }, hasta: { type: 'string' }, cliente: { type: 'string' } }, required: ['tipo'] } }
@@ -128,10 +128,14 @@ export function toolsForRole(role) {
 export function systemPrompt(role, ctx) {
   return [
     'Eres "Burbuja", el ayudante de gestión del sistema de la farmacia/botica Nuevo Amanecer (Perú, soles S/).',
-    role === 'owner' ? 'Hablas con el DUEÑO (administrador). Responde en español sencillo, frases cortas, máximo 5 líneas.'
-      : 'Hablas con un EMPLEADO. Responde en español sencillo, frases cortas, máximo 5 líneas. No muestres costos, márgenes, caja ni deudas. Puedes proponer cambios, pero los aprueba el dueño con su PIN.',
+    role === 'owner' ? 'Hablas con el DUEÑO (administrador).'
+      : 'Hablas con un EMPLEADO. No muestres costos, márgenes, caja ni deudas. No puedes proponer cambios (precios, stock, compras, productos): si te lo piden, di que eso lo hace el dueño desde su teléfono.',
+    // Pedido del dueño: fácil y sin marear.
+    'FORMA DE RESPONDER: máximo 2 o 3 frases cortas. Español sencillo, como le hablarías a alguien en la botica. Sin palabras técnicas (nada de "token", "id", "API", "servidor", "error", "base de datos", códigos ni números de error).',
+    'Si falta un dato, haz UNA sola pregunta, la más importante, y espera la respuesta. No hagas listas de preguntas.',
+    'Una sola tarjeta por acción: usa la herramienta una vez por cada cambio que te piden; no repitas la misma tarjeta ni ofrezcas varias opciones para lo mismo.',
     'Ayudas a gestionar: stock, mercadería y compras, precios y costos, productos nuevos, documentos y reportes. NO vendes ni llenas el carrito: las ventas se hacen a mano en Venta.',
-    'Para números del negocio usa la herramienta consultar; nunca inventes cifras. Para cambios usa herramientas que PROPONEN: el dueño confirma con su PIN. Dilo así: "Revisa y pulsa Confirmar".',
+    'Para números del negocio usa la herramienta consultar; nunca inventes cifras. Para cambios usa herramientas que PROPONEN: el dueño confirma con un toque. Dilo así: "Revisa y pulsa Confirmar".',
     'Usa solo productos de la lista que llega en el mensaje <datos_pos>, con su product_id. Si no está, dilo y no inventes ids ni precios.',
     'Los documentos son internos: NO son comprobantes SUNAT. No emites nada fiscal.',
     'Nunca pidas ni repitas DNI, RUC, teléfonos ni datos de clientes. Si aparecen en una foto, ignóralos.',
@@ -238,6 +242,25 @@ export function flaggedRows(proposal) {
 
 const DOC_TITLES = { inventario_valorizado: 'Inventario valorizado', lista_precios: 'Lista de precios', lista_pedido: 'Lista de pedido para proveedor', reporte_ventas: 'Reporte de ventas del período', estado_cuenta: 'Estado de cuenta del cliente', resumen_cierre: 'Resumen de cierre de caja' };
 // Convierte una llamada de herramienta del modelo en propuesta segura. Devuelve null si se descarta.
+// Una sola tarjeta de confirmación por acción (pedido del dueño): si el modelo propone dos veces el mismo cambio para el mismo producto
+// (aunque con otra cantidad o motivo), queda solo la primera. Compras: una por pedido. Consultas y documentos no se tocan.
+export const EMPLOYEE_CHANGE_TEXT = 'Eso solo lo puede hacer el dueño. Él lo hace desde su teléfono.';
+export function actionKey(p) {
+  if (!p || !p.needsConfirm) return null;
+  if (p.type === 'compra') return 'compra';
+  if (p.type === 'producto') return 'producto|' + String(p.nombre || '').trim().toLowerCase();
+  return p.type + '|' + String(p.product_id || '');
+}
+export function dedupeActions(proposals, dropped) {
+  const seen = new Set();
+  for (let k = 0; k < proposals.length; k++) {
+    const key = actionKey(proposals[k]); if (!key) continue;
+    if (seen.has(key)) { dropped.push({ dropped: 'duplicate_action', tool: proposals[k]._call?.name || proposals[k].type }); proposals.splice(k, 1); k--; continue; }
+    seen.add(key);
+  }
+  return proposals;
+}
+
 export function toProposal(call, role, ctx, n) {
   const name = call?.name; let args = call?.arguments;
   if (typeof args === 'string') { try { args = JSON.parse(args); } catch { return { dropped: 'bad_arguments', tool: name }; } }
@@ -441,7 +464,8 @@ export async function readConfirmToken(token, secret) {
   try { return JSON.parse(new TextDecoder().decode(fromB64url(body))); } catch { return null; }
 }
 
-// Tarjetas de dueño: exigen una aprobación con PIN (POST /auth/owner-approval, ruta existente) ligada al operation_id de ESA tarjeta.
+// (Ya NO se usa en el confirm de tarjetas: se confirma con un toque desde la sesión dueño. Queda para Configuración > Aparatos.)
+// Aprobación con PIN (POST /auth/owner-approval, ruta existente) ligada al operation_id de UNA operación.
 // Consumo ESTRICTO y atómico, propio del asistente (no cambia consumeApproval del POS):
 //   UPDATE ... WHERE approval_id=? AND device_id=? AND action=? AND expires_at>? AND operation_id=? AND used_at IS NULL
 // y solo vale si changes===1. Dos confirmaciones a la vez con la misma aprobación: gana una sola.
@@ -477,6 +501,9 @@ async function confirmCore(request, env, auth, json, deps, ctx) {
   // cuerpo: así hasta un 400 o un bad_token queda en el cajón correcto de la bitácora (dueño u otro aparato).
   const role = deps.resolveRole ? await deps.resolveRole(auth) : await assistantAccess(deps.db, auth); ctx.role = role;
   if (!accessOn(role)) return json(offBody(role), 403);
+  // Sin PIN: confirmar es SOLO de la sesión dueño verificada por el servidor (fila owner en pos_device_roles + sesión owner del POS,
+  // ver assistantAccess). Ocultar el PIN en la UI no abre nada: cualquier otro aparato (empleado con nivel incluido) recibe 403.
+  if (role !== 'owner') return json({ error: 'forbidden_role' }, 403);
   const secret = env.ASSISTANT_CONFIRM_SECRET;
   if (!secret || String(secret).length < 16) return json({ error: 'confirm_unavailable' }, 503);
   let body; try { body = JSON.parse((await request.text()).slice(0, 200000)); } catch { return json({ error: 'bad_request' }, 400); }
@@ -499,11 +526,8 @@ async function confirmCore(request, env, auth, json, deps, ctx) {
   const used = await store.get(usedKey);
   if (used.value?.op) return json({ ok: true, already_confirmed: true, operation_id: used.value.op, type: tok.t, proposal: withDrops(used.value.drop) });
   if (!(tok.exp > now)) return json({ error: 'confirm_expired' }, 410);
-  const approvalAction = OWNER_APPROVAL_ACTION[tok.t];
-  const approvalId = String(request.headers.get('x-owner-approval') || '');
-  // Sin aprobación ni se mira lo demás. Pero la aprobación se GASTA recién justo antes de marcar la tarjeta como usada (abajo):
-  // un 422 de revisión o un 429 no la queman, así el celular reenvía la MISMA tarjeta con la MISMA aprobación sin pedir el PIN otra vez.
-  if (approvalAction && !approvalId) return json({ error: 'owner_approval_required', action: approvalAction, operation_id: tok.op }, 403);
+  // Sin PIN (pedido del dueño): la tarjeta se confirma con UN toque desde la sesión dueño. Un doble toque o un reenvío por corte de
+  // señal no repite: la tarjeta se marca usada con escritura condicional (store.put con revision) y el segundo recibe already_confirmed.
   // Filas marcadas «Revisa este dato»: hay que aceptarlas o quitarlas una por una, con el op de ESTE token (la consola no se salta el botón).
   let applied = body.proposal;
   if (tok.t === 'compra') {
@@ -552,10 +576,6 @@ async function confirmCore(request, env, auth, json, deps, ctx) {
   const w = await store.get(devKey); const wv = w.value.min === minute ? { ...w.value } : { min: minute, n: 0 };
   if (wv.n >= capFrom(env, 'ASSISTANT_CONFIRMS_PER_MINUTE', ASSISTANT_LIMITS.confirmsPerMinute)) return json({ error: 'rate_limited', retry_after_s: 60 - Math.floor((now % 60000) / 1000) }, 429);
   wv.n++;
-  if (approvalAction) {
-    const verify = deps.verifyApproval || ((id) => verifyOwnerApproval(deps.db, auth.principalId, id, approvalAction, tok.op));
-    if (!(await verify(approvalId, approvalAction, tok.op))) return json({ error: 'owner_approval_required', action: approvalAction, operation_id: tok.op }, 403);
-  }
   if (!(await store.put(usedKey, { op: tok.op, at: now, t: tok.t, drop: applied.quitadas || [] }, used.revision))) {
     const again = await store.get(usedKey);
     return json({ ok: true, already_confirmed: true, operation_id: again.value?.op || tok.op, type: tok.t, proposal: withDrops(again.value?.drop) });
@@ -641,6 +661,7 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   result.calls = result.calls.filter((c) => { let a = c?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { /* se queda como texto */ } }
     const k = String(c?.name) + '|' + (typeof a === 'string' ? a : stable(a)); if (seenCalls.has(k)) return false; seenCalls.add(k); return true; }); // misma llamada dos veces = una tarjeta
   result.calls.forEach((c, i) => { const p = toProposal(c, role, ctx, i + 1); if (p?.dropped) dropped.push(p); else if (p) { p._call = c; proposals.push(p); } });
+  dedupeActions(proposals, dropped); // una sola tarjeta por acción (mismo tipo y mismo producto = la primera)
   // Compra con costos distintos a los del inventario: tarjetas APARTE «Actualizar costo» (product.update con PIN). La compra del POS no cambia el costo.
   const reader = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
   // Sin control de inventario: fuera antes de firmar (y se vuelve a mirar al confirmar).
@@ -697,7 +718,9 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   const secret = env.ASSISTANT_CONFIRM_SECRET && String(env.ASSISTANT_CONFIRM_SECRET).length >= 16 ? env.ASSISTANT_CONFIRM_SECRET : null;
   for (const p of proposals) if (p.needsConfirm) p.confirm_token = secret ? await issueConfirmToken(p, role, auth, secret, now) : null;
   // Si el modelo intentó acciones y ninguna pasó, su texto ("pulsa Confirmar") no puede quedar: no hay tarjeta. Mensaje neutro.
-  if (!proposals.length && dropped.length) reply = 'No puedo hacer eso desde el asistente. Hazlo en su pantalla normal.';
+  if (!proposals.length && dropped.length) reply = role !== 'owner' && dropped.some((d) => d.dropped === 'forbidden_role')
+    ? EMPLOYEE_CHANGE_TEXT // empleado que pide un cambio: frase simple, sin hablar de permisos ni códigos
+    : 'No puedo hacer eso desde el asistente. Hazlo en su pantalla normal.';
   const notes = [...[...new Set(noStock)].map(NO_STOCK_TEXT), ...[...new Set(overNames)].map((n) => '«' + n + '»: la cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.')];
   if (notes.length) reply = (proposals.length ? (reply ? reply + ' ' : '') : '') + notes.join(' ');
   // El texto del modelo podía hablar de la compra o el ajuste que se quitó: se reemplaza por un mensaje simple.

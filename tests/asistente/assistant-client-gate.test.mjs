@@ -236,12 +236,12 @@ test('request: un servidor que no responde se aborta a tiempo (AbortController) 
   assert.ok(C.TIMEOUTS.confirm >= 10000 && C.TIMEOUTS.confirm <= 15000, 'confirm 10-15 s por intento');
 });
 
-test('confirm que se corta por tiempo: «Pulsa Confirmar otra vez», sigue pendiente y el reintento usa el MISMO token', async () => {
+test('confirm que se corta por tiempo: «Reintentar», sigue pendiente y el reintento usa el MISMO token', async () => {
   const tokens = []; let n = 0;
   const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); if (++n === 1) { const e = new Error('timeout'); e.timeout = true; throw e; } return { ok: true, operation_id: 'AST-9', proposal: p }; } });
   const gate = C.createGate(d); const k = gate.add({ ...ajuste, id: 'u-t', confirm_token: 'tok-1' });
   const r1 = await gate.execute(k, { confirmed: true });
-  assert.equal(r1.ok, false); assert.match(r1.msg, /Volver a intentar/); assert.equal(C.confirmFailureView(r1).button, 'Volver a intentar'); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.stock, []);
+  assert.equal(r1.ok, false); assert.match(r1.msg, /Reintentar/); assert.equal(C.confirmFailureView(r1).button, 'Reintentar'); assert.equal(gate.state(k), 'pending'); assert.deepEqual(calls.stock, []);
   const r2 = await gate.execute(k, { confirmed: true });
   assert.equal(r2.ok, true); assert.deepEqual(tokens, ['tok-1', 'tok-1']); assert.equal(calls.stock.length, 1);
 });
@@ -255,10 +255,14 @@ test('contexto por mensaje: coincidencias primero y tope de ~2 KB', () => {
   assert.ok(c.products.length <= 25);
 });
 
-test('niveles en el aparato: empleado con nivel puede pedir tarjetas (el PIN del dueño lo exige el servidor); costos y documentos de dueño no', () => {
+test('niveles en el aparato: el empleado NO ejecuta cambios (sin PIN, solo el dueño confirma); consultas sí; documentos según nivel', () => {
   const lvl = (level) => ({ role: 'empleado', level, isOwner: () => false });
   assert.equal(C.canExecute(lvl('off'), ajuste).ok, false);
-  assert.equal(C.canExecute(lvl('consultas'), ajuste).ok, true);
+  for (const L of ['consultas', 'consultas_documentos']) for (const p of [ajuste, { type: 'precio', needsConfirm: true }, { type: 'compra' }, { type: 'producto' }]) {
+    const r = C.canExecute(lvl(L), p); assert.equal(r.ok, false, L + ' ' + p.type); assert.match(r.msg, /dueño/);
+  }
+  assert.equal(C.canExecute(lvl('consultas'), { type: 'consulta' }).ok, true);
+  assert.equal(C.canExecute({ role: 'owner', isOwner: () => true }, ajuste).ok, true);
   assert.equal(C.canExecute(lvl('consultas'), { type: 'costo' }).ok, false);
   assert.equal(C.canExecute(lvl('consultas'), { type: 'documento', tipo: 'lista_precios' }).ok, false, 'Solo consultas: sin documentos');
   assert.equal(C.canExecute(lvl('consultas_documentos'), { type: 'documento', tipo: 'lista_precios' }).ok, true);
@@ -273,11 +277,11 @@ test('lista de pedido: la del empleado usa SOLO las filas del servidor (sin cost
   assert.ok(own.html.includes('S/ 3.33') && /Inversi/.test(own.html) && own.html.includes('S/ 29.97'));
 });
 
-test('tarjeta nunca trabada: 422 review_required marca filas, 429 «Volver a intentar», sin aprobación vuelve a pedir PIN; siempre «Pedir de nuevo»', async () => {
+test('tarjeta nunca trabada: 422 review_required marca filas, 429 «Reintentar», 503 «Confirmar» otra vez (sin PIN); siempre «Pedir de nuevo»', async () => {
   const answers = [
     { ok: false, error: 'review_required', rows: [0, 2], operation_id: 'AST-R' },
     { ok: false, error: 'rate_limited', retry_after_s: 12 },
-    { ok: false, error: 'owner_approval_required' },
+    { ok: false, error: 'stock_check_unavailable' },
     { ok: true, operation_id: 'AST-R' },
   ];
   const tokens = []; const { d, calls } = deps(owner, { confirm: async (p) => { tokens.push(p.confirm_token); return answers.shift(); } });
@@ -285,15 +289,17 @@ test('tarjeta nunca trabada: 422 review_required marca filas, 429 «Volver a int
   const r1 = await g.execute(k, { confirmed: true });
   assert.equal(r1.ok, false); assert.equal(r1.code, 'review_required'); assert.deepEqual(r1.rows, [0, 2]); assert.equal(g.state(k), 'pending');
   const v1 = C.confirmFailureView(r1);
-  assert.deepEqual([v1.kind, v1.rows, v1.button, v1.keepApproval, v1.again], ['review', [0, 2], 'Confirmar', true, true]);
+  assert.deepEqual([v1.kind, v1.rows, v1.button, v1.again], ['review', [0, 2], 'Confirmar', true]);
   const r2 = await g.execute(k, { confirmed: true });
   const v2 = C.confirmFailureView(r2);
   assert.equal(r2.code, 'rate_limited'); assert.equal(g.state(k), 'pending');
-  assert.equal(v2.msg, 'Espera un momento y vuelve a intentar.'); assert.equal(v2.button, 'Volver a intentar'); assert.equal(v2.keepApproval, true); assert.equal(v2.again, true);
+  assert.equal(v2.msg, 'Espera un momento e intenta de nuevo.'); assert.equal(v2.button, 'Reintentar'); assert.equal(v2.again, true);
   assert.equal(C.confirmFailureView({ ok: false, code: 'HTTP_429' }).kind, 'wait');
   const r3 = await g.execute(k, { confirmed: true });
   const v3 = C.confirmFailureView(r3);
-  assert.equal(v3.kind, 'pin'); assert.equal(v3.keepApproval, false, 'la aprobación se descarta y se pide el PIN otra vez'); assert.equal(g.state(k), 'pending');
+  assert.equal(v3.kind, 'other'); assert.equal(v3.button, 'Confirmar'); assert.equal(v3.again, true); assert.equal(g.state(k), 'pending');
+  assert.equal(C.confirmFailureView({ ok: false, code: 'owner_approval_required' }).kind, 'other', 'ya no existe la vista «PIN»');
+  for (const k2 of ['review_required', 'over_limit', 'rate_limited', 'network']) assert.ok(!('keepApproval' in C.confirmFailureView({ ok: false, code: k2 })), k2);
   assert.equal(calls.stock.length, 0, 'nada se abrió mientras el servidor no aceptó');
   const r4 = await g.execute(k, { confirmed: true });
   assert.equal(r4.ok, true); assert.equal(calls.stock.length, 1);
@@ -314,16 +320,18 @@ test('reintentos automáticos con tope; reenvío idempotente: already_confirmed 
   assert.equal(r3.ok, true); assert.match(r3.msg, /No se repitió/); assert.equal(calls.stock.length, 1); assert.equal(n, 2);
 });
 
-test('pantalla de la tarjeta: «Pedir de nuevo», reenvío sin PIN con aprobación vigente y tope de reintentos en el envío', async () => {
+test('pantalla de la tarjeta: «Pedir de nuevo», sin PIN ni cabecera de aprobación, tope de reintentos en el envío', async () => {
   const fs = await import('node:fs');
   const ui = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
   assert.match(ui, /data-again hidden>Pedir de nuevo</);
   assert.match(ui, /C\.confirmFailureView\(r\)/);
-  assert.match(ui, /if \(pinEl && !approvals\[p\.id\]\)/, 'con aprobación vigente no vuelve a pedir el PIN');
-  assert.match(ui, /if \(!f\.keepApproval\) delete approvals\[p\.id\]/);
+  assert.ok(!/approvals|pinEl|verifyOwnerPin/.test(ui), 'la tarjeta no pide PIN');
+  const cr = ui.slice(ui.indexOf('async function confirmRemote'), ui.indexOf('// ---------- Funciones existentes del POS'));
+  assert.ok(cr.length > 100 && !/x-owner-approval/.test(cr), 'confirm no manda aprobación (Configuración sí la usa, con PIN)');
+  assert.match(ui, /post\('\/auth\/assistant\/confirm', body, null, C\.TIMEOUTS\.confirm\)/);
   assert.match(ui, /t\.textContent = limit \? 'Fuera del límite: quita la fila o corrige la factura' : 'Revisa este dato'/);
   assert.match(ui, /i < \(C\.CONFIRM_ATTEMPTS \|\| 2\)/);
-  assert.match(ui, /gate\.cancel\(key\); delete approvals\[p\.id\];[^\n]*\n[^\n]*\n\s*res\.textContent = 'Pidiendo una tarjeta nueva…'; send\(prompt\)/);
+  assert.match(ui, /gate\.cancel\(key\); c\.dataset\.st = 'cancelled';[^\n]*\n[^\n]*\n\s*res\.textContent = 'Pidiendo una tarjeta nueva…'; send\(prompt\)/);
 });
 
 test('revisión visual Bot 4: SVG en vez de emoji, ids de SVG únicos, Venció con «Pedir de nuevo», puntos de Pensando, Quitar apagado, espacio bajo la burbuja', async () => {
@@ -332,8 +340,8 @@ test('revisión visual Bot 4: SVG en vez de emoji, ids de SVG únicos, Venció c
   const css = fs.readFileSync(new URL('../../POS/css/asistente.css', import.meta.url), 'utf8');
   assert.ok(!/📷/.test(ui), 'sin emoji de cámara'); assert.match(ui, /aria-label="Enviar foto"><svg /);
   assert.ok(!/id="naAsst(Iris|EyeL|EyeR)/.test(ui), 'sin ids fijos'); assert.match(ui, /var u = 'naA' \+ \(\+\+charSeq\)/);
-  assert.match(ui, /function expire\(\)[\s\S]{0,400}ok\.textContent = 'Venció'; ok\.disabled = true;[\s\S]{0,200}pinEl\.disabled = true;[\s\S]{0,120}again\.hidden = false/);
-  assert.match(ui, /if \(r\.code === 'confirm_expired'\) \{ delete approvals\[p\.id\]; expire\(\);/);
+  assert.match(ui, /function expire\(\)[\s\S]{0,400}ok\.textContent = 'Venció'; ok\.disabled = true;[\s\S]{0,120}again\.hidden = false/);
+  assert.match(ui, /if \(r\.code === 'confirm_expired'\) \{ expire\(\);/);
   assert.ok(!/data-st="expired"\] \.na-asst-ok,[^{]*\{display:none/.test(css), 'vencida: botones a la vista, apagados');
   assert.match(ui, /na-asst-dots/); assert.match(css, /@keyframes na-asst-dot/);
   assert.match(ui, /d\.owners\.length <= 1 \? '<button type="button" class="na-asst-quitar" data-quitar="1" disabled/);

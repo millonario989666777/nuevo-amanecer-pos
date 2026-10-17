@@ -71,7 +71,7 @@ test('si la segunda llamada falla, la respuesta usa el texto de la consulta (no 
   assert.equal(r.status, 200); assert.match(r.body.reply, /costo/);
 });
 
-test('foto de factura: compara costo actual y de factura; «Actualizar costo» es tarjeta aparte con PIN (product.update)', async () => {
+test('foto de factura: compara costo actual y de factura; «Actualizar costo» es tarjeta aparte; la confirma solo la sesión dueño, de un toque', async () => {
   const lines = [{ product_id: 'P1', cantidad: 10, costo_unitario: 0.25 }, { product_id: 'P2', cantidad: 5, costo_unitario: 0.3 }, { nombre: 'Nuevo', cantidad: 1, costo_unitario: 1 }];
   const cap = [];
   const r = await chat({ text: 'lee', image: 'data:image/jpeg;base64,AAAA' }, { fetch: scripted([{ content: '', tool_calls: [tool('leer_factura_compra', { proveedor: 'Dist', lineas: lines })] }], cap) }, env({ DEEPSEEK_API_KEY: 'k' }));
@@ -81,19 +81,21 @@ test('foto de factura: compara costo actual y de factura; «Actualizar costo» e
   assert.equal(r.body.proposals.length, 2, 'P2 sin cambio de costo y la fila nueva no generan tarjeta');
   const tok = await readConfirmToken(costo.confirm_token, SECRET); assert.equal(tok.t, 'costo');
   const { confirm_token, ...clean } = costo;
-  const c = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal: clean }) }), env(), OWNER, json, { store: createMemoryUsageStore(), resolveRole: async () => 'owner', verifyApproval: async () => true });
-  const body = await c.json(); assert.equal(c.status, 403); assert.equal(body.action, 'product.update');
+  const seen = []; const store = createMemoryUsageStore();
+  const send = (role) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal: clean }) }), env(), OWNER, json, { store, resolveRole: async () => role, verifyApproval: async (id) => { seen.push(id); return true; } });
+  const emp = await send('empleado:consultas_documentos'); assert.equal(emp.status, 403); assert.equal((await emp.json()).error, 'forbidden_role');
+  const c = await send('owner'); assert.equal(c.status, 200); assert.deepEqual(seen, [], 'sin PIN: no se pide aprobación');
   assert.equal(costProposals({ lineas: [{ product_id: 'P1', costo_unitario: 1, costo_actual: 1 }] }).length, 0);
 });
 
-test('producto nuevo: la tarjeta exige aprobación product.create del dueño antes de abrir el formulario', async () => {
+test('producto nuevo: sin PIN, la sesión dueño confirma de un toque; empleado o sin rol, 403', async () => {
   const r = await chat({ text: 'crea el producto nuevo Jabón inventado a 3.50 costo 2' });
   const p = r.body.proposals[0]; assert.equal(p.type, 'producto');
   const { confirm_token, ...clean } = p; const seen = [];
-  const send = (h) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: h, body: JSON.stringify({ token: confirm_token, proposal: clean }) }), env(), OWNER, json, { store: createMemoryUsageStore(), resolveRole: async () => 'owner', verifyApproval: async (id) => { seen.push(id); return id === 'apr-ok'; } });
-  const no = await send({}); assert.equal(no.status, 403); assert.equal((await no.json()).action, 'product.create');
-  const ok = await send({ 'x-owner-approval': 'apr-ok' }); assert.equal(ok.status, 200); assert.deepEqual(seen, ['apr-ok']);
-  const bad = await send({ 'x-owner-approval': 'apr-de-precio' }); assert.equal(bad.status, 403);
+  const send = (role) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal: clean }) }), env(), OWNER, json, { store: createMemoryUsageStore(), resolveRole: async () => role, verifyApproval: async (id) => { seen.push(id); return true; } });
+  for (const role of ['empleado:consultas', 'empleado:consultas_documentos']) { const r = await send(role); assert.equal(r.status, 403); assert.equal((await r.json()).error, 'forbidden_role'); }
+  for (const role of ['sin_rol', 'empleado:off']) { const r = await send(role); assert.equal(r.status, 403); assert.equal((await r.json()).error, 'assistant_off'); }
+  const ok = await send('owner'); assert.equal(ok.status, 200); assert.deepEqual(seen, []);
 });
 
 test('preparar_documento: propuesta de solo lectura, NO fiscal, 6 tipos acordados', async () => {

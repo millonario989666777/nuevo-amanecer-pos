@@ -155,9 +155,9 @@ async function proposalFor(auth, text, store) {
   const { body } = await chat({ text }, { auth, store });
   return body.proposals[0];
 }
-// Por defecto, las tarjetas de dueño llevan una aprobación válida (se prueba aparte en «aprobación del dueño»).
+// Sin PIN: por defecto NO se manda cabecera de aprobación (el servidor ya no la pide; la sesión dueño basta).
 const okApproval = async () => true;
-async function confirm(p, { auth = OWNER, store, e = env(), now, proposal, approval = 'apr-test', verifyApproval = okApproval, db } = {}) {
+async function confirm(p, { auth = OWNER, store, e = env(), now, proposal, approval = null, verifyApproval = okApproval, db } = {}) {
   const clean = { ...(proposal || p) }; delete clean.confirm_token;
   const r0 = req({ token: p.confirm_token, proposal: clean }, '/auth/assistant/confirm'); if (approval) r0.headers.set('x-owner-approval', approval);
   const r = await assistantConfirmRoute(r0, e, auth, json, { store, now, resolveRole: roleOf(auth), verifyApproval: db ? undefined : verifyApproval, db, reader: READER });
@@ -245,37 +245,27 @@ test('aprobación estricta: SQL literal operation_id=? AND used_at IS NULL con c
   assert.equal(par.filter((r) => r.status === 200 && !r.body.already_confirmed).length, 1, JSON.stringify(par.map((r) => r.status)));
 });
 
-test('aprobación del dueño: tarjeta de precio exige PIN aprobado ligado a SU operation_id y se gasta una vez', async () => {
+test('sin PIN: la sesión dueño confirma precio y ajuste con un toque; una cabecera de aprobación vieja se ignora y no se gasta; empleado 403', async () => {
   const store = createMemoryUsageStore();
   const p = await proposalFor(OWNER, 'cambia el precio de paracetamol a 0.9', store); assert.equal(p.type, 'precio');
   const op = (await readConfirmToken(p.confirm_token, SECRET)).op;
   const later = new Date(Date.now() + 120000).toISOString();
-  const rows = [
-    { approval_id: 'apr-buena', device_id: OWNER.principalId, action: 'product.update', operation_id: op, expires_at: later, used_at: null },
-    { approval_id: 'apr-otra-op', device_id: OWNER.principalId, action: 'product.update', operation_id: 'AST-otra', expires_at: later, used_at: null },
-    { approval_id: 'apr-otra-accion', device_id: OWNER.principalId, action: 'inventory.adjust', operation_id: op, expires_at: later, used_at: null },
-    { approval_id: 'apr-otro-aparato', device_id: 'session:otro', action: 'product.update', operation_id: op, expires_at: later, used_at: null }
-  ];
+  const rows = [{ approval_id: 'apr-buena', device_id: OWNER.principalId, action: 'product.update', operation_id: op, expires_at: later, used_at: null }];
   const db = approvalsDb(rows);
-  // Dueño por consola, sin PIN: rechazado y se le dice qué operation_id aprobar.
-  const sin = await confirm(p, { store, approval: null, db });
-  assert.equal(sin.status, 403); assert.equal(sin.body.error, 'owner_approval_required'); assert.equal(sin.body.operation_id, op); assert.equal(sin.body.action, 'product.update');
-  for (const bad of ['apr-otra-op', 'apr-otra-accion', 'apr-otro-aparato', 'apr-inventada']) assert.equal((await confirm(p, { store, approval: bad, db })).status, 403, bad);
-  const ok = await confirm(p, { store, approval: 'apr-buena', db });
-  assert.equal(ok.status, 200); assert.equal(ok.body.operation_id, op);
-  assert.ok(rows[0].used_at, 'la aprobación quedó gastada (consumeApproval)');
-  // Reenvío de la MISMA tarjeta con la misma aprobación: mismo operation_id, nada nuevo.
-  const again = await confirm(p, { store, approval: 'apr-buena', db });
-  assert.equal(again.body.already_confirmed, true); assert.equal(again.body.operation_id, op);
-  // La aprobación ya gastada no sirve para otra tarjeta.
-  const p2 = await proposalFor(OWNER, 'cambia el precio de paracetamol a 0.9', store);
-  assert.equal((await confirm(p2, { store, approval: 'apr-buena', db })).status, 403);
-  // Ajuste de stock: también pide PIN, ligado a inventory.adjust (la aprobación de precio no sirve).
-  const v = await proposalFor(OWNER, 'merma de 1 paracetamol', store); const vop = (await readConfirmToken(v.confirm_token, SECRET)).op;
-  const sinV = await confirm(v, { store, approval: null, db }); assert.equal(sinV.status, 403); assert.equal(sinV.body.action, 'inventory.adjust');
-  rows.push({ approval_id: 'apr-ajuste', device_id: OWNER.principalId, action: 'inventory.adjust', operation_id: vop, expires_at: later, used_at: null });
-  assert.equal((await confirm(v, { store, approval: 'apr-ajuste', db })).status, 200);
-  // Sin base de datos: falla cerrado.
+  // Empleado (aunque tenga nivel) con la tarjeta válida del dueño: 403 forbidden_role y la tarjeta NO queda marcada.
+  const emp = await assistantConfirmRoute((() => { const { confirm_token, ...clean } = p; return req({ token: confirm_token, proposal: clean }, '/auth/assistant/confirm'); })(), env(), OWNER, json,
+    { store, resolveRole: async () => 'empleado:consultas_documentos', db, reader: READER });
+  assert.equal(emp.status, 403); assert.equal((await emp.json()).error, 'forbidden_role');
+  // Dueño sin cabecera: pasa.
+  const ok = await confirm(p, { store, approval: null, db });
+  assert.equal(ok.status, 200); assert.equal(ok.body.operation_id, op); assert.equal(ok.body.already_confirmed, undefined, 'el rechazo del empleado no la había marcado');
+  assert.equal(rows[0].used_at, null, 'sin PIN no se gasta ninguna aprobación');
+  // Doble toque / reenvío (con o sin cabecera vieja): mismo operation_id, nada nuevo.
+  for (const approval of [null, 'apr-buena', 'apr-inventada']) { const again = await confirm(p, { store, approval, db }); assert.equal(again.status, 200); assert.equal(again.body.already_confirmed, true); assert.equal(again.body.operation_id, op); }
+  // Ajuste de stock: igual, un toque.
+  const v = await proposalFor(OWNER, 'merma de 1 paracetamol', store);
+  assert.equal((await confirm(v, { store, approval: null, db })).status, 200);
+  // verifyOwnerApproval sigue para Configuración (niveles y registro del teléfono): sin base falla cerrado.
   assert.equal(await verifyOwnerApproval(null, OWNER.principalId, 'apr-buena', 'product.update', op), false);
 });
 
@@ -384,30 +374,31 @@ test('chat devuelve server_now para que la cuenta regresiva use la hora del serv
 });
 
 // P1 (Bot 5, R09/R18/R20/R21): la aprobación se gasta justo antes de marcar la tarjeta usada; 422 y 429 no la queman.
-test('P1: 422 review_required, 422 empty_after_review y 429 NO gastan la aprobación; el reenvío con la MISMA aprobación pasa', async () => {
+test('P1: 422 review_required, 422 empty_after_review y 429 NO marcan la tarjeta; el reenvío (un toque) pasa', async () => {
   const store = createMemoryUsageStore();
   const { body } = await chat({ text: 'lee la factura' }, { store, e: env({ DEEPSEEK_API_KEY: 'sk-test-local' }), fetch: deepseekStub({ content: '', tool_calls: [
     tool('leer_factura_compra', { proveedor: 'Distribuidora inventada', lineas: [{ product_id: 'P1', cantidad: 9999, costo_unitario: 99999 }, { product_id: 'P2', cantidad: 10, costo_unitario: 0.3 }] })] }) });
   const p = body.proposals[0]; const op = (await readConfirmToken(p.confirm_token, SECRET)).op;
-  const rows = [{ approval_id: 'apr-1', device_id: OWNER.principalId, action: 'inventory.adjust', operation_id: op, expires_at: '2999-01-01T00:00:00.000Z', used_at: null }];
-  const db = approvalsDb(rows);
-  const send = async (review, now) => { const { confirm_token, ...clean } = p; const r0 = req({ token: confirm_token, proposal: clean, review }, '/auth/assistant/confirm'); r0.headers.set('x-owner-approval', 'apr-1');
-    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { reader: READER, store, now, resolveRole: roleOf(OWNER), db }); return { status: r.status, body: await r.json() }; };
-  assert.equal((await send(undefined)).status, 422); assert.equal(rows[0].used_at, null, '422 review_required no gasta');
-  assert.equal((await send({ op, drop: [0, 1] })).body.error, 'empty_after_review'); assert.equal(rows[0].used_at, null, '422 empty_after_review no gasta');
+  const send = async (review, now) => { const { confirm_token, ...clean } = p; const r0 = req({ token: confirm_token, proposal: clean, review }, '/auth/assistant/confirm');
+    const r = await assistantConfirmRoute(r0, env(), OWNER, json, { reader: READER, store, now, resolveRole: roleOf(OWNER) }); return { status: r.status, body: await r.json() }; };
+  assert.equal((await send(undefined)).status, 422);
+  assert.equal((await send({ op, drop: [0, 1] })).body.error, 'empty_after_review');
   // 429: se llena el cupo de confirmaciones de este minuto con otras tarjetas
   const now = () => Date.UTC(2026, 9, 16, 15, 0, 1);
   for (let i = 0; i < 5; i++) { const q = await proposalFor(OWNER, 'merma de 1 paracetamol', store); assert.equal((await confirm(q, { store, now })).status, 200); }
-  const lim = await send({ op, drop: [0] }, now); assert.equal(lim.status, 429); assert.equal(rows[0].used_at, null, '429 no gasta');
-  const ok = await send({ op, drop: [0] }, () => now() + 61000); assert.equal(ok.status, 200, JSON.stringify(ok.body)); assert.ok(rows[0].used_at, 'recién aquí se gasta');
+  const lim = await send({ op, drop: [0] }, now); assert.equal(lim.status, 429);
+  const ok = await send({ op, drop: [0] }, () => now() + 61000); assert.equal(ok.status, 200, JSON.stringify(ok.body)); assert.equal(ok.body.already_confirmed, undefined, 'los rechazos no la marcaron');
   const again = await send({ op, drop: [0] }, () => now() + 62000); assert.equal(again.body.already_confirmed, true); assert.equal(again.body.operation_id, op);
 });
 
-test('P1: sin cabecera de aprobación 403 enseguida; aprobación inválida 403 sin marcar la tarjeta (se puede reintentar con otra)', async () => {
+test('sin PIN: sin sesión dueño sigue bloqueado (sin rol, empleado apagado, empleado con nivel); la tarjeta queda libre para el dueño', async () => {
   const store = createMemoryUsageStore();
-  const p = await proposalFor(OWNER, 'cambia el precio de paracetamol a 0.9', store); const op = (await readConfirmToken(p.confirm_token, SECRET)).op;
-  assert.equal((await confirm(p, { store, approval: null })).body.error, 'owner_approval_required');
-  const rows = [{ approval_id: 'apr-ok', device_id: OWNER.principalId, action: 'product.update', operation_id: op, expires_at: '2999-01-01T00:00:00.000Z', used_at: null }];
-  const bad = await confirm(p, { store, approval: 'apr-mala', db: approvalsDb(rows) }); assert.equal(bad.status, 403);
-  const good = await confirm(p, { store, approval: 'apr-ok', db: approvalsDb(rows) }); assert.equal(good.status, 200); assert.equal(good.body.already_confirmed, undefined);
+  const p = await proposalFor(OWNER, 'cambia el precio de paracetamol a 0.9', store);
+  const as = (role) => { const { confirm_token, ...clean } = p; return assistantConfirmRoute(req({ token: confirm_token, proposal: clean }, '/auth/assistant/confirm'), env(), OWNER, json, { store, resolveRole: async () => role, reader: READER }); };
+  for (const [role, err] of [['sin_rol', 'assistant_off'], ['empleado:off', 'assistant_off'], ['empleado:consultas', 'forbidden_role'], ['empleado:consultas_documentos', 'forbidden_role']]) {
+    const r = await as(role); assert.equal(r.status, 403, role); assert.equal((await r.json()).error, err, role);
+  }
+  // Rol de la base = dueño pero la sesión del POS no es dueño (posRole empleado): assistantRole no da 'owner' -> bloqueado.
+  const c = await confirm(p, { store, auth: { ...OWNER, posRole: 'empleado' } }); assert.equal(c.status, 403);
+  const good = await confirm(p, { store }); assert.equal(good.status, 200); assert.equal(good.body.already_confirmed, undefined);
 });

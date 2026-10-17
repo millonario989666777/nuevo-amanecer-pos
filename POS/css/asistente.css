@@ -146,7 +146,7 @@
 .na-asst-card .acts{display:flex;gap:8px}
 .na-asst-card .acts button{flex:1;min-height:52px;border-radius:12px;border:0;font-size:18px;font-weight:800;cursor:pointer}
 .na-asst-ok{background:#166534;color:#fff}.na-asst-no{background:#e2e8f0;color:#0f172a}
-.na-asst-card[data-st="done"]{border-color:#cbd5e1;background:#f8fafc;color:#334155}.na-asst-card[data-st="done"] .acts,.na-asst-card[data-st="cancelled"] .acts{display:none}.na-asst-card[data-st="denied"] .na-asst-ok,.na-asst-card[data-st="denied"] .na-asst-no,.na-asst-card[data-st="denied"] .na-asst-pin{display:none}
+.na-asst-card[data-st="done"]{border-color:#cbd5e1;background:#f8fafc;color:#334155}.na-asst-card[data-st="done"] .acts,.na-asst-card[data-st="cancelled"] .acts{display:none}.na-asst-card[data-st="denied"] .na-asst-ok,.na-asst-card[data-st="denied"] .na-asst-no{display:none}
 .na-asst-card .res{font-weight:800;color:#166534}.na-asst-card[data-st="denied"] .res{color:#991b1b}
 .na-asst-chips{display:flex;gap:8px;padding:0 12px 8px;flex-wrap:wrap}
 .na-asst-chips button{min-height:44px;border-radius:999px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;font-size:15px;font-weight:700;padding:0 14px;cursor:pointer}
@@ -170,22 +170,19 @@ body.dark .na-asst-card .warn{background:#3b1212;color:#fecaca}
 body.dark .na-asst-msg.u{background:#15803d}
 body.dark .na-asst-msg.sys{background:#1f3b2b;color:#e5f3ea}
 body.dark .na-asst-chips button{background:#10241a;color:#bbf7d0;border-color:#166534}
-body.dark .na-asst-input textarea,body.dark .na-asst-pin input{background:#07130c;color:#e5f3ea;border-color:#2f5a42}
+body.dark .na-asst-input textarea{background:#07130c;color:#e5f3ea;border-color:#2f5a42}
 body.dark .na-asst-no{background:#1f3b2b;color:#e5f3ea}
 body.dark .na-asst-photo{background:#10241a;color:#bbf7d0}
 body.dark .na-asst-offline{background:#422006;color:#fde68a}
 
-/* Tarjeta: solo dueño, PIN, cuenta regresiva y un solo uso */
+/* Tarjeta: solo dueño (sesión verificada por el servidor), un toque, cuenta regresiva y un solo uso */
 .na-asst-card .pill{display:inline-block;margin-left:6px;font-size:13px;font-weight:800;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#14532d;vertical-align:middle}
 .na-asst-card .meta{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:#334155}
 .na-asst-card .meta b{font-variant-numeric:tabular-nums}
-.na-asst-pin{display:flex;flex-direction:column;gap:4px}
-.na-asst-pin label{font-weight:800;font-size:15px}
-.na-asst-pin input{min-height:48px;border:2px solid #cbd5e1;border-radius:12px;padding:0 12px;font-size:20px;letter-spacing:6px}
-.na-asst-card[data-st="expired"]{border-color:#cbd5e1}.na-asst-card[data-st="expired"] .na-asst-ok:disabled,.na-asst-card[data-st="expired"] .na-asst-no:disabled{background:#e5e7eb;color:#374151;cursor:not-allowed}.na-asst-card[data-st="expired"] .na-asst-pin input:disabled{background:#f1f5f9;border-color:#cbd5e1}
+.na-asst-card[data-st="expired"]{border-color:#cbd5e1}.na-asst-card[data-st="expired"] .na-asst-ok:disabled,.na-asst-card[data-st="expired"] .na-asst-no:disabled{background:#e5e7eb;color:#374151;cursor:not-allowed}
 .na-asst-card .acts .na-asst-again{min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer}
-.na-asst-card [data-again][hidden],.na-asst-card .na-asst-pin[hidden]{display:none!important}
-.na-asst-card[data-fail="wait"] .res{color:#92400e;font-weight:800}.na-asst-card[data-fail="review"] .res,.na-asst-card[data-fail="pin"] .res{color:#991b1b;font-weight:800}
+.na-asst-card [data-again][hidden]{display:none!important}
+.na-asst-card[data-fail="wait"] .res{color:#92400e;font-weight:800}.na-asst-card[data-fail="review"] .res{color:#991b1b;font-weight:800}
 body.dark .na-asst-card .acts .na-asst-again{background:transparent;color:#86efac;border-color:#4ade80}body.dark .na-asst-card[data-fail] .res{color:#fecaca}
 .na-asst-card[data-st="expired"] .res{color:#991b1b}
 .na-asst-card.denied{border-color:#fca5a5;background:#fff7f7}
@@ -358,3 +355,7 @@ body.dark .na-asst-quitar:disabled{border-color:#475569;color:#cbd5e1;background
   #naAsstHero .h-chip .hl{display:none}#naAsstHero .h-chip .hs{display:inline}#naAsstHero.na-asst-hero{padding-bottom:15px}}
 /* Tarjeta hecha: ya no muestra «Vence en». */
 .na-asst-card[data-st="done"] .meta{display:none}
+
+/* «Reintentar» tras un corte o un error: botón grande, nunca un «Pensando» sin fin */
+.na-asst-msg .na-asst-retry{display:block;margin-top:8px;min-height:44px;padding:0 18px;border:0;border-radius:12px;background:#0f766e;color:#fff;font-weight:800;font-size:15px;cursor:pointer}.na-asst-msg .na-asst-retry:disabled{opacity:.6}
+.na-asst-input .na-asst-photo[hidden]{display:none!important}

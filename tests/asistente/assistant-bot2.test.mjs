@@ -22,20 +22,25 @@ async function chat(calls, extra = {}) {
     { store, resolveRole: async () => extra.role || 'owner', fetch: fakeDS(calls), reader: extra.reader === undefined ? reader : extra.reader, audit: async () => {} });
   return { status: r.status, body: await r.json(), store };
 }
+// Sin PIN: ya no hay aprobación que gastar. «spent» cuenta si ESTA llamada dejó la tarjeta marcada como usada (1) o no (0):
+// un rechazo (422, 409, 503) no la marca y se puede reintentar con un toque.
 async function confirm(store, p, review, extra = {}) {
-  const { confirm_token, ...proposal } = p; let spent = 0;
-  const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR,
-    { store, resolveRole: async () => 'owner', verifyApproval: async () => { spent++; return true; }, reader: extra.reader === undefined ? reader : extra.reader, audit: async () => {} });
-  return { status: r.status, body: await r.json(), spent };
+  const { confirm_token, ...proposal } = p;
+  const n = JSON.parse(Buffer.from(confirm_token.split('.')[0], 'base64url').toString()).n;
+  const usedNow = () => [...store._map.keys()].filter((k) => k.endsWith('u:' + n) && store._map.get(k).value?.op).length;
+  const before = usedNow();
+  const r = await assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal, review }) }), ENV, OWN, jsonR,
+    { store, resolveRole: async () => 'owner', reader: extra.reader === undefined ? reader : extra.reader, audit: async () => {} });
+  return { status: r.status, body: await r.json(), spent: usedNow() - before };
 }
 const opOf = (p) => JSON.parse(Buffer.from(p.confirm_token.split('.')[0], 'base64url').toString()).op;
 
-test('1) factura absurda 9999 × S/ 99,999: «Está bien» NO la deja pasar (tope duro en el servidor, sin gastar la aprobación)', async () => {
+test('1) factura absurda 9999 × S/ 99,999: «Está bien» NO la deja pasar (tope duro en el servidor, sin marcar la tarjeta)', async () => {
   const { body, store } = await chat([tool('leer_factura_compra', { proveedor: 'Dist', lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 9999, costo_unitario: 99999 }, { product_id: 'A', nombre: 'Arroz chico', cantidad: 2, costo_unitario: 3 }] })]);
   const card = body.proposals.find((p) => p.type === 'compra'); assert.ok(card, JSON.stringify(body));
   assert.deepEqual(card.lineas[0].limite, ['cantidad', 'costo', 'total']); assert.equal(card.fueraDeLimite, 1);
   const op = opOf(card);
-  // aceptar la fila marcada: igual 422 over_limit con motivo claro; la aprobación NO se gasta
+  // aceptar la fila marcada: igual 422 over_limit con motivo claro; la tarjeta NO queda usada
   const r = await confirm(store, card, { op, accept: [0], drop: [] });
   assert.equal(r.status, 422); assert.equal(r.body.error, 'over_limit'); assert.deepEqual(r.body.rows, [0]);
   assert.match(r.body.message, /Fuera del límite: corrige la factura o quita la fila/); assert.match(r.body.message, /cantidad mayor a 5000/);
@@ -117,7 +122,8 @@ test('UI: over_limit marca filas «Fuera del límite» sin «Está bien»; el mo
   const fs = await import('node:fs');
   const ui = fs.readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
   assert.match(ui, /l\.limite && l\.limite\.length \? '<div class="flag-t">Fuera del límite: /);
-  assert.match(ui, /var pre = C\.precheck \? C\.precheck\(p, deps\) : null;\n\s*if \(pre\)[^\n]*return; }\n\s*if \(pinEl && !approvals\[p\.id\]\)/, 'la revisión va ANTES del PIN');
+  assert.match(ui, /var pre = C\.precheck \? C\.precheck\(p, deps\) : null;\n\s*if \(pre\)[^\n]*return; }/, 'la revisión va ANTES de enviar');
+  assert.ok(!/verifyOwnerPin|na-asst-pin|pinBox/.test(ui), 'sin PIN en la tarjeta');
 });
 
 test('R25 (Bot 5): empleado en «consultas» que pide CUALQUIER documento -> 403 forbidden_document para todo el pedido', async () => {
@@ -135,7 +141,7 @@ test('confirm falla CERRADO si no puede leer el producto: sin base, lectura caí
   for (const [name, rd, st, err] of [['sin base', null, 503, 'stock_check_unavailable'], ['lectura caída', { products: async () => { throw new Error('D1'); } }, 503, 'stock_check_unavailable'],
     ['lista cortada', { products: async () => cut }, 503, 'stock_check_unavailable'], ['borrado', { products: async () => [{ id: 'Z', nombre: 'Otro', controla: true }] }, 409, 'product_missing']]) {
     const r = await confirm(a.store, card, null, { reader: rd });
-    assert.equal(r.status, st, name); assert.equal(r.body.error, err, name); assert.equal(r.spent, 0, name + ': aprobación sin gastar');
+    assert.equal(r.status, st, name); assert.equal(r.body.error, err, name); assert.equal(r.spent, 0, name + ': tarjeta sin marcar');
   }
   assert.equal((await confirm(a.store, card, null)).status, 200, 'con la base bien, pasa');
 });
@@ -145,12 +151,13 @@ test('confirm: 429 y 403 de rol se anotan AGRUPADOS; los demás rechazos, uno po
   const store = createMemoryUsageStore();
   const { body } = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })], { store });
   const card = body.proposals[0]; const { confirm_token, ...proposal } = card;
-  const send = (extra = {}) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', headers: extra.noApproval ? {} : { 'x-owner-approval': 'apr' }, body: JSON.stringify({ token: confirm_token, proposal }) }), { ...ENV, ASSISTANT_CONFIRMS_PER_MINUTE: '0' }, OWN, jsonR,
-    { store, resolveRole: async () => extra.role || 'owner', verifyApproval: async () => true, reader, audit });
-  assert.equal((await send({ noApproval: true })).status, 403);
+  const send = (extra = {}) => assistantConfirmRoute(new Request('https://w.test/auth/assistant/confirm', { method: 'POST', body: JSON.stringify({ token: confirm_token, proposal: extra.proposal || proposal }) }), { ...ENV, ASSISTANT_CONFIRMS_PER_MINUTE: '0' }, OWN, jsonR,
+    { store, resolveRole: async () => extra.role || 'owner', reader, audit });
+  assert.equal((await send({ proposal: { ...proposal, cantidad: 9 } })).status, 409);
   assert.equal((await send()).status, 429);
   assert.equal((await send({ role: 'empleado:off' })).status, 403);
-  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate]), [['rejected:owner_approval_required', false], ['rejected:rate_limited', true], ['rejected:assistant_off', true]]);
+  assert.equal((await send({ role: 'empleado:consultas' })).status, 403);
+  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate]), [['rejected:proposal_changed', false], ['rejected:rate_limited', true], ['rejected:assistant_off', true], ['rejected:forbidden_role', true]]);
   assert.ok(rows.every((r) => r.device_id === OWN.principalId));
 });
 

@@ -3,7 +3,7 @@
      Quién puede lo dice el SERVIDOR (ping a /auth/assistant/chat); aquí no se guarda el permiso en ninguna caché.
    - Solo en pantallas de gestión (nunca en Venta ni en Caja: no tapa Cobrar).
    - No vende ni llena el carrito.
-   - Nunca ejecuta nada sin «Confirmar» + PIN del dueño; la ejecución pasa por NA_ASISTENTE_CORE.createGate y abre
+   - Nunca ejecuta nada sin «Confirmar» de la sesión DUEÑO (el servidor la verifica; un toque, sin PIN, sin repetir con doble toque); la ejecución pasa por NA_ASISTENTE_CORE.createGate y abre
      pantallas EXISTENTES del POS: Nueva compra, Registrar movimiento, ficha del producto, Nuevo producto.
    - Consultas: números leídos por el Worker (solo lectura). Documentos: internos, armados en el aparato, NO SUNAT.
    - Sin internet: «Asistente no disponible sin internet» (los documentos locales igual se pueden abrir). */
@@ -210,15 +210,13 @@
     return d;
   }
   // Confirmación: el MISMO token se reenvía hasta 3 veces si se corta la señal (mismo operation_id).
-  var approvals = {}; // id de propuesta -> approval_id del dueño (ligado al operation_id de esa tarjeta)
   async function confirmRemote(p, review) {
     var clean = JSON.parse(JSON.stringify(p)); delete clean.confirm_token;
-    var hdr = approvals[p.id] ? { 'x-owner-approval': approvals[p.id] } : null;
     var lastErr;
     // Cada intento se corta a los ~12 s; 2 intentos y después «Pulsa Confirmar otra vez» (mismo token y operation_id).
     for (var i = 0; i < (C.CONFIRM_ATTEMPTS || 2); i++) {
       try { var body = { token: p.confirm_token, proposal: clean }; if (review) body.review = review;
-        var d = await post('/auth/assistant/confirm', body, hdr, C.TIMEOUTS.confirm); return d.ok ? d : { ok: false, error: d.error, rows: d.rows, retry_after_s: d.retry_after_s, message: typeof d.message === 'string' ? d.message.slice(0, 400) : null }; }
+        var d = await post('/auth/assistant/confirm', body, null, C.TIMEOUTS.confirm); return d.ok ? d : { ok: false, error: d.error, rows: d.rows, retry_after_s: d.retry_after_s, message: typeof d.message === 'string' ? d.message.slice(0, 400) : null }; }
       catch (e) { lastErr = e; if (i === 0) await new Promise(function (r) { setTimeout(r, 600); }); }
     }
     throw lastErr || new Error('network');
@@ -276,7 +274,7 @@
       i.value = Number(v.costo != null ? v.costo : v.precio).toFixed(2); i.dispatchEvent(new Event('input', { bubbles: true })); mark(i);
     },
     // Ventana EXISTENTE «Registrar movimiento» (abrirMovInv). Guarda la persona (inventory.adjust con PIN).
-    // Antes de pedir el PIN: ¿el POS puede abrir «Registrar movimiento» aquí? Devuelve el motivo o null.
+    // Antes de confirmar: ¿el POS puede abrir «Registrar movimiento» aquí? Devuelve el motivo o null.
     stockMoveReady: function () {
       if (typeof g('abrirMovInv') !== 'function') return 'Este aparato no tiene la pantalla «Registrar movimiento». Ábrela desde Inventario.';
       if (!doc.getElementById('mMovInv')) return 'La ventana «Registrar movimiento» no está cargada. Recarga la página e inténtalo otra vez.';
@@ -362,9 +360,8 @@
       precio: 'Al confirmar, se abre la ficha del producto con el precio nuevo. Se aplica cuando pulses Guardar.', costo: 'Al confirmar, se abre la ficha del producto con el costo de la factura. Se aplica cuando pulses Guardar.' + (p.origen ? ' (' + p.origen + ')' : ''),
       ajuste: 'Al confirmar, se abre «Registrar movimiento» lleno. El stock cambia solo cuando pulses Guardar.', producto: 'Al confirmar, se abre «Nuevo producto» lleno. Se crea solo cuando pulses Guardar.' }[p.type];
     var head = p.type === 'compra' && (p.proveedor || p.documento) ? '<div class="note">' + E([p.proveedor, p.documento, p.fecha].filter(Boolean).join(' · ')) + '</div>' : '';
-    return '<h4>' + E(p.title) + '<span class="pill">PIN del dueño</span></h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div>' +
+    return '<h4>' + E(p.title) + '<span class="pill">Solo dueño</span></h4>' + head + '<table>' + rows + '</table>' + warn + '<div class="note">' + E(note) + '</div>' +
       '<div class="meta"><span>Vence en <b data-left>5:00</b></span><span>Se usa una sola vez</span></div>' +
-      '<div class="na-asst-pin"><label>Escribe tu PIN de dueño</label><input type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN del dueño"></div>' +
       '<div class="res" aria-live="polite"></div>' +
       '<div class="acts"><button type="button" class="na-asst-ok" data-ok>Confirmar</button><button type="button" class="na-asst-no" data-no>Cancelar</button>' +
       '<button type="button" class="na-asst-again" data-again hidden>Pedir de nuevo</button></div>';
@@ -374,24 +371,7 @@
   function tokenData(p) { try { var b = String(p.confirm_token || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)) || {}; } catch (_) { return {}; } }
   function tokenExp(p) { return tokenData(p).exp || 0; }
   function tokenOp(p) { var op = tokenData(p).op; return typeof op === 'string' ? op : null; }
-  function addDenied(d) { var c = el('div', 'na-asst-card denied'); c.innerHTML = '<h4>No permitido</h4><div>' + C.esc(d.message) + '</div><div class="note">El asistente no puede hacerlo por ti. Pídeselo al dueño.</div>'; msgsEl.appendChild(c); scrollEnd(); }
-  // PIN del dueño: va SOLO al servidor (/auth/owner-approval), nunca al modelo ni al historial.
-  async function verifyOwnerPin(pin, p) {
-    if (!/^\d{4,8}$/.test(pin)) return { ok: false, msg: 'El PIN debe tener de 4 a 8 dígitos.' };
-    var op = tokenOp(p); if (!op) return { ok: false, msg: 'Esta tarjeta no se puede confirmar. Pídela otra vez.' };
-    // La aprobación queda ligada al operation_id de ESTA tarjeta; el servidor la verifica y la gasta al confirmar.
-    var d;
-    try { d = await post('/auth/owner-approval', { pin: pin, action: APPROVAL[p.type], operation_id: op }, null, C.TIMEOUTS.approval); }
-    catch (e) { return { ok: false, msg: e && e.timeout ? 'No hubo respuesta. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet e inténtalo otra vez.' }; }
-    if (!d || !d.approval_id) {
-      var e = String((d && d.error) || '');
-      if (/locked|bloque|too_many/i.test(e)) return { ok: false, msg: 'Demasiados intentos. Espera unos minutos.' };
-      if (/pin/i.test(e)) return { ok: false, msg: 'PIN incorrecto. Inténtalo otra vez.' };
-      if (/owner_only|forbidden/i.test(e)) return { ok: false, msg: 'Solo el dueño puede aprobar esto.' };
-      return { ok: false, msg: 'No se pudo verificar el PIN. Inténtalo otra vez.' };
-    }
-    approvals[p.id] = d.approval_id; return { ok: true };
-  }
+  function addDenied(d) { var c = el('div', 'na-asst-card denied'); c.innerHTML = '<h4>No permitido</h4><div>' + C.esc(C.looksTechnical(d.message) ? C.friendlyError('forbidden_role').msg : d.message) + '</div><div class="note">El asistente no puede hacerlo por ti. Pídeselo al dueño.</div>'; msgsEl.appendChild(c); scrollEnd(); }
   function addCard(p, prompt) {
     var key = gate.add(p); if (!key) return;
     var c = el('div', 'na-asst-card', cardHtml(p)); c.dataset.type = p.type; c.dataset.st = 'pending'; c._naKey = key; msgsEl.appendChild(c);
@@ -400,16 +380,14 @@
     // Documento local (solo lectura): se puede abrir varias veces, sin servidor ni PIN.
     var op = c.querySelector('[data-open]'); if (op) op.onclick = function () { var perm = C.canExecute(roles(), p); if (!perm.ok) { c.querySelector('.res').textContent = perm.msg; return; } op.disabled = true; Promise.resolve(C.EXECUTORS.documento(p, deps)).then(function (r) { c.querySelector('.res').textContent = r.msg; }, function () { c.querySelector('.res').textContent = 'No se pudo armar el documento.'; }).then(function () { op.disabled = false; }); };
     var no = c.querySelector('[data-no]'); if (no) no.onclick = function () { gate.cancel(key); c.dataset.st = 'cancelled'; res.textContent = 'Cancelado. No se hizo nada.'; };
-    var ok = c.querySelector('[data-ok]'), left = c.querySelector('[data-left]'), pinEl = c.querySelector('.na-asst-pin input');
+    var ok = c.querySelector('[data-ok]'), left = c.querySelector('[data-left]');
     var exp = tokenExp(p), timer = null;
     // Filas «Revisa este dato»: Confirmar queda apagado hasta aceptar o quitar cada una (el servidor exige lo mismo).
     var decided = {};
     function pendingRows() { return Array.prototype.filter.call(c.querySelectorAll('tr.flag'), function (tr) { return !decided[tr.dataset.row]; }).length; }
     function review() { if (p.type !== 'compra') return null; var a = [], d = []; Object.keys(decided).forEach(function (k) { (decided[k] === 'drop' ? d : a).push(Number(k)); }); return { op: tokenOp(p), accept: a, drop: d }; }
     function syncOk() { if (!ok || c.dataset.st !== 'pending') return; var n = pendingRows(); ok.disabled = n > 0; ok.textContent = n > 0 ? 'Revisa ' + n + (n === 1 ? ' fila' : ' filas') : (c.dataset.btn || 'Confirmar'); }
-    var again = c.querySelector('[data-again]'), pinBox = c.querySelector('.na-asst-pin');
-    // Con una aprobación vigente para ESTA tarjeta (422/429/corte) se reenvía igual, sin volver a pedir el PIN.
-    function syncPin() { if (pinBox) pinBox.hidden = c.dataset.st !== 'expired' && !!approvals[p.id]; }
+    var again = c.querySelector('[data-again]');
     // 422: el servidor dice qué filas faltan revisar; se marcan en rojo «Revisa este dato» (aunque el celular no las hubiera marcado).
     function markRows(idx, limit) {
       var trs = c.querySelectorAll('table tr');
@@ -423,10 +401,10 @@
         a.innerHTML = (limit ? '' : '<button type="button" data-accept="' + i + '">Está bien</button>') + '<button type="button" data-drop="' + i + '">Quitar fila</button>';
       });
     }
-    // «Pedir de nuevo»: deja esta tarjeta y pide una NUEVA (token, operation_id y PIN nuevos).
+    // «Pedir de nuevo»: deja esta tarjeta y pide una NUEVA (token y operation_id nuevos).
     if (again) again.onclick = function () {
       if (!prompt) { res.textContent = 'Escribe otra vez lo que necesitas.'; return; }
-      gate.cancel(key); delete approvals[p.id]; c.dataset.st = 'cancelled';
+      gate.cancel(key); c.dataset.st = 'cancelled';
       [ok, no, again].forEach(function (b) { if (b) b.disabled = true; }); if (ok) ok.textContent = 'Reemplazada';
       res.textContent = 'Pidiendo una tarjeta nueva…'; send(prompt);
     };
@@ -437,12 +415,11 @@
       if (tr) { tr.dataset.decision = decided[i]; var t = tr.querySelector('.flag-t'); if (t) t.textContent = decided[i] === 'drop' ? 'Fila quitada: no se agregará.' : 'Revisado: lo aceptaste.'; }
       syncOk();
     });
-    // Vencida (por la hora o porque el servidor dijo 410): Confirmar y el PIN quedan a la vista pero apagados, «Venció», y se ofrece «Pedir de nuevo».
+    // Vencida (por la hora o porque el servidor dijo 410): Confirmar queda a la vista pero apagado, «Venció», y se ofrece «Pedir de nuevo».
     function expire() {
       c.dataset.st = 'expired'; if (timer) clearInterval(timer); if (left) left.textContent = '0:00';
       res.textContent = 'Esta propuesta venció. Pídela otra vez.';
-      if (ok) { ok.textContent = 'Venció'; ok.disabled = true; } if (no) no.disabled = true; if (pinEl) { pinEl.value = ''; pinEl.disabled = true; }
-      if (pinBox) pinBox.hidden = false; // tras el 410 el PIN se ve APAGADO, no desaparece
+      if (ok) { ok.textContent = 'Venció'; ok.disabled = true; } if (no) no.disabled = true;
       if (again) { again.hidden = false; again.disabled = false; }
     }
     function tick() {
@@ -457,30 +434,25 @@
       if (c.dataset.st !== 'pending') return;
       ok.disabled = true; no.disabled = true; ok.textContent = 'Confirmando…'; setState('concentrado');
       if (again) again.disabled = true;
-      // Antes del PIN: si el POS no puede abrir la pantalla, se dice el motivo real y no se gasta ni el PIN ni la tarjeta.
+      // Antes de confirmar: si el POS no puede abrir la pantalla, se dice el motivo real y no se gasta la tarjeta.
       var pre = C.precheck ? C.precheck(p, deps) : null;
       if (pre) { res.textContent = pre; no.disabled = false; ok.disabled = false; ok.textContent = c.dataset.btn || 'Confirmar'; if (again) { again.hidden = false; again.disabled = false; } c.dataset.fail = 'precheck'; syncOk(); setState('error', 2000); return; }
-      if (pinEl && !approvals[p.id]) {
-        var v = await verifyOwnerPin(pinEl.value.trim(), p); pinEl.value = '';
-        if (!v.ok) { res.textContent = v.msg; no.disabled = false; ok.textContent = c.dataset.btn || 'Confirmar'; ok.disabled = false; if (again) again.disabled = false; syncOk(); setState('error', 2000); return; }
-      }
-      syncPin();
+      // Sin PIN: un toque. El botón queda apagado al instante (un doble toque no dispara otro), la puerta reusa el pedido en curso y el
+      // servidor marca la tarjeta usada una sola vez (el segundo envío recibe already_confirmed con el mismo operation_id).
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
         if (r && ACCESS_LOST[r.code]) { accessLost(r.code); return; } // 403 de permiso al confirmar: igual que en el chat
         if (!c.isConnected) return;
         wake();
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
-        if (r.code === 'confirm_expired') { delete approvals[p.id]; expire(); setState('error', 2600); return; }
+        if (r.code === 'confirm_expired') { expire(); setState('error', 2600); return; }
         if (c.dataset.st !== 'pending') ok.textContent = { done: 'Hecho', denied: 'No disponible', cancelled: 'Cancelada', expired: 'Venció' }[c.dataset.st] || 'Confirmar';
-        if (r.ok) { delete approvals[p.id]; if (again) again.hidden = true; setState('feliz', 2600); setTimeout(closePanel, 1400); return; }
+        if (r.ok) { if (again) again.hidden = true; setState('feliz', 2600); setTimeout(closePanel, 1400); return; }
         setState('error', 2600);
-        var f = C.confirmFailureView(r) || { kind: 'other', rows: [], button: 'Confirmar', keepApproval: true, again: true };
+        var f = C.confirmFailureView(r) || { kind: 'other', rows: [], button: 'Confirmar', again: true };
         c.dataset.fail = f.kind;
-        if (!f.keepApproval) delete approvals[p.id];
         if (f.kind === 'review' || f.kind === 'limit') markRows(f.rows, f.kind === 'limit');
         if (again) { again.hidden = !f.again; again.disabled = false; }
         if (c.dataset.st === 'pending') { c.dataset.btn = f.button; ok.disabled = false; no.disabled = false; ok.textContent = f.button; syncOk(); }
-        syncPin(); if (f.kind === 'pin' && pinEl) { try { pinEl.focus(); } catch (_) {} }
       });
     };
     scrollEnd();
@@ -498,7 +470,7 @@
     if (bubbleIO) { try { bubbleIO.disconnect(); } catch (_) {} bubbleIO = null; }
     if (panelEl) panelEl.remove(); if (rootEl) rootEl.remove();
     rootEl = panelEl = msgsEl = inputEl = sendBtn = photoBtn = fileEl = offEl = tagEl = null;
-    history.length = 0; approvals = {}; shownFor = null; busy = false; offscreen = false;
+    history.length = 0; shownFor = null; busy = false; offscreen = false;
   }
   function accessLost(code) {
     access = null; adminOff = true; noRole = false;
@@ -516,13 +488,21 @@
     syncPanelForAccess(); renderHero();
     lastPing = 0; refreshAccess(); // el servidor confirma el nivel nuevo
   }
-  var ERRORS = { forbidden_document: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', rate_limited: 'Vas muy rápido. Espera un minuto.', daily_limit: 'Llegaste al límite de hoy en este aparato.', monthly_cap: 'Se alcanzó el tope del mes del asistente. Avisa al dueño.',
-    image_too_large: 'La foto es muy grande.', bad_image: 'No pude leer esa foto.', upstream_timeout: 'El asistente tardó mucho. Inténtalo otra vez.', upstream_error: 'El asistente no respondió. Inténtalo otra vez.',
-    upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', admin_only: 'El asistente es solo para el dueño.', assistant_off: 'El dueño no activó el asistente en este aparato.', unauthorized: 'Este aparato no tiene sesión.' };
+  // Errores: siempre en palabras simples (C.friendlyError), nunca un código. Si se puede reintentar, va un botón «Reintentar»
+  // que manda OTRA VEZ lo mismo; nunca queda «Pensando» para siempre (el pedido se corta a los C.TIMEOUTS.chat ms).
+  function errMsg(code, serverMsg, retryArgs) {
+    var f = C.friendlyError(code, serverMsg), m = addMsg('a', f.msg);
+    if (f.retry && retryArgs) {
+      var b = el('button', 'na-asst-retry'); b.type = 'button'; b.textContent = 'Reintentar';
+      b.onclick = function () { if (busy) return; b.disabled = true; m.remove(); var u = m.previousElementSibling; if (retryArgs[2] !== false && u && u.classList.contains('na-asst-msg') && u.classList.contains('u')) u.remove(); send(retryArgs[0], retryArgs[1]); };
+      m.appendChild(b);
+    }
+    return m;
+  }
   async function send(text, image) {
     if (busy) return;
-    if (root.navigator.onLine === false) { offline(true); addMsg('sys', 'Asistente no disponible sin internet'); setState('offline'); return; }
     text = String(text || '').trim(); if (!text && !image) return;
+    if (root.navigator.onLine === false) { offline(true); errMsg('offline', null, [text, image, false]); setState('offline'); return; }
     var chips = panelEl.querySelector('.na-asst-chips'); if (chips) chips.hidden = true; // menos desplazamiento tras el primer mensaje
     addMsg('u', text || 'Foto', image); inputEl.value = ''; busy = true; sendBtn.disabled = true; photoBtn.disabled = true; setState(image ? 'concentrado' : 'pensando');
     var thinking = addMsg('a', image ? 'Concentrado, leyendo la foto' : 'Pensando'); thinking.classList.add('na-asst-thinking');
@@ -536,15 +516,15 @@
       if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
       // 403 de permiso (Bots 3, 4 y 5): fuera panel, burbuja y tarjeta EN ESE MOMENTO; nada queda para seguir escribiendo.
       if (!d.ok && ACCESS_LOST[d.error]) { accessLost(d.error); return; }
-      if (!d.ok && d.error === 'forbidden_document') { levelLowered(); addMsg('a', ERRORS.forbidden_document); setState('error', 2600); return; }
-      if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); return; }
+      if (!d.ok && d.error === 'forbidden_document') { levelLowered(); errMsg('forbidden_document'); setState('error', 2600); return; }
+      if (!d.ok) { errMsg(d.error, null, [text, image]); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
       (d.proposals || []).forEach(function (x) { addCard(x, text); });
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
-    } catch (e) { if (!panelEl) return; thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
+    } catch (e) { if (!panelEl) return; thinking.remove(); errMsg(root.navigator.onLine === false ? 'offline' : e && e.timeout ? 'timeout' : 'network', null, [text, image]); setState('error', 2600); }
     finally { busy = false; if (sendBtn) sendBtn.disabled = root.navigator.onLine === false; if (photoBtn) photoBtn.disabled = root.navigator.onLine === false; }
   }
   // Comprime en el aparato: lado mayor 1600 px, JPEG, baja calidad hasta quedar < 1.4 MB.
@@ -566,8 +546,8 @@
   function offline(on) { if (!panelEl || !offEl) return; offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on) setState('offline'); else if (state === 'offline') setState('listo'); }
   function openPanel() {
     panelEl.hidden = false; rootEl.hidden = true; place(); applyPause();
-    if (!msgsEl.children.length) addMsg('a', isOwnerAccess() ? '¡Hola! Soy Burbuja, tu ayudante de gestión. Te digo qué falta reponer y cómo van las ventas, preparo compras y ajustes de stock, cambios de precio y costo, productos nuevos y documentos. Nada se guarda sin tu PIN.'
-      : '¡Hola! Soy Burbuja. Te digo el stock y qué falta reponer' + (access && access.level === 'consultas_documentos' ? ', y armo la lista de precios o de pedido' : '') + '. Si propongo un cambio, lo aprueba el dueño con su PIN.');
+    if (!msgsEl.children.length) addMsg('a', isOwnerAccess() ? '¡Hola! Soy Burbuja, tu ayudante de gestión. Te digo qué falta reponer y cómo van las ventas, preparo compras y ajustes de stock, cambios de precio y costo, productos nuevos y documentos. Nada se guarda sin que pulses Confirmar.'
+      : '¡Hola! Soy Burbuja. Te digo el stock y qué falta reponer' + (access && access.level === 'consultas_documentos' ? ', y armo la lista de precios o de pedido' : '') + '. Los cambios (precios, stock, compras) los hace el dueño desde su teléfono.');
     var off = root.navigator.onLine === false; offline(off); if (off) setState('offline'); else setState('feliz', 1300); measureFrames();
     setTimeout(function () { try { inputEl.focus({ preventScroll: true }); } catch (_) {} }, 50);
   }
@@ -614,6 +594,8 @@
   function syncPanelForAccess() {
     var key = access ? access.role + ':' + access.level : '';
     if (!panelEl || shownFor === key) return; shownFor = key;
+    // Al empleado no se le muestran opciones de dueño: sin botón de foto (leer factura es del dueño).
+    if (photoBtn) photoBtn.hidden = !isOwnerAccess();
     var ch = panelEl.querySelector('.na-asst-chips'); if (ch) ch.innerHTML = chipsHtml();
     var sm = panelEl.querySelector('.na-asst-head-t small'); if (sm) sm.textContent = isOwnerAccess() ? 'Gestión · dueño · prueba aislada' : 'Consultas · empleado · prueba aislada';
   }
@@ -861,6 +843,7 @@
       compress(f).then(function (img) { send(inputEl.value || 'Lee esta factura de compra', img); }).catch(function () { addMsg('a', 'No pude abrir esa foto.'); setState('error', 2000); }); };
     panelEl.querySelector('.na-asst-chips').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; if (b.hasAttribute('data-photo')) fileEl.click(); else send(b.dataset.q); });
     shownFor = access ? access.role + ':' + access.level : '';
+    if (photoBtn) photoBtn.hidden = !isOwnerAccess(); // empleado: sin opciones de dueño
     rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
     try { bubbleIO = new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }); bubbleIO.observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
     applyQuality(); place(); applyPause(); setState(root.navigator.onLine === false ? 'offline' : 'listo');

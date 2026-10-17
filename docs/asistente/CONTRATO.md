@@ -40,8 +40,8 @@ Modelo fijo: `deepseek-flash`, `thinking: {type:"disabled"}`, `tool_choice:"auto
 | `consultar` | todo: stock, bajo stock, sin costo, ventas, más vendidos, deudas, compras | stock, por reponer, precios de venta (sin costos, márgenes, caja ni deudas) | igual | — |
 | `preparar_documento` | 6 tipos | solo `lista_precios`, `lista_pedido` (sin costos, armadas en el servidor) | **no** | — |
 | `explicar_pasos` | sí | sí | sí | — |
-| Proponer ajuste de stock, precio, compra, producto nuevo | sí, se aplica con su PIN | puede **proponer**; aplicar pide el **PIN del dueño** | igual | — |
-| `Actualizar costo` (tarjeta aparte) | sí, con PIN | no | no | — |
+| Proponer ajuste de stock, precio, compra, producto nuevo | sí; «Confirmar» de un toque, **sin PIN** (el servidor exige sesión dueño real) | **no** (sin tarjetas de cambio; el pedido se descarta `forbidden_role` y se le dice que lo hace el dueño) | no | — |
+| `Actualizar costo` (tarjeta aparte) | sí, un toque sin PIN | no | no | — |
 | Cambiar nivel de empleados / aparatos dueño | sí, con PIN (aprobación estricta) | no | no | — |
 
 Revocar es inmediato: confirm vuelve a leer el nivel; una tarjeta emitida antes de apagar responde **403**.
@@ -51,10 +51,10 @@ Revocar es inmediato: confirm vuelve a leer el nivel; una tarjeta emitida antes 
 |---|---|---|
 | `consultar {tipo, producto?, desde?, hasta?}` | `consulta` (solo lectura) | El Worker lee con las lecturas canónicas (`canonicalRead`) y manda al modelo **solo un resumen** (top 10). Medido: primer pedido ~6,8 KB; resumen ≤ 3,2 KB aun con 3.000 productos. |
 | `preparar_documento {tipo, desde?, hasta?, cliente?}` | `documento` | Vista previa imprimible «No es comprobante SUNAT». `tipo`: `inventario_valorizado`, `lista_precios`, `lista_pedido`, `reporte_ventas`, `estado_cuenta`, `resumen_cierre`. Reusa `NA_VALORIZACION`, `NA_REPORTE_ARQUEO`, `NA_CLIENT_CREDIT_ACCOUNTS_V2` (sin cuentas propias). |
-| `proponer_ajuste_stock {product_id, tipo, cantidad, motivo}` | `ajuste` | Abre «Registrar movimiento» (`abrirMovInv`) lleno; guarda con PIN (`ownerGate inventory.adjust`). |
+| `proponer_ajuste_stock {product_id, tipo, cantidad, motivo}` | `ajuste` | Abre «Registrar movimiento» (`abrirMovInv`) lleno; Guardar sigue la regla propia del POS (`ownerGate inventory.adjust`, núcleo sin cambios). |
 | `proponer_cambio_precio` | `precio` | Abre la ficha (`editProd`); Guardar → `product.update` (`ownerGate`). |
-| `preparar_compra` / `leer_factura_compra` | `compra` | Abre «Nueva compra» (`NA_PURCHASES.open`) llena; filas fuera de rango bloquean Confirmar. La compra NO cambia el costo: «Actualizar costo» es tarjeta aparte por `product.update` con PIN. |
-| `proponer_producto_nuevo` | `producto` | Abre el formulario de producto lleno; confirm exige dueño + aprobación `product.create`. |
+| `preparar_compra` / `leer_factura_compra` | `compra` | Abre «Nueva compra» (`NA_PURCHASES.open`) llena; filas fuera de rango bloquean Confirmar. La compra NO cambia el costo: «Actualizar costo» es tarjeta aparte por `product.update`. |
+| `proponer_producto_nuevo` | `producto` | Abre el formulario de producto lleno; confirm exige sesión dueño. |
 | `explicar_pasos` | `pasos` | Nada se escribe; «Llévame ahí» navega. |
 
 **Lista de pedido del empleado:** el servidor la arma y la pasa por lista blanca: la tarjeta solo trae `id, type, needsConfirm, title, tipo, fiscal, data{campos:["producto","stock","cantidad_sugerida"], columnas, filas}`. Costos, totales o inversión que mande el modelo se descartan (probado con los canarios 4321.97 / 999.11). La versión del dueño puede traer costo e inversión.
@@ -75,7 +75,7 @@ Acciones: `inventory.adjust`, `product.update`, `product.create`, `assistant.emp
 - Bitácora `pos_owner_device_log` (migración 0035, **no aplicada**). Sin la tabla: **503 `owner_device_log_missing`**, no se registra nada.
 
 ## Confirm
-Pide `{token, proposal}`; tarjetas con PIN además `x-owner-approval` ligada al `op` del token. Orden: firma, aparato, **rol y nivel actuales**, parámetros, id y hash, ya usada (`already_confirmed`, mismo `operation_id`), vencida (410), falta la cabecera de aprobación (403 `owner_approval_required`), revisión de filas (422 `review_required`), **tope duro** (422 `over_limit` con `rows`, `total`, `limits`, `message`), **control de inventario** releído en la base, fallando cerrado (503 `stock_check_unavailable` sin base, con lectura caída o lista cortada sin el producto; 409 `product_missing` si se borró; 409 `sin_control_stock` con `nombres`, `message`), límite por minuto (429 `rate_limited`), y recién ahí se **gasta la aprobación** (UPDATE estricto) justo antes de marcar la tarjeta como usada. Un 422/409/429 no quema la aprobación: el celular reenvía la MISMA tarjeta sin pedir el PIN.
+Pide `{token, proposal}`. **Sin PIN (pedido del dueño, 17-10):** ya no hay cabecera `x-owner-approval` ni `owner_approval_required`; si llega una cabecera vieja se ignora. Lo que protege es la **sesión dueño verificada en el servidor**: `assistantAccess` da `owner` solo con fila `owner` en `pos_device_roles` **y** sesión `posRole` owner; cualquier otro rol con asistente → **403 `forbidden_role`** (aunque traiga un token válido de una tarjeta del dueño), sin rol / apagado → **403 `assistant_off`**. Orden: firma, aparato, **rol y nivel actuales** (solo dueño), parámetros, id y hash, ya usada (`already_confirmed`, mismo `operation_id`), vencida (410), revisión de filas (422 `review_required`), **tope duro** (422 `over_limit` con `rows`, `total`, `limits`, `message`), **control de inventario** releído en la base, fallando cerrado (503 `stock_check_unavailable` sin base, con lectura caída o lista cortada sin el producto; 409 `product_missing` si se borró; 409 `sin_control_stock` con `nombres`, `message`), límite por minuto (429 `rate_limited`), y recién ahí se marca la tarjeta usada con CAS (`store.put(..., revision)`). **Doble toque:** el botón se apaga al instante, la puerta del celular reusa el pedido en curso y el segundo envío recibe `already_confirmed` con el mismo `operation_id` (un solo efecto, probado con 3 envíos a la vez). Un 422/409/429/503 no marca la tarjeta: se reintenta con un toque. El PIN sigue solo en Configuración (niveles de empleado y aparatos dueño).
 
 ### Tope duro de compras (solo en el camino del asistente)
 `PURCHASE_HARD_LIMITS = {maxQty: 5000, maxUnitCost: 10000, maxLineTotal: 50000, maxTotal: 200000}`. Las filas que lo pasan llegan con `limite:[...]` y la tarjeta con `fueraDeLimite`; en pantalla solo tienen «Quitar fila» (no «Está bien»). En confirm, aceptar la fila no basta: hay que quitarla. Ajuste de stock con cantidad > 5000: no se propone. La ruta de compras del POS no tiene tope (pendiente del jefe).
@@ -84,7 +84,13 @@ Pide `{token, proposal}`; tarjetas con PIN además `x-owner-approval` ligada al 
 El contexto del celular manda `controla:false`; el servidor además lee `tracks_inventory` de su base. Ajustes de esos productos no se proponen; en compras la fila se quita y va en `omitidas`. El texto dice ««X» no controla inventario…».
 
 ### Tarjeta que nunca queda trabada (cliente)
-422 `review_required`/`over_limit`: filas en rojo («Revisa este dato» / «Fuera del límite»). 429: «Espera un momento y vuelve a intentar» + «Volver a intentar» (misma tarjeta y aprobación). `owner_approval_required`: vuelve a pedir el PIN. Siempre «Pedir de nuevo» (tarjeta nueva, PIN nuevo). Reintentos automáticos de red: tope `CONFIRM_ATTEMPTS = 2`; el reenvío devuelve `already_confirmed` y no se repite. Antes del PIN el celular revisa si puede abrir la pantalla (producto existe, controla inventario, «Registrar movimiento» cargado) y dice el motivo real sin gastar nada. El `id` de cada tarjeta lo crea el servidor (`crypto.randomUUID()`) y va firmado.
+422 `review_required`/`over_limit`: filas en rojo («Revisa este dato» / «Fuera del límite»). 429: «Espera un momento e intenta de nuevo» + «Reintentar» (misma tarjeta). Corte de red o tiempo agotado: «Reintentar» (nunca un «Pensando» sin fin: chat 30 s, confirm 12 s × 2). Siempre «Pedir de nuevo» (tarjeta nueva). La tarjeta de cambio tiene dos botones: «Confirmar» y «Cancelar». Antes de enviar, el celular revisa si puede abrir la pantalla (producto existe, controla inventario, «Registrar movimiento» cargado) y dice el motivo real sin gastar nada. El `id` de cada tarjeta lo crea el servidor (`crypto.randomUUID()`) y va firmado.
+
+### Errores en palabras simples (cliente)
+La persona nunca ve un código (403, 409, 429, 503, `assistant_off`, `forbidden_document`…). `C.friendlyError(code, serverMsg)` traduce cada código a una frase («Eso solo lo puede hacer el dueño.», «Sin conexión. Toca «Reintentar» cuando vuelva el internet.», «Espera un momento e intenta de nuevo.», «Está tardando mucho. Toca «Reintentar».»); un código desconocido o `HTTP_xxx` cae en «No se pudo completar. Toca «Reintentar».». Un `message` del servidor solo se muestra si no trae nada técnico (`C.looksTechnical`). `retry:true` pone el botón «Reintentar», que manda otra vez lo mismo.
+
+### Una sola tarjeta por acción (servidor)
+`dedupeActions`: si el modelo propone dos veces el mismo cambio para el mismo producto (mismo tipo + `product_id`; compra: una por pedido; producto nuevo: por nombre), queda la primera y las demás van a `dropped` como `duplicate_action`. Consultas y documentos no se tocan.
 
 ## Lo que NO existe (a propósito)
 Ventas o carrito, comprobantes SUNAT, importar, descuentos, anular ventas, reset o respaldo, cajeros, PIN, abrir o cerrar caja, gastos y **abonos** (un abono futuro iría por `canonical-credit-payment-bridge.js`).
