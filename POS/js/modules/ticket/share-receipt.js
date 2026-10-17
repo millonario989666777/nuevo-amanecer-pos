@@ -5,7 +5,7 @@
   let active=null,version=0,busy=false,returnFocus=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
   function config(){try{if(typeof appConfig!=='undefined')return appConfig;}catch(_){}return root.appConfig||{};}
-  function settings(){const t=config().ticket||{};return{format:FORMATS.includes(t.shareFormat)?t.shareFormat:'image',ask:t.shareAsk!==false};}
+  function settings(){const t=config().ticket||{};return{format:FORMATS.includes(t.shareFormat)?t.shareFormat:'text',ask:t.shareAsk!==false};}
   function setSettings(value){if(!FORMATS.includes(value.format))throw new Error('Formato inválido');const c=config();c.ticket=c.ticket||{};c.ticket.shareFormat=value.format;c.ticket.shareAsk=value.ask!==false;}
   function normalizePhone(value){
     const raw=String(value||'').trim();if(!/^[+\d\s().-]+$/.test(raw))return'';
@@ -15,6 +15,12 @@
     return (raw.startsWith('+')||raw.startsWith('00'))&&/^[1-9]\d{8,14}$/.test(n)?n:'';
   }
   function textUrl(phone,text){const number=normalizePhone(phone);if(!number)throw new Error('Ingresa un número de WhatsApp válido, con código de país');return 'https://wa.me/'+number+'?text='+encodeURIComponent(text);}
+  // Mensaje de WhatsApp: saludo corto + comprobante en monoespaciado (```), para que las columnas
+  // del ticket no se desalineen con la fuente proporcional de WhatsApp. Solo presentacion.
+  function whatsappText(receipt){
+    const name=String(receipt.customerName||'').trim(),greet=name&&name!=='Sin cliente'&&!GENERIC_CUSTOMER.test(name)?'Hola '+name+', gracias por tu compra.':'Gracias por tu compra.';
+    return greet+'\n\n```\n'+String(receipt.text).replace(/```/g,"'''")+'\n```';
+  }
   function money(value){return'S/ '+Number(value).toFixed(2);}
   function known(value){return value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value));}
   function dateFields(timestamp){if(!timestamp)return{fecha:'',hora:''};const d=new Date(timestamp);if(!Number.isFinite(d.getTime()))return{fecha:'',hora:''};const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);const part=k=>parts.find(p=>p.type===k).value;return{fecha:part('year')+'-'+part('month')+'-'+part('day'),hora:d.toLocaleTimeString('es-PE',{timeZone:'America/Lima',hour12:true})};}
@@ -236,6 +242,8 @@
     const download=el('button','na-receipt-download','Descargar comprobante');download.type='button';download.onclick=()=>{if(active?.file)downloadFile(active.file);};
     body.append(name,label,phone,formatLabel,format,details,status,buttons,download);modal.append(head,body);overlay.append(modal);root.document.body.append(overlay);
     overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
+    // Un clic / Enter: con el numero escrito, Enter en el campo envia igual que el boton.
+    phone.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();if(!send.disabled)share();}});
     overlay.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();close();}if(e.key==='Tab'){const focusable=Array.from(modal.querySelectorAll('button,input,select,summary')).filter(n=>!n.disabled&&!n.hidden);const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&root.document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&root.document.activeElement===last){e.preventDefault();first.focus();}}});return overlay;
   }
   async function prepare(){
@@ -257,7 +265,8 @@
     overlay.classList.add('open');prepare();
     // P1-D (mobile): focus the dialog title, never the phone input, so the
     // on-screen keyboard does not pop up after every sale.
-    const title=root.document.getElementById('naReceiptTitle');if(title){title.setAttribute('tabindex','-1');title.focus({preventScroll:true});}return true;
+    // Without a saved number the cashier must type it, so focus the field; with one, a single click sends.
+    const missing=active.format==='text'&&!receipt.phone,target=missing?root.document.getElementById('naReceiptPhone'):root.document.getElementById('naReceiptTitle');if(target){if(!missing)target.setAttribute('tabindex','-1');target.focus({preventScroll:true});}return true;
   }
   function downloadFile(file){const url=root.URL.createObjectURL(file),a=el('a');a.href=url;a.download=file.name;root.document.body.append(a);a.click();a.remove();root.setTimeout(()=>root.URL.revokeObjectURL(url),30000);notify('Comprobante descargado. Puedes adjuntarlo en WhatsApp.','success');}
   async function share(){
@@ -268,7 +277,7 @@
     const send=root.document.getElementById('naReceiptSend');send.disabled=true;
     try{
       if(state.format==='text'){
-        const url=textUrl(root.document.getElementById('naReceiptPhone').value,state.receipt.text);
+        const url=textUrl(root.document.getElementById('naReceiptPhone').value,whatsappText(state.receipt));
         const chat=root.open(url,'_blank');if(chat)chat.opener=null;else root.location.assign(url);
       }else if(root.navigator?.share&&root.navigator.canShare?.({files:[state.file]})){
         await root.navigator.share({title:'Comprobante Nuevo Amanecer',files:[state.file]});
@@ -327,5 +336,5 @@
     wrapped._naAccountSummary=true;root._naBuildThermalTicket=wrapped;return true;
   }
   installPrintedAccountSummary();
-  root.NAReceiptShare=Object.freeze({formatAsOf:nowLabel,placeLabel,accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,ticketExtrasForSale,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
+  root.NAReceiptShare=Object.freeze({formatAsOf:nowLabel,placeLabel,accountSummary:(input)=>{const data=copy(input);return accountSummary(data,data.sale||{},data.credit||{});},accountLines,ticketExtrasForSale,installPrintedAccountSummary,onPayments,installTicketButton,settings,setSettings,normalizePhone,textUrl,whatsappText,build,pdf,fileFor,open,close,onSale,onPayment,onStoredPayment:(cr,pay)=>safely({kind:'payment',credit:cr,payment:pay,sale:sales().find(s=>String(s.id)===String(cr.ventaId)),customer:customerFor(cr.cliId||cr.clienteId)}),onCredit:cr=>safely({kind:'credit',credit:cr,customer:customerFor(cr.cliId||cr.clienteId),fresh:true}),shareSale,shareCredit,sharePayment});
 })(globalThis);

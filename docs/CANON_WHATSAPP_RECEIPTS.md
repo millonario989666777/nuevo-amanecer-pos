@@ -4,7 +4,7 @@ Después del guardado duradero de una venta, crédito o abono se ofrece comparti
 
 Configuración → Ticket permite elegir imagen PNG, texto o PDF y activar/desactivar la pregunta al finalizar. La preferencia usa la configuración persistente existente. El formulario también permite cambiar el formato para un comprobante concreto.
 
-Texto abre `wa.me` con el número del cliente y el contenido prellenado. Imagen/PDF generan un archivo real y usan el menú de compartir del dispositivo: el usuario debe elegir WhatsApp/contacto y confirmar. Un navegador sin compartir archivos ofrece descarga. Abrir o compartir nunca se registra como entrega confirmada. No hay envío automático ni API de WhatsApp.
+Texto es el formato predeterminado y permite enviar con un solo clic (o Enter en el campo de número): abre `wa.me` con el número del cliente y un mensaje prellenado con saludo ("Hola <cliente>, gracias por tu compra.") y el ticket en monoespaciado; si falta el número, el foco va al campo de número y no se abre nada hasta que sea válido. Las preferencias ya guardadas (por ejemplo imagen) se respetan. Imagen/PDF generan un archivo real y usan el menú de compartir del dispositivo: el usuario debe elegir WhatsApp/contacto y confirmar. Un navegador sin compartir archivos ofrece descarga. Abrir o compartir nunca se registra como entrega confirmada. No hay envío automático ni API de WhatsApp.
 
 El contenido reutiliza `_naBuildThermalTicket` con los ajustes guardados: zonas, orden, alineación, ancho y productos/precios de la operación. La rasterización utiliza Courier; no replica todos los estilos tipográficos del editor. PDF divide tickets largos en páginas sin cortar líneas. Los abonos identifican la compra original y los saldos de ese pago. Si un dato histórico no existe, se muestra “No registrado”. El reenvío de una venta a crédito resuelve su crédito relacionado para mostrar el saldo actual.
 
@@ -23,7 +23,7 @@ El despliegue web y el hotfix de Worker existentes no aplican esta migración. N
 
 - Regresión relevante: 787/787 antes del último test adicional de captura; pruebas focalizadas finales: 52/52.
 - Contratos de arquitectura y backend: 54/54.
-- Navegador: 13/13; 320, 360, 390, 430, 768, 1024, 1366 y 1920 px, cancelar sin mutar, archivos PNG/PDF, destino del texto, reenvío de crédito, recuperación de contactos y configuración tras recarga.
+- Navegador: 16/16; 320, 360, 390, 430, 768, 1024, 1366 y 1920 px, cancelar sin mutar, archivos PNG/PDF, destino del texto, reenvío de crédito, recuperación de contactos y configuración tras recarga.
 - Suite completa de navegador: 140/147; los siete fallos (medidas de tarjetas de pago y botones de venta) se reprodujeron exactamente en la base `451c5b6`, 7/8 en el barrido focalizado de esa base. No se alteraron sus assertions.
 - Todas las migraciones, incluida 0020, aplicadas en D1 local aislado: PASS. Snapshot SQL: PASS. PDF real validado y renderizado con Poppler: PASS.
 - Build Worker producción: `wrangler deploy --dry-run` PASS.
