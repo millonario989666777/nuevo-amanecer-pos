@@ -192,12 +192,17 @@ async function openFrequency(page: Page, width: number, dark = false, firstSaleP
   await expect(screen.locator('.cf-table')).toBeVisible();
   return screen;
 }
-for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
-  test(`${width}px ${dark ? 'dark' : 'light'}: seven-digit customer frequency KPIs fit on one line`, async ({ page }) => {
-    // The other six purchases add S/ 60.00 to this sale within the 90-day period.
-    const screen = await openFrequency(page, width, dark, 2_226_040.10);
+// The other six purchases add S/ 60.00 to the first sale within the 90-day period.
+const kpiCases = [
+  { width: 650, price: 2_166.10, total: 'S/ 2,226.10' },
+  { width: 650, price: 1_234_507.89, total: 'S/ 1,234,567.89' },
+  ...[390, 768, 1366].map(width => ({ width, price: 2_226_040.10, total: 'S/ 2,226,100.10' })),
+];
+for (const { width, price, total } of kpiCases) for (const dark of [false, true]) {
+  test(`${width}px ${dark ? 'dark' : 'light'}: customer frequency KPIs with ${total} fit on one line`, async ({ page }) => {
+    const screen = await openFrequency(page, width, dark, price);
     await expect(screen).toHaveCSS('background-color', dark ? 'rgb(15, 23, 42)' : 'rgb(248, 250, 252)');
-    await expect(screen.locator('.cf-summary-card', { hasText: 'Importe comprado' }).locator('strong')).toHaveText('S/ 2,226,100.10');
+    await expect(screen.locator('.cf-summary-card', { hasText: 'Importe comprado' }).locator('strong')).toHaveText(total);
     const values = screen.locator('.cf-summary-card strong');
     await expect(values).toHaveCount(4);
     for (const value of await values.all()) {
@@ -217,6 +222,22 @@ for (const width of [390, 650, 768, 1366]) for (const dark of [false, true]) {
     }
   });
 }
+test('1366px dark: customer name in the table uses --cf-text, not the global th gray', async ({ page }) => {
+  const screen = await openFrequency(page, 1366, true);
+  await expect(screen.locator('.cf-table')).toHaveCSS('display', 'table');
+  const name = screen.locator('.cf-table tbody th').first();
+  await expect(name).toBeVisible();
+  const expected = await screen.evaluate(node => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--cf-text)';
+    node.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  expect(expected).toBe('rgb(248, 250, 252)');
+  await expect(name).toHaveCSS('color', expected);
+});
 for (const width of [650, 700, 1000]) {
   test(`${width}px: Última compra and Días sin comprar remain visible in customer frequency`, async ({ page }) => {
     const screen = await openFrequency(page, width);
