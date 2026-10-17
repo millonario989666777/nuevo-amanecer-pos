@@ -607,6 +607,25 @@ export function parseChatBody(body) {
 // Chat RECHAZADO también queda en la bitácora, igual que el confirm (el rol se resuelve ANTES de leer el cuerpo): dueño -> 429 y
 // 403 de rol agrupados (oa), el resto uno por uno (or); cualquier otro aparato -> todo agrupado por aparato, minuto y motivo (a).
 // Nunca se guarda el texto del mensaje, la foto, el PIN ni secretos: solo aparato, rol y motivo.
+// Foto de un aparato que no es del dueño: 403 con código propio (no forbidden_role, que en el celular quitaría todo el asistente).
+export const EMPLOYEE_MAX_BODY_BYTES = 64_000;
+export const IMAGE_OWNER_ONLY = Object.freeze({ error: 'image_owner_only', message: 'Eso solo lo puede hacer el dueño.' });
+// Lee el cuerpo con tope: null si pasa el tope (se corta la lectura, no se baja el resto), undefined si falla la lectura.
+export async function readBounded(request, max) {
+  try {
+    if (!request.body || typeof request.body.getReader !== 'function') { const t = await request.text(); return t.length > max ? null : t; }
+    const reader = request.body.getReader(), dec = new TextDecoder(); let out = '', n = 0;
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      n += value.byteLength; if (n > max) { try { await reader.cancel(); } catch { /* ya cortado */ } return null; }
+      out += dec.decode(value, { stream: true });
+    }
+    return out + dec.decode();
+  } catch { return undefined; }
+}
+// ¿Trae el campo "image" con algo distinto de null? Sin JSON.parse; un "image" escrito DENTRO del texto va escapado (\") y no cuenta.
+export function hasImageField(raw) { return /(^|[^\\])"image"\s*:\s*(?!null\b)/.test(String(raw)); }
+
 export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   const ctx = {}; let rej = null;
   const jr = (data, status = 200) => { if (status >= 400) rej = { error: data && data.error, status }; return json(data, status); };
@@ -627,8 +646,16 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   const ownerBootstrap = String(env?.ASSISTANT_OWNER_BOOTSTRAP || '') === '1';
   if (!accessOn(role)) return json({ ...offBody(role), ...(auth?.posRole === 'owner' ? { reason: 'sin_rol', owner_bootstrap: ownerBootstrap } : {}) }, 403);
   const len = Number(request.headers.get('content-length') || 0);
-  if (len > ASSISTANT_LIMITS.maxBodyBytes) return json({ error: 'payload_too_large' }, 413);
-  let raw; try { raw = await request.text(); } catch { return json({ error: 'bad_request' }, 400); }
+  // Foto solo del dueño (Bot 5): a un empleado se le corta con 403 ANTES de leer o interpretar la foto, sin cupo y sin DeepSeek.
+  // Barato: cabecera/tipo, tamaño declarado, lectura con tope (64 KB, nunca la foto entera) y búsqueda del campo antes de JSON.parse.
+  let raw;
+  if (role !== 'owner') {
+    const ct = String(request.headers.get('content-type') || '');
+    if (request.headers.get('x-assistant-image') === '1' || /^(multipart\/|image\/)/i.test(ct) || len > EMPLOYEE_MAX_BODY_BYTES) return json(IMAGE_OWNER_ONLY, 403);
+    raw = await readBounded(request, EMPLOYEE_MAX_BODY_BYTES);
+    if (raw === undefined) return json({ error: 'bad_request' }, 400);
+    if (raw === null || hasImageField(raw)) return json(IMAGE_OWNER_ONLY, 403);
+  } else { try { raw = await request.text(); } catch { return json({ error: 'bad_request' }, 400); } }
   if (raw.length > ASSISTANT_LIMITS.maxBodyBytes) return json({ error: 'payload_too_large' }, 413);
   let body; try { body = JSON.parse(raw); } catch { return json({ error: 'bad_request' }, 400); }
   // Comprobación para la tarjeta de Inicio y la burbuja: no llama a DeepSeek ni gasta cupo. El servidor dice rol y nivel.
@@ -638,6 +665,7 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   if (body && body.ping === true) return json(pingBody(role));
   // Falla cerrado: sin clave no hay chat ni tarjetas, salvo modo demostración explícito (ASSISTANT_DEMO=1, solo prototipo local y pruebas).
   if (!configured) return json({ error: 'assistant_not_configured', message: 'asistente no configurado' }, 503);
+  if (role !== 'owner' && body && body.image != null) return json(IMAGE_OWNER_ONLY, 403); // respaldo: nunca llega a parseChatBody
   const parsed = parseChatBody(body);
   if (parsed.error) return json({ error: parsed.error }, parsed.error === 'image_too_large' ? 413 : 400);
   const ctx = sanitizeContext(parsed.context, role);

@@ -89,6 +89,9 @@ El contexto del celular manda `controla:false`; el servidor además lee `tracks_
 ### Errores en palabras simples (cliente)
 La persona nunca ve un código (403, 409, 429, 503, `assistant_off`, `forbidden_document`…). `C.friendlyError(code, serverMsg)` traduce cada código a una frase («Eso solo lo puede hacer el dueño.», «Sin conexión. Toca «Reintentar» cuando vuelva el internet.», «Espera un momento e intenta de nuevo.», «Está tardando mucho. Toca «Reintentar».»); un código desconocido o `HTTP_xxx` cae en «No se pudo completar. Toca «Reintentar».». Un `message` del servidor solo se muestra si no trae nada técnico (`C.looksTechnical`). `retry:true` pone el botón «Reintentar», que manda otra vez lo mismo.
 
+### Foto solo del dueño (servidor, Bot 5)
+En `/auth/assistant/chat` el rol se resuelve primero. Sin rol / apagado: 403 `assistant_off` sin leer el cuerpo. Empleado con nivel que manda foto: **403 `image_owner_only`** (`message: "Eso solo lo puede hacer el dueño."`) antes de leer o interpretar la foto: cabecera `x-assistant-image: 1` o tipo `multipart/`/`image/`, `content-length` > 64 KB, lectura con tope de 64 KB (`readBounded`, corta sin bajar el resto) y búsqueda del campo `"image"` sin `JSON.parse` (`hasImageField`); respaldo tras el parse. Sin cupo y sin DeepSeek. Bitácora: agrupada por aparato y minuto como los otros 403 de rol (`img_owner_only`). No es `forbidden_role` para que el celular no quite el asistente; el celular lo muestra como «Eso solo lo puede hacer el dueño.», sin «Reintentar».
+
 ### Una sola tarjeta por acción (servidor)
 `dedupeActions`: si el modelo propone dos veces el mismo cambio para el mismo producto (mismo tipo + `product_id`; compra: una por pedido; producto nuevo: por nombre), queda la primera y las demás van a `dropped` como `duplicate_action`. Consultas y documentos no se tocan.
 

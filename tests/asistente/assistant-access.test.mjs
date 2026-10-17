@@ -276,8 +276,8 @@ test('A20 chat: rechazos del chat de otros aparatos TODOS agrupados (403 de rol,
   assert.equal((await level('session:emp2', 'consultas')).status, 200);
   Object.assign(f.env, { ASSISTANT_PER_MINUTE: '1000', ASSISTANT_PER_DAY: '1000' }); // el cupo se gasta antes del 403 de documento
   for (let i = 0; i < 20; i++) assert.equal((await chat('tok-emp2', 'imprime la lista de precios ' + SECRET)).status, 403);
-  // 3) cuerpo malo / foto mala / vacío: suelto al cajón r (pasa su tope de 300 y se recorta solo ahí)
-  for (let i = 0; i < 160; i++) assert.equal((await call('tok-emp2', '/auth/assistant/chat', { text: SECRET, image: 'no-es-foto-' + i })).status, 400);
+  // 3) foto de un empleado: 403 image_owner_only (Bot 5, antes de leer la foto) -> agrupado; vacío: 400, también agrupado
+  for (let i = 0; i < 160; i++) assert.equal((await call('tok-emp2', '/auth/assistant/chat', { text: SECRET, image: 'no-es-foto-' + i })).status, 403);
   for (let i = 0; i < 160; i++) assert.equal((await call('tok-emp2', '/auth/assistant/chat', { text: '' })).status, 400);
   // 4) 429: el aparato pasa su cupo por minuto -> agrupado por resultado
   f.env.ASSISTANT_PER_MINUTE = '0';
@@ -288,7 +288,7 @@ test('A20 chat: rechazos del chat de otros aparatos TODOS agrupados (403 de rol,
   const agg = f.all("SELECT key, value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:a:%'").map((r) => ({ key: r.key, ...JSON.parse(r.value_json) }));
   const by = (o) => agg.filter((a) => a.outcome === o).reduce((n, a) => n + a.count, 0);
   assert.equal(by('rejected:assistant_off'), 180); assert.equal(by('rejected:forbidden_document'), 20); assert.equal(by('rejected:rate_limited'), 120);
-  assert.equal(by('rejected:bad_image'), 160); assert.equal(by('rejected:empty_message'), 160);
+  assert.equal(by('rejected:image_owner_only'), 160); assert.equal(by('rejected:empty_message'), 160);
   assert.ok(agg.length <= 12, 'una fila por aparato, minuto y resultado: ' + agg.length);
   assert.ok(agg.every((a) => a.src === 'chat' && a.tool === 'chat' && /:c[a-z_]+$/.test(a.key)));
   const all = JSON.stringify(f.all("SELECT key, value_json FROM pos_settings WHERE key LIKE 'internal:asst:audit:%'"));

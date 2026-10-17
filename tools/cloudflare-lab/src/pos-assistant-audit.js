@@ -28,9 +28,9 @@ const bucketRange = (b) => prefixRange(AUDIT_PREFIX + b + ':');
 const stats = { write_errors: 0, last_write_error_at: null };
 export const auditStats = () => ({ ...stats });
 const s = (v, n) => (v == null ? null : String(v).slice(0, n));
-const AGG_OUTCOMES = new Set(['rate_limited', 'forbidden_role', 'assistant_off', 'admin_only', 'other_device', 'forbidden_document']);
+const AGG_OUTCOMES = new Set(['rate_limited', 'forbidden_role', 'assistant_off', 'admin_only', 'other_device', 'forbidden_document', 'image_owner_only']);
 // Nombre corto para la clave (máx. 14): mismo motivo, misma fila.
-const AGG_SHORT = { forbidden_document: 'forbidden_doc' };
+const AGG_SHORT = { forbidden_document: 'forbidden_doc', image_owner_only: 'img_owner_only' };
 export const isAggregated = (outcome) => AGG_OUTCOMES.has(String(outcome || '').replace(/^rejected:/, ''));
 export function bucketOf(r) {
   const owner = r.role === 'owner', rej = String(r.outcome || '').startsWith('rejected');

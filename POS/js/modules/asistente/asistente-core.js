@@ -207,7 +207,7 @@
     changed: 'La propuesta cambió. Pídela otra vez.'
   };
   var FRIENDLY = {
-    forbidden_role: [MSG.owner], admin_only: [MSG.owner], owner_approval_required: [MSG.owner], forbidden: [MSG.owner], HTTP_403: [MSG.owner],
+    forbidden_role: [MSG.owner], admin_only: [MSG.owner], image_owner_only: [MSG.owner], owner_approval_required: [MSG.owner], forbidden: [MSG.owner], HTTP_403: [MSG.owner],
     assistant_off: ['El asistente está apagado en este aparato.'], unauthorized: ['Este aparato no tiene sesión. Entra de nuevo al sistema.'], HTTP_401: ['Este aparato no tiene sesión. Entra de nuevo al sistema.'],
     forbidden_document: ['Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.'],
     rate_limited: [MSG.wait, true], HTTP_429: [MSG.wait, true], upstream_busy: [MSG.wait, true],
