@@ -291,3 +291,30 @@ test('4) tarjeta de documento: el nombre del cliente solo en el estado de cuenta
   assert.match(html({ tipo: 'estado_cuenta', cliente: 'Rosa Quispe' }), /Cliente: Rosa Quispe/);
   assert.ok(!html({ tipo: 'lista_pedido', cliente: 'Rosa' }).includes('Rosa'));
 });
+
+// ---------- Bot 5 sobre d92a7d35: frases compuestas del dueño enteras; el corte solo para precios de venta de verdad ----------
+const COMPOUND = [
+  ['costo de venta S/ 1.80', ['1.80'], []],
+  ['El costo de venta del mes es S/ 1.80', ['1.80'], []],
+  ['el proveedor lo vende a S/ 1.80', ['1.80'], []],
+  ['el proveedor vende a 1.80 la caja', ['1.80'], []],
+  ['nos vende a S/ 1.80', ['1.80'], []],
+  ['precio de compra S/ 1.80', ['1.80'], []],
+  ['precio proveedor 1.80', ['1.80'], []],
+  ['precio al proveedor S/ 1.80', ['1.80'], []],
+  ['nos lo vende a S/ 1.80 y lo vendemos a S/ 2.50', ['1.80'], ['S/ 2.50']],
+  ['El costo no lo tengo y lo vendemos a S/ 2.50', [], ['S/ 2.50']],
+  ...SALE
+];
+for (const n of [1, 2, 47, 48, 49, 100]) {
+  test('5) trozos de ' + n + ': «costo de venta», «el proveedor lo vende», «precio de compra», «nos lo vende» se tapan enteras; el precio de venta propio sigue visible', () => {
+    for (const [txt, hide, show] of COMPOUND) {
+      const full = 'Arroz. ' + txt + '. Hay 40 unidades.';
+      const emp = emitSplit(full, n, 'empleado:consultas');
+      for (const h of hide) assert.ok(!emp.includes(h), 'salió ' + h + ' en «' + txt + '»: ' + emp);
+      for (const v of show) assert.ok(emp.includes(v), 'se tapó el precio de venta en «' + txt + '»: ' + emp);
+      assert.equal(emp, redactOwnerData(redactText(full)), 'sin perder ni repetir'); assert.ok(emp.endsWith('Hay 40 unidades.'));
+      assert.equal(emitSplit(full, n, 'owner'), full, 'el dueño ve todo');
+    }
+  });
+}

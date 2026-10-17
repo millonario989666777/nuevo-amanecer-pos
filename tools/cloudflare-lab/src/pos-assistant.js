@@ -88,12 +88,18 @@ export function redactText(value) {
 // larga; lo que empieza con el monto mide menos de 48 (la cola de siempre). Nunca sale a medias, corte donde sea.
 // Sin esas palabras el empleado recibe igual que antes, y el dueño no pasa por aquí (lo ve todo, a la misma velocidad).
 const NOT_LETTER = '(?![a-záéíóúñ])';
-const OWNER_WORD = '(?:cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|cto\\.?|precio\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|gan(?:aste|amos|é|ó|aron)|utilidad(?:es)?|inversi(?:ó|o)n(?:es)?|invert(?:í|i|imos|iste|ió|io|ieron))' + NOT_LETTER;
+// Frases compuestas del dueño como UNA sola pieza (así una palabra de corte dentro de ellas nunca las parte): «costo de venta»,
+// «precio de compra», «precio (al) proveedor», «el proveedor (nos) lo vende», «nos (lo) vende», «proveedor vende».
+const SUPPLIER_SELL = '(?:(?:el\\s+)?proveedor\\s+(?:nos\\s+)?(?:(?:se\\s+)?(?:lo|la|los|las)\\s+)?venden?|nos\\s+(?:(?:lo|la|los|las)\\s+)?venden?)';
+const OWNER_WORD = '(?:' + SUPPLIER_SELL + '|cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra|de\\s+ventas?))?|cto\\.?|precio\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|gan(?:aste|amos|é|ó|aron)|utilidad(?:es)?|inversi(?:ó|o)n(?:es)?|invert(?:í|i|imos|iste|ió|io|ieron))' + NOT_LETTER;
 const BUY_WORD = '(?:(?:lo|la|los|las)\\s+)?compr(?:é|e|amos|aron|ó)' + NOT_LETTER;
 const OWNER_AMOUNT = '(?:S\\/\\.?\\s?)?-?(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?:\\s?(?:%|por\\s?ciento|soles))?';
-// Entre la palabra y el monto no puede haber un cambio de idea («pero», «aunque», «sino», «mientras») ni el precio de venta («venta»,
-// «vende», «precio», «PVP»): así «El costo no lo tengo, pero el precio de venta es S/ 2.50» deja ver el precio de venta.
-const OWNER_GAP = '(?:(?!pero\\b|aunque\\b|sino\\b|mientras\\b|venta|vend|precio|pvp\\b)[^\\d\\n.;])';
+// Entre la palabra y el monto no puede haber un cambio de idea («pero», «aunque», «sino», «mientras») ni un precio de VENTA de verdad:
+// «precio de venta», «P. venta», «PVP», «precio» suelto (no «precio de compra/proveedor»), «se vende» (no «el proveedor se lo vende»),
+// «vendemos», «vendo». Así «El costo no lo tengo, pero el precio de venta es S/ 2.50» deja ver el precio de venta, y las frases del
+// dueño de arriba (con «venta», «vende» o «precio» adentro) se reconocen enteras antes de mirar el corte.
+const SALE_STOP = '(?:pero|aunque|sino|mientras|pvp|vendemos|vendo)' + NOT_LETTER + '|p\\.?\\s?venta|precio(?!\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra))|(?<!(?:proveedor|nos)\\s+)se\\s+vende';
+const OWNER_GAP = '(?:(?!' + SALE_STOP + ')[^\\d\\n.;])';
 const OWNER_DATA = [
   // primero las que empiezan con el monto (cortas), después «compré a … monto» y «palabra … monto»
   new RegExp('(?:S\\/\\.?\\s?)\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
