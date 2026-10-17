@@ -113,7 +113,7 @@
     if (value !== undefined) node.textContent = String(value);
     return node;
   }
-  function money(value) { return 'S/ ' + value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function money(value) { return 'S/\u00a0' + value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function dateLabel(day) { return day.split('-').reverse().join('/'); }
   function render() {
     var page = root.document && root.document.getElementById(PAGE_ID);
@@ -139,7 +139,8 @@
     var table = element('table', 'cf-table');
     table.appendChild(element('caption', 'cf-sr-only', 'Frecuencia de compra de clientes, primero quienes están por volver o inactivos'));
     var head = element('thead'), tr = element('tr');
-    ['Cliente', 'Compras', 'Cada (días)', 'Última compra', 'Días sin comprar', 'Estado', 'Importe'].forEach(function (label) { var th = element('th', '', label); th.scope = 'col'; tr.appendChild(th); });
+    var numericHeads = { 'Compras': true, 'Días sin comprar': true, 'Importe': true };
+    ['Cliente', 'Compras', 'Cada (días)', 'Última compra', 'Días sin comprar', 'Estado', 'Importe'].forEach(function (label) { var th = element('th', numericHeads[label] ? 'cf-num' : '', label); th.scope = 'col'; tr.appendChild(th); });
     head.appendChild(tr); table.appendChild(head);
     var body = element('tbody');
     report.rows.forEach(function (row) {
