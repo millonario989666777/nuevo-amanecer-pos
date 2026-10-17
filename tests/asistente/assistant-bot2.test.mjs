@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { assistantChatRoute, assistantConfirmRoute, createMemoryUsageStore, PURCHASE_HARD_LIMITS, toProposal, sanitizeContext } from '../../tools/cloudflare-lab/src/pos-assistant.js';
+import { assistantChatRoute, assistantConfirmRoute, createMemoryUsageStore, PURCHASE_HARD_LIMITS, toProposal, sanitizeContext, STOCK_READ_FAILED_TEXT } from '../../tools/cloudflare-lab/src/pos-assistant.js';
+import { assistantAccess } from '../../tools/cloudflare-lab/src/pos-assistant-access.js';
 const require = createRequire(import.meta.url);
 const C = require('../../POS/js/modules/asistente/asistente-core.js');
 
@@ -163,7 +164,40 @@ test('chat: 429 y 403 de rol se anotan AGRUPADOS (src chat); los demás rechazos
   assert.equal((await send({ text: 'inventario valorizado' }, { role: 'empleado:consultas_documentos' })).status, 403);
   assert.equal((await send({ text: '' })).status, 400);
   assert.equal((await send({ text: 'hola' }, { env: { ASSISTANT_ENABLED: '0' } })).status, 404);
-  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate, r.src]), [['rejected:assistant_off', true, 'chat'], ['rejected:admin_only', true, 'chat'],
+  assert.deepEqual(rows.map((r) => [r.outcome, !!r.aggregate, r.src]), [['rejected:assistant_off', true, 'chat'], ['rejected:assistant_off', true, 'chat'],
     ['rejected:rate_limited', true, 'chat'], ['rejected:forbidden_document', true, 'chat'], ['rejected:empty_message', false, 'chat']]);
   assert.ok(!/4821|inventario valorizado|hola/.test(JSON.stringify(rows)));
+});
+
+// Bot 2 (50b6716b, menor): si la lectura por id del inventario falla en el chat, NO se ofrecen compras ni ajustes (mensaje simple).
+test('chat: falla la lectura del inventario -> fuera tarjetas de compra y ajuste (y sus costos), mensaje simple; consultas y precios siguen', async () => {
+  const broken = { productsById: async () => { throw new Error('D1 caída'); }, products: async () => { throw new Error('D1 caída'); } };
+  const a = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })], { reader: broken });
+  assert.equal(a.status, 200); assert.equal(a.body.proposals.length, 0); assert.equal(a.body.reply, STOCK_READ_FAILED_TEXT);
+  assert.deepEqual(a.body.dropped, [{ tool: 'proponer_ajuste_stock', reason: 'stock_unavailable' }]);
+  const c = await chat([tool('preparar_compra', { lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 2, costo_unitario: 9 }] }, 'c1'), tool('proponer_cambio_precio', { product_id: 'A', precio_nuevo: 5 }, 'c2')], { reader: broken });
+  assert.deepEqual(c.body.proposals.map((p) => p.type), ['precio']); // sin compra y sin «Actualizar costo»
+  assert.match(c.body.reply, /^No pude revisar el inventario en este momento/); assert.match(c.body.reply, /Las otras tarjetas sí se pueden revisar/);
+  assert.ok(!/Confirmar/.test(c.body.reply));
+  // solo el fallo de productsById también corta (lector por id)
+  const onlyById = { productsById: async () => { throw new Error('x'); } };
+  const c2 = await chat([tool('preparar_compra', { lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 2 }] })], { reader: onlyById });
+  assert.equal(c2.body.proposals.length, 0); assert.equal(c2.body.reply, STOCK_READ_FAILED_TEXT);
+  // con la base bien, la misma compra sí sale
+  const ok = await chat([tool('preparar_compra', { lineas: [{ product_id: 'A', nombre: 'Arroz', cantidad: 2 }] })]);
+  assert.deepEqual(ok.body.proposals.map((p) => p.type), ['compra']);
+});
+
+// Bot 2 (50b6716b, menor): teléfono SIN fila de rol = 'sin_rol' en la bitácora (antes salía 'empleado:off').
+test('teléfono sin rol: assistantAccess da sin_rol y la bitácora del chat lo anota así (403 assistant_off, agrupado)', async () => {
+  const fakeDb = (row, fail) => ({ prepare: () => ({ bind: () => ({ first: async () => { if (fail) throw new Error('x'); return row; } }) }) });
+  assert.equal(await assistantAccess(fakeDb(null), { principalId: 'session:tel', posRole: 'owner' }), 'sin_rol');
+  assert.equal(await assistantAccess(fakeDb({ pos_role: 'owner' }), { principalId: 'session:tel', posRole: 'empleado' }), 'empleado:off');
+  assert.equal(await assistantAccess(fakeDb(null, true), { principalId: 'session:tel', posRole: 'owner' }), 'empleado:off'); // error de base: falla cerrado
+  assert.equal(await assistantAccess(fakeDb({ pos_role: 'owner' }), { principalId: 'session:tel', posRole: 'owner' }), 'owner');
+  const rows = []; const audit = async (_db, r) => { rows.push(...r); };
+  const r = await assistantChatRoute(new Request('https://w.test/auth/assistant/chat', { method: 'POST', body: '{"ping":true}' }), ENV, { principalId: 'session:tel', posRole: 'owner' }, jsonR,
+    { store: createMemoryUsageStore(), db: fakeDb(null), audit });
+  assert.equal(r.status, 403); const b = await r.json(); assert.equal(b.error, 'assistant_off'); assert.equal(b.reason, 'sin_rol');
+  assert.deepEqual(rows.map((x) => [x.role, x.outcome, !!x.aggregate]), [['sin_rol', 'rejected:assistant_off', true]]);
 });

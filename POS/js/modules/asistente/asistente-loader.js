@@ -64,26 +64,41 @@
     d.body.appendChild(a);
   }
   // Mismo pedido que usa la UI: endpoint y Bearer de la sesión del POS, sin cookies. En el prototipo local, rol simulado.
+  // Como máximo una pregunta cada 10 s (ASK_EVERY_MS). Sin internet no cuenta como pregunta, y si el pedido falla tampoco:
+  // al reconectar se vuelve a preguntar enseguida (Bot 3: antes esperaba 30 s y al reconectar no pasaba nada).
+  // Pedido corto (3 s, AbortController): con mala señal se corta y queda lo que había (nunca bloquea al POS). Corre en un momento libre
+  // DESPUÉS de que el POS abrió (load + requestIdleCallback) y desde este cargador chico: el empleado en Apagado no baja nada más.
+  var ASK_EVERY_MS = 10000, ASK_TIMEOUT_MS = 3000;
   function ask() {
-    if (loaded || asking || Date.now() - lastAsk < 30000) return; asking = true; lastAsk = Date.now();
-    if (root.navigator && root.navigator.onLine === false) { asking = false; if (ls('na_asistente_acc') === 'owner') load(); return; }
+    if (loaded || asking || Date.now() - lastAsk < ASK_EVERY_MS) return;
+    if (root.navigator && root.navigator.onLine === false) { if (ls('na_asistente_acc') === 'owner') load(); return; }
+    asking = true; lastAsk = Date.now();
     var url = '/auth/assistant/chat', h = { 'content-type': 'application/json' }, init = { method: 'POST', cache: 'no-store', body: '{"ping":true}' };
     var c = null; try { c = JSON.parse(ls('na_cloud_sync_credentials') || 'null'); } catch (_) {}
     if (c && c.endpoint && c.token) { url = String(c.endpoint).replace(/\/+$/, '') + url; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
     else { var pr = ls('na_asistente_proto_role'), pl = ls('na_asistente_proto_level'); if (pr === 'empleado' || pr === 'sinrol') h['x-proto-role'] = pr; if (pl) h['x-proto-level'] = pl; }
     init.headers = h;
-    var ctl = root.AbortController ? new root.AbortController() : null, t = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : 0; if (ctl) init.signal = ctl.signal;
+    var ctl = root.AbortController ? new root.AbortController() : null, t = ctl ? setTimeout(function () { ctl.abort(); }, ASK_TIMEOUT_MS) : 0; if (ctl) init.signal = ctl.signal;
     root.fetch(url, init).then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { st: r.status, d: d || {} }; }); }).then(function (x) {
       clearTimeout(t); asking = false;
       if (x.st === 200 && x.d.ok) { ls('na_asistente_acc', x.d.role === 'owner' ? 'owner' : 'on'); if (x.d.role !== 'owner') unreserve(); load(); return; }
       if (x.st === 403 && x.d.reason === 'sin_rol') { ls('na_asistente_acc', null); unreserve(); load(); return; }
       if (x.st === 401 || x.st === 403 || x.st === 404) { ls('na_asistente_acc', null); unreserve(); } // apagado: no se baja nada y el hueco (si lo había) se quita
-    }, function () { clearTimeout(t); asking = false; if (ls('na_asistente_acc') === 'owner') load(); });
+    }, function () { clearTimeout(t); asking = false; lastAsk = 0; if (ls('na_asistente_acc') === 'owner') load(); });
   }
   root.NA_ASISTENTE_LOADER = { ask: ask, loaded: function () { return loaded; } };
   function idle() { if (root.requestIdleCallback) root.requestIdleCallback(ask, { timeout: 2500 }); else setTimeout(ask, 800); }
   if (root.document.readyState === 'complete') idle(); else root.addEventListener('load', idle, { once: true });
-  // Si el dueño lo enciende con la app abierta: se vuelve a preguntar al volver a la app (máx. una vez cada 30 s).
+  // Si el dueño lo enciende con la app abierta: se vuelve a preguntar al volver a la app, al reconectar y al ENTRAR A INICIO
+  // (máx. una vez cada 10 s). Mientras el servidor no diga «sí», el empleado en Apagado sigue sin bajar nada del asistente.
   root.document.addEventListener('visibilitychange', function () { if (!root.document.hidden) ask(); });
   root.addEventListener('online', ask);
+  root.addEventListener('offline', function () { lastAsk = 0; }); // se cortó: al volver se pregunta enseguida (el dueño pudo cambiarlo)
+  function watchInicio() {
+    var m = root.document.getElementById('pageMenu'); if (!m || !root.MutationObserver) return;
+    var was = m.classList.contains('active');
+    var mo = new root.MutationObserver(function () { var now = m.classList.contains('active'); if (now && !was) { if (loaded) mo.disconnect(); else ask(); } was = now; });
+    mo.observe(m, { attributes: true, attributeFilter: ['class'] });
+  }
+  if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', watchInicio, { once: true }); else watchInicio();
 })(window);

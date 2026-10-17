@@ -93,3 +93,7 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 - **GET /settings del núcleo (Bot 3):** `pos-roles.js` lista con `key NOT LIKE 'internal:%'`, que recorre toda `pos_settings`. El asistente ya usa rangos por clave (`key >= p AND key < p+1`) en su bitácora y en el registro de aparatos de dueño. Sugerencia para el jefe: el mismo cambio en GET /settings (no se tocó: POS congelado).
 - **Tarjetas de compra:** el chat sigue limitando cada compra a 30 filas; el confirm ya revisa cualquier cantidad de productos en tramos de 50 ids.
 - **Compras del POS** (`/auth/purchases`): siguen sin tope propio (pendiente de antes).
+
+## Notas sobre 50b6716b (17-10-2026)
+- Re-chequeo del permiso: el cargador mira Inicio con un MutationObserver sobre `#pageMenu` (no toca el menú). No hay evento «POS listo para vender» en el núcleo; se usa `load` + `requestIdleCallback`. Si jefe quiere un evento propio del núcleo, sería un cambio fuera del asistente (no hecho).
+- El servidor de prueba (`tools/asistente-proto/dev-server.mjs`) cambia el id del aparato con el rol simulado; por eso un `forbidden_role` del confirm se simuló en la verificación de navegador (en el Worker real el aparato es el mismo).

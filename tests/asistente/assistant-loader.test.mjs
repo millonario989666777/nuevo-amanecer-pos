@@ -150,7 +150,8 @@ test('revisión Bot 4 sobre 1b87710d: relleno del contenedor que se desplaza, pa
   const ui = readFileSync(new URL('../../POS/js/modules/asistente/asistente-ui.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../../POS/css/asistente.css', import.meta.url), 'utf8');
   // 1) Clientes: se rellena también el contenedor interno que se desplaza (#cliList o el que esté bajo la burbuja)
-  assert.match(ui, /function scrollersIn\(pg, b\)/); assert.match(ui, /elementsFromPoint/); assert.match(ui, /#cliList/);
+  // (50b6716b: reemplazado por el relleno MEDIDO del contenedor que desplaza la última fila; ver assistant-live-access.test.mjs)
+  assert.match(ui, /function scrollerOf\(n, pg\)/); assert.match(ui, /function lastTappable\(pg, br\)/);
   // 2) la tarjeta de Inicio usa SU IntersectionObserver (no el de la burbuja)
   assert.match(ui, /function watchHero\(\)/); assert.match(ui, /var hp = doc\.hidden \|\| heroOff/); assert.doesNotMatch(ui, /var hp = [^;]*offscreen/);
   // 3) la cara del panel abierto no depende de la burbuja oculta: wake() la despierta

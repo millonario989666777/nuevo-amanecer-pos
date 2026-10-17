@@ -13,7 +13,7 @@
   if (!doc || !C || root.NA_ASISTENTE) return;
   var history = [], state = 'listo', quality = 'high', lowBattery = false, slowFrames = false, stateTimer = null, busy = false;
   var clockOffset = 0;
-  var IDLE_MS = 9000, HOLD_MS = 700, holding = false, holdTimer = null, idleTimer = null, sleeping = false, offscreen = false, heroOff = true, heroIO = null, heroDeferred = false, adminOff = false;
+  var IDLE_MS = 9000, HOLD_MS = 700, holding = false, holdTimer = null, idleTimer = null, sleeping = false, offscreen = false, heroOff = true, heroIO = null, heroDeferred = false, adminOff = false, bubbleIO = null, wired = false;
   // Pantallas de gestión donde vive la burbuja. Nunca Venta (pagePOS) ni Caja (pageCaja).
   var ADMIN_PAGES = ['pageMenu', 'pageInventario', 'pageVentas', 'pageClientes', 'pageGastos', 'pageConfig', 'pageHistorialCompras', 'pageValorizacion', 'pageReporteDeuda', 'pageKardex', 'pageVentasStock', 'pageRotacionAbc', 'pageReporteArqueo', 'pageCodigosDuplicados'];
   // access: lo último que dijo el servidor ({ role: 'owner' | 'empleado', level }). null = todavía no se sabe.
@@ -120,30 +120,59 @@
 
   // ---------- Posición: nunca tapar Cobrar ni el carrito ----------
   function visible(el) { if (!el) return null; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' ? r : null; }
-  // Espacio abajo en TODA página donde se ve la burbuja: la última fila o la última opción siempre se pueden subir por encima de ella.
-  // Solo agrega relleno inferior a la página activa si el suyo no alcanza; al salir de la página se devuelve el valor original.
-  // Si la lista se desplaza DENTRO de la página (Clientes: #cliList), se rellena también ese contenedor (Bot 4, 360 px).
-  var padded = [];
+  // Espacio abajo en TODA página donde se ve la burbuja: la última fila o la última opción siempre se pueden subir hasta 12 px POR ENCIMA
+  // de la burbuja. Se MIDE (no se adivina): con el contenedor que de verdad desplaza esa fila (el documento en el celular, .main-scroll en
+  // tableta/PC, una lista interna si desplaza) se calcula dónde quedaría la fila con todo desplazado abajo, y solo si la burbuja la taparía
+  // se agrega lo que falta de relleno inferior a ese contenedor. Si no la tapa, no se toca nada (ni un píxel: CLS igual a la base).
+  // En tableta/PC (>= 700 px) nunca se rellena #pageMenu: es una columna de alto fijo y su relleno movería el menú lateral (Bot 4).
+  // Hasta que el servidor dijo quién es este aparato (access) no se rellena nada. Al salir de la página se devuelve el valor original.
+  var padded = [], GAP = 12, LAST_N = 40;
+  var TAPPABLE = 'button, a[href], input:not([type=hidden]), select, textarea, [onclick], [role="button"], [tabindex]:not([tabindex="-1"])';
   function unpad(e) { var o = e.dataset.naAsstPb || ''; e.style.removeProperty('padding-bottom'); if (o) e.style.paddingBottom = o; delete e.dataset.naAsstPb; }
   function scrollable(e) { var cs = getComputedStyle(e); return /(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 1; }
-  function scrollersIn(pg, b) {
-    var out = [], seen = [];
-    function up(n) { for (; n && n !== pg && pg.contains(n); n = n.parentElement) if (seen.indexOf(n) < 0) { seen.push(n); if (scrollable(n)) { out.push(n); return; } } }
-    try { if (b && doc.elementsFromPoint) doc.elementsFromPoint(b.left + b.width / 2, b.top + b.height / 2).forEach(function (n) { if (!rootEl.contains(n)) up(n); }); } catch (_) {}
-    Array.prototype.forEach.call(pg.querySelectorAll('#cliList, .cli-list, .inv-list, .table-wrap'), function (n) { if (out.indexOf(n) < 0 && n.offsetParent && scrollable(n)) out.push(n); });
-    return out;
+  function pinned(n, pg) { for (; n && n !== doc.body; n = n.parentElement) { var ps = getComputedStyle(n).position; if (ps === 'fixed' || ps === 'sticky') return true; if (n === pg) break; } return false; }
+  // Última opción tocable de la página (por borde de abajo). Solo las últimas LAST_N en orden del documento: barato aunque Inventario tenga cientos.
+  // Solo cuenta lo que está en la MISMA franja horizontal que la burbuja (en PC el menú lateral o la columna izquierda nunca quedan debajo).
+  function lastTappable(pg, br) {
+    var all = pg.querySelectorAll(TAPPABLE), best = null, x0 = br.left - 8, x1 = br.right + 8;
+    for (var i = all.length - 1, k = 0; i >= 0 && k < LAST_N; i--) { var n = all[i]; if (rootEl.contains(n)) continue;
+      var r = n.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) continue; k++;
+      if (r.right < x0 || r.left > x1) continue;
+      if (best && r.bottom <= best.r.bottom) continue;
+      if (getComputedStyle(n).visibility === 'hidden' || pinned(n, pg)) continue;
+      best = { el: n, r: r }; }
+    return best;
   }
-  function padOne(e, need) { if (e.dataset.naAsstPb != null) return; if (parseFloat(getComputedStyle(e).paddingBottom) >= need) return;
-    e.dataset.naAsstPb = e.style.paddingBottom || ''; e.style.setProperty('padding-bottom', need + 'px', 'important'); padded.push(e); } // el POS fija el suyo con !important
+  // Contenedor que desplaza a `n`: el primer padre con scroll dentro de la página (incluida la página), o el documento.
+  function scrollerOf(n, pg) { for (var e = n.parentElement; e && e !== doc.body && e !== doc.documentElement; e = e.parentElement) { if (scrollable(e)) return e; if (e === pg) break; } return null; }
+  function padTo(e, px) { var cur = parseFloat(getComputedStyle(e).paddingBottom) || 0; if (px <= cur + 0.5) return;
+    if (e.dataset.naAsstPb == null) { e.dataset.naAsstPb = e.style.paddingBottom || ''; padded.push(e); }
+    e.style.setProperty('padding-bottom', Math.ceil(px) + 'px', 'important'); } // el POS fija el suyo con !important
+  // Cuánto taparía la burbuja a la última opción con todo desplazado abajo (0 = no la tapa). La cuenta vive en C.padOverlap (probada).
+  // Clientes/Inventario/Ventas en el celular: al desplazar, el POS achica la cabecera (NA_MOTION.scroll, --na-scroll-collapse-y); si lo
+  // que sobra para desplazar es menor, la página «rebota» arriba y la última fila queda quieta debajo de la burbuja (Bot 4: fila hasta
+  // y=732, burbuja desde y=694). Solo se LEE NA_MOTION.scroll.inspect; no se toca su código.
+  function overlapAtEnd(last, sc, limit) {
+    var vh = root.innerHeight;
+    if (sc) { var er = sc.getBoundingClientRect(); return C.padOverlap({ rowBottom: last.r.bottom, limit: limit, sc: { visBottom: Math.min(er.bottom, vh), rest: sc.scrollHeight - sc.clientHeight - sc.scrollTop } }); }
+    var se = doc.scrollingElement || doc.documentElement, col = 0;
+    try { var m = root.NA_MOTION && root.NA_MOTION.scroll && root.NA_MOTION.scroll.inspect(pgId()); if (m && m.active) col = (Number(m.totalHeight) || 0) - (Number(m.collapseOffset) || 0); } catch (_) {}
+    return C.padOverlap({ rowBottom: last.r.bottom, limit: limit, vh: vh, sy: root.scrollY || se.scrollTop || 0, sh: se.scrollHeight, collapse: col });
+  }
+  function pgId() { var a = doc.querySelector('.page.active'); return a ? a.id : ''; }
   function padPage(bottom) {
-    var pg = doc.querySelector('.page.active'), shown = rootEl && rootEl.style.display !== 'none' && !rootEl.hidden && bottom > 0;
+    var pg = doc.querySelector('.page.active'), shown = !!access && rootEl && rootEl.style.display !== 'none' && !rootEl.hidden && bottom > 0;
     padded = padded.filter(function (e) { if (!shown || !pg || !pg.contains(e) && e !== pg || !e.isConnected) { unpad(e); return false; } return true; });
     if (!pg || !shown) return;
-    var bEl = rootEl.querySelector('.na-asst-bubble'), br = bEl ? bEl.getBoundingClientRect() : null, h = br ? br.height : 72, need = Math.round(h + bottom + 24);
-    padOne(pg, need);
-    var vh = root.innerHeight;
-    // Contenedor interno: su borde de abajo puede quedar por encima del borde de la pantalla; solo se rellena lo que tapa la burbuja.
-    scrollersIn(pg, br).forEach(function (e) { var gap = Math.max(0, vh - e.getBoundingClientRect().bottom); padOne(e, Math.max(0, need - gap)); });
+    var bEl = rootEl.querySelector('.na-asst-bubble'), br = bEl ? visible(bEl) : null; if (!br) return;
+    var last = lastTappable(pg, br); if (!last) return;
+    var limit = br.top - GAP, sc = scrollerOf(last.el, pg), over = overlapAtEnd(last, sc, limit);
+    if (over <= 0) return;
+    // A quién se le agrega: al contenedor que desplaza; si desplaza el documento, a la página (salvo #pageMenu en tableta/PC).
+    var target = sc || pg;
+    if (target === pg && pg.id === 'pageMenu' && root.innerWidth >= 700) { var ms = pg.querySelector('.main-scroll'); if (!ms || !scrollable(ms) || !ms.contains(last.el)) return; target = ms; }
+    // +8 px de colchón: en el celular la barra de arriba se esconde al desplazar y el final cambia unos píxeles.
+    padTo(target, (parseFloat(getComputedStyle(target).paddingBottom) || 0) + over + 8);
   }
   function place() {
     if (!rootEl) return;
@@ -365,7 +394,7 @@
   }
   function addCard(p, prompt) {
     var key = gate.add(p); if (!key) return;
-    var c = el('div', 'na-asst-card', cardHtml(p)); c.dataset.type = p.type; c.dataset.st = 'pending'; msgsEl.appendChild(c);
+    var c = el('div', 'na-asst-card', cardHtml(p)); c.dataset.type = p.type; c.dataset.st = 'pending'; c._naKey = key; msgsEl.appendChild(c);
     var res = c.querySelector('.res');
     var go = c.querySelector('[data-go]'); if (go) go.onclick = function () { gate.execute(key, { confirmed: true }).then(function () { closePanel(); }); };
     // Documento local (solo lectura): se puede abrir varias veces, sin servidor ni PIN.
@@ -437,6 +466,8 @@
       }
       syncPin();
       gate.execute(key, { confirmed: true, review: review() }).then(function (r) {
+        if (r && ACCESS_LOST[r.code]) { accessLost(r.code); return; } // 403 de permiso al confirmar: igual que en el chat
+        if (!c.isConnected) return;
         wake();
         res.textContent = r.msg; c.dataset.st = gate.state(key) || 'pending';
         if (r.code === 'confirm_expired') { delete approvals[p.id]; expire(); setState('error', 2600); return; }
@@ -454,6 +485,37 @@
     };
     scrollEnd();
   }
+  // ---------- Permiso quitado o cambiado con la app abierta ----------
+  // 403 assistant_off / forbidden_role / admin_only en chat o confirm: se cierra el panel y se QUITAN la burbuja, el panel y la tarjeta
+  // de Inicio en ese momento (no solo se ocultan). Se borra el rol guardado en el teléfono (un recargo no reserva hueco).
+  // assistant_off: aviso corto y neutro con el aviso del POS (window.toast sin tipo: sin color de error ni emoji).
+  // forbidden_role / admin_only: el rol cambió; un ping pregunta el nuevo y, si todavía tiene asistente, se arma de nuevo con su nivel.
+  var ACCESS_LOST = { assistant_off: 1, forbidden_role: 1, admin_only: 1 }, OFF_NOTICE = 'El asistente fue desactivado por el dueño';
+  function posNotice(msg) { try { if (typeof root.toast === 'function') root.toast(msg); } catch (_) {} }
+  function dropUi() {
+    padded.forEach(unpad); padded = [];
+    var dv = doc.querySelector('.na-asst-doc'); if (dv) dv.remove();
+    if (bubbleIO) { try { bubbleIO.disconnect(); } catch (_) {} bubbleIO = null; }
+    if (panelEl) panelEl.remove(); if (rootEl) rootEl.remove();
+    rootEl = panelEl = msgsEl = inputEl = sendBtn = photoBtn = fileEl = offEl = tagEl = null;
+    history.length = 0; approvals = {}; shownFor = null; busy = false; offscreen = false;
+  }
+  function accessLost(code) {
+    access = null; adminOff = true; noRole = false;
+    try { root.localStorage.removeItem('na_asistente_acc'); } catch (_) {}
+    dropUi(); renderHero(); // sin permiso: la tarjeta de Inicio sale (o queda el aviso neutro del hueco hasta salir de Inicio)
+    if (code === 'assistant_off') posNotice(OFF_NOTICE);
+    else { adminOff = false; lastPing = 0; refreshAccess(); }
+  }
+  // 403 forbidden_document (el dueño bajó «Consultas y documentos» a «Solo consultas»): el panel queda abierto, pero salen las
+  // tarjetas de documento que estaban en él (y su vista previa), y el nivel guardado pasa a «consultas» (atajos y saludo nuevos).
+  function levelLowered() {
+    if (access && access.role !== 'owner' && access.level === 'consultas_documentos') access.level = 'consultas';
+    var dv = doc.querySelector('.na-asst-doc'); if (dv) dv.remove();
+    if (msgsEl) Array.prototype.forEach.call(msgsEl.querySelectorAll('.na-asst-card[data-type="documento"]'), function (c) { if (c._naKey) { try { gate.cancel(c._naKey); } catch (_) {} } c.remove(); });
+    syncPanelForAccess(); renderHero();
+    lastPing = 0; refreshAccess(); // el servidor confirma el nivel nuevo
+  }
   var ERRORS = { forbidden_document: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', rate_limited: 'Vas muy rápido. Espera un minuto.', daily_limit: 'Llegaste al límite de hoy en este aparato.', monthly_cap: 'Se alcanzó el tope del mes del asistente. Avisa al dueño.',
     image_too_large: 'La foto es muy grande.', bad_image: 'No pude leer esa foto.', upstream_timeout: 'El asistente tardó mucho. Inténtalo otra vez.', upstream_error: 'El asistente no respondió. Inténtalo otra vez.',
     upstream_busy: 'El asistente está ocupado. Inténtalo en un momento.', not_found: 'El asistente no está activado en este servidor.', forbidden_role: 'No tienes permiso para esto.', admin_only: 'El asistente es solo para el dueño.', assistant_off: 'El dueño no activó el asistente en este aparato.', unauthorized: 'Este aparato no tiene sesión.' };
@@ -469,17 +531,21 @@
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
     try {
-      var d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); thinking.remove(); wake(); // llegó respuesta: si estaba en pausa, despierta
+      var mine = panelEl, d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); if (panelEl !== mine) return; // la UI se quitó mientras tanto
+      thinking.remove(); wake(); // llegó respuesta: si estaba en pausa, despierta
       if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
-      if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); if (d.error === 'admin_only' || d.error === 'assistant_off') { access = null; adminOff = true; renderHero(); setTimeout(function () { closePanel(); }, 1500); } return; }
+      // 403 de permiso (Bots 3, 4 y 5): fuera panel, burbuja y tarjeta EN ESE MOMENTO; nada queda para seguir escribiendo.
+      if (!d.ok && ACCESS_LOST[d.error]) { accessLost(d.error); return; }
+      if (!d.ok && d.error === 'forbidden_document') { levelLowered(); addMsg('a', ERRORS.forbidden_document); setState('error', 2600); return; }
+      if (!d.ok) { addMsg('a', ERRORS[d.error] || 'No se pudo completar. Inténtalo otra vez.'); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
       (d.proposals || []).forEach(function (x) { addCard(x, text); });
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
-    } catch (e) { thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
-    finally { busy = false; sendBtn.disabled = root.navigator.onLine === false; photoBtn.disabled = root.navigator.onLine === false; }
+    } catch (e) { if (!panelEl) return; thinking.remove(); addMsg('a', root.navigator.onLine === false ? 'Asistente no disponible sin internet' : e && e.timeout ? 'El asistente tardó mucho. Inténtalo otra vez.' : 'No se pudo conectar. Revisa internet.'); setState('error', 2600); }
+    finally { busy = false; if (sendBtn) sendBtn.disabled = root.navigator.onLine === false; if (photoBtn) photoBtn.disabled = root.navigator.onLine === false; }
   }
   // Comprime en el aparato: lado mayor 1600 px, JPEG, baja calidad hasta quedar < 1.4 MB.
   function compress(file) {
@@ -497,7 +563,7 @@
       img.src = url;
     });
   }
-  function offline(on) { offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on) setState('offline'); else if (state === 'offline') setState('listo'); }
+  function offline(on) { if (!panelEl || !offEl) return; offEl.hidden = !on; sendBtn.disabled = on || busy; photoBtn.disabled = on || busy; if (on) setState('offline'); else if (state === 'offline') setState('listo'); }
   function openPanel() {
     panelEl.hidden = false; rootEl.hidden = true; place(); applyPause();
     if (!msgsEl.children.length) addMsg('a', isOwnerAccess() ? '¡Hola! Soy Burbuja, tu ayudante de gestión. Te digo qué falta reponer y cómo van las ventas, preparo compras y ajustes de stock, cambios de precio y costo, productos nuevos y documentos. Nada se guarda sin tu PIN.'
@@ -514,21 +580,30 @@
   }
 
   // ---------- Permiso: lo decide el servidor ----------
-  // Ping sin costo (no llama a DeepSeek ni gasta cupo). Se repite al volver internet, al volver a la app y al entrar a Inicio.
-  var pinging = null;
-  function refreshAccess() {
+  // Ping sin costo (no llama a DeepSeek ni gasta cupo). Se repite al volver internet, al volver a la app y al ENTRAR A INICIO (Bot 3),
+  // como máximo una vez cada 10 s (PING_EVERY_MS); tras un 403 de permiso o sin respuesta del servidor se puede repetir enseguida.
+  // Así un empleado al que le dan permiso lo ve sin recargar, y uno al que se lo quitan (aunque no toque nada) lo pierde.
+  var pinging = null, lastPing = 0, PING_EVERY_MS = 10000, PING_TIMEOUT_MS = 3000;
+  // Los re-chequeos (Inicio, reconectar, volver a la app) corren en un momento libre del navegador: nunca antes que el POS.
+  function idleRefresh() { (root.requestIdleCallback || function (f) { return setTimeout(f, 200); })(function () { refreshAccess({ throttle: true }); }, { timeout: 2000 }); }
+  function refreshAccess(opts) {
     if (pinging) return pinging;
     if (root.navigator.onLine === false) { renderHero(); return Promise.resolve(access); }
-    pinging = post('/auth/assistant/chat', { ping: true }, null, 8000).then(function (d) {
+    if (opts && opts.throttle && Date.now() - lastPing < PING_EVERY_MS) return Promise.resolve(access);
+    lastPing = Date.now();
+    var hadUi = !!rootEl, offNow = false;
+    // Corto (3 s) y sin bloquear nada: con mala señal se corta (timeout del pedido) y queda lo que ya había.
+    pinging = post('/auth/assistant/chat', { ping: true }, null, PING_TIMEOUT_MS).then(function (d) {
       if (d && d.ok) { access = { role: d.role === 'owner' ? 'owner' : 'empleado', level: d.level }; adminOff = false; }
-      else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) { access = null; }
-      noRole = !!(d && d.reason === 'sin_rol'); bootstrapOn = !!(d && d.owner_bootstrap);
+      else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) { access = null; offNow = d.error === 'assistant_off' && d.reason !== 'sin_rol'; }
+      else lastPing = 0; // sin respuesta clara: se puede volver a preguntar al reconectar
+      noRole = !!(d && d.reason === 'sin_rol'); if (d && 'owner_bootstrap' in d) bootstrapOn = !!d.owner_bootstrap; // solo viene en el 403 sin_rol
       try { if (d && d.ok) root.localStorage.setItem('na_asistente_acc', d.role === 'owner' ? 'owner' : 'on'); else if (d && (d.status === 403 || d.status === 401 || d.status === 404)) root.localStorage.removeItem('na_asistente_acc'); } catch (_) {}
       return access;
-    }, function () { return access; }).then(function (a) {
+    }, function () { lastPing = 0; return access; }).then(function (a) {
       pinging = null;
       if (isAdmin()) { if (!doc.querySelector('.na-asst-root')) mount(); else syncPanelForAccess(); }
-      else if (panelEl && !panelEl.hidden) closePanel();
+      else if (rootEl || panelEl) { dropUi(); if (hadUi && offNow) posNotice(OFF_NOTICE); } // ya no tiene asistente: fuera la UI (no solo oculta)
       renderHero(); if (rootEl) applyPause(); decorateConfig(); decorateRegister();
       return a;
     });
@@ -685,7 +760,7 @@
   // ---------- «Registrar este teléfono como dueño»: solo en un aparato SIN rol (el POS lo trata como dueño pero el asistente no),
   // nunca automático: botón + PIN. Si ya hay dueño queda «esperando aprobación». El servidor decide todo (bandera, 0 dueños, límite de PIN).
   function decorateRegister() {
-    if (!bootstrapOn || isOwnerAccess() || root.navigator.onLine === false) return;
+    if (isOwnerAccess() || root.navigator.onLine === false) return;
     // Teléfono de empleado (con el asistente encendido; uno en Apagado no baja este código): aviso fijo, sin botón ni PIN.
     if (access && access.role === 'empleado') {
       doc.querySelectorAll('#naDevList').forEach(function (list) {
@@ -696,7 +771,7 @@
       });
       return;
     }
-    if (!noRole) return;
+    if (!noRole || !bootstrapOn) return;
     doc.querySelectorAll('#naDevList').forEach(function (list) {
       var host = list.parentElement; if (!host || host.querySelector('.na-asst-reg')) return;
       var box = el('div', 'na-asst-reg');
@@ -785,14 +860,17 @@
     fileEl.onchange = function () { var f = fileEl.files && fileEl.files[0]; fileEl.value = ''; if (!f) return;
       compress(f).then(function (img) { send(inputEl.value || 'Lee esta factura de compra', img); }).catch(function () { addMsg('a', 'No pude abrir esa foto.'); setState('error', 2000); }); };
     panelEl.querySelector('.na-asst-chips').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; if (b.hasAttribute('data-photo')) fileEl.click(); else send(b.dataset.q); });
+    shownFor = access ? access.role + ':' + access.level : '';
+    rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
+    try { bubbleIO = new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }); bubbleIO.observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
+    applyQuality(); place(); applyPause(); setState(root.navigator.onLine === false ? 'offline' : 'listo');
+    // Escuchas de la ventana: UNA sola vez (si el dueño quita y vuelve a dar el permiso, la burbuja se arma de nuevo sin duplicarlas).
+    if (wired) return; wired = true;
     root.addEventListener('online', function () { offline(false); });
     root.addEventListener('offline', function () { offline(true); });
     doc.addEventListener('visibilitychange', function () { if (doc.hidden) applyPause(); else wake(); });
     root.addEventListener('scroll', function (e) { var t = e && e.target; if (t && t.nodeType === 1 && panelEl && panelEl.contains(t)) return; hold(); }, { passive: true, capture: true }); // el autodesplazamiento del chat no pausa la cara del panel
     doc.addEventListener('input', function (e) { if (e.target && e.target.closest && e.target.closest('.na-asst-panel, .na-asst-hero')) hold(); }, true);
-    shownFor = access ? access.role + ':' + access.level : '';
-    rootEl.addEventListener('pointerdown', wake, { passive: true }); panelEl.addEventListener('pointerdown', wake, { passive: true });
-    try { new IntersectionObserver(function (es) { offscreen = !es[0].isIntersecting; applyPause(); }).observe(rootEl.querySelector('.na-asst-bubble')); } catch (_) {}
     root.addEventListener('resize', place);
     setInterval(function () { if (doc.hidden || sleeping) return; place(); applyPause(); }, 1000); // quieta: el MutationObserver y los toques recolocan
     // Recolocar enseguida al cambiar de pantalla o abrir/cerrar ventanas (sin esperar el segundo).
@@ -800,20 +878,19 @@
     try { var mo = new MutationObserver(soon); doc.querySelectorAll('.page, .modal-overlay, #cartDrawer').forEach(function (n) { mo.observe(n, { attributes: true, attributeFilter: ['class'] }); });
       new MutationObserver(soon).observe(doc.body, { childList: true }); } catch (_) {}
     doc.addEventListener('click', soon, true);
-    applyQuality(); watchBattery(); place(); applyPause(); setState(root.navigator.onLine === false ? 'offline' : 'listo');
-    setTimeout(measureFrames, 1500);
+    watchBattery(); setTimeout(measureFrames, 1500);
   }
 
   // Arranque: después de que el POS terminó de cargar (load + momento libre), primero se pregunta al servidor.
   function boot() {
     refreshAccess();
-    root.addEventListener('online', refreshAccess);
-    root.addEventListener('offline', function () { renderHero(); });
-    doc.addEventListener('visibilitychange', function () { if (!doc.hidden) refreshAccess(); });
+    root.addEventListener('online', idleRefresh);
+    root.addEventListener('offline', function () { lastPing = 0; renderHero(); }); // al reconectar se pregunta enseguida
+    doc.addEventListener('visibilitychange', function () { if (!doc.hidden) idleRefresh(); });
     var tick = 0; function check() { if (tick) return; tick = setTimeout(function () { tick = 0; if (!doc.hidden) { renderHero(); decorateConfig(); decorateRegister(); } }, 250); }
     try { new MutationObserver(check).observe(doc.body, { childList: true, subtree: true }); } catch (_) {}
     var menu = doc.getElementById('pageMenu');
-    try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) refreshAccess(); else if (heroDeferred) renderHero(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}
+    try { if (menu) new MutationObserver(function () { if (menu.classList.contains('active')) idleRefresh(); else if (heroDeferred) renderHero(); }).observe(menu, { attributes: true, attributeFilter: ['class'] }); } catch (_) {}
   }
   root.NA_ASISTENTE = { open: function () { if (panelEl) openPanel(); }, close: function () { if (panelEl) closePanel(); }, setState: setState, send: send, _gate: gate, _deps: deps, get quality() { return quality; }, place: place, refreshAccess: refreshAccess, get access() { return access; } };
   function later() { (root.requestIdleCallback || function (f) { setTimeout(f, 300); })(boot, { timeout: 2500 }); }

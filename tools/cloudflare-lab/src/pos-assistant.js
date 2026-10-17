@@ -184,12 +184,21 @@ const overLimitMessage = (o, lineas) => [
 export const NO_STOCK_TEXT = (n) => '«' + n + '» no controla inventario: el asistente no prepara compras ni ajustes de stock para ese producto.';
 // Mapa id -> controla (false = sin control). Base del servidor primero; si no hay, lo que mandó el aparato.
 // Con `ids` y un lector que sabe buscar por id, se leen SOLO esos productos (sin recorrer el catálogo ni la lista cortada a 5000).
+// Si la lectura de la base FALLA, el mapa sale con failed=true: el chat no ofrece compras ni ajustes (Bot 2), ver dropStockCards.
 export async function stockControlMap(reader, ctx, ids) {
   const m = new Map();
   for (const p of (ctx?.products || [])) if (p.controla === false) m.set(String(p.id), false);
-  if (reader && ids && typeof reader.productsById === 'function') { try { for (const [id, p] of await reader.productsById(ids)) m.set(id, !!p.controla); } catch { /* sin base: queda lo del aparato; el confirm vuelve a mirar y falla cerrado */ } }
-  else if (reader && typeof reader.products === 'function') { try { for (const p of await reader.products()) m.set(String(p.id), !!p.controla); } catch { /* sin base: queda lo del aparato */ } }
+  if (reader && ids && typeof reader.productsById === 'function') { try { for (const [id, p] of await reader.productsById(ids)) m.set(id, !!p.controla); } catch { m.failed = true; } }
+  else if (reader && typeof reader.products === 'function') { try { for (const p of await reader.products()) m.set(String(p.id), !!p.controla); } catch { m.failed = true; } }
   return m;
+}
+export const STOCK_READ_FAILED_TEXT = 'No pude revisar el inventario en este momento, así que no preparé compras ni ajustes de stock. Inténtalo otra vez en un momento.';
+// Sin lectura del inventario no se ofrece ninguna tarjeta de compra ni de ajuste (tampoco las de costo que salen de la compra).
+export function dropStockCards(proposals, dropped) {
+  let n = 0;
+  for (let k = proposals.length - 1; k >= 0; k--) { const p = proposals[k]; if (p.type !== 'ajuste' && p.type !== 'compra') continue;
+    dropped.push({ dropped: 'stock_unavailable', tool: p.type === 'ajuste' ? 'proponer_ajuste_stock' : 'preparar_compra' }); proposals.splice(k, 1); n++; }
+  return n;
 }
 export const proposalProductIds = (proposals) => [...new Set(proposals.flatMap((p) => p.type === 'ajuste' ? [p.product_id] : p.type === 'compra' ? (p.lineas || []).map((l) => l.product_id) : []).filter(Boolean).map(String))];
 // Quita filas/tarjetas de productos sin control de inventario. Devuelve los nombres omitidos (para el mensaje).
@@ -392,7 +401,9 @@ export async function callDeepSeek(body, env, fetchImpl, timeoutMs) {
 // authorizeSession trata "sin fila de rol" como dueño. Para el asistente eso NO basta: solo es dueño
 // quien tiene pos_role='owner' explícito. Sin fila, sin tabla o con error: empleado (falla cerrado).
 // 403 cuando el asistente no está disponible para este aparato.
-function offBody(role) { return role === 'empleado:off' || role === 'empleado' ? { error: 'assistant_off', message: 'El dueño no activó el asistente en este aparato.' } : { error: 'admin_only', message: 'El asistente es solo para el dueño.' }; }
+export const PING_FIELDS = Object.freeze(['ok', 'enabled', 'role', 'level']);
+export function pingBody(role) { return { ok: true, enabled: true, role: role === 'owner' ? 'owner' : 'empleado', level: accessLevel(role) }; }
+function offBody(role) { return role === 'empleado:off' || role === 'empleado' || role === 'sin_rol' ? { error: 'assistant_off', message: 'El dueño no activó el asistente en este aparato.' } : { error: 'admin_only', message: 'El asistente es solo para el dueño.' }; }
 export async function assistantRole(db, auth) {
   if (auth?.posRole !== 'owner') return 'empleado';
   if (!db || !auth.principalId) return 'empleado';
@@ -603,7 +614,8 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   // Comprobación para la tarjeta de Inicio y la burbuja: no llama a DeepSeek ni gasta cupo. El servidor dice rol y nivel.
   // Rol y sin_rol se revisan ANTES de la clave: en un Worker sin clave el registro del dueño igual se ve. El ping no llama al modelo.
   const configured = !!env.DEEPSEEK_API_KEY || String(env.ASSISTANT_DEMO || '') === '1';
-  if (body && body.ping === true) return json({ ok: true, role: role === 'owner' ? 'owner' : 'empleado', level: accessLevel(role), configured, owner_bootstrap: ownerBootstrap, server_now: (deps.now || Date.now)() });
+  // Respuesta MÍNIMA (Bots 3 y 5): solo si este aparato tiene asistente y con qué nivel. Nada del dueño, de otros aparatos ni de la configuración.
+  if (body && body.ping === true) return json(pingBody(role));
   // Falla cerrado: sin clave no hay chat ni tarjetas, salvo modo demostración explícito (ASSISTANT_DEMO=1, solo prototipo local y pruebas).
   if (!configured) return json({ error: 'assistant_not_configured', message: 'asistente no configurado' }, 503);
   const parsed = parseChatBody(body);
@@ -632,9 +644,12 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   // Compra con costos distintos a los del inventario: tarjetas APARTE «Actualizar costo» (product.update con PIN). La compra del POS no cambia el costo.
   const reader = deps.reader || (deps.db ? canonicalReader(deps.db) : null);
   // Sin control de inventario: fuera antes de firmar (y se vuelve a mirar al confirmar).
-  let noStock = [];
+  let noStock = [], stockFailed = false;
   if (proposals.some((p) => p.type === 'ajuste' || p.type === 'compra') || dropped.some((d) => d.dropped === 'sin_control_stock')) {
-    noStock = [...dropped.filter((d) => d.dropped === 'sin_control_stock' && d.nombre).map((d) => d.nombre), ...applyStockControl(proposals, dropped, await stockControlMap(reader, ctx, proposalProductIds(proposals)))];
+    const map = await stockControlMap(reader, ctx, proposalProductIds(proposals));
+    noStock = dropped.filter((d) => d.dropped === 'sin_control_stock' && d.nombre).map((d) => d.nombre);
+    if (map.failed) stockFailed = dropStockCards(proposals, dropped) > 0; // falla la lectura: fuera compras y ajustes, con mensaje simple
+    else noStock.push(...applyStockControl(proposals, dropped, map));
   }
   const overNames = dropped.filter((d) => d.dropped === 'over_limit' && d.nombre).map((d) => d.nombre);
   for (const p of proposals.slice()) if (p.type === 'compra' && role === 'owner') proposals.push(...costProposals(p));
@@ -685,6 +700,8 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   if (!proposals.length && dropped.length) reply = 'No puedo hacer eso desde el asistente. Hazlo en su pantalla normal.';
   const notes = [...[...new Set(noStock)].map(NO_STOCK_TEXT), ...[...new Set(overNames)].map((n) => '«' + n + '»: la cantidad pasa el límite de ' + PURCHASE_HARD_LIMITS.maxQty + '. Hazlo desde Inventario.')];
   if (notes.length) reply = (proposals.length ? (reply ? reply + ' ' : '') : '') + notes.join(' ');
+  // El texto del modelo podía hablar de la compra o el ajuste que se quitó: se reemplaza por un mensaje simple.
+  if (stockFailed) reply = STOCK_READ_FAILED_TEXT + (proposals.length ? ' Las otras tarjetas sí se pueden revisar.' : '') + (notes.length ? ' ' + notes.join(' ') : '');
   if (!reply && proposals.length) reply = 'Listo. Revisa y pulsa Confirmar.';
   if (!reply) reply = 'No entendí bien. ¿Me lo dices de otra forma?';
   // Auditoría (A20): una fila por llamada a herramienta. Sin textos ni argumentos.

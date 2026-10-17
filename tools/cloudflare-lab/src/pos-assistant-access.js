@@ -34,8 +34,10 @@ export async function assistantAccess(db, auth) {
   let row = null;
   try { row = await db.prepare('SELECT pos_role FROM pos_device_roles WHERE device_id=?1').bind(String(auth.principalId)).first(); } catch { return 'empleado:off'; }
   if (row?.pos_role === 'owner' && auth.posRole === 'owner') return 'owner';
+  // Teléfono SIN fila de rol: 'sin_rol' (así aparece en la bitácora, no como 'empleado:off'). Sin asistente igual (accessOn = false).
+  if (!row) return 'sin_rol';
   // Solo un aparato empleado vinculado (fila 'empleado') puede tener nivel; sin fila no hay asistente.
-  if (row?.pos_role !== 'empleado') return 'empleado:off';
+  if (row.pos_role !== 'empleado') return 'empleado:off';
   return 'empleado:' + (await employeeLevel(db, auth.principalId));
 }
 export function accessLevel(role) { return role === 'owner' ? 'dueno' : String(role || '').split(':')[1] || 'off'; }

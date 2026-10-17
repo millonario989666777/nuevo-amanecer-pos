@@ -298,7 +298,19 @@
     };
   }
 
-  var api = { tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  // Relleno bajo la burbuja (cuenta pura, sin DOM): cuántos px taparía la burbuja a la última opción con todo desplazado abajo.
+  // limit = borde de arriba de la burbuja - 12. Contenedor interno: visBottom (su borde visible de abajo) y rest (lo que le queda por desplazar).
+  // Documento: vh, sy (desplazado), sh (alto total) y collapse (lo que la cabecera del POS todavía puede achicarse al desplazar).
+  // Lo de debajo de la fila (sh - sy - rowBottom) no cambia al desplazar; si lo que sobra para desplazar es menor que lo que se achica
+  // la cabecera, la página rebota arriba: entonces debe sobrar collapse + 24 px.
+  function padOverlap(o) {
+    if (o.sc) { if (o.sc.visBottom <= o.limit) return 0; return Math.max(0, o.rowBottom - o.sc.rest - o.limit); }
+    var tail = o.sh - o.sy - o.rowBottom, over = (o.vh - o.limit) - tail, C = Math.max(0, o.collapse || 0);
+    if (o.rowBottom + o.sy > o.limit && o.sh - o.vh < C + 24) over = Math.max(over, C + 24 - (o.sh - o.vh));
+    return Math.max(0, over);
+  }
+
+  var api = { padOverlap: padOverlap, tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

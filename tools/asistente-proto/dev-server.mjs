@@ -49,7 +49,7 @@ http.createServer(async (req, res) => {
       // Empleado: el nivel sale del encabezado x-proto-level (pruebas) o de lo que el dueño guardó aquí para «Caja 2».
       const lvl = ['off', 'consultas', 'consultas_documentos'].includes(req.headers['x-proto-level']) ? req.headers['x-proto-level'] : protoLevels.get('proto-emp-1');
       const sinRol = req.headers['x-proto-role'] === 'sinrol'; // aparato sin fila de rol: el POS lo trata como dueño, el asistente no
-      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado:' + lvl : sinRol ? 'empleado:off' : 'owner';
+      const role = req.headers['x-proto-role'] === 'empleado' ? 'empleado:' + lvl : sinRol ? 'sin_rol' : 'owner';
       const route = url.pathname === '/auth/assistant/chat' ? assistantChatRoute : assistantConfirmRoute;
       // En el Worker real el rol sale de la sesión (assistantRole); aquí se simula con el encabezado.
       const out = await route(request, env, { principalId: 'proto-device-' + role.split(':')[0], posRole: role === 'owner' || sinRol ? 'owner' : 'empleado' }, json, { store, reader, resolveRole: async () => role, verifyApproval: demoVerify });

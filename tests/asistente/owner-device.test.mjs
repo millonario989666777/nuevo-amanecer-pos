@@ -127,7 +127,7 @@ test('Worker sin clave de DeepSeek: el ping igual dice sin_rol / rol (el registr
   const s = await call('tok-nuevo', '/auth/assistant/chat', { ping: true });
   assert.equal(s.status, 403); assert.equal(s.body.reason, 'sin_rol');
   const o = await call('tok-dueno', '/auth/assistant/chat', { ping: true });
-  assert.equal(o.status, 200); assert.equal(o.body.configured, false);
+  assert.equal(o.status, 200); assert.deepEqual(o.body, { ok: true, enabled: true, role: 'owner', level: 'dueno' }); // ping mínimo: sin «configured»
   const c = await call('tok-dueno', '/auth/assistant/chat', { text: 'qué me falta reponer' });
   assert.equal(c.status, 503); assert.equal(c.body.error, 'assistant_not_configured');
   assert.equal((await call('tok-emp', '/auth/assistant/chat', { text: 'hola' })).status, 403, 'empleado apagado: 403 antes que 503');
