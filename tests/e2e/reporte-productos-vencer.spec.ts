@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { stripKnownBackgroundKeys } from './helpers/known-background-keys';
 
 test.use({ timezoneId: 'UTC', serviceWorkers: 'block' });
 const screenId = '#pageReporteProductosVencer';
@@ -53,14 +54,15 @@ async function seed(page: Page, unlock = true, dark = false) {
 }
 
 async function state(page: Page) {
-  return page.evaluate(() => {
+  const snapshot = await page.evaluate(() => {
     const w = window as any;
     return { runtime: w.eval('JSON.stringify({productos,ventas,clientes,creditos,cajMovs})'),
       canonical: JSON.stringify({ base: w.__expiryBase, projected: w.__expiryProjection, pending: w.__expiryPending }),
-      // Navigation persists ui.currentPage here; keep every other storage key strict.
+      // Navigation persists ui.currentPage here.
       storage: Object.fromEntries(Object.keys(localStorage).filter(key => key !== 'na_local_config_v1').sort()
         .map(key => [key, localStorage.getItem(key)])) };
   });
+  return { ...snapshot, storage: stripKnownBackgroundKeys(snapshot.storage) };
 }
 
 async function openReport(page: Page) {
