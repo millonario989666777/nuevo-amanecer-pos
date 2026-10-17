@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Web 169: #804 historial de compras por cliente: filtros por fechas y vendedor (merge 968b5c4a). Solo web, sin cambios de Worker. Rollback: web 168 (Cloudflare c2051341, build 9b524cad).",
-  "retry_attempt": 169,
-  "retry_reason": "Deploy de base 968b5c4ac693b9dad2060e588b28302e27ffca45 (incluye #804 merge 968b5c4ac693b9dad2060e588b28302e27ffca45). Rollback: web 168 (Cloudflare c2051341, build 9b524cad, base 9b524cad19b2bb2a0c82e9e402767bd700576d0b).",
-  "requested_at_utc": "2026-10-17T01:57:44Z",
-  "approved_base": "968b5c4ac693b9dad2060e588b28302e27ffca45"
+  "note": "Web 170: #807 clientes-frecuencia pulido visual y protección de columnas (merge 19b9bd08). Solo web, sin cambios de Worker. Rollback: web 169 (Cloudflare 12bc154a, build 78bf1b20).",
+  "retry_attempt": 170,
+  "retry_reason": "Deploy de base 19b9bd0880ab7eff5dc1e78bf35552c984ff76c3 (incluye #807 merge 19b9bd0880ab7eff5dc1e78bf35552c984ff76c3). Rollback: web 169 (Cloudflare 12bc154a, build 78bf1b20, base 78bf1b206c2107760f4ac7bcccf35d71b638629b).",
+  "requested_at_utc": "2026-10-17T03:13:00Z",
+  "approved_base": "19b9bd0880ab7eff5dc1e78bf35552c984ff76c3"
 }
