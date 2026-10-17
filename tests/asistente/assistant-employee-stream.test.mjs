@@ -223,3 +223,21 @@ test('celular: con «text {reset:true}» se borra lo ya pintado («Claro, te pre
   assert.ok(a > 0 && b > a, 'se quita la burbuja antes del mensaje simple');
   assert.ok(sendFn.indexOf('addCard(x, text)') > b, 'las tarjetas solo después, con d.ok');
 });
+
+// ---------- encabezados abreviados (Bot 5 sobre 31924d60) ----------
+const ABBR = ['P. compra', 'P.compra', 'P compra', 'Pr. compra', 'PR.COMPRA', 'Prec. compra', 'Precio de compra', 'Costo unit.', 'C. unit', 'C.unit', 'Cto.', 'CTO', 'Cósto'];
+const VISIBLE = ['Precio', 'P. venta', 'P.venta', 'Precio venta', 'P. unit', 'Producto', 'Stock', 'Compras', 'Categoría'];
+test('2c) tabla del empleado: columnas abreviadas del dueño (P. compra, Costo unit., C. unit, Cto.…) tapadas; Precio y P. venta visibles', () => {
+  for (const h of ABBR) assert.ok(!redactOwnerData('| Producto | ' + h + ' |\n|---|---|\n| Arroz | 7.77 |').includes('7.77'), 'debía taparse: ' + h);
+  for (const h of VISIBLE) { const t = '| Producto | ' + h + ' |\n|---|---|\n| Arroz | 9.00 |'; assert.equal(redactOwnerData(t), t, 'debía verse: ' + h); }
+});
+for (const n of [1, 2, 47, 48, 49, 100]) {
+  test('2c) trozos de ' + n + ': tabla con «P. compra», «Precio» y «P. venta»: el empleado no ve P. compra; el dueño ve todo', () => {
+    const T = 'Lista:\n| Producto | P. compra | Precio | P. venta | Stock |\n|---|---|---|---|---|\n| Arroz | S/ 7.77 | S/ 9.00 | 9.50 | 40 |\n| Leche | 3.21 | 4.50 | 4.80 | 12 |\nListo.';
+    const emp = emitSplit(T, n, 'empleado:consultas');
+    assert.ok(!/7\.77|3\.21/.test(emp), JSON.stringify(emp));
+    assert.match(emp, /\| Arroz \| \[dato del dueño\] \| S\/ 9\.00 \| 9\.50 \| 40 \|/); assert.match(emp, /\| Leche \| \[dato del dueño\] \| 4\.50 \| 4\.80 \| 12 \|/);
+    assert.equal(emp, redactOwnerData(redactText(T)));
+    assert.equal(emitSplit(T, n, 'owner'), T);
+  });
+}

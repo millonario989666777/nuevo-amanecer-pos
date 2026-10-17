@@ -99,7 +99,10 @@ const OWNER_DATA = [
   new RegExp('\\b' + OWNER_WORD + '[^\\d\\n.;]{0,60}?' + OWNER_AMOUNT, 'gi')
 ];
 export const OWNER_DATA_LABEL = '[dato del dueño]';
-const OWNER_HEADER = /cost|precio\s*(?:de\s*)?compra|proveedor|m[áa]rgen|ganancia|utilidad/i;
+// Encabezados del dueño, también abreviados: Costo, Costo unit., C. unit, Cto., P. compra, P.compra, P compra, Pr. compra, Prec. compra,
+// Precio de compra, Proveedor, Margen, Ganancia, Utilidad, Cost. Sin acentos ni mayúsculas. «Precio», «P. venta», «P. unit» quedan visibles.
+const OWNER_HEADER_RE = /cost|\bcto\b|\bc\s*\.?\s*unit|\bp(?:r|rec|recio)?\s*\.?\s*(?:de\s*)?compra|proveedor|\bprov\b|margen|ganancia|utilidad/;
+const OWNER_HEADER = { test: (c) => OWNER_HEADER_RE.test(String(c).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')) };
 // Tabla: una línea con | (o tabulador) y 2+ celdas cuyo encabezado nombra un dato del dueño; las filas siguientes de esa tabla llevan la
 // celda tapada (la fila separadora --- queda). Una celda a medio llegar ya sale tapada: lo de antes de la celda no cambia.
 function redactOwnerTables(text) {
