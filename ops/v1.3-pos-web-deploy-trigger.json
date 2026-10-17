@@ -7,9 +7,9 @@
   "backend_worker": "nuevo-amanecer-pos-prod",
   "local_server_required": false,
   "activation_secret_embedded": false,
-  "note": "Web 172: #819 clientes-frecuencia KPIs 2×2 a 600–770 px e importe en una línea (merge 68021169). Solo web, sin cambios de Worker. Rollback: web 171 (Cloudflare 0a562e24, build 99dd0e78).",
-  "retry_attempt": 172,
-  "retry_reason": "Deploy de base 6802116989a540a59aceb9f17a7488146b4c06a0 (incluye #819 merge 6802116989a540a59aceb9f17a7488146b4c06a0). Rollback: web 171 (Cloudflare 0a562e24, build 99dd0e78, base 99dd0e784499013dbe2263b23102f51b26cbd595).",
-  "requested_at_utc": "2026-10-17T06:23:54Z",
-  "approved_base": "6802116989a540a59aceb9f17a7488146b4c06a0"
+  "note": "Web 173: #822 historial de compras «Sin límite de fechas» en su propia fila a 1366 px (merge e6ab892e). Solo web, sin cambios de Worker. Rollback: web 172 (Cloudflare 9f614e06, build 39c4404a).",
+  "retry_attempt": 173,
+  "retry_reason": "Deploy de base e6ab892ecb4be49b29687d09c1c5e1cc91bb3112 (incluye #822 merge e6ab892ecb4be49b29687d09c1c5e1cc91bb3112). Rollback: web 172 (Cloudflare 9f614e06, build 39c4404a, base 39c4404ab170023237eaf950922dd5233f0d7a63).",
+  "requested_at_utc": "2026-10-17T06:54:16Z",
+  "approved_base": "e6ab892ecb4be49b29687d09c1c5e1cc91bb3112"
 }
