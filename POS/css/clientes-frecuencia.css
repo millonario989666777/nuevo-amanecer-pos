@@ -34,8 +34,6 @@
 #pageClientesFrecuencia .cf-empty { padding: 16px; background: var(--cf-surface); border: 1px solid var(--cf-border); border-radius: 12px; }
 #pageClientesFrecuencia .cf-results { margin-bottom: 20px; padding: 16px; border: 1px solid var(--cf-border); border-radius: 14px; background: var(--cf-surface); }
 #pageClientesFrecuencia .cf-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-/* Conserva todas las columnas frente a la regla móvil global; las tarjetas se definen después. */
-#pageClientesFrecuencia .cf-table :is(th, td) { display: table-cell; }
 #pageClientesFrecuencia .cf-table th, #pageClientesFrecuencia .cf-table td { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--cf-border); white-space: normal; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
 #pageClientesFrecuencia .cf-table thead th { font-size: 12px; color: var(--cf-muted); }
 #pageClientesFrecuencia .cf-table .cf-num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -61,6 +59,8 @@ body.dark #pageClientesFrecuencia .cf-single { color: #f1f5f9; background: #4755
   #pageClientesFrecuencia .cf-table th:first-child { width: auto; grid-column: 1 / -1; }
   #pageClientesFrecuencia .cf-table td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--cf-muted); }
   #pageClientesFrecuencia .cf-table .cf-num { text-align: left; }
+  /* Nocturno en tarjetas: el nombre del cliente no hereda el gris global de th (contraste AA). */
+  body.dark #pageClientesFrecuencia .cf-table tbody th { color: var(--cf-text); }
 }
 @media (min-width: 600px) {
   #pageClientesFrecuencia { padding: 24px; }

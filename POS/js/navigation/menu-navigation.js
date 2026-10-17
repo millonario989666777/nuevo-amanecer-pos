@@ -250,6 +250,12 @@
     var toggle = document.getElementById('naMobileMenuToggle');
     var wasOpen = drawer && drawer.classList.contains('is-open');
     if (drawer) {
+      // Sacar el foco antes de aria-hidden: evita el aviso de foco dentro de un nodo oculto.
+      var active = document.activeElement;
+      if (active && active !== document.body && drawer.contains(active)) {
+        if (wasOpen && toggle && isMobile()) toggle.focus();
+        if (drawer.contains(document.activeElement) && typeof active.blur === 'function') active.blur();
+      }
       drawer.classList.remove('is-open');
       drawer.setAttribute('aria-hidden', 'true');
       // Cerrado = fuera de pantalla: sin foco ni clics accidentales.

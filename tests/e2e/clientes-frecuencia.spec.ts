@@ -180,6 +180,45 @@ for (const width of [650, 1000]) {
   });
 }
 
+async function openFrequency(page: Page, width: number, dark = false) {
+  await page.setViewportSize({ width, height: 900 });
+  await rolePage(page, 'owner');
+  await seed(page);
+  if (dark) await page.evaluate(() => document.body.classList.add('dark'));
+  await page.evaluate(() => (window as any).goPage('pageProximamente'));
+  await page.locator('#pageProximamente [data-feature-id="clientes-frecuencia"]').click();
+  const screen = page.locator('#pageClientesFrecuencia');
+  await expect(screen.locator('.cf-table')).toBeVisible();
+  return screen;
+}
+test('1366px: numeric headers Compras, Días sin comprar e Importe align right like their numbers', async ({ page }) => {
+  const screen = await openFrequency(page, 1366);
+  for (const label of ['Compras', 'Días sin comprar', 'Importe']) {
+    await expect(screen.locator('.cf-table thead th', { hasText: new RegExp('^' + label + '$') })).toHaveCSS('text-align', 'right');
+  }
+  await expect(screen.locator('.cf-table thead th', { hasText: /^Cliente$/ })).toHaveCSS('text-align', 'left');
+});
+test('650px card: «S/» stays joined to the amount with a non-breaking space', async ({ page }) => {
+  const screen = await openFrequency(page, 650);
+  const texts = await screen.locator('.cf-table td[data-label="Importe"], .cf-summary-card strong').allTextContents();
+  const money = texts.filter(t => t.startsWith('S/'));
+  expect(money.length).toBeGreaterThan(0);
+  for (const t of money) expect(t).toMatch(/^S\/\u00a0\d/);
+});
+test('650px Nocturno card: customer name meets WCAG AA contrast', async ({ page }) => {
+  const screen = await openFrequency(page, 650, true);
+  const ratios = await screen.locator('.cf-table tbody th').evaluateAll(nodes => nodes.map(node => {
+    const rgb = (c: string) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+    const lum = (c: number[]) => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    let el: HTMLElement | null = node as HTMLElement, bg = 'rgba(0, 0, 0, 0)';
+    while (el && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { bg = getComputedStyle(el).backgroundColor; el = el.parentElement; }
+    const a = lum(rgb(getComputedStyle(node).color)), b = lum(rgb(bg));
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }));
+  expect(ratios.length).toBeGreaterThan(0);
+  for (const r of ratios) expect(r).toBeGreaterThanOrEqual(4.5);
+});
+
 test('employee cannot see the card or open frequency; direct rendering exposes no customer data', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await rolePage(page, 'empleado');
