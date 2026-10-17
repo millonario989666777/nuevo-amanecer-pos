@@ -71,7 +71,7 @@ test('temporary server error retries original contact edit and recovers its valu
 test('configured receipt format and prompt survive real app reload',async({page})=>{
   await boot(page);await page.evaluate(async()=>{const w=window as any;w.NAReceiptShare.setSettings({format:'pdf',ask:false});if(await guardarConfig()!==true)throw new Error('Settings were not saved');});
   await page.reload();await page.waitForFunction(()=>_naFreeSaleShortcutState.ready);
-  expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings())).toEqual({format:'pdf',ask:false});
+  expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings())).toEqual({format:'pdf',ask:false,app:'auto'});
   await page.evaluate(()=>(window as any).NAReceiptShare.onSale({id:'NO-PROMPT',items:[]},{nombre:'María'}));await expect(page.locator('#naReceiptShare.open')).toHaveCount(0);
 });
 
@@ -85,4 +85,61 @@ test('invalid WhatsApp recipient explains error, focuses field and never opens a
   await expect(page.locator('#gToast')).toContainText('número de WhatsApp válido');
   await expect(page.locator('#naReceiptPhone')).toBeFocused();
   await expect(page.locator('#naReceiptSend')).toBeEnabled();
+});
+
+const ANDROID_UA='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+async function captureOpen(page:Page){await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};});}
+test.describe('Android: choose WhatsApp or WhatsApp Business',()=>{
+  test.use({userAgent:ANDROID_UA});
+  test('selector persists across reload and opens the intent with the right package',async({page})=>{
+    await boot(page);await captureOpen(page);await receipt(page);
+    const app=page.locator('#naReceiptApp');
+    await expect(app).toBeVisible();await expect(app).toBeEnabled();await expect(app).toHaveValue('auto');
+    await page.locator('#naReceiptSend').click();
+    let urls=await page.evaluate(()=>(window as any).__opened);expect(new URL(urls[0]).hostname).toBe('wa.me');
+    await app.selectOption('business');
+    expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings().app)).toBe('business');
+    await page.locator('#naReceiptSend').click();
+    urls=await page.evaluate(()=>(window as any).__opened);const business=urls[1] as string;
+    expect(business.startsWith('intent://send?phone=51987654321&text=')).toBe(true);
+    expect(business).toContain('#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=https%3A%2F%2Fwa.me%2F51987654321%3Ftext%3D');
+    expect(decodeURIComponent(/^intent:\/\/send\?phone=\d+&text=([^#]*)#/.exec(business)![1])).toMatch(/^Hola María Pérez, gracias por tu compra\.\n\n```\n/);
+    await app.selectOption('whatsapp');await page.locator('#naReceiptSend').click();
+    urls=await page.evaluate(()=>(window as any).__opened);expect(urls[2]).toContain(';package=com.whatsapp;S.browser_fallback_url=');expect(urls[2]).not.toContain('w4b');
+    await app.selectOption('business');
+    await page.reload();await page.waitForFunction(()=>_naFreeSaleShortcutState.ready);
+    expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings().app)).toBe('business');
+    await captureOpen(page);await receipt(page);await expect(page.locator('#naReceiptApp')).toHaveValue('business');
+    await page.locator('#naReceiptSend').click();
+    expect(((await page.evaluate(()=>(window as any).__opened)) as string[])[0]).toContain('package=com.whatsapp.w4b');
+  });
+  test('image and PDF formats keep working and hide the app selector',async({page})=>{
+    await boot(page);await receipt(page);
+    await page.evaluate(()=>{const w=window as any;w.__shares=[];Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async(data:any)=>{w.__shares.push(data.files[0].type);}});});
+    await page.locator('#naReceiptFormat').selectOption('pdf');await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(page.locator('#naReceiptApp')).toBeHidden();
+    await page.locator('#naReceiptSend').click();await page.waitForFunction(()=>(window as any).__shares.length===1);
+    expect(await page.evaluate(()=>(window as any).__shares[0])).toBe('application/pdf');
+  });
+  test('settings screen exposes the same choice',async({page})=>{
+    await boot(page);
+    await page.evaluate(()=>{const h=document.createElement('div');h.id='cfgHost';h.innerHTML=(window as any).NAReceiptUI.settingsHtml();document.body.append(h);});
+    await expect(page.locator('#cfgReceiptApp')).toBeEnabled();
+    await page.locator('#cfgReceiptApp').selectOption('business');
+    await expect.poll(()=>page.evaluate(()=>(window as any).NAReceiptShare.settings().app)).toBe('business');
+  });
+});
+const IPHONE_UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+async function expectWaMe(page:Page){
+  await boot(page);await captureOpen(page);
+  await page.evaluate(()=>{(window as any).NAReceiptShare.setSettings({format:'text',ask:true,app:'business'});});
+  await receipt(page);
+  await expect(page.locator('#naReceiptApp')).toBeDisabled();await expect(page.locator('#naReceiptAppNote')).toContainText('Android');
+  await page.locator('#naReceiptSend').click();
+  const urls=await page.evaluate(()=>(window as any).__opened);expect(urls.length).toBe(1);
+  const url=new URL(urls[0]);expect(url.protocol).toBe('https:');expect(url.hostname).toBe('wa.me');expect(url.pathname).toBe('/51987654321');
+}
+test('desktop disables the selector and opens wa.me even with Business saved',async({page})=>{await expectWaMe(page);});
+test.describe('iPhone',()=>{
+  test.use({userAgent:IPHONE_UA});
+  test('iOS disables the selector and opens wa.me even with Business saved',async({page})=>{await expectWaMe(page);});
 });

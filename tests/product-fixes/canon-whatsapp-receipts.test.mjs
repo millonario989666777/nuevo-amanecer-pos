@@ -59,6 +59,56 @@ test('WhatsApp message greets the customer and keeps the ticket monospaced',()=>
   const url=a.textUrl('987654321',named);
   assert.equal(new URL(url).searchParams.get('text'),named);
 });
+const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36';
+const IPHONE='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
+const DESKTOP='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36';
+test('Android detection only matches Android user agents',()=>{
+  const a=api();
+  assert.equal(a.isAndroid(ANDROID),true);
+  assert.equal(a.isAndroid(IPHONE),false);
+  assert.equal(a.isAndroid(DESKTOP),false);
+  assert.equal(a.isAndroid(''),false);
+  assert.equal(api({navigator:{userAgent:ANDROID}}).isAndroid(),true);
+  assert.equal(api().isAndroid(),false);
+});
+test('intent URL targets the chosen WhatsApp package with an encoded wa.me fallback',()=>{
+  const a=api(),msg='Arroz & azúcar\nS/ 7.00';
+  const normal=a.intentUrl('987654321',msg,'whatsapp'),business=a.intentUrl('987654321',msg,'business');
+  assert.equal(normal,'intent://send?phone=51987654321&text='+encodeURIComponent(msg)+'#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url='+encodeURIComponent(a.textUrl('987654321',msg))+';end');
+  assert.ok(business.includes(';package=com.whatsapp.w4b;'));
+  assert.ok(!business.includes('package=com.whatsapp;'));
+  for(const url of [normal,business]){
+    const fallback=/;S\.browser_fallback_url=([^;]*);end$/.exec(url)[1];
+    assert.equal(decodeURIComponent(fallback),a.textUrl('987654321',msg));
+    assert.ok(!/[;#]/.test(url.slice(url.indexOf('?')+1,url.indexOf('#Intent'))),'query must not contain raw ; or #');
+  }
+  assert.throws(()=>a.intentUrl('123','x','whatsapp'));
+  assert.throws(()=>a.intentUrl('987654321','x','auto'));
+  assert.throws(()=>a.intentUrl('987654321','x','evil'));
+});
+test('send URL: intent only on Android with an explicit app; wa.me everywhere else and in auto',()=>{
+  const a=api(),wa=a.textUrl('987654321','hola');
+  assert.equal(a.sendUrl('987654321','hola','auto',ANDROID),wa);
+  assert.equal(a.sendUrl('987654321','hola',undefined,ANDROID),wa);
+  assert.equal(a.sendUrl('987654321','hola','whatsapp',ANDROID),a.intentUrl('987654321','hola','whatsapp'));
+  assert.equal(a.sendUrl('987654321','hola','business',ANDROID),a.intentUrl('987654321','hola','business'));
+  for(const ua of [IPHONE,DESKTOP,''])for(const app of ['auto','whatsapp','business'])assert.equal(a.sendUrl('987654321','hola',app,ua),wa);
+  assert.throws(()=>a.sendUrl('123','x','business',ANDROID));
+  assert.throws(()=>a.sendUrl('987654321','x','evil',ANDROID));
+});
+test('WhatsApp app setting defaults to auto, persists, is preserved and rejects invalid values',()=>{
+  const config={ticket:{shareFormat:'image'}};
+  const a=api({appConfig:config});
+  assert.equal(a.settings().app,'auto');
+  a.setSettings({format:'text',ask:true,app:'business'});
+  assert.equal(config.ticket.shareApp,'business');
+  assert.equal(api({appConfig:JSON.parse(JSON.stringify(config))}).settings().app,'business');
+  a.setSettings({format:'pdf',ask:false});
+  assert.equal(a.settings().app,'business','omitting app keeps the saved choice');
+  assert.equal(api({appConfig:{ticket:{shareApp:'bogus'}}}).settings().app,'auto');
+  assert.throws(()=>a.setSettings({format:'text',ask:true,app:'bogus'}));
+  assert.equal(a.settings().app,'business');
+});
 test('settings persist through reload and reject invalid format',()=>{
   const config={ticket:{}};
   const a=api({appConfig:config});
