@@ -118,6 +118,26 @@ for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
       await expect(summary.nth(1)).toContainText(count);
     }
     await expect(products).toContainText('Histórico anterior');
+    if (width === 390) {
+      const dates = sales.locator('tbody th .ch-date');
+      await expect(dates).toHaveCount(5);
+      for (const date of await dates.all()) {
+        const result = await date.evaluate(cell => {
+          // El Range mide solo la fecha, sin la etiqueta ::before de la tarjeta.
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          const lines = [...range.getClientRects()];
+          const card = cell.closest('tr')!.getBoundingClientRect();
+          return {
+            lineCount: lines.length,
+            fits: lines.every(rect => rect.width > 0 && rect.left >= card.left - 1 && rect.right <= card.right + 1
+              && rect.top >= card.top - 1 && rect.bottom <= card.bottom + 1)
+          };
+        });
+        expect(result.lineCount, await date.textContent() || 'Fecha').toBe(1);
+        expect(result.fits, await date.textContent() || 'Fecha').toBe(true);
+      }
+    }
     await noOverflow(page);
     const refresh = screen.getByRole('button', { name: 'Actualizar reporte' });
     await refresh.scrollIntoViewIfNeeded();

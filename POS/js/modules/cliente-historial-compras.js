@@ -183,6 +183,7 @@
     return '<section class="ch-section"><h2>' + escapeHtml(title) + '</h2><table class="ch-table" data-ch-table="' + kind + '"><caption class="ch-sr-only">' + escapeHtml(title) + '</caption><thead><tr>' +
       labels.map(function (label) { return '<th scope="col"' + cls(labels.indexOf(label)) + '>' + escapeHtml(label) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       rows.map(function (row) { return '<tr>' + row.map(function (value, i) {
+        if (i === 0 && kind === 'sales') return '<th scope="row"><span class="ch-date">' + escapeHtml(value) + '</span></th>';
         return i === 0 ? '<th scope="row">' + escapeHtml(value) + '</th>' : '<td' + cls(i) + ' data-label="' + escapeHtml(labels[i]) + '">' + escapeHtml(value) + '</td>';
       }).join('') + '</tr>'; }).join('') + '</tbody></table></section>';
   }
