@@ -59,7 +59,7 @@ test('seller options use recorded identity, distinct ids, legacy names and No re
     sale({ anulada: true, cajeroId: 'void', cajeroNombre: 'Anulada' }), sale({ status: 'void', cajeroId: 'void2' }), null];
   assert.deepEqual(plain(api.sellerOptions(sales, 'c1')), [
     { value: 'id:7', label: '7' }, { value: 'id:v1', label: 'Ana' }, { value: 'id:v2', label: 'Ana' },
-    { value: 'name:beatriz', label: 'Beatriz' }, { value: 'missing:', label: 'No registrado' }
+    { value: 'name:beatriz', label: 'Beatriz (sin id)' }, { value: 'missing:', label: 'No registrado' }
   ]);
   assert.deepEqual(plain(api.sellerOptions(sales, '')), []);
   assert.deepEqual(plain(api.sellerOptions(null, 'c1')), []);
@@ -175,7 +175,7 @@ test('empty date inputs default once to the last 30 Lima days', () => {
 });
 
 function screen({ role = 'owner', ventas = [], clientes = [{ id: 'c1', nombre: 'Cliente de prueba' }] } = {}) {
-  const keys = ['content', 'status', 'controls', 'search', 'customer', 'period', 'from', 'to', 'seller', 'export'];
+  const keys = ['content', 'status', 'controls', 'search', 'customer', 'period', 'from', 'to', 'date-hint', 'seller', 'export'];
   const nodes = Object.fromEntries(keys.map(key => {
     const node = new Node(); node.selector = '[data-ch-' + key + ']'; node.matches = s => s.split(/,\s*/).includes(node.selector);
     return [node.selector, node];
@@ -194,6 +194,30 @@ function screen({ role = 'owner', ventas = [], clientes = [{ id: 'c1', nombre: '
   return { ctx, nodes, page, change, csv: () => csv, clicks: () => clicks };
 }
 const daysAgo = n => new Date(Date.now() - 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+
+test('Sin límite de fechas is rendered below the dates and visible only for Todo, including when Personalizado has empty dates', () => {
+  const markup = readFileSync('POS/index.html', 'utf8');
+  assert.match(markup, /data-ch-to[^>]*>\s*<\/label>\s*<p class="ch-date-hint" data-ch-date-hint hidden>Sin límite de fechas<\/p>/);
+  const s = screen();
+  const hint = s.nodes['[data-ch-date-hint]'];
+  assert.equal(hint.hidden, true);
+  s.nodes['[data-ch-period]'].value = 'all'; s.change('period');
+  assert.equal(s.nodes['[data-ch-from]'].value, '');
+  assert.equal(s.nodes['[data-ch-to]'].value, '');
+  assert.equal(hint.hidden, false);
+  s.ctx.NA_CLIENTE_HISTORIAL.render();
+  assert.equal(hint.hidden, false);
+  s.nodes['[data-ch-period]'].value = 'custom'; s.change('period');
+  assert.equal(s.nodes['[data-ch-from]'].value, '');
+  assert.equal(s.nodes['[data-ch-to]'].value, '');
+  assert.equal(hint.hidden, true);
+  for (const value of ['30', '90', '365']) {
+    s.nodes['[data-ch-period]'].value = 'all'; s.change('period');
+    assert.equal(hint.hidden, false);
+    s.nodes['[data-ch-period]'].value = value; s.change('period');
+    assert.equal(hint.hidden, true);
+  }
+});
 
 test('Período is only a shortcut: it fills Desde/Hasta, a manual edit switches to Personalizado and Todo clears both', () => {
   const s = screen();
@@ -241,8 +265,8 @@ test('sellers with id and name-only sales are grouped under the id, matching nam
     sale({ id: 'b1', cajeroId: undefined, cajeroNombre: 'Beatriz' }), sale({ id: 'b2', cajeroId: undefined, cajeroNombre: ' BEATRIZ' }),
     sale({ id: 'x1', cajeroId: 'x1', cajeroNombre: 'Dup' }), sale({ id: 'x2', cajeroId: 'x2', cajeroNombre: 'dup' }), sale({ id: 'x3', cajeroId: undefined, cajeroNombre: 'Dup' })];
   assert.deepEqual(plain(api.sellerOptions(ventas, 'c1')), [
-    { value: 'id:v1', label: 'Ana Pérez' }, { value: 'name:beatriz', label: 'Beatriz' },
-    { value: 'id:x2', label: 'dup' }, { value: 'id:x1', label: 'Dup' }, { value: 'name:dup', label: 'Dup' }
+    { value: 'id:v1', label: 'Ana Pérez' }, { value: 'name:beatriz', label: 'Beatriz (sin id)' },
+    { value: 'id:x2', label: 'dup' }, { value: 'id:x1', label: 'Dup' }, { value: 'name:dup', label: 'Dup (sin id)' }
   ]);
   assert.deepEqual(ids(api.filterSales(ventas, 'c1', { seller: 'id:v1' })), ['a1', 'a2', 'a3']);
   assert.deepEqual(ids(api.filterSales(ventas, 'c1', { seller: 'name:beatriz' })), ['b1', 'b2']);

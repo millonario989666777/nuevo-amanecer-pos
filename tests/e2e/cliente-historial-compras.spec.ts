@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 // Mismo rolePage/seed de Rotación ABC; solo backend ficticio y datos sintéticos.
 async function rolePage(page: Page, role: 'owner' | 'empleado') {
@@ -68,6 +68,16 @@ async function noOverflow(page: Page) {
       return rect.left >= box.left - 1 && rect.right <= box.right + 1 && child.scrollWidth <= child.clientWidth + 1;
     });
   })).toBe(true);
+}
+async function contrastRatio(locator: Locator) {
+  return locator.evaluate(node => {
+    const rgb = (c: string) => (c.match(/[\d.]+/g) || []).map(Number);
+    const lum = (c: number[]) => { const [r, g, b] = c.slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    let el: Element | null = node, bg = 'rgba(0, 0, 0, 0)';
+    while (el && (bg = getComputedStyle(el).backgroundColor) && (bg === 'transparent' || rgb(bg)[3] === 0)) el = el.parentElement;
+    const a = lum(rgb(getComputedStyle(node).color)), b = lum(rgb(bg));
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  });
 }
 
 for (const width of [390, 768, 1366]) for (const dark of [false, true]) {
@@ -199,7 +209,7 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await seed(page);
   await page.evaluate(() => (window as any).eval(`ventas=[
     {id:'filter-start',clienteId:'hist-c1',fecha:'2026-10-13',cajeroNombre:'Ana',cajeroId:'v1',total:10,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:10}]},
-    {id:'filter-end',clienteId:'hist-c1',timestamp:'2026-10-16T04:30:00Z',cajero:'Ana',cajeroId:'v1',total:5,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:5}]},
+    {id:'filter-end',clienteId:'hist-c1',timestamp:'2026-10-16T04:30:00Z',cajero:' ana ',total:5,items:[{id:'fp1',name:'Producto elegido',qty:1,subtotal:5}]},
     {id:'filter-old',clienteId:'hist-c1',fecha:'2026-10-12',cajeroNombre:'Ana',cajeroId:'v1',total:7,items:[{id:'fp2',name:'Producto fuera de fecha',qty:1,subtotal:7}]},
     {id:'filter-other',clienteId:'hist-c1',fecha:'2026-10-14',cajero:'Beatriz',total:9,items:[{id:'fp3',name:'Producto otro vendedor',qty:1,subtotal:9}]},
     {id:'filter-missing',clienteId:'hist-c1',fecha:'2026-10-14',total:3,items:[]}
@@ -211,7 +221,7 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   await screen.locator('[data-ch-period]').selectOption('all');
   await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
   const seller = screen.getByRole('combobox', { name: 'Vendedor', exact: true });
-  await expect(seller.locator('option')).toHaveText(['Todos', 'Ana', 'Beatriz', 'No registrado']);
+  await expect(seller.locator('option')).toHaveText(['Todos', 'Ana', 'Beatriz (sin id)', 'No registrado']);
   await screen.getByLabel('Desde', { exact: true }).fill('2026-10-13');
   await screen.getByLabel('Desde', { exact: true }).blur();
   await screen.getByLabel('Hasta', { exact: true }).fill('2026-10-15');
@@ -277,6 +287,56 @@ test('date and seller filters update tables, summaries and CSV with full filter 
   expect(await readState(page)).toBe(before);
 });
 
+for (const width of [390, 768, 1366]) {
+  test(`seller select folds only a unique id and CSV guards leading spaces at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(() => (window as any).goPage('pageClienteHistorial'));
+    const screen = page.locator('#pageClienteHistorial');
+    await screen.locator('[data-ch-period]').selectOption('all');
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    const seller = screen.getByRole('combobox', { name: 'Vendedor', exact: true });
+    for (const count of [0, 1, 2]) {
+      await page.evaluate(count => {
+        (window as any).eval(`ventas=[
+          {id:'seller-legacy',clienteId:'hist-c1',fecha:'2026-10-15',cajero:' Luis ',total:5,items:[]}
+        ];`);
+        for (let index = 1; index <= count; index++) {
+          (window as any).eval(`ventas.push({id:'seller-id-${index}',clienteId:'hist-c1',fecha:'2026-10-15',cajeroNombre:'Luis',cajeroId:'v${index}',total:10,items:[]});`);
+        }
+        (window as any).NA_CLIENTE_HISTORIAL.render();
+      }, count);
+      const before = await readState(page);
+      const expected = count === 1 ? [{ value: '', label: 'Todos' }, { value: 'id:v1', label: 'Luis' }] : [
+        { value: '', label: 'Todos' },
+        ...(count === 2 ? [{ value: 'id:v1', label: 'Luis' }, { value: 'id:v2', label: 'Luis' }] : []),
+        { value: 'name:luis', label: 'Luis (sin id)' }
+      ];
+      expect(await seller.locator('option').evaluateAll(nodes => nodes.map(node => ({
+        value: (node as HTMLOptionElement).value, label: node.textContent
+      })))).toEqual(expected);
+      await seller.selectOption(count === 1 ? 'id:v1' : 'name:luis');
+      const sales = screen.locator('[data-ch-table="sales"]');
+      await expect(sales.locator('tbody tr')).toHaveCount(count === 1 ? 2 : 1);
+      await expect(sales).toContainText('seller-legacy');
+      if (count === 2) for (const index of [1, 2]) {
+        await seller.selectOption('id:v' + index);
+        await expect(sales.locator('tbody tr')).toHaveCount(1);
+        await expect(sales).toContainText('seller-id-' + index);
+        await expect(sales).not.toContainText('seller-legacy');
+      }
+      expect(await readState(page)).toBe(before);
+      await noOverflow(page);
+    }
+    // Reporte sintético: conservar los espacios para probar el guard usado por la exportación.
+    const csv = await page.evaluate(() => (window as any).NA_CLIENTE_HISTORIAL.toCsv({
+      sales: [{ day: '2026-10-15', reference: '  =1+1', total: 5, method: 'efectivo' }], products: []
+    }));
+    expect(csv).toContain('"15/10/2026","\'  =1+1","5.00","Efectivo"');
+  });
+}
+
 for (const dark of [false, true]) {
   test(`Período fills Desde/Hasta, manual edits switch to Personalizado, Todo clears and the date error is readable (${dark ? 'Nocturno' : 'claro'})`, async ({ page }) => {
     await page.setViewportSize({ width: 650, height: 900 });
@@ -286,9 +346,12 @@ for (const dark of [false, true]) {
     const screen = page.locator('#pageClienteHistorial');
     const period = screen.locator('[data-ch-period]');
     const from = screen.getByLabel('Desde', { exact: true }), to = screen.getByLabel('Hasta', { exact: true });
+    const hint = screen.locator('[data-ch-date-hint]');
     const range = (days: string) => page.evaluate(days => (window as any).NA_CLIENTE_HISTORIAL.periodDates(days), days);
     await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
     await expect(period).toHaveValue('30');
+    await expect(hint).toHaveAttribute('hidden', '');
+    await expect(hint).toBeHidden();
     const p30 = await range('30');
     await expect(from).toHaveValue(p30.from); await expect(to).toHaveValue(p30.to);
     await period.selectOption('90');
@@ -302,23 +365,32 @@ for (const dark of [false, true]) {
     await expect(period.locator('option:checked')).toHaveText('Personalizado');
     await period.selectOption('all');
     await expect(from).toHaveValue(''); await expect(to).toHaveValue('');
+    await expect(from).not.toHaveAttribute('placeholder'); await expect(to).not.toHaveAttribute('placeholder');
+    await expect(hint).toHaveText('Sin límite de fechas');
+    await expect(hint).toBeVisible();
+    await expect(hint).not.toHaveAttribute('hidden');
+    expect(await hint.evaluate(node => node.getBoundingClientRect().top >= node.closest('.ch-filter-row')!.querySelector('[data-ch-to]')!.getBoundingClientRect().bottom)).toBe(true);
+    expect(await contrastRatio(hint)).toBeGreaterThanOrEqual(4.5);
     await expect(screen.locator('[data-ch-status]')).toContainText('Todo el historial');
     await expect(screen.locator('[data-ch-table="sales"]')).toContainText('2020');
+    await period.selectOption('custom');
+    await expect(from).toHaveValue(''); await expect(to).toHaveValue('');
+    await expect(hint).toHaveAttribute('hidden', '');
+    await expect(hint).toBeHidden();
+    await period.selectOption('all');
+    await expect(hint).toBeVisible();
+    await period.selectOption('30');
+    await expect(hint).toHaveAttribute('hidden', '');
+    await expect(hint).toBeHidden();
+    await period.selectOption('all');
     await to.fill('2020-01-01'); await to.blur();
     await expect(period).toHaveValue('custom');
+    await expect(hint).toHaveAttribute('hidden', '');
     await from.fill('2026-10-15'); await from.blur();
     const status = screen.locator('[data-ch-status]');
     await expect(status).toContainText('no puede ser posterior');
     await expect(status).toHaveClass(/ch-error/);
-    const ratio = await status.evaluate(node => {
-      const rgb = (c: string) => (c.match(/[\d.]+/g) || []).map(Number);
-      const lum = (c: number[]) => { const [r, g, b] = c.slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-      let el: Element | null = node, bg = 'rgba(0, 0, 0, 0)';
-      while (el && (bg = getComputedStyle(el).backgroundColor) && (bg === 'transparent' || rgb(bg)[3] === 0)) el = el.parentElement;
-      const a = lum(rgb(getComputedStyle(node).color)), b = lum(rgb(bg));
-      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-    });
-    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    expect(await contrastRatio(status)).toBeGreaterThanOrEqual(4.5);
     await noOverflow(page);
   });
 }
@@ -345,6 +417,50 @@ test('employee cannot open customer history and direct rendering clears customer
 });
 
 for (const dark of [false, true]) {
+  test(`650px ${dark ? 'dark' : 'light'}: third summary card spans the full row and every summary word stays on one line`, async ({ page }) => {
+    await page.setViewportSize({ width: 650, height: 900 });
+    await rolePage(page, 'owner');
+    await seed(page);
+    await page.evaluate(dark => { document.body.classList.toggle('dark', dark); (window as any).goPage('pageClienteHistorial'); }, dark);
+    const screen = page.locator('#pageClienteHistorial');
+    await screen.getByRole('combobox', { name: 'Cliente', exact: true }).selectOption('hist-c1');
+    const summary = screen.locator('.ch-summary');
+    await expect(summary.locator('.ch-summary-card')).toHaveCount(3);
+    await expect(summary).toHaveCSS('grid-template-columns', /^\S+ \S+$/);
+    const boxes = await summary.evaluate(grid => {
+      const box = grid.getBoundingClientRect();
+      const cards = [...grid.querySelectorAll('.ch-summary-card')].map(card => card.getBoundingClientRect());
+      return { gridWidth: box.width, gridLeft: box.left, widths: cards.map(card => card.width), tops: cards.map(card => card.top), thirdLeft: cards[2].left, firstBottom: cards[0].bottom };
+    });
+    expect(Math.abs(boxes.widths[2] - boxes.gridWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(boxes.thirdLeft - boxes.gridLeft)).toBeLessThanOrEqual(1);
+    expect(boxes.tops[0]).toBe(boxes.tops[1]);
+    expect(boxes.tops[2]).toBeGreaterThan(boxes.firstBottom);
+    for (const value of await summary.locator('.ch-summary-card :is(span, strong)').evaluateAll(nodes => nodes.map(node => {
+      const words: { text: string; lines: number; fits: boolean }[] = [];
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      const box = node.getBoundingClientRect();
+      let textNode: Node | null;
+      while ((textNode = walker.nextNode())) {
+        for (const match of textNode.textContent!.matchAll(/\S+/g)) {
+          const range = document.createRange();
+          range.setStart(textNode, match.index!); range.setEnd(textNode, match.index! + match[0].length);
+          const rects = [...range.getClientRects()];
+          words.push({ text: match[0], lines: rects.length, fits: rects.every(rect => rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1) });
+        }
+      }
+      return { text: node.textContent, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth, overflowWrap: getComputedStyle(node).overflowWrap, words };
+    }))) {
+      expect(value.scrollWidth, value.text!).toBeLessThanOrEqual(value.clientWidth);
+      expect(value.overflowWrap, value.text!).toBe('normal');
+      expect(value.words.length, value.text!).toBeGreaterThan(0);
+      for (const word of value.words) {
+        expect(word.lines, word.text).toBe(1);
+        expect(word.fits, word.text).toBe(true);
+      }
+    }
+  });
+
   test(`650px ${dark ? 'dark' : 'light'}: headers on one line, numbers right-aligned, readable row cells and full customer label`, async ({ page }) => {
     await page.setViewportSize({ width: 650, height: 900 });
     await rolePage(page, 'owner');

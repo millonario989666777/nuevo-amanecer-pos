@@ -94,6 +94,7 @@
   function saleSeller(sale, ids) {
     var id = text(sale.cajeroId), label = text(sale.cajeroNombre) || text(sale.cajero), name = sellerName(label);
     if (!id && name && ids && ids.get(name)) id = ids.get(name);
+    if (!id && name) label += ' (sin id)';
     return { value: id ? 'id:' + id : name ? 'name:' + name : 'missing:', label: label.replace(/\s+/g, ' ') || id || 'No registrado', hasId: !!text(sale.cajeroId) };
   }
   function customerSales(sales, selectedId) {
@@ -165,7 +166,7 @@
   }
   function csvCell(value) {
     var raw = String(value == null ? '' : value);
-    if (/^[=+@\t\r\n-]/.test(raw)) raw = "'" + raw;
+    if (/^[=+@\t\r\n-]/.test(raw.replace(/^ +/, ''))) raw = "'" + raw;
     return '"' + raw.replace(/"/g, '""') + '"';
   }
   function toCsv(report, filters) {
@@ -250,6 +251,8 @@
     // Nunca se contradicen: el Período mostrado se deduce de las fechas.
     // «Personalizado» elegido a mano se respeta hasta que se editen las fechas.
     if (period && from && to) period.value = page.dataset.chCustomPeriod === '1' ? 'custom' : periodFor(from.value, to.value);
+    var dateHint = page.querySelector('[data-ch-date-hint]');
+    if (dateHint) dateHint.hidden = !period || period.value !== 'all';
     var dates = dateRange(from ? from.value : '', to ? to.value : '');
     if (from) from.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
     if (to) to.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
