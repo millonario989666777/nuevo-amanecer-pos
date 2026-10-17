@@ -293,7 +293,8 @@ for (const dark of [false, true]) {
     await expect(from).toHaveValue(p30.from); await expect(to).toHaveValue(p30.to);
     await period.selectOption('90');
     await expect(from).toHaveValue((await range('90')).from); await expect(to).toHaveValue(p30.to);
-    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('Histórico de 90 días');
+    await expect(screen.locator('[data-ch-table="sales"]')).toContainText('hist-90');
+    await expect(screen.locator('[data-ch-table="products"]')).toContainText('Histórico de 90 días');
     await from.fill((await range('365')).from); await from.blur();
     await expect(period).toHaveValue('365');
     await from.fill('2026-01-02'); await from.blur();
