@@ -40,7 +40,11 @@ test('registry data loads lazily and lock state comes only from pos-permissions 
       assert.equal(P.FEATURE_LOCKS[f.id], false); assert.equal(f.page, unlocked[f.id]);
       assert.ok(indexHtml.includes(`id="${f.page}"`)); assert.equal(api.isUnlocked(f), true);
     } else {
-      assert.equal(P.FEATURE_LOCKS[f.id], true, f.id); assert.equal(f.page, null); assert.equal(api.isUnlocked(f), false); assert.ok(f.pending || ['cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp'].includes(f.id));
+      assert.equal(P.FEATURE_LOCKS[f.id], true, f.id);
+      // Una página preparada puede seguir bloqueada y pendiente: el lock sigue mandando.
+      assert.equal(f.page, f.id === 'dashboard-tesoreria' ? 'pageDashboardTesoreria' : null);
+      if (f.page) { assert.equal(f.pending, true); assert.ok(indexHtml.includes(`id="${f.page}"`)); }
+      assert.equal(api.isUnlocked(f), false); assert.ok(f.pending || ['cotizaciones', 'cuentas-pagar', 'compartir-pdf-whatsapp'].includes(f.id));
     }
   }
   const prioritized = api.list().filter(f => f.priority);
@@ -213,7 +217,7 @@ test('new candidates stay locked and attendance keeps its owner policy when unlo
     const entry = c.NA_PROXIMAMENTE.get(id);
     assert.ok(entry, id);
     assert.equal(c.NA_PERMISSIONS.FEATURE_LOCKS[id], true, id);
-    assert.equal(entry.page, null);
+    assert.equal(entry.page, id === 'dashboard-tesoreria' ? 'pageDashboardTesoreria' : null);
     assert.ok(['alta', 'media', 'baja'].includes(entry.priority));
   }
   assert.deepEqual(Array.from(c.NA_PROXIMAMENTE.get('asistencia-empleados').roles), ['owner']);

@@ -30,6 +30,8 @@ const PRECACHE_URLS = [
   './js/modules/ventas-stock.js',
   './css/reporte-arqueo.css',
   './js/modules/reporte-arqueo.js',
+  './css/dashboard-tesoreria.css',
+  './js/modules/dashboard-tesoreria.js',
   './css/historial-compras.css',
   './js/inventory/historial-compras.js',
   './css/layout.css',

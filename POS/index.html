@@ -94,6 +94,7 @@
     <link rel="stylesheet" href="css/kardex.css">
     <link rel="stylesheet" href="css/ventas-stock.css">
     <link rel="stylesheet" href="css/reporte-arqueo.css">
+    <link rel="stylesheet" href="css/dashboard-tesoreria.css">
     <link rel="stylesheet" href="css/historial-compras.css">
     <link rel="stylesheet" href="css/inventory-form-polish.css">
     <script>
@@ -455,6 +456,23 @@
     </div>
     <p class="ra-status" data-ra-status role="status" aria-live="polite"></p>
     <div data-ra-content></div>
+  </div>
+</div>
+<div class="page" id="pageDashboardTesoreria" aria-labelledby="dashboardTesoreriaTitle">
+  <div class="dt-shell">
+    <header><h1 id="dashboardTesoreriaTitle">Panel de tesorería</h1>
+      <p class="dt-description">Ventas por forma de pago y comparación del efectivo de los cierres. Solo lectura.</p></header>
+    <div class="dt-controls" data-dt-controls hidden>
+      <label>Período<select data-dt-period aria-label="Período">
+        <option value="7" selected>Últimos 7 días</option>
+        <option value="30">Últimos 30 días</option>
+      </select></label>
+      <button type="button" data-dt-refresh>Actualizar reporte</button>
+      <button type="button" data-dt-export disabled>Exportar CSV</button>
+    </div>
+    <p class="dt-method">Cada turno se agrupa por su fecha de apertura en Lima, como en el historial de caja. Crédito no entra al efectivo. Esperado y contado corresponden solo a turnos cerrados; si falta un conteo, la comparación queda pendiente. Un guion indica datos no disponibles en este dispositivo.</p>
+    <p class="dt-status" data-dt-status role="status" aria-live="polite"></p>
+    <div data-dt-content></div>
   </div>
 </div>
 <div class="page" id="pageClienteHistorial" aria-labelledby="clienteHistorialTitle">
@@ -1295,6 +1313,7 @@
 <script src="js/modules/kardex.js"></script>
 <script src="js/modules/ventas-stock.js"></script>
 <script src="js/modules/reporte-arqueo.js"></script>
+<script src="js/modules/dashboard-tesoreria.js"></script>
 <script src="js/inventory/historial-compras.js"></script>
 <script src="js/config/config-e2.js"></script>
 <script src="js/config/config-g.js"></script>

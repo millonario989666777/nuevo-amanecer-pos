@@ -10,6 +10,7 @@
   ['cash.expense', 'sync.write'].forEach(function (id) { ACTIONS[id] = both; });
   SCREENS['pageReporteDeuda'] = owner;
   SCREENS['pageCodigosDuplicados'] = owner;
+  SCREENS['pageDashboardTesoreria'] = owner;
   var SYNC_ENTITIES = {};
   ['products','sales','sale_items','customers','credits','credit_payments','cash_closures','inventory_movements'].forEach(function (id) { SYNC_ENTITIES[id] = 'sync.write'; });
   SYNC_ENTITIES.expenses = 'cash.expense';

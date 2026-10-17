@@ -1,0 +1,43 @@
+#pageDashboardTesoreria {
+  --dt-bg: #f8fafc; --dt-surface: #fff; --dt-text: #0f172a; --dt-muted: #475569; --dt-border: #cbd5e1;
+  min-width: 0; min-height: 0; overflow-y: auto; padding: 16px;
+  color: var(--dt-text); background: var(--dt-bg); font-size: 14px; line-height: 1.5;
+}
+#pageDashboardTesoreria *, #pageDashboardTesoreria *::before { box-sizing: border-box; }
+#pageDashboardTesoreria [hidden] { display: none !important; }
+#pageDashboardTesoreria .dt-shell { width: 100%; max-width: 1400px; margin: 0 auto; }
+#pageDashboardTesoreria h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; overflow-wrap: anywhere; }
+#pageDashboardTesoreria p { margin: 0 0 16px; overflow-wrap: anywhere; }
+#pageDashboardTesoreria :is(.dt-description, .dt-method, .dt-status, .dt-note) { color: var(--dt-muted); }
+#pageDashboardTesoreria .dt-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0 12px; }
+#pageDashboardTesoreria label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+#pageDashboardTesoreria :is(select, button) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--dt-border); border-radius: 10px; font: inherit; color: var(--dt-text); background: var(--dt-surface); }
+#pageDashboardTesoreria button { cursor: pointer; font-weight: 700; }
+#pageDashboardTesoreria button:disabled { cursor: default; opacity: .65; }
+#pageDashboardTesoreria :is(select, button):focus-visible { outline: 3px solid #0d9488; outline-offset: 3px; }
+#pageDashboardTesoreria :is(.dt-method, .dt-empty) { padding: 12px 16px; border: 1px solid var(--dt-border); border-radius: 12px; background: var(--dt-surface); }
+#pageDashboardTesoreria .dt-results { min-width: 0; margin-bottom: 20px; padding: 12px; border: 1px solid var(--dt-border); border-radius: 14px; background: var(--dt-surface); }
+#pageDashboardTesoreria .dt-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+/* Conserva TODAS las columnas frente al nth-child global de base.css. Las tarjetas van después. */
+#pageDashboardTesoreria .dt-table :is(th,td) { display: table-cell; }
+#pageDashboardTesoreria .dt-table :is(th,td) { padding: 10px 3px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--dt-border); color: var(--dt-text); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+#pageDashboardTesoreria .dt-table thead tr, #pageDashboardTesoreria .dt-table tr:hover td { background: var(--dt-surface); }
+#pageDashboardTesoreria .dt-table thead th { font-size: 12px; color: var(--dt-muted); }
+#pageDashboardTesoreria .dt-table .cf-num { text-align: right; font-variant-numeric: tabular-nums; }
+#pageDashboardTesoreria .dt-table .dt-negative { color: #991b1b; font-weight: 700; }
+#pageDashboardTesoreria .dt-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Tema oscuro: bloque exclusivo de tesorería. */
+body.dark #pageDashboardTesoreria { --dt-bg: #0f172a; --dt-surface: #1e293b; --dt-text: #f8fafc; --dt-muted: #cbd5e1; --dt-border: #64748b; color-scheme: dark; }
+body.dark #pageDashboardTesoreria .dt-table .dt-negative { color: #fca5a5; }
+@media (max-width: 599px) {
+  #pageDashboardTesoreria .dt-table, #pageDashboardTesoreria .dt-table tbody { display: block; }
+  #pageDashboardTesoreria .dt-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #pageDashboardTesoreria .dt-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--dt-border); padding: 14px 0; }
+  #pageDashboardTesoreria .dt-table :is(th,td) { display: block; width: auto; padding: 0; border: 0; }
+  #pageDashboardTesoreria .dt-table th:first-child { grid-column: 1 / -1; }
+  #pageDashboardTesoreria .dt-table td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--dt-muted); font-weight: 400; }
+}
+@media (min-width: 600px) {
+  #pageDashboardTesoreria { padding: 20px; }
+  #pageDashboardTesoreria .dt-controls { grid-template-columns: minmax(max-content, 1fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+}
