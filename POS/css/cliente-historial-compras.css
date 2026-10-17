@@ -25,7 +25,8 @@
 #pageClienteHistorial .ch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0 16px; }
 #pageClienteHistorial .ch-controls > label:first-child, #pageClienteHistorial .ch-filter-row { grid-column: 1 / -1; }
 #pageClienteHistorial .ch-filter-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-width: 0; }
-/* «Sin límite de fechas» va en su propia fila, debajo de Desde, Hasta y Vendedor (fila 1: Cliente; fila 2: fechas y vendedor).
+/* Escritorio, filas de .ch-filter-row: 1 = Cliente (ocupa toda la fila), 2 = Desde, Hasta y Vendedor, 3 = «Sin límite de fechas».
+   grid-row: 2 pondría la nota encima de los campos. A ≤650 px la regla de su media query la deja en auto.
    Sin display aquí: debe respetar [hidden] cuando el período no es «Todo el historial». */
 #pageClienteHistorial .ch-date-hint { grid-column: 1 / -1; grid-row: 3; margin: 0; font-size: 12px; color: var(--ch-muted); }
 #pageClienteHistorial label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }

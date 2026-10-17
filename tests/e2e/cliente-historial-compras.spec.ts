@@ -395,7 +395,7 @@ for (const dark of [false, true]) {
   });
 }
 
-for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
+for (const width of [390, 650, 1280, 1366]) for (const dark of [false, true]) {
   test(`${width}px ${dark ? 'Nocturno' : 'claro'}: «Sin límite de fechas» va debajo de los filtros y oculto no ocupa espacio`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await rolePage(page, 'owner');
@@ -410,7 +410,8 @@ for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
       const box = (selector: string) => row.querySelector(selector)!.closest('label')!.getBoundingClientRect();
       const from = box('[data-ch-from]'), to = box('[data-ch-to]'), seller = box('[data-ch-seller]');
       const rect = node.getBoundingClientRect();
-      return { fromTop: from.top, toTop: to.top, sellerTop: seller.top, toBottom: to.bottom, hintGridRow: getComputedStyle(node).gridRowStart,
+      const rowStyle = getComputedStyle(row);
+      return { fromTop: from.top, toTop: to.top, sellerTop: seller.top, toBottom: to.bottom, hintGridRow: getComputedStyle(node).gridRowStart, rowTracks: rowStyle.gridTemplateRows, rowGap: parseFloat(rowStyle.rowGap),
         fieldsBottom: Math.max(from.bottom, to.bottom, seller.bottom), hintTop: rect.top, hintHeight: rect.height,
         hintRects: node.getClientRects().length, display: getComputedStyle(node).display, rowBottom: row.getBoundingClientRect().bottom };
     });
@@ -418,12 +419,15 @@ for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
     await expect(hint).toBeVisible();
     const all = await layout();
     expect(all.hintHeight).toBeGreaterThan(0);
-    if (width === 1366) {
-      // Desde, Hasta y Vendedor en la misma fila; la nota en su propia fila debajo.
+    if (width >= 1280) {
+      // .ch-filter-row: Cliente, luego Desde, Hasta y Vendedor en una fila, luego la nota a un solo gap (12 px), sin fila vacía.
+      expect(all.hintGridRow).toBe('3');
+      expect(all.rowTracks.split(' ')).toHaveLength(3);
       expect(Math.abs(all.toTop - all.fromTop)).toBeLessThanOrEqual(1);
       expect(Math.abs(all.sellerTop - all.fromTop)).toBeLessThanOrEqual(1);
-      expect(all.hintTop).toBeGreaterThanOrEqual(all.fieldsBottom - 1);
-      expect(all.hintGridRow).toBe('3');
+      expect(all.hintTop).toBeGreaterThan(all.fieldsBottom);
+      expect(Math.abs(all.hintTop - all.fieldsBottom - all.rowGap)).toBeLessThanOrEqual(2);
+      expect(all.rowGap).toBe(12);
     } else {
       // Orden visual vigente en web 171 a 390 y 650 px (una columna): Desde, Hasta, nota y Vendedor, de arriba abajo.
       expect(all.hintGridRow).toBe('auto');
@@ -443,7 +447,7 @@ for (const width of [390, 650, 1366]) for (const dark of [false, true]) {
     expect(other.hintHeight).toBe(0);
     // Oculta no deja fila vacía: la fila de filtros termina en los campos.
     expect(Math.abs(other.rowBottom - other.fieldsBottom)).toBeLessThanOrEqual(1);
-    if (width === 1366) {
+    if (width >= 1280) {
       expect(Math.abs(other.toTop - other.fromTop)).toBeLessThanOrEqual(1);
       expect(Math.abs(other.sellerTop - other.fromTop)).toBeLessThanOrEqual(1);
     }
