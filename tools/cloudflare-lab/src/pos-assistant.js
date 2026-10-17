@@ -67,7 +67,8 @@ const IMAGE_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const PATTERNS = [
   // Bot 5: un «data:» (foto pegada como texto, base64) nunca va a DeepSeek dentro del mensaje: se cambia por un aviso corto. Va primero para que
   // sus dígitos no parezcan DNI o teléfono. La foto real va aparte (campo image, solo dueño).
-  [/\bdata:[^\s,]{0,120},[A-Za-z0-9+/=%._~-]*/gi, '[imagen omitida]'],
+  // Espacios después de la coma o entre trozos del base64 (líneas cortadas) también se tapan: tramos de 16+ caracteres y el final con «=».
+  [/\bdata:[^\s,]{0,120},\s*[A-Za-z0-9+/=%._~-]*(?:\s+[A-Za-z0-9+/]{16,}={0,2})*(?:\s+[A-Za-z0-9+/]{1,15}={1,2}(?![A-Za-z0-9+/=]))?/gi, '[imagen omitida]'],
   [/\b(pin|clave|contrase(?:ñ|n)a|password|token|api[ _-]?key)\b(\s*(?:es|era|de|:|=)?\s*)[^\s,.;]{3,}/gi, '$1$2[oculto]'],
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[correo oculto]'],
   [/\b(?:RUC\s*(?:N[°º.]?\s*)?[:#-]?\s*)?(?:10|15|17|20)\d{5}(\d{4})\b/gi, 'RUC *******$1'], // sin «RUC RUC»
@@ -79,6 +80,24 @@ export function redactText(value) {
   for (const [re, label] of PATTERNS) out = out.replace(re, label);
   return out;
 }
+// Bot 5: para un EMPLEADO, además se tapan datos del dueño con monto o porcentaje: costo / costo unitario / precio de proveedor /
+// precio de compra / margen / ganancia / utilidad. En partes: el texto no sale desde una de esas palabras hasta que quedan 72 caracteres
+// detrás (OWNER_HOLD), y las que empiezan con el monto miden menos de 48 (la cola de siempre): nunca sale a medias, corte donde sea.
+// El dueño los sigue viendo (y su texto sale igual de rápido que antes).
+const OWNER_WORD = '(?:costos?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|precio\\s+(?:de(?:l)?\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|utilidad(?:es)?)';
+const OWNER_AMOUNT = '(?:S\\/\\.?\\s?)?-?(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?:\\s?(?:%|por\\s?ciento|soles))?';
+const OWNER_DATA = [
+  // primero las que empiezan con el monto (cortas), después «palabra … monto»
+  new RegExp('(?:S\\/\\.?\\s?)\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
+  new RegExp('\\d{1,3}(?:[.,]\\d{1,2})?\\s?(?:%|por\\s?ciento)\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
+  new RegExp('\\b' + OWNER_WORD + '[^\\d\\n.;]{0,20}?' + OWNER_AMOUNT, 'gi')
+];
+export const OWNER_DATA_LABEL = '[dato del dueño]';
+export function redactOwnerData(value) { let out = String(value ?? ''); for (const re of OWNER_DATA) out = out.replace(re, OWNER_DATA_LABEL); return out; }
+export const OWNER_HOLD = 72;
+const OWNER_WORD_RE = new RegExp('\\b' + OWNER_WORD, 'i');
+export function ownerHold(red) { const from = Math.max(0, red.length - OWNER_HOLD), m = OWNER_WORD_RE.exec(red.slice(from)); return m ? from + m.index : Infinity; }
+export function redactFor(role) { return role === 'owner' ? redactText : (v) => redactOwnerData(redactText(v)); }
 function cleanText(value, max) {
   return redactText(String(value ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, ' ')).slice(0, max).trim();
 }
@@ -125,7 +144,35 @@ const TOOL_DEFS = [
 ];
 export function toolsForRole(role) {
   return TOOL_DEFS.filter((t) => toolAllowed(role, t.name))
-    .map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
+    .map((t) => ({ type: 'function', function: role === 'owner' ? { name: t.name, description: t.description, parameters: t.parameters } : employeeTool(t) }));
+}
+// Empleado (Bot 5): el modelo ni ve los documentos ni las consultas del dueño (enum recortado y descripción sin ellos).
+function employeeTool(t) {
+  const only = t.name === 'preparar_documento' ? EMPLOYEE_DOC_TYPES : t.name === 'consultar' ? EMPLOYEE_QUERY_TYPES : null;
+  if (!only) return { name: t.name, description: t.description, parameters: t.parameters };
+  const description = t.name === 'preparar_documento' ? 'Arma una lista imprimible (solo lectura, NO es comprobante SUNAT): lista de precios (lista_precios) o lista de pedido para proveedor (lista_pedido).'
+    : 'Consulta el stock (solo lectura): stock de un producto (stock_producto) o productos por reponer (bajo_stock).';
+  return { name: t.name, description, parameters: { ...t.parameters, properties: { ...t.parameters.properties, tipo: { type: 'string', enum: [...only] } } } };
+}
+// Pedido explícito de un documento que el empleado no puede ver: se responde 403 forbidden_document en JSON ANTES de abrir el canal
+// (sin DeepSeek ni cupo). Solo frases claras; lo dudoso sigue al modelo, que igual no tiene esas herramientas.
+const OWNER_DOC_ASK = /\b(inventario\s+valorizado|valorizaci[oó]n(?:\s+del\s+inventario)?|reporte\s+de\s+ventas|estado\s+de\s+cuenta|resumen\s+de(?:l)?\s+cierre|cierre\s+de\s+caja)\b/i;
+const ANY_DOC_ASK = /\b(lista\s+de\s+(?:precios|pedido)|documento|imprim\w*|pdf)\b/i;
+export function employeeDocDenied(role, text) {
+  if (role === 'owner' || !String(role || '').startsWith('empleado:')) return false;
+  const t = String(text || '');
+  if (OWNER_DOC_ASK.test(t) && /\b(documento|imprim\w*|pdf|reporte|arma|prepara|hazme|dame|genera|saca|quiero|necesito|lista|resumen|estado)\b/i.test(t)) return true;
+  return !toolAllowed(role, 'preparar_documento') && ANY_DOC_ASK.test(t) && /\b(lista\s+de\s+(?:precios|pedido)|imprim\w*|pdf|documento)\b/i.test(t);
+}
+// Llamada a herramienta prohibida para el empleado que aparece A MITAD del texto: se corta ahí (ver callDeepSeekStream guard).
+export function employeeToolGuard(role) {
+  if (role === 'owner') return null;
+  return (c) => {
+    if (!c || !TOOL_DEFS.some((t) => t.name === c.name)) return null;
+    if (!toolAllowed(role, c.name)) return c.name === 'preparar_documento' ? 'forbidden_document' : 'forbidden_role';
+    if (c.name === 'preparar_documento') { const m = /"tipo"\s*:\s*"([a-z_]+)"/.exec(c.arguments || ''); if (m && !EMPLOYEE_DOC_TYPES.includes(m[1])) return 'forbidden_document'; }
+    return null;
+  };
 }
 
 export function systemPrompt(role, ctx) {
@@ -184,11 +231,15 @@ export function overLimit(lineas) {
   (Array.isArray(lineas) ? lineas : []).forEach((l, i) => { const r = hardLimitLine(l); if (r.length) { rows.push(i); reasons[i] = r; } if (l?.costo_unitario != null) sum += Number(l.cantidad) * Number(l.costo_unitario); });
   return { rows, reasons, total: sum > PURCHASE_HARD_LIMITS.maxTotal };
 }
-const overLimitMessage = (o, lineas) => [
-  ...o.rows.map((i) => '«' + (lineas[i]?.nombre || 'fila ' + (i + 1)) + '»: ' + o.reasons[i].map((k) => LIMIT_TEXT[k]).join(', ')),
-  ...(o.total ? ['total de la compra mayor a S/ ' + PURCHASE_HARD_LIMITS.maxTotal] : [])].join('; ') + '. Fuera del límite: corrige la factura o quita la fila.';
+// Una sola frase corta (Bot 2): qué fila y por qué, y qué hacer. Si son varias filas, se nombran juntas.
+const overLimitMessage = (o, lineas) => {
+  const name = (i) => '«' + (lineas[i]?.nombre || 'fila ' + (i + 1)) + '»';
+  if (o.rows.length === 1) return name(o.rows[0]) + ' pasa el límite (' + LIMIT_TEXT[o.reasons[o.rows[0]][0]] + '): corrige la factura o quita la fila.';
+  if (o.rows.length > 1) return o.rows.slice(0, 3).map(name).join(', ') + (o.rows.length > 3 ? ' y otras' : '') + ' pasan el límite: corrige la factura o quita esas filas.';
+  return 'La compra pasa el límite de S/ ' + PURCHASE_HARD_LIMITS.maxTotal + ': quita algunas filas.';
+};
 // Productos que NO controlan inventario: ni compra ni ajuste de stock desde el asistente (Bot 2).
-export const NO_STOCK_TEXT = (n) => '«' + n + '» no controla inventario: el asistente no prepara compras ni ajustes de stock para ese producto.';
+export const NO_STOCK_TEXT = (n) => '«' + n + '» no lleva control de stock, así que no preparo compras ni ajustes de ese producto.';
 // Mapa id -> controla (false = sin control). Base del servidor primero; si no hay, lo que mandó el aparato.
 // Con `ids` y un lector que sabe buscar por id, se leen SOLO esos productos (sin recorrer el catálogo ni la lista cortada a 5000).
 // Si la lectura de la base FALLA, el mapa sale con failed=true: el chat no ofrece compras ni ajustes (Bot 2), ver dropStockCards.
@@ -218,7 +269,7 @@ export function applyStockControl(proposals, dropped, map) {
     const keep = p.lineas.filter((l) => !(l.product_id && map.get(String(l.product_id)) === false));
     if (keep.length === p.lineas.length) continue;
     p.lineas.filter((l) => !keep.includes(l)).forEach((l) => skipped.push(l.nombre));
-    p.omitidas = p.lineas.filter((l) => !keep.includes(l)).map((l) => ({ nombre: l.nombre, motivo: 'no controla inventario' }));
+    p.omitidas = p.lineas.filter((l) => !keep.includes(l)).map((l) => ({ nombre: l.nombre, motivo: 'no lleva control de stock' }));
     p.lineas = keep;
     if (!keep.length) { dropped.push({ dropped: 'sin_control_stock', tool: 'preparar_compra' }); proposals.splice(k, 1); continue; }
     p.sinProducto = keep.filter((l) => !l.product_id).length; p.revisarFilas = keep.filter((l) => l.revisar).length;
@@ -426,10 +477,10 @@ export async function callDeepSeek(body, env, fetchImpl, timeoutMs) {
 // Igual que callDeepSeek pero con stream:true: cada trozo de texto va a onText en cuanto llega; las llamadas a herramientas se juntan
 // aquí y recién al final se devuelven (nunca se arma una tarjeta con un pedazo). El tiempo cuenta desde el ÚLTIMO trozo (idleMs).
 // Si se corta a mitad: { error, partial:true } y lo ya recibido queda en content.
-export async function callDeepSeekStream(body, env, fetchImpl, idleMs, onText) {
+export async function callDeepSeekStream(body, env, fetchImpl, idleMs, onText, onTool, guard) {
   const controller = new AbortController(); let timer = null;
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => controller.abort(), idleMs); };
-  let content = '', usage = null; const calls = [];
+  let content = '', usage = null, forbidden = null; const calls = [];
   try {
     arm();
     const base = String(env.DEEPSEEK_BASE_URL || DEEPSEEK_BASE_URL).replace(/\/+$/, '');
@@ -445,9 +496,11 @@ export async function callDeepSeekStream(body, env, fetchImpl, idleMs, onText) {
       if (j.usage) usage = j.usage;
       const delta = j?.choices?.[0]?.delta || {};
       if (typeof delta.content === 'string' && delta.content) { content += delta.content; onText(delta.content); }
+      if (Array.isArray(delta.tool_calls) && delta.tool_calls.length && onTool) onTool(); // el modelo arma una búsqueda: aviso «buscando»
       for (const tc of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
         const i = Number.isInteger(tc?.index) ? tc.index : calls.length; const c = calls[i] || (calls[i] = { id: '', name: '', arguments: '' });
         if (tc.id) c.id = String(tc.id).slice(0, 64); if (tc.function?.name) c.name += tc.function.name; if (typeof tc.function?.arguments === 'string') c.arguments += tc.function.arguments;
+        const why = guard ? guard(c) : null; if (why && !forbidden) { forbidden = why; done = true; } // herramienta prohibida: se corta aquí
       }
       if (j?.choices?.[0]?.finish_reason) done = true;
     };
@@ -455,9 +508,11 @@ export async function callDeepSeekStream(body, env, fetchImpl, idleMs, onText) {
       const { value, done: end } = await reader.read(); arm();
       if (end) break;
       buf += dec.decode(value, { stream: true });
-      let k; while ((k = buf.indexOf('\n')) >= 0) { line(buf.slice(0, k).replace(/\r$/, '')); buf = buf.slice(k + 1); }
+      let k; while (!forbidden && (k = buf.indexOf('\n')) >= 0) { line(buf.slice(0, k).replace(/\r$/, '')); buf = buf.slice(k + 1); }
+      if (forbidden) { try { reader.cancel().catch(() => {}); } catch { /* ya cortado */ } controller.abort(); return { forbidden, content, calls: [], usage }; }
     }
     if (buf) line(buf.trim());
+    if (forbidden) return { forbidden, content, calls: [], usage };
     // Sin [DONE] ni finish_reason: el corte fue a mitad (lo recibido queda, las herramientas a medias NO se usan).
     if (!done) return { error: 'upstream_error', partial: true, content };
     return { content, calls: calls.filter(Boolean).map((c, i) => ({ id: c.id || 'call_' + i, name: c.name, arguments: c.arguments })), usage };
@@ -482,17 +537,40 @@ export function createSseChannel() {
 // Texto que va saliendo, ya sin datos sensibles: se guarda una cola de 48 caracteres para que un DNI, teléfono o «data:» que todavía
 // está llegando no salga a medias sin tapar. El texto definitivo igual llega en «final» (reply) y reemplaza al que se fue pintando.
 export const STREAM_HOLDBACK = 48;
-export function createTextEmitter(send, max = 1200) {
+export function createTextEmitter(send, max = 1200, redact = redactText, hold = null) {
   let acc = '', sent = 0;
-  const clean = () => redactText(acc.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, ' ')).slice(0, max);
+  const clean = () => redact(acc.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, ' ')).slice(0, max);
   return {
-    push(d) { acc += String(d || ''); const red = clean(); const safe = Math.min(red.length - STREAM_HOLDBACK, max); if (safe > sent) { send({ t: red.slice(sent, safe) }); sent = safe; } },
+    push(d) { acc += String(d || ''); const red = clean(); const safe = Math.min(red.length - STREAM_HOLDBACK, max, hold ? hold(red) : Infinity); if (safe > sent) { send({ t: red.slice(sent, safe) }); sent = safe; } },
     flush() { const red = clean(); if (red.length > sent) { send({ t: red.slice(sent) }); sent = red.length; } },
     reset() { if (sent) send({ reset: true }); acc = ''; sent = 0; },
+    drop() { acc = acc.slice(0, sent); }, // lo que quedaba en la cola no sale
     sent: () => sent
   };
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const FORBIDDEN_DOCUMENT = Object.freeze({ error: 'forbidden_document', message: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', allowed: EMPLOYEE_DOC_TYPES });
+// Aviso liviano «status» mientras se buscan datos o corre una herramienta ANTES de cualquier texto (celular: «Buscando en su inventario…»).
+// Sale enseguida y luego cada STATUS_EVERY_MS mientras no haya texto; cada aviso es un trozo, así el reloj de 30 s del celular vuelve a cero.
+// Sin texto todavía = sent() en 0 (también después de un reset). Con texto ya pintado no se manda nada.
+export const STATUS_EVERY_MS = 8000;
+export function createStatusBeat(sse, emit, everyMs = STATUS_EVERY_MS) {
+  let iv = null, last = 0;
+  const tick = (throttle) => { if (!sse || !emit || emit.sent()) return; const t = Date.now(); if (throttle && t - last < 1000) return; last = t; sse.send('status', { s: 'buscando' }); };
+  return { tick, start() { if (!sse || iv) return; tick(); iv = setInterval(() => tick(), everyMs); }, stop() { clearInterval(iv); iv = null; } };
+}
+// Bot 5: lo que un EMPLEADO puede recibir de una consulta (pantalla y modelo). Lista blanca por tipo; todo lo demás (costos, márgenes,
+// ganancia, inversión, caja, deudas) se quita ANTES de mandar cualquier trozo y antes de dárselo al modelo.
+const EMPLOYEE_QUERY_FIELDS = Object.freeze({ resumen: ['encontrados', 'productos', 'total', 'revisados', 'primeros', 'nombre', 'stock', 'minimo'], columnas: ['Producto', 'Stock', 'Mínimo', 'Pedir', 'Precio S/'] });
+export const OWNER_ONLY_KEY = /cost|margen|ganancia|utilidad|inversi|valoriz|caja|deuda|saldo|ticket|venta|total_soles/i;
+export function employeeQueryResult(r) {
+  if (!r || r.error) return r;
+  const keep = (v) => Array.isArray(v) ? v.map(keep) : v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).filter(([k]) => EMPLOYEE_QUERY_FIELDS.resumen.includes(k) && !OWNER_ONLY_KEY.test(k)).map(([k, x]) => [k, keep(x)])) : v;
+  const cols = Array.isArray(r.columnas) ? r.columnas : [], idx = cols.map((c, i) => EMPLOYEE_QUERY_FIELDS.columnas.includes(c) ? i : -1).filter((i) => i >= 0);
+  return { tipo: r.tipo, titulo: r.titulo, columnas: idx.map((i) => cols[i]), filas: (Array.isArray(r.filas) ? r.filas : []).map((f) => idx.map((i) => f[i])),
+    texto: r.texto, total: typeof r.total === 'number' ? r.total : null, resumen: keep(r.resumen || {}) };
+}
 
 // ---------- Rol para el asistente ----------
 // authorizeSession trata "sin fila de rol" como dueño. Para el asistente eso NO basta: solo es dueño
@@ -707,7 +785,7 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   const ch = createSseChannel();
   const jr = (data, status = 200) => {
     if (status >= 400) rej = { error: data && data.error, status };
-    if (ch.isOpen()) { ch.send(status >= 400 ? 'error' : 'final', status >= 400 ? { error: data && data.error, status, ...(data && data.message ? { message: data.message } : {}) } : data); return null; }
+    if (ch.isOpen()) { if (ctx.beat) ctx.beat.stop(); ch.send(status >= 400 ? 'error' : 'final', status >= 400 ? { error: data && data.error, status, ...(data && data.message ? { message: data.message } : {}) } : data); return null; }
     return json(data, status);
   };
   const auditRej = async () => {
@@ -721,7 +799,7 @@ export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   await Promise.race([core.catch(() => null), ch.opened]);
   if (!ch.isOpen()) { const res = await core; await auditRej(); return res; }
   // Canal abierto: el resto sigue mientras el celular lee; se cierra recién después de anotar la bitácora.
-  const done = core.catch(() => { jr({ error: 'upstream_error' }, 502); }).then(auditRej).catch(() => {}).finally(() => ch.close());
+  const done = core.catch(() => { jr({ error: 'upstream_error' }, 502); }).then(auditRej).catch(() => {}).finally(() => { if (ctx.beat) ctx.beat.stop(); ch.close(); });
   if (typeof deps.waitUntil === 'function') deps.waitUntil(done);
   return new Response(ch.readable, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
@@ -757,6 +835,8 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   const parsed = parseChatBody(body);
   if (parsed.error) return json({ error: parsed.error }, parsed.error === 'image_too_large' ? 413 : 400);
   const ctx = sanitizeContext(parsed.context, role);
+  // Documento del dueño pedido con todas las letras por un empleado: 403 en JSON antes de abrir el canal, sin cupo ni DeepSeek (Bot 5).
+  if (employeeDocDenied(role, parsed.text)) return json(FORBIDDEN_DOCUMENT, 403);
   const store = deps.store || (deps.db ? createSettingsUsageStore(deps.db) : null);
   if (!store) return json({ error: 'usage_store_missing' }, 500);
   const quota = await reserveUsage(store, { ...auth, posRole: role }, env, (deps.now || Date.now)(), !!parsed.image);
@@ -766,22 +846,36 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   const now = (deps.now || Date.now)();
   // Todas las puertas pasaron: recién aquí se abre el canal en partes (si el celular lo pidió y la ruta lo permite).
   const sse = parsed.stream && deps.sse ? deps.sse : null;
-  const emit = sse ? createTextEmitter((d) => sse.send('text', d)) : null;
+  const red = redactFor(role), guard = employeeToolGuard(role);
+  const emit = sse ? createTextEmitter((d) => sse.send('text', d), 1200, red, role === 'owner' ? null : ownerHold) : null;
+  const beat = createStatusBeat(sse, emit, deps.statusEveryMs); ctxOut.beat = beat; // se para al cerrar el canal (assistantChatRoute)
   if (sse) sse.open();
   let result, req = null; const bytes = [];
   if (mode === 'mock') {
     result = mockAssistantReply({ role, ctx, text: parsed.text, image: !!parsed.image });
+    // Empleado: si la demostración trae una herramienta prohibida, no sale ningún texto (igual que el corte en DeepSeek).
+    const bad = guard ? (result.calls || []).map((c) => guard({ name: c.name, arguments: typeof c.arguments === 'string' ? c.arguments : JSON.stringify(c.arguments || {}) })).find(Boolean) : null;
+    if (bad) result = { forbidden: bad, content: '', calls: [] };
     // Demostración también en partes: palabra por palabra con una pausa corta (deps.mockChunkMs).
-    if (emit) { for (const w of String(result.content || '').split(/(?<=\s)/)) { emit.push(w); await sleep(deps.mockChunkMs ?? 25); } emit.flush(); }
+    else if (emit) { for (const w of String(result.content || '').split(/(?<=\s)/)) { emit.push(w); await sleep(deps.mockChunkMs ?? 25); } emit.flush(); }
   } else {
     req = buildDeepSeekRequest({ role, ctx, history: parsed.history, text: parsed.text, image: parsed.image });
     bytes.push(payloadBytes(req));
-    result = emit ? await callDeepSeekStream(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs, (t) => emit.push(t))
+    result = emit ? await callDeepSeekStream(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs, (t) => emit.push(t), () => beat.tick(true), guard)
       : await callDeepSeek(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
-    if (emit && !result.error) emit.flush();
+    if (emit && !result.error && !result.forbidden) emit.flush();
     if (result.error) return json({ error: result.error, mode, ...(result.partial ? { partial: true } : {}) }, ERR_STATUS[result.error] || 502);
   }
-  const proposals = [], dropped = [];
+  // Herramienta prohibida a mitad (empleado): lo que quedaba en la cola no sale, lo pintado se borra (reset) y va solo el mensaje simple.
+  let preDropped = null;
+  if (result.forbidden) {
+    if (emit) { emit.drop(); emit.reset(); }
+    if (result.forbidden === 'forbidden_document') return json(FORBIDDEN_DOCUMENT, 403);
+    preDropped = { dropped: 'forbidden_role', tool: 'cut_mid_stream' }; result = { content: '', calls: [], usage: result.usage };
+  }
+  // Herramientas o búsquedas por delante y todavía sin texto: «buscando» enseguida y cada pocos segundos hasta el primer texto.
+  if (result.calls && result.calls.length) beat.start();
+  const proposals = [], dropped = preDropped ? [preDropped] : [];
   const seenCalls = new Set();
   result.calls = result.calls.filter((c) => { let a = c?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { /* se queda como texto */ } }
     const k = String(c?.name) + '|' + (typeof a === 'string' ? a : stable(a)); if (seenCalls.has(k)) return false; seenCalls.add(k); return true; }); // misma llamada dos veces = una tarjeta
@@ -802,7 +896,8 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   // Empleado que pide un documento solo del dueño: 403 (no 200 con la tarjeta descartada).
   // La bitácora la escribe assistantChatRoute (agrupada por aparato y minuto), así un empleado insistiendo no llena el cajón r.
   if (role !== 'owner' && dropped.some((d) => d.dropped === 'forbidden_document')) {
-    return json({ error: 'forbidden_document', message: 'Ese documento es solo para el dueño. Puedes pedir la lista de precios o la lista de pedido.', allowed: EMPLOYEE_DOC_TYPES }, 403);
+    if (emit) { emit.drop(); emit.reset(); }
+    return json(FORBIDDEN_DOCUMENT, 403);
   }
   // Consultas: el Worker lee su base (solo lectura) y manda al modelo SOLO un resumen chico, nunca el inventario completo.
   const consultas = [], toolMsgs = [];
@@ -821,11 +916,13 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
   for (const p of proposals.filter((x) => x.type === 'consulta').slice(0, 2)) {
     let r;
     try { r = reader ? await runAssistantQuery(reader, p.query, now) : { error: 'no_reader' }; } catch { r = { error: 'query_failed' }; }
+    if (role !== 'owner') r = employeeQueryResult(r); // Bot 5: sin datos del dueño, antes de la pantalla y antes del modelo
     p.result = r.error ? { error: r.error, texto: 'No pude leer esos datos ahora. Revisa la pantalla de reportes.' } : { titulo: r.titulo, columnas: r.columnas, filas: r.filas, texto: r.texto, total: r.total ?? null };
     consultas.push(p);
     if (p._call) toolMsgs.push({ role: 'tool', tool_call_id: p._call.id, content: redactText(JSON.stringify(r.error ? { error: r.error } : { tipo: r.tipo, resumen: r.resumen })).slice(0, 2000) });
   }
   let reply = cleanText(result.content, 1200);
+  if (role !== 'owner') reply = redactOwnerData(reply); // mismo filtro que el texto en partes (Bot 5)
   if (consultas.length) {
     reply = consultas.map((c) => c.result.texto).join(' ');
     // Segunda llamada (sin herramientas) para explicar el resumen en palabras sencillas. Si falla, queda el texto armado con los números.
@@ -834,11 +931,11 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
       const req2 = { model: DEEPSEEK_MODEL, messages: [...req.messages, { role: 'assistant', content: result.content || '', tool_calls: calls }, ...toolMsgs], thinking: { type: 'disabled' }, temperature: 0.2, max_tokens: 350, stream: false };
       bytes.push(payloadBytes(req2));
       // En partes: lo que se pintó de la primera llamada se borra (reset) y se pinta la explicación; si falla, queda el texto con números.
-      if (emit) emit.reset();
+      if (emit) { emit.reset(); beat.start(); beat.tick(); }
       const second = emit ? await callDeepSeekStream(req2, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs, (t) => emit.push(t))
         : await callDeepSeek(req2, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
       if (emit && !second.error) emit.flush();
-      if (!second.error && second.content) reply = cleanText(second.content, 1200);
+      if (!second.error && second.content) reply = role !== 'owner' ? redactOwnerData(cleanText(second.content, 1200)) : cleanText(second.content, 1200);
     }
   }
   for (const p of proposals) delete p._call;

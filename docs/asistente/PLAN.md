@@ -113,4 +113,7 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 - El texto sale mientras llega (SSE desde el Worker, sin Durable Objects); las tarjetas llegan al final, ya validadas y firmadas. Detalle en CONTRATO.md, «Respuesta en partes».
 - Medido con DeepSeek de mentira (40 trozos cada 40 ms): primer texto antes de 0,7 s y respuesta completa a ~1,6 s. En el navegador (demostración): primera pintura a ~0,3 s.
 - Pendiente: medir con la clave real en un entorno de prueba (390 en 4G lenta y 1280): tiempo hasta la primera palabra y hasta el final.
-- El primer trozo cuenta el primer byte (el servidor manda `open` apenas pasan las puertas). Si el dueño quiere que «Reintentar» aparezca cuando no hay **texto** visible a los 10 s, hay que decidirlo: con consultas, DeepSeek puede tardar más en la primera palabra.
+- El primer trozo cuenta el primer byte (el servidor manda `open` apenas pasan las puertas); se mantiene en 10 s. Mientras corre una búsqueda sin texto, el servidor manda `status` y el celular dice «Buscando en su inventario…» (cada aviso vuelve a cero los 30 s). Tope duro de 90 s por respuesta.
+- Vista mientras llega: se baja sola solo si la persona estaba abajo («Ver nuevo ↓» si no), mascota «hablando», el lector anuncia la respuesta una vez al final.
+- Empleado: los resultados de consultas pasan por una lista blanca antes de cualquier trozo y antes del modelo (sin costos ni márgenes).
+- Empleado y documentos del dueño: herramientas recortadas, 403 JSON antes del canal si lo pide claro y corte a mitad si el modelo igual lo intenta. Montos de costo, margen o ganancia tapados en cada trozo.

@@ -94,7 +94,7 @@
       var rep = api.valorizacion(prods), t = rep.totals || {};
       var rows = (rep.rows || rep.categories || []).map(function (r) { return [r.category || r.key || '-', num(r.products), num(r.units), soles(num(r.costValue)), soles(num(r.saleValue))]; });
       return { title: p.title, rows: rows.length, html: docShell(p.title, 'Mismo cálculo que Valorización de inventario', ['Categoría', R('Productos'), R('Unidades'), R('Valor costo'), R('Valor venta')], rows,
-        ['Total', num(t.products), num(t.units), soles(num(t.costValue)), soles(num(t.saleValue))], (t.noCostProducts ? t.noCostProducts + ' producto(s) sin costo: el valor al costo está incompleto. ' : '') + KNOWN.costo, business) };
+        ['Total', num(t.products), num(t.units), soles(num(t.costValue)), soles(num(t.saleValue))], (t.noCostProducts ? (t.noCostProducts === 1 ? '1 producto sin costo:' : t.noCostProducts + ' productos sin costo:') + ' el valor al costo está incompleto. ' : '') + KNOWN.costo, business) };
     }
     if (p.tipo === 'lista_precios') {
       var lr = prods.slice().sort(function (a, b) { return pname(a).localeCompare(pname(b)); }).map(function (x) { return [pname(x), soles(num(x.precio)), x.precioCaja ? soles(num(x.precioCaja)) : '-']; });
@@ -134,7 +134,7 @@
       var ar = await api.cashCloses(d, h), at = ar.report.totals;
       var crow = ar.report.rows.map(function (r) { return [r.fechaLabel + (r.hora ? ' ' + r.hora : ''), r.closedByName, soles(r.esperado / 100), r.contado == null ? 'sin contar' : soles(r.contado / 100), r.diferencia == null ? '-' : soles(r.diferencia / 100)]; });
       return { title: p.title, rows: crow.length, html: docShell(p.title, ar.report.range.desde + ' a ' + ar.report.range.hasta + (ar.fromServer ? ' · servidor' : ' · copia local'), ['Cierre', 'Cerró', R('Esperado'), R('Contado'), R('Diferencia')], crow,
-        ['Total (' + at.count + ')', '', soles(at.esperado / 100), soles(at.contado / 100), soles(at.diferencia / 100)], (at.sinContar ? at.sinContar + ' cierre(s) sin contar no suman. ' : '') + KNOWN.caja, business) };
+        ['Total (' + at.count + ')', '', soles(at.esperado / 100), soles(at.contado / 100), soles(at.diferencia / 100)], (at.sinContar ? (at.sinContar === 1 ? '1 cierre sin contar no suma. ' : at.sinContar + ' cierres sin contar no suman. ') : '') + KNOWN.caja, business) };
     }
     return unavailable(p, 'ese tipo de documento', business);
   }
@@ -145,7 +145,7 @@
       var w = d.openPurchase();
       if (!w) return { ok: false, msg: 'No se pudo abrir «Nueva compra».' };
       d.fillPurchase(w, p);
-      return { ok: true, msg: 'Abrí «Nueva compra» con ' + p.lineas.length + ' línea(s). Revisa y pulsa «Registrar compra».' };
+      return { ok: true, msg: 'Abrí «Nueva compra» con ' + (p.lineas.length === 1 ? '1 línea' : p.lineas.length + ' líneas') + '. Revisa y pulsa «Registrar compra».' };
     },
     precio: function (p, d) {
       var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
@@ -170,7 +170,7 @@
       if (!d.openNewProduct(p)) return { ok: false, msg: 'No se pudo abrir «Nuevo producto».' };
       return { ok: true, msg: 'Abrí «Nuevo producto» lleno. Revisa y pulsa Guardar.' };
     },
-    documento: async function (p, d) { var doc = await buildDocument(p, d.data ? d.data() : {}, d.businessName && d.businessName()); d.showDocument(doc.html, p); return { ok: true, msg: 'Documento listo (' + doc.rows + ' fila(s)). No es comprobante SUNAT.' }; },
+    documento: async function (p, d) { var doc = await buildDocument(p, d.data ? d.data() : {}, d.businessName && d.businessName()); d.showDocument(doc.html, p); return { ok: true, msg: 'Documento listo (' + doc.rows + (doc.rows === 1 ? ' fila' : ' filas') + '). No es comprobante SUNAT.' }; },
     consulta: function () { return { ok: true, msg: '' }; },
     pasos: function (p, d) { if (p.pantalla) d.navigate(p.pantalla); return { ok: true, msg: 'Te llevé a la pantalla.' }; }
   };
@@ -196,7 +196,8 @@
   }
   // ---------- Respuesta en partes (chat) ----------
   // Tiempos (Bot 3): primer trozo ~10 s (si no llega nada, «Reintentar»); después, 30 s contados desde el ÚLTIMO trozo, no desde el inicio.
-  var STREAM = { firstMs: 10000, idleMs: 30000, paintMs: 100 };
+  // Los avisos «status» (el servidor está buscando datos) también cuentan como trozo. Tope total: 90 s por respuesta, pase lo que pase.
+  var STREAM = { firstMs: 10000, idleMs: 30000, maxMs: 90000, paintMs: 100 };
   // Lee «event: x / data: {...}» separados por línea en blanco. Un bloque a medias espera al siguiente trozo; un data roto se ignora.
   function createSseParser(onEvent) {
     var buf = '';
@@ -223,41 +224,47 @@
     };
   }
   // Pide el chat en partes. Si el navegador o el servidor no lo soportan, vuelve el JSON de siempre (kind:'json').
-  // Resultado en partes: { kind:'stream', final, error, cut, timeout:'first'|'idle'|null, text } — las tarjetas SOLO salen de final.
+  // Resultado en partes: { kind:'stream', final, error, cut, timeout:'first'|'idle'|'max'|null, text } — las tarjetas SOLO salen de final.
   async function streamChat(fetchImpl, url, init, o) {
-    o = o || {}; var firstMs = o.firstMs || STREAM.firstMs, idleMs = o.idleMs || STREAM.idleMs;
-    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, timer = null, timedOut = null, text = '', reader = null, giveUp = null;
+    o = o || {}; var firstMs = o.firstMs || STREAM.firstMs, idleMs = o.idleMs || STREAM.idleMs, maxMs = o.maxMs || STREAM.maxMs;
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, timer = null, timedOut = null, text = '', reader = null, giveUp = null, capTimer = null;
     var opts = Object.assign({}, init || {}); if (ctl) opts.signal = ctl.signal;
     var res = { kind: 'stream', final: null, error: null, cut: false, timeout: null, text: '' };
-    function arm(ms, kind) { clearTimeout(timer); timer = setTimeout(function () { timedOut = kind; if (ctl) ctl.abort(); if (giveUp) giveUp(new Error('timeout')); if (reader) { try { reader.cancel().catch(function () {}); } catch (e) { /* ya cortado */ } } }, ms); }
+    function stop(kind) { if (timedOut) return; timedOut = kind; if (ctl) ctl.abort(); if (giveUp) giveUp(new Error('timeout')); if (reader) { try { reader.cancel().catch(function () {}); } catch (e) { /* ya cortado */ } } }
+    function arm(ms, kind) { clearTimeout(timer); timer = setTimeout(function () { stop(kind); }, ms); }
+    function clear() { clearTimeout(timer); clearTimeout(capTimer); }
     arm(firstMs, 'first');
+    // Tope duro: a los 90 s se corta aunque sigan llegando trozos o avisos; lo recibido queda como «Respuesta incompleta».
+    capTimer = setTimeout(function () { stop('max'); }, maxMs);
     var r;
     // Aunque el fetch no respete la señal, a los firstMs se deja de esperar.
     try { r = await Promise.race([fetchImpl(url, opts), new Promise(function (_, rej) { giveUp = rej; })]); giveUp = null; }
-    catch (e) { clearTimeout(timer); var t = new Error(timedOut ? 'timeout' : 'network'); t.timeout = !!timedOut; t.stage = timedOut; throw t; }
+    catch (e) { clear(); var t = new Error(timedOut ? 'timeout' : 'network'); t.timeout = !!timedOut; t.stage = timedOut; throw t; }
     var ct = String((r.headers && r.headers.get && r.headers.get('content-type')) || '');
     if (!/text\/event-stream/.test(ct) || !r.body || typeof r.body.getReader !== 'function') {
       // Respuesta JSON (puertas de rol, foto, cupo… o servidor sin partes): el tiempo sigue corriendo hasta tener el cuerpo.
-      try { var data = await r.json(); clearTimeout(timer); return { kind: 'json', status: r.status, ok: !!r.ok, data: data || {} }; }
-      catch (e2) { clearTimeout(timer); if (timedOut) { var t2 = new Error('timeout'); t2.timeout = true; t2.stage = timedOut; throw t2; } return { kind: 'json', status: r.status, ok: !!r.ok, data: {} }; }
+      try { var data = await r.json(); clear(); return { kind: 'json', status: r.status, ok: !!r.ok, data: data || {} }; }
+      catch (e2) { clear(); if (timedOut) { var t2 = new Error('timeout'); t2.timeout = true; t2.stage = timedOut; throw t2; } return { kind: 'json', status: r.status, ok: !!r.ok, data: {} }; }
     }
     reader = r.body.getReader(); var dec = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
     var parser = createSseParser(function (ev, d) {
       if (ev === 'text') { if (d.reset) { text = ''; if (o.onReset) o.onReset(); } else if (typeof d.t === 'string') { text += d.t; if (o.onText) o.onText(d.t); } }
+      else if (ev === 'status') { if (o.onStatus) o.onStatus(d); } // «buscando en su inventario»: sin texto, solo aviso
       else if (ev === 'final') res.final = d; else if (ev === 'error') res.error = d;
     });
-    // Cada trozo (incluido el «open» que el servidor manda enseguida) vuelve a armar el reloj: 30 s desde el último.
-    if (timedOut) { res.cut = true; res.timeout = timedOut; res.text = text; return res; }
+    // Cada trozo (incluido el «open» que el servidor manda enseguida y los «status») vuelve a armar el reloj: 30 s desde el último.
+    if (timedOut) { clear(); res.cut = true; res.timeout = timedOut; res.text = text; return res; }
     try {
       for (;;) {
         var step = await reader.read();
         if (step.done) break;
+        if (timedOut) break; // tope de 90 s: lo que llegue después ya no se pinta
         arm(idleMs, 'idle');
         parser.feed(dec ? dec.decode(step.value, { stream: true }) : String(step.value));
       }
       if (dec) parser.feed(dec.decode());
     } catch (e3) { /* corte de red o tiempo agotado: queda lo recibido */ }
-    clearTimeout(timer);
+    clear();
     if (timedOut) res.timeout = timedOut;
     res.cut = !res.final && !res.error; res.text = text;
     return res;
@@ -283,7 +290,7 @@
     network: [MSG.offline, true], offline: [MSG.offline, true], timeout: [MSG.slow, true], upstream_timeout: [MSG.slow, true],
     upstream_error: [MSG.again, true], stock_check_unavailable: ['No pude revisar el inventario ahora. Toca «Reintentar» en un momento.', true], HTTP_503: [MSG.again, true], HTTP_502: [MSG.again, true], HTTP_500: [MSG.again, true],
     confirm_expired: [MSG.expired], HTTP_410: [MSG.expired], proposal_changed: [MSG.changed], proposal_id_mismatch: [MSG.changed], HTTP_409: [MSG.changed],
-    product_missing: ['Ese producto ya no está en el inventario.'], sin_control_stock: ['Ese producto no controla inventario.'],
+    product_missing: ['Ese producto ya no está en el inventario.'], sin_control_stock: ['Ese producto no lleva control de stock.'],
     review_required: ['Revisa este dato en las filas marcadas y vuelve a confirmar.'], over_limit: ['Fuera del límite: corrige la factura o quita la fila.'],
     empty_after_review: ['Quitaste todas las filas. Pide la compra de nuevo.'], other_device: ['Esta propuesta es de otro aparato. Pídela aquí otra vez.'],
     image_too_large: ['La foto es muy grande. Toma otra más cerca.'], bad_image: ['No pude leer esa foto. Toma otra con más luz.'],
@@ -336,7 +343,7 @@
     ajuste: function (p, d) {
       var prod = (d.productos() || []).find(function (x) { return String(x.id) === String(p.product_id); });
       if (!prod) return 'Ese producto ya no está en el inventario.';
-      if (!tracksStock(prod)) return '«' + pname(prod) + '» no controla inventario: no se puede registrar un movimiento de stock. Si debe controlarlo, actívalo en su ficha.';
+      if (!tracksStock(prod)) return '«' + pname(prod) + '» no lleva control de stock, así que no se puede registrar un movimiento. Si debe llevarlo, actívalo en su ficha.';
       var why = d.stockMoveReady ? d.stockMoveReady(prod.id) : null;
       return why || null;
     },

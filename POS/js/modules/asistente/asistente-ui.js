@@ -143,6 +143,26 @@
       best = { el: n, r: r }; }
     return best;
   }
+  // Última celda visible de las tablas (td/th) en la franja de la burbuja (Bot 4 sobre 78dbc841): en Valorización la fila TOTAL o en
+  // Ventas/stock la última «—» no son tocables pero se tienen que poder leer. Barato: solo las 2 últimas filas visibles de cada tabla (tfoot o tbody),
+  // de las últimas LAST_N tablas visibles; nunca recorre todas las celdas de Inventario.
+  function lastCell(pg, br) {
+    var tables = pg.querySelectorAll('table'), best = null, x0 = br.left - 8, x1 = br.right + 8;
+    for (var i = tables.length - 1, k = 0; i >= 0 && k < LAST_N; i--) { var t = tables[i]; if (rootEl.contains(t)) continue;
+      var tr0 = t.getBoundingClientRect(); if (!(tr0.width > 0 && tr0.height > 0)) continue; k++;
+      if (tr0.right < x0 || tr0.left > x1) continue;
+      var rows = t.rows; if (!rows || !rows.length) continue;
+      for (var j = rows.length - 1, seen = 0; j >= 0 && seen < 2; j--) { var row = rows[j], rr = row.getBoundingClientRect(); if (!(rr.width > 0 && rr.height > 0)) continue; seen++;
+        for (var c = 0; c < row.cells.length; c++) { var cell = row.cells[c], r = cell.getBoundingClientRect();
+          if (!(r.width > 0 && r.height > 0) || r.right < x0 || r.left > x1) continue;
+          if (best && r.bottom <= best.r.bottom) continue;
+          if (getComputedStyle(cell).visibility === 'hidden' || pinned(cell, pg)) continue;
+          best = { el: cell, r: r }; } }
+    }
+    return best;
+  }
+  // Lo más bajo entre la última opción tocable y la última celda de tabla.
+  function lastRow(pg, br) { var a = lastTappable(pg, br), b = lastCell(pg, br); return !a ? b : !b ? a : (b.r.bottom > a.r.bottom ? b : a); }
   // Contenedor que desplaza a `n`: el primer padre con scroll dentro de la página (incluida la página), o el documento.
   function scrollerOf(n, pg) { for (var e = n.parentElement; e && e !== doc.body && e !== doc.documentElement; e = e.parentElement) { if (scrollable(e)) return e; if (e === pg) break; } return null; }
   function padTo(e, px) { var cur = parseFloat(getComputedStyle(e).paddingBottom) || 0; if (px <= cur + 0.5) return;
@@ -165,7 +185,7 @@
     padded = padded.filter(function (e) { if (!shown || !pg || !pg.contains(e) && e !== pg || !e.isConnected) { unpad(e); return false; } return true; });
     if (!pg || !shown) return;
     var bEl = rootEl.querySelector('.na-asst-bubble'), br = bEl ? visible(bEl) : null; if (!br) return;
-    var last = lastTappable(pg, br); if (!last) return;
+    var last = lastRow(pg, br); if (!last) return;
     var limit = br.top - GAP, sc = scrollerOf(last.el, pg), over = overlapAtEnd(last, sc, limit);
     if (over <= 0) return;
     // A quién se le agrega: al contenedor que desplaza; si desplaza el documento, a la página (salvo #pageMenu en tableta/PC).
@@ -315,9 +335,15 @@
   var gate = C.createGate(deps);
 
   // ---------- Panel ----------
-  var rootEl, tagEl, panelEl, msgsEl, inputEl, sendBtn, photoBtn, fileEl, offEl;
+  var rootEl, tagEl, panelEl, msgsEl, inputEl, sendBtn, photoBtn, fileEl, offEl, newBtn, liveEl;
   function el(tag, cls, html) { var e = doc.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
-  function scrollEnd() { msgsEl.scrollTop = msgsEl.scrollHeight; }
+  function scrollEnd() { msgsEl.scrollTop = msgsEl.scrollHeight; if (newBtn) newBtn.hidden = true; }
+  // Respuesta en partes (Bot 4): solo se baja sola si la persona ya estaba abajo; si subió a leer, queda donde está y sale «Ver nuevo».
+  function atBottom() { return !msgsEl || msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight <= 24; }
+  function showNew() { if (!newBtn || !msgsEl) return; msgsEl.appendChild(newBtn); newBtn.hidden = false; } // siempre al final de la lista (sticky abajo)
+  function follow(stick) { if (stick) scrollEnd(); else showNew(); }
+  // Lector de pantalla: la respuesta se anuncia UNA vez, completa, al final (la lista de mensajes no es aria-live: no lee trozo por trozo).
+  function announce(t) { if (!liveEl) return; liveEl.textContent = ''; var v = String(t || ''); setTimeout(function () { if (liveEl) liveEl.textContent = v; }, 30); }
   function addMsg(kind, text, img) { var m = el('div', 'na-asst-msg ' + kind); m.textContent = text; if (img) { var i = el('img'); i.src = img; i.alt = 'Foto enviada'; m.appendChild(i); } msgsEl.appendChild(m); scrollEnd(); return m; }
   function soles(n) { return C.soles(n); }
   function cardHtml(p) {
@@ -333,7 +359,7 @@
         '<div class="note">Datos leídos del servidor. No cambia nada.</div>';
     }
     if (p.type === 'documento') return '<h4>' + E(p.title) + '<span class="pill ro">Solo lectura</span></h4>' +
-      '<div class="note">' + E([p.desde, p.hasta && p.hasta !== p.desde ? p.hasta : null].filter(Boolean).join(' a ') + (p.cliente ? ' · Cliente: ' + p.cliente : '')) + '</div>' +
+      '<div class="note">' + E([p.desde, p.hasta && p.hasta !== p.desde ? p.hasta : null].filter(Boolean).join(' a ') + (p.cliente ? ' · ' + p.cliente : '')) + '</div>' +
       '<div class="warn doc">Documento interno. NO es comprobante SUNAT.</div>' +
       '<div class="res" aria-live="polite"></div><div class="acts"><button type="button" class="na-asst-ok" data-open>Abrir documento</button></div>';
     if (p.type === 'compra') rows = '<tr><th>Producto</th><th class="r">Costo actual</th><th class="r">Factura</th></tr>' + p.lineas.map(function (l, i) {
@@ -351,9 +377,9 @@
     if (p.type === 'producto') rows = [['Nombre', E(p.nombre)], ['Precio', soles(p.precio)], ['Costo', p.costo != null ? soles(p.costo) : '-'], ['Stock inicial', p.stock_inicial != null ? E(p.stock_inicial) : '-'],
       ['Stock mínimo', p.stock_minimo != null ? E(p.stock_minimo) : '-'], ['Categoría', E(p.categoria || '-')], ['Código', E(p.codigo_barras || '-')]].map(function (r) { return '<tr><td>' + r[0] + '</td><td class="r">' + r[1] + '</td></tr>'; }).join('');
     var warn = '';
-    if (p.type === 'compra' && p.fueraDeLimite) warn += '<div class="warn">' + p.fueraDeLimite + ' fila(s) fuera del límite: «Está bien» no las deja pasar. Corrige la factura o quítalas.</div>';
-    if (p.type === 'compra' && p.omitidas && p.omitidas.length) warn += '<div class="warn">No se incluyó (no controla inventario): ' + p.omitidas.map(function (o) { return E(o.nombre); }).join(', ') + '.</div>';
-    if (p.type === 'compra' && p.sinProducto) warn += '<div class="warn">' + p.sinProducto + ' línea(s) sin producto registrado: revísalas.</div>';
+    if (p.type === 'compra' && p.fueraDeLimite) warn += '<div class="warn">' + (p.fueraDeLimite === 1 ? '1 fila pasa el límite: corrígela en la factura o quítala.' : p.fueraDeLimite + ' filas pasan el límite: corrígelas en la factura o quítalas.') + '</div>';
+    if (p.type === 'compra' && p.omitidas && p.omitidas.length) warn += '<div class="warn">No se incluyó porque no lleva control de stock: ' + p.omitidas.map(function (o) { return E(o.nombre); }).join(', ') + '.</div>';
+    if (p.type === 'compra' && p.sinProducto) warn += '<div class="warn">' + (p.sinProducto === 1 ? '1 línea no tiene producto registrado: revísala.' : p.sinProducto + ' líneas no tienen producto registrado: revísalas.') + '</div>';
     if (p.type === 'precio' && p.cambioGrande) warn += '<div class="warn">Cambio grande (más de 50%). Revisa bien.</div>';
     if ((p.type === 'precio' || p.type === 'producto') && p.bajoCosto) warn += '<div class="warn">El precio queda por debajo del costo.</div>';
     if (p.type === 'ajuste' && p.quedaNegativo) warn += '<div class="warn">El stock quedaría negativo. Revisa la cantidad.</div>';
@@ -459,7 +485,7 @@
         if (c.dataset.st === 'pending') { c.dataset.btn = f.button; ok.disabled = false; no.disabled = false; ok.textContent = f.button; syncOk(); }
       });
     };
-    scrollEnd();
+    // La vista la acomoda send() (no se salta lo que la persona está leyendo).
   }
   // ---------- Permiso quitado o cambiado con la app abierta ----------
   // 403 assistant_off / forbidden_role / admin_only en chat o confirm: se cierra el panel y se QUITAN la burbuja, el panel y la tarjeta
@@ -473,7 +499,7 @@
     var dv = doc.querySelector('.na-asst-doc'); if (dv) dv.remove();
     if (bubbleIO) { try { bubbleIO.disconnect(); } catch (_) {} bubbleIO = null; }
     if (panelEl) panelEl.remove(); if (rootEl) rootEl.remove();
-    rootEl = panelEl = msgsEl = inputEl = sendBtn = photoBtn = fileEl = offEl = tagEl = null;
+    rootEl = panelEl = msgsEl = inputEl = sendBtn = photoBtn = fileEl = offEl = tagEl = newBtn = liveEl = null;
     history.length = 0; shownFor = null; busy = false; offscreen = false;
   }
   function accessLost(code) {
@@ -495,7 +521,7 @@
   // Errores: siempre en palabras simples (C.friendlyError), nunca un código. Si se puede reintentar, va un botón «Reintentar»
   // que manda OTRA VEZ lo mismo; nunca queda «Pensando» para siempre (el pedido se corta a los C.TIMEOUTS.chat ms).
   function errMsg(code, serverMsg, retryArgs) {
-    var f = C.friendlyError(code, serverMsg), m = addMsg('a', f.msg);
+    var f = C.friendlyError(code, serverMsg), m = addMsg('a', f.msg); announce(f.msg);
     if (f.retry && retryArgs) {
       var b = el('button', 'na-asst-retry'); b.type = 'button'; b.textContent = 'Reintentar';
       b.onclick = function () { if (busy) return; b.disabled = true; m.remove(); var u = m.previousElementSibling; if (retryArgs[2] !== false && u && u.classList.contains('na-asst-msg') && u.classList.contains('u')) u.remove(); send(retryArgs[0], retryArgs[1]); };
@@ -509,7 +535,7 @@
     var lab = el('div', 'na-asst-incomplete'); lab.textContent = 'Respuesta incompleta';
     var b = el('button', 'na-asst-retry'); b.type = 'button'; b.textContent = 'Reintentar';
     b.onclick = function () { if (busy) return; b.disabled = true; var u = m.previousElementSibling; m.remove(); if (u && u.classList.contains('na-asst-msg') && u.classList.contains('u')) u.remove(); send(t, img); };
-    m.appendChild(lab); m.appendChild(b); scrollEnd(); return m;
+    var stick = atBottom(), said = m.textContent; m.removeAttribute('aria-busy'); m.appendChild(lab); m.appendChild(b); follow(stick); announce(said + ' (Respuesta incompleta)'); return m;
   }
   // ¿El navegador puede leer la respuesta en partes? Si no, el chat de siempre (una sola respuesta JSON).
   function canStream() { return typeof root.ReadableStream === 'function' && typeof root.TextDecoder === 'function' && typeof root.AbortController === 'function' && root.NA_ASISTENTE_NO_STREAM !== true; }
@@ -526,14 +552,17 @@
     if (image) body.image = image;
     var bubble = null, painter = null, streaming = canStream();
     if (streaming) body.stream = true;
-    // La burbuja de «Pensando» se vuelve la respuesta en cuanto llega el primer texto.
-    function ensureBubble() { if (!bubble) { bubble = thinking; thinking.classList.remove('na-asst-thinking'); thinking.textContent = ''; } return bubble; }
+    // La burbuja de «Pensando» se vuelve la respuesta EN EL MISMO LUGAR en cuanto llega el primer texto; la mascota pasa a «hablando».
+    function ensureBubble() { if (!bubble) { bubble = thinking; thinking.classList.remove('na-asst-thinking'); thinking.textContent = ''; bubble.setAttribute('aria-busy', 'true'); setState('hablando'); } return bubble; }
+    // Aviso del servidor mientras busca datos (antes de cualquier texto): «Buscando en su inventario…» en la misma burbuja.
+    function searching() { if (bubble || panelEl !== mine || !thinking.firstChild || thinking.firstChild.nodeType !== 3) return; thinking.firstChild.data = 'Buscando en su inventario'; thinking.classList.add('na-asst-searching'); }
     try {
       var mine = panelEl, d;
       if (streaming) {
         var q = reqInit('/auth/assistant/chat', body);
-        painter = C.createTextPainter(function (t) { if (panelEl !== mine) return; ensureBubble().appendChild(doc.createTextNode(t)); scrollEnd(); wake(); });
-        var st = await C.streamChat(root.fetch.bind(root), q.url, q.init, { onText: function (t) { painter.push(t); }, onReset: function () { painter.reset(); if (bubble) bubble.textContent = ''; } });
+        painter = C.createTextPainter(function (t) { if (panelEl !== mine) return; var stick = atBottom(); ensureBubble().appendChild(doc.createTextNode(t)); follow(stick); wake(); });
+        var st = await C.streamChat(root.fetch.bind(root), q.url, q.init, { onText: function (t) { painter.push(t); }, onReset: function () { painter.reset(); if (bubble) bubble.textContent = ''; },
+          onStatus: searching });
         if (panelEl !== mine) return; // la UI se quitó mientras tanto
         if (st.kind === 'json') { d = st.data || {}; if (!st.ok) { d.error = d.error || 'HTTP_' + st.status; d.status = st.status; } }
         else {
@@ -553,11 +582,17 @@
       if (!d.ok) { errMsg(d.error, null, [text, image]); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
       // El texto definitivo del servidor reemplaza al que se fue pintando (puede cambiar si una tarjeta se quitó). Tarjetas: SOLO de final.
-      if (bubble) { bubble.textContent = d.reply; scrollEnd(); } else addMsg('a', d.reply);
-      if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
+      // Si es el mismo texto no se toca (nada se mueve). Las tarjetas van DEBAJO del texto terminado: lo ya leído no se desplaza;
+      // si la persona estaba abajo se baja, pero nunca más allá del inicio de la respuesta (si la tarjeta no entra, sale «Ver nuevo»).
+      var stick = atBottom();
+      if (bubble) { bubble.removeAttribute('aria-busy'); if (bubble.textContent.trim() !== d.reply) bubble.textContent = d.reply; } else bubble = addMsg('a', d.reply);
+      announce(d.reply);
+      if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
       (d.proposals || []).forEach(function (x) { addCard(x, text); });
+      if (stick) { var top = bubble.getBoundingClientRect().top - msgsEl.getBoundingClientRect().top + msgsEl.scrollTop - 12, end = msgsEl.scrollHeight - msgsEl.clientHeight;
+        msgsEl.scrollTop = Math.max(0, Math.min(end, top)); if (end > top + 1) showNew(); else if (newBtn) newBtn.hidden = true; } else if (d.proposals && d.proposals.length) showNew();
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
     } catch (e) { if (!panelEl) return; if (painter) painter.reset(); if (bubble) bubble.remove(); thinking.remove(); errMsg(root.navigator.onLine === false ? 'offline' : e && e.timeout ? 'timeout' : 'network', null, [text, image]); setState('error', 2600); }
     finally { busy = false; if (sendBtn) sendBtn.disabled = root.navigator.onLine === false; if (photoBtn) photoBtn.disabled = root.navigator.onLine === false; }
@@ -862,12 +897,15 @@
     tagEl = rootEl.querySelector('.na-asst-tag');
     panelEl = el('section', 'na-asst-panel'); panelEl.hidden = true; panelEl.setAttribute('role', 'dialog'); panelEl.setAttribute('aria-label', 'Asistente Burbuja');
     panelEl.innerHTML = '<div class="na-asst-head">' + charHtml() + '<div class="na-asst-head-t"><b>Burbuja</b><small>' + (isOwnerAccess() ? 'Gestión · dueño · prueba aislada' : 'Consultas · empleado · prueba aislada') + '</small></div><button type="button" class="na-asst-x" aria-label="Cerrar asistente">✕</button></div>' +
-      '<div class="na-asst-offline" hidden>Asistente no disponible sin internet</div><div class="na-asst-msgs" aria-live="polite"></div>' +
+      '<div class="na-asst-offline" hidden>Asistente no disponible sin internet</div><div class="na-asst-msgs"></div><div class="na-asst-live" aria-live="polite" aria-atomic="true"></div>' +
       '<div class="na-asst-chips">' + chipsHtml() + '</div>' +
       '<div class="na-asst-input"><button type="button" class="na-asst-photo" aria-label="Enviar foto"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg></button><input type="file" accept="image/*" capture="environment" hidden>' +
       '<textarea rows="1" placeholder="Escribe aquí…" aria-label="Mensaje para el asistente"></textarea><button type="button" class="na-asst-send" aria-label="Enviar">➤</button></div>';
     doc.body.appendChild(rootEl); doc.body.appendChild(panelEl);
-    msgsEl = panelEl.querySelector('.na-asst-msgs'); inputEl = panelEl.querySelector('textarea'); sendBtn = panelEl.querySelector('.na-asst-send');
+    msgsEl = panelEl.querySelector('.na-asst-msgs'); liveEl = panelEl.querySelector('.na-asst-live');
+    newBtn = el('button', 'na-asst-new'); newBtn.type = 'button'; newBtn.textContent = 'Ver nuevo ↓'; newBtn.hidden = true; newBtn.onclick = scrollEnd; msgsEl.appendChild(newBtn);
+    msgsEl.addEventListener('scroll', function () { if (!newBtn.hidden && atBottom()) newBtn.hidden = true; }, { passive: true });
+    inputEl = panelEl.querySelector('textarea'); sendBtn = panelEl.querySelector('.na-asst-send');
     photoBtn = panelEl.querySelector('.na-asst-photo'); fileEl = panelEl.querySelector('input[type=file]'); offEl = panelEl.querySelector('.na-asst-offline');
     rootEl.querySelector('.na-asst-bubble').onclick = openPanel;
     panelEl.querySelector('.na-asst-x').onclick = closePanel;

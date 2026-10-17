@@ -329,7 +329,7 @@ test('Bot 2: con 5300 productos, el #5200 confirma 200 leyendo solo su id; sin c
   const ok = await confirmCard(card); assert.equal(ok.status, 200, JSON.stringify(ok.body));
   // sin control de inventario (#5201): el chat ya no ofrece la tarjeta (consulta por id, no la lista cortada)
   const nc = await chatWith({ id: '05201', nombre: 'Synthetic 05201' }); assert.ok(!nc.body.proposals.some((p) => p.type === 'ajuste'), JSON.stringify(nc.body));
-  assert.match(nc.body.reply, /no controla inventario/);
+  assert.match(nc.body.reply, /no lleva control de stock/);
   // id que no existe en la base: la tarjeta sale (dato del aparato) pero el confirm responde 409 product_missing
   const gone = await chatWith({ id: '09999', nombre: 'Synthetic 09999' }); const gc = gone.body.proposals.find((p) => p.type === 'ajuste'); assert.ok(gc);
   const r = await confirmCard(gc); assert.equal(r.status, 409); assert.equal(r.body.error, 'product_missing');

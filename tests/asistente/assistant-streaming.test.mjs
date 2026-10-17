@@ -192,7 +192,7 @@ test('celular: tarjetas SOLO desde el evento final, nunca de un texto a medias',
   const sendFn = UI.slice(UI.indexOf('  async function send(text, image) {'), UI.indexOf('  // Comprime en el aparato'));
   assert.equal((sendFn.match(/addCard\(/g) || []).length, 1); assert.match(sendFn, /\(d\.proposals \|\| \[\]\)\.forEach\(function \(x\) \{ addCard\(x, text\); \}\);/);
   assert.match(sendFn, /if \(st\.final\) d = st\.final;/);
-  assert.match(sendFn, /if \(bubble\) \{ bubble\.textContent = d\.reply;/, 'el texto definitivo reemplaza al pintado');
+  assert.match(sendFn, /if \(bubble\.textContent\.trim\(\) !== d\.reply\) bubble\.textContent = d\.reply;/, 'el texto definitivo reemplaza al pintado (si cambió)');
 });
 
 test('celular: vuelta al JSON si el servidor responde JSON (puertas) o el navegador no puede leer en partes', async () => {

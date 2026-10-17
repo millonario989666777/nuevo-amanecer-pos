@@ -43,7 +43,7 @@ test('1) factura absurda 9999 × S/ 99,999: «Está bien» NO la deja pasar (top
   // aceptar la fila marcada: igual 422 over_limit con motivo claro; la tarjeta NO queda usada
   const r = await confirm(store, card, { op, accept: [0], drop: [] });
   assert.equal(r.status, 422); assert.equal(r.body.error, 'over_limit'); assert.deepEqual(r.body.rows, [0]);
-  assert.match(r.body.message, /Fuera del límite: corrige la factura o quita la fila/); assert.match(r.body.message, /cantidad mayor a 5000/);
+  assert.match(r.body.message, /pasa el límite \(cantidad mayor a 5000\): corrige la factura o quita la fila\./); assert.ok(r.body.message.length <= 120, 'una frase corta: ' + r.body.message); assert.ok(!/\(s\)/.test(r.body.message));
   assert.equal(r.spent, 0);
   // quitando la fila sí pasa
   const ok = await confirm(store, card, { op, accept: [], drop: [0] });
@@ -55,7 +55,7 @@ test('1b) tope del total de la compra y tope de cantidad del ajuste', async () =
   const { body, store } = await chat([tool('preparar_compra', { lineas })]);
   const card = body.proposals.find((p) => p.type === 'compra'); const op = opOf(card);
   const r = await confirm(store, card, { op, accept: [0, 1, 2, 3, 4], drop: [] });
-  assert.equal(r.status, 422); assert.equal(r.body.error, 'over_limit'); assert.equal(r.body.total, true); assert.match(r.body.message, /total de la compra mayor a S\/ 200000/);
+  assert.equal(r.status, 422); assert.equal(r.body.error, 'over_limit'); assert.equal(r.body.total, true); assert.match(r.body.message, /^La compra pasa el límite de S\/ 200000: quita algunas filas\.$/);
   assert.equal(PURCHASE_HARD_LIMITS.maxTotal, 200000);
   const adj = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'entrada', cantidad: 9000, motivo: 'Ajuste de inventario' })]);
   assert.equal(adj.body.proposals.length, 0); assert.deepEqual(adj.body.dropped, [{ tool: 'proponer_ajuste_stock', reason: 'over_limit' }]);
@@ -65,14 +65,14 @@ test('1b) tope del total de la compra y tope de cantidad del ajuste', async () =
 test('2) producto sin control de inventario: ni ajuste ni fila de compra; mensaje claro; se vuelve a mirar al confirmar', async () => {
   const adj = await chat([tool('proponer_ajuste_stock', { product_id: 'S', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })]);
   assert.equal(adj.status, 200); assert.equal(adj.body.proposals.length, 0);
-  assert.match(adj.body.reply, /«Recarga» no controla inventario/);
+  assert.match(adj.body.reply, /«Recarga» no lleva control de stock/);
   assert.ok(adj.body.dropped.some((d) => d.reason === 'sin_control_stock'));
   // el aparato no lo marcó (contexto viejo): igual lo corta la base del servidor
   const ctxSinFlag = { products: CTX.products.map(({ controla, ...p }) => p) };
   const c = await chat([tool('preparar_compra', { lineas: [{ product_id: 'S', nombre: 'Recarga', cantidad: 3 }, { product_id: 'A', nombre: 'Arroz', cantidad: 2 }] })], { ctx: ctxSinFlag });
   const card = c.body.proposals.find((p) => p.type === 'compra');
-  assert.deepEqual(card.lineas.map((l) => l.product_id), ['A']); assert.deepEqual(card.omitidas, [{ nombre: 'Recarga', motivo: 'no controla inventario' }]);
-  assert.match(c.body.reply, /«Recarga» no controla inventario/);
+  assert.deepEqual(card.lineas.map((l) => l.product_id), ['A']); assert.deepEqual(card.omitidas, [{ nombre: 'Recarga', motivo: 'no lleva control de stock' }]);
+  assert.match(c.body.reply, /«Recarga» no lleva control de stock/);
   // la marca del aparato (controla:false) se respeta aunque no haya base
   assert.equal(sanitizeContext({ products: [{ id: 'S', nombre: 'Recarga', controla: false }] }, 'owner').products[0].controla, false);
   const off = toProposal({ name: 'proponer_ajuste_stock', arguments: { product_id: 'S', tipo: 'salida', cantidad: 1 } }, 'owner', sanitizeContext({ products: [{ id: 'S', nombre: 'Recarga', controla: false }] }, 'owner'), 1);
@@ -81,7 +81,7 @@ test('2) producto sin control de inventario: ni ajuste ni fila de compra; mensaj
   const a = await chat([tool('proponer_ajuste_stock', { product_id: 'A', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' })]);
   const later = { products: async () => [{ id: 'A', nombre: 'Arroz', controla: false }] };
   const r = await confirm(a.store, a.body.proposals[0], null, { reader: later });
-  assert.equal(r.status, 409); assert.equal(r.body.error, 'sin_control_stock'); assert.match(r.body.message, /«Arroz» no controla inventario/); assert.equal(r.spent, 0);
+  assert.equal(r.status, 409); assert.equal(r.body.error, 'sin_control_stock'); assert.match(r.body.message, /«Arroz» no lleva control de stock/); assert.equal(r.spent, 0);
 });
 
 test('3) ajuste en el aparato: se revisa ANTES de gastar la tarjeta y se dice el motivo real', async () => {
@@ -90,7 +90,7 @@ test('3) ajuste en el aparato: se revisa ANTES de gastar la tarjeta y se dice el
   const card = { id: 'k1', type: 'ajuste', needsConfirm: true, confirm_token: 't', product_id: 'S', nombre: 'Recarga', tipo: 'salida', cantidad: 1, motivo: 'Merma / daño' };
   const g1 = C.createGate({ ...base, productos: () => [{ id: 'S', name: 'Recarga', controlInventario: false }], openStockMove: () => { opened++; return true; } });
   const r1 = await g1.execute(g1.add(card), { confirmed: true });
-  assert.equal(r1.ok, false); assert.equal(r1.code, 'precheck'); assert.match(r1.msg, /«Recarga» no controla inventario/); assert.equal(confirms, 0, 'no se gastó la tarjeta'); assert.equal(opened, 0);
+  assert.equal(r1.ok, false); assert.equal(r1.code, 'precheck'); assert.match(r1.msg, /«Recarga» no lleva control de stock/); assert.equal(confirms, 0, 'no se gastó la tarjeta'); assert.equal(opened, 0);
   const g2 = C.createGate({ ...base, productos: () => [{ id: 'S', name: 'Recarga' }], stockMoveReady: () => 'La ventana «Registrar movimiento» no está cargada. Recarga la página e inténtalo otra vez.', openStockMove: () => true });
   const r2 = await g2.execute(g2.add(card), { confirmed: true });
   assert.match(r2.msg, /no está cargada/); assert.equal(confirms, 0);
