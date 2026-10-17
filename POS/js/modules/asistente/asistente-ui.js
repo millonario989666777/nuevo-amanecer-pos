@@ -199,12 +199,16 @@
   }
   // Mismo pedido que NA_ROLES.api (endpoint, Bearer, sin cookies) pero con límite de tiempo propio del asistente.
   // Un timeout lanza un error (timeout=true); un error HTTP vuelve como { error, status }.
-  async function post(path, body, headers, ms) {
+  function reqInit(path, body, headers) {
     var c = creds(), url = path, h = Object.assign({ 'content-type': 'application/json' }, headers || {});
     var init = { method: 'POST', cache: 'no-store', body: JSON.stringify(body) };
     if (c) { url = c.endpoint.replace(/\/+$/, '') + path; h.authorization = 'Bearer ' + c.token; init.credentials = 'omit'; init.redirect = 'error'; }
     else if (protoRole()) { h['x-proto-role'] = protoRole(); if (protoLevel()) h['x-proto-level'] = protoLevel(); }
-    init.headers = h;
+    init.headers = h; // sin cabeceras nuevas: la respuesta en partes se pide con stream:true en el cuerpo (CORS del Worker sin cambios)
+    return { url: url, init: init };
+  }
+  async function post(path, body, headers, ms) {
+    var q = reqInit(path, body, headers), url = q.url, init = q.init;
     var r = await C.request(root.fetch.bind(root), url, init, ms || C.TIMEOUTS.chat);
     var d = r.data || {}; if (!r.ok) { d.error = d.error || 'HTTP_' + r.status; d.status = r.status; }
     return d;
@@ -499,6 +503,16 @@
     }
     return m;
   }
+  // Corte a mitad de la respuesta: el texto recibido queda, marcado «Respuesta incompleta», con «Reintentar» (nunca automático).
+  // Reintentar quita ESA respuesta y su pregunta y las manda de nuevo: no queda texto repetido ni perdido.
+  function incomplete(m, t, img) {
+    var lab = el('div', 'na-asst-incomplete'); lab.textContent = 'Respuesta incompleta';
+    var b = el('button', 'na-asst-retry'); b.type = 'button'; b.textContent = 'Reintentar';
+    b.onclick = function () { if (busy) return; b.disabled = true; var u = m.previousElementSibling; m.remove(); if (u && u.classList.contains('na-asst-msg') && u.classList.contains('u')) u.remove(); send(t, img); };
+    m.appendChild(lab); m.appendChild(b); scrollEnd(); return m;
+  }
+  // ¿El navegador puede leer la respuesta en partes? Si no, el chat de siempre (una sola respuesta JSON).
+  function canStream() { return typeof root.ReadableStream === 'function' && typeof root.TextDecoder === 'function' && typeof root.AbortController === 'function' && root.NA_ASISTENTE_NO_STREAM !== true; }
   async function send(text, image) {
     if (busy) return;
     text = String(text || '').trim(); if (!text && !image) return;
@@ -510,21 +524,42 @@
     var screen = (doc.querySelector('.page.active') || {}).id || null;
     var body = { text: C.redactText(text), history: history.slice(-8), context: C.buildContext(deps.productos(), roles().role, screen, text) };
     if (image) body.image = image;
+    var bubble = null, painter = null, streaming = canStream();
+    if (streaming) body.stream = true;
+    // La burbuja de «Pensando» se vuelve la respuesta en cuanto llega el primer texto.
+    function ensureBubble() { if (!bubble) { bubble = thinking; thinking.classList.remove('na-asst-thinking'); thinking.textContent = ''; } return bubble; }
     try {
-      var mine = panelEl, d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); if (panelEl !== mine) return; // la UI se quitó mientras tanto
-      thinking.remove(); wake(); // llegó respuesta: si estaba en pausa, despierta
+      var mine = panelEl, d;
+      if (streaming) {
+        var q = reqInit('/auth/assistant/chat', body);
+        painter = C.createTextPainter(function (t) { if (panelEl !== mine) return; ensureBubble().appendChild(doc.createTextNode(t)); scrollEnd(); wake(); });
+        var st = await C.streamChat(root.fetch.bind(root), q.url, q.init, { onText: function (t) { painter.push(t); }, onReset: function () { painter.reset(); if (bubble) bubble.textContent = ''; } });
+        if (panelEl !== mine) return; // la UI se quitó mientras tanto
+        if (st.kind === 'json') { d = st.data || {}; if (!st.ok) { d.error = d.error || 'HTTP_' + st.status; d.status = st.status; } }
+        else {
+          painter.finish(); // lo que quedaba en la tanda se pinta: nada se pierde
+          if (st.final) d = st.final;
+          else if (st.text && bubble && (!st.error || /^upstream_/.test(String(st.error.error || '')))) { incomplete(bubble, text, image); setState('error', 2600); return; }
+          else if (st.error) d = { ok: false, error: st.error.error || 'upstream_error', status: st.error.status };
+          else { if (bubble) bubble.remove(); else thinking.remove(); errMsg(root.navigator.onLine === false ? 'offline' : st.timeout ? 'timeout' : 'network', null, [text, image]); setState('error', 2600); return; }
+        }
+      } else { d = await post('/auth/assistant/chat', body, null, C.TIMEOUTS.chat); if (panelEl !== mine) return; }
+      if (!d.ok && bubble) { bubble.remove(); bubble = null; }
+      if (!bubble) thinking.remove(); wake(); // llegó respuesta: si estaba en pausa, despierta
       if (typeof d.server_now === 'number') clockOffset = d.server_now - Date.now(); // la cuenta regresiva usa la hora del servidor
       // 403 de permiso (Bots 3, 4 y 5): fuera panel, burbuja y tarjeta EN ESE MOMENTO; nada queda para seguir escribiendo.
       if (!d.ok && ACCESS_LOST[d.error]) { accessLost(d.error); return; }
       if (!d.ok && d.error === 'forbidden_document') { levelLowered(); errMsg('forbidden_document'); setState('error', 2600); return; }
       if (!d.ok) { errMsg(d.error, null, [text, image]); setState('error', 2600); return; }
       history.push({ role: 'user', content: body.text || 'Foto' }, { role: 'assistant', content: d.reply });
-      addMsg('a', d.reply); if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
+      // El texto definitivo del servidor reemplaza al que se fue pintando (puede cambiar si una tarjeta se quitó). Tarjetas: SOLO de final.
+      if (bubble) { bubble.textContent = d.reply; scrollEnd(); } else addMsg('a', d.reply);
+      if (d.mode === 'mock') { var m = el('div', 'na-asst-mode'); m.textContent = 'Modo demostración (sin clave de DeepSeek)'; msgsEl.appendChild(m); }
       (d.denied || []).forEach(addDenied);
       if (d.proposals && d.proposals.some(function (x) { return x.type === 'consulta'; }) && d.reply) { /* el texto ya resume los números */ }
       (d.proposals || []).forEach(function (x) { addCard(x, text); });
       setState('hablando', Math.min(4000, 900 + d.reply.length * 25));
-    } catch (e) { if (!panelEl) return; thinking.remove(); errMsg(root.navigator.onLine === false ? 'offline' : e && e.timeout ? 'timeout' : 'network', null, [text, image]); setState('error', 2600); }
+    } catch (e) { if (!panelEl) return; if (painter) painter.reset(); if (bubble) bubble.remove(); thinking.remove(); errMsg(root.navigator.onLine === false ? 'offline' : e && e.timeout ? 'timeout' : 'network', null, [text, image]); setState('error', 2600); }
     finally { busy = false; if (sendBtn) sendBtn.disabled = root.navigator.onLine === false; if (photoBtn) photoBtn.disabled = root.navigator.onLine === false; }
   }
   // Comprime en el aparato: lado mayor 1600 px, JPEG, baja calidad hasta quedar < 1.4 MB.

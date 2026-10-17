@@ -65,6 +65,9 @@ const IMAGE_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 
 // ---------- Datos sensibles ----------
 const PATTERNS = [
+  // Bot 5: un «data:» (foto pegada como texto, base64) nunca va a DeepSeek dentro del mensaje: se cambia por un aviso corto. Va primero para que
+  // sus dígitos no parezcan DNI o teléfono. La foto real va aparte (campo image, solo dueño).
+  [/\bdata:[^\s,]{0,120},[A-Za-z0-9+/=%._~-]*/gi, '[imagen omitida]'],
   [/\b(pin|clave|contrase(?:ñ|n)a|password|token|api[ _-]?key)\b(\s*(?:es|era|de|:|=)?\s*)[^\s,.;]{3,}/gi, '$1$2[oculto]'],
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[correo oculto]'],
   [/\b(?:RUC\s*(?:N[°º.]?\s*)?[:#-]?\s*)?(?:10|15|17|20)\d{5}(\d{4})\b/gi, 'RUC *******$1'], // sin «RUC RUC»
@@ -420,6 +423,77 @@ export async function callDeepSeek(body, env, fetchImpl, timeoutMs) {
   } finally { clearTimeout(timer); }
 }
 
+// Igual que callDeepSeek pero con stream:true: cada trozo de texto va a onText en cuanto llega; las llamadas a herramientas se juntan
+// aquí y recién al final se devuelven (nunca se arma una tarjeta con un pedazo). El tiempo cuenta desde el ÚLTIMO trozo (idleMs).
+// Si se corta a mitad: { error, partial:true } y lo ya recibido queda en content.
+export async function callDeepSeekStream(body, env, fetchImpl, idleMs, onText) {
+  const controller = new AbortController(); let timer = null;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => controller.abort(), idleMs); };
+  let content = '', usage = null; const calls = [];
+  try {
+    arm();
+    const base = String(env.DEEPSEEK_BASE_URL || DEEPSEEK_BASE_URL).replace(/\/+$/, '');
+    const res = await fetchImpl(`${base}/chat/completions`, { method: 'POST', signal: controller.signal,
+      headers: { authorization: `Bearer ${env.DEEPSEEK_API_KEY}`, 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ ...body, stream: true }) });
+    if (!res.ok) return { error: res.status === 429 ? 'upstream_busy' : 'upstream_error', status: res.status };
+    if (!res.body || typeof res.body.getReader !== 'function') return { error: 'upstream_error' };
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '', done = false;
+    const line = (l) => {
+      if (!l.startsWith('data:')) return; const d = l.slice(5).trim(); if (!d) return;
+      if (d === '[DONE]') { done = true; return; }
+      let j; try { j = JSON.parse(d); } catch { return; }
+      if (j.usage) usage = j.usage;
+      const delta = j?.choices?.[0]?.delta || {};
+      if (typeof delta.content === 'string' && delta.content) { content += delta.content; onText(delta.content); }
+      for (const tc of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
+        const i = Number.isInteger(tc?.index) ? tc.index : calls.length; const c = calls[i] || (calls[i] = { id: '', name: '', arguments: '' });
+        if (tc.id) c.id = String(tc.id).slice(0, 64); if (tc.function?.name) c.name += tc.function.name; if (typeof tc.function?.arguments === 'string') c.arguments += tc.function.arguments;
+      }
+      if (j?.choices?.[0]?.finish_reason) done = true;
+    };
+    for (;;) {
+      const { value, done: end } = await reader.read(); arm();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let k; while ((k = buf.indexOf('\n')) >= 0) { line(buf.slice(0, k).replace(/\r$/, '')); buf = buf.slice(k + 1); }
+    }
+    if (buf) line(buf.trim());
+    // Sin [DONE] ni finish_reason: el corte fue a mitad (lo recibido queda, las herramientas a medias NO se usan).
+    if (!done) return { error: 'upstream_error', partial: true, content };
+    return { content, calls: calls.filter(Boolean).map((c, i) => ({ id: c.id || 'call_' + i, name: c.name, arguments: c.arguments })), usage };
+  } catch (e) {
+    return { error: e?.name === 'AbortError' ? 'upstream_timeout' : 'upstream_error', partial: !!content, content };
+  } finally { clearTimeout(timer); }
+}
+
+// Canal SSE hacia el celular (sin Durable Objects: un TransformStream por pedido, plan gratis de Workers).
+// Eventos: open (enseguida), text {t} o {reset:true}, final {…el mismo cuerpo de siempre…}, error {error, status}.
+export function createSseChannel() {
+  const ts = new TransformStream(), w = ts.writable.getWriter(), enc = new TextEncoder();
+  let open = false, closed = false, resolveOpen; const opened = new Promise((r) => { resolveOpen = r; });
+  const ch = {
+    readable: ts.readable, opened, isOpen: () => open,
+    send(ev, data) { if (closed) return; w.write(enc.encode('event: ' + ev + '\ndata: ' + JSON.stringify(data) + '\n\n')).catch(() => {}); },
+    open() { if (open) return; open = true; ch.send('open', { ok: true }); resolveOpen(); },
+    close() { if (closed) return; closed = true; w.close().catch(() => {}); }
+  };
+  return ch;
+}
+// Texto que va saliendo, ya sin datos sensibles: se guarda una cola de 48 caracteres para que un DNI, teléfono o «data:» que todavía
+// está llegando no salga a medias sin tapar. El texto definitivo igual llega en «final» (reply) y reemplaza al que se fue pintando.
+export const STREAM_HOLDBACK = 48;
+export function createTextEmitter(send, max = 1200) {
+  let acc = '', sent = 0;
+  const clean = () => redactText(acc.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, ' ')).slice(0, max);
+  return {
+    push(d) { acc += String(d || ''); const red = clean(); const safe = Math.min(red.length - STREAM_HOLDBACK, max); if (safe > sent) { send({ t: red.slice(sent, safe) }); sent = safe; } },
+    flush() { const red = clean(); if (red.length > sent) { send({ t: red.slice(sent) }); sent = red.length; } },
+    reset() { if (sent) send({ reset: true }); acc = ''; sent = 0; },
+    sent: () => sent
+  };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // ---------- Rol para el asistente ----------
 // authorizeSession trata "sin fila de rol" como dueño. Para el asistente eso NO basta: solo es dueño
 // quien tiene pos_role='owner' explícito. Sin fila, sin tabla o con error: empleado (falla cerrado).
@@ -601,7 +675,7 @@ export function parseChatBody(body) {
   const history = (Array.isArray(body.history) ? body.history : []).slice(-ASSISTANT_LIMITS.maxHistory)
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map((m) => ({ role: m.role, content: cleanText(m.content, ASSISTANT_LIMITS.maxMessageChars) })).filter((m) => m.content);
-  return { text, image, history, context: body.context };
+  return { text, image, history, context: body.context, stream: body.stream === true };
 }
 
 // Chat RECHAZADO también queda en la bitácora, igual que el confirm (el rol se resuelve ANTES de leer el cuerpo): dueño -> 429 y
@@ -628,14 +702,28 @@ export function hasImageField(raw) { return /(^|[^\\])"image"\s*:\s*(?!null\b)/.
 
 export async function assistantChatRoute(request, env, auth, json, deps = {}) {
   const ctx = {}; let rej = null;
-  const jr = (data, status = 200) => { if (status >= 400) rej = { error: data && data.error, status }; return json(data, status); };
-  const res = await chatCore(request, env, auth, jr, deps, ctx);
-  if (rej && rej.error && rej.status !== 404 && rej.status !== 405) {
-    const aggregate = rej.status === 429 || (rej.status === 403 && isAggregated(rej.error));
-    await (deps.audit || auditWrite)(deps.db, [{ device_id: auth?.principalId, role: ctx.role ? String(ctx.role) : null, tool: 'chat', src: 'chat',
-      outcome: 'rejected:' + String(rej.error).slice(0, 40), aggregate }]);
-  }
-  return res;
+  // Respuesta en partes (stream:true en el cuerpo, sin cabeceras nuevas: CORS sigue igual). Todas las puertas van ANTES de abrir el
+  // canal: rol, foto de no dueño, clave, cuerpo, cupo. Si una corta, la respuesta es el JSON de siempre (mismo código y bitácora).
+  const ch = createSseChannel();
+  const jr = (data, status = 200) => {
+    if (status >= 400) rej = { error: data && data.error, status };
+    if (ch.isOpen()) { ch.send(status >= 400 ? 'error' : 'final', status >= 400 ? { error: data && data.error, status, ...(data && data.message ? { message: data.message } : {}) } : data); return null; }
+    return json(data, status);
+  };
+  const auditRej = async () => {
+    if (rej && rej.error && rej.status !== 404 && rej.status !== 405) {
+      const aggregate = rej.status === 429 || (rej.status === 403 && isAggregated(rej.error));
+      await (deps.audit || auditWrite)(deps.db, [{ device_id: auth?.principalId, role: ctx.role ? String(ctx.role) : null, tool: 'chat', src: 'chat',
+        outcome: 'rejected:' + String(rej.error).slice(0, 40), aggregate }]);
+    }
+  };
+  const core = chatCore(request, env, auth, jr, { ...deps, sse: ch }, ctx);
+  await Promise.race([core.catch(() => null), ch.opened]);
+  if (!ch.isOpen()) { const res = await core; await auditRej(); return res; }
+  // Canal abierto: el resto sigue mientras el celular lee; se cierra recién después de anotar la bitácora.
+  const done = core.catch(() => { jr({ error: 'upstream_error' }, 502); }).then(auditRej).catch(() => {}).finally(() => ch.close());
+  if (typeof deps.waitUntil === 'function') deps.waitUntil(done);
+  return new Response(ch.readable, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
 async function chatCore(request, env, auth, json, deps, ctxOut) {
   if (String(env?.ASSISTANT_ENABLED || '') !== '1') return json({ error: 'not_found' }, 404);
@@ -676,13 +764,22 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
 
   const mode = env.DEEPSEEK_API_KEY ? 'deepseek' : 'mock';
   const now = (deps.now || Date.now)();
+  // Todas las puertas pasaron: recién aquí se abre el canal en partes (si el celular lo pidió y la ruta lo permite).
+  const sse = parsed.stream && deps.sse ? deps.sse : null;
+  const emit = sse ? createTextEmitter((d) => sse.send('text', d)) : null;
+  if (sse) sse.open();
   let result, req = null; const bytes = [];
-  if (mode === 'mock') result = mockAssistantReply({ role, ctx, text: parsed.text, image: !!parsed.image });
-  else {
+  if (mode === 'mock') {
+    result = mockAssistantReply({ role, ctx, text: parsed.text, image: !!parsed.image });
+    // Demostración también en partes: palabra por palabra con una pausa corta (deps.mockChunkMs).
+    if (emit) { for (const w of String(result.content || '').split(/(?<=\s)/)) { emit.push(w); await sleep(deps.mockChunkMs ?? 25); } emit.flush(); }
+  } else {
     req = buildDeepSeekRequest({ role, ctx, history: parsed.history, text: parsed.text, image: parsed.image });
     bytes.push(payloadBytes(req));
-    result = await callDeepSeek(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
-    if (result.error) return json({ error: result.error, mode }, ERR_STATUS[result.error] || 502);
+    result = emit ? await callDeepSeekStream(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs, (t) => emit.push(t))
+      : await callDeepSeek(req, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
+    if (emit && !result.error) emit.flush();
+    if (result.error) return json({ error: result.error, mode, ...(result.partial ? { partial: true } : {}) }, ERR_STATUS[result.error] || 502);
   }
   const proposals = [], dropped = [];
   const seenCalls = new Set();
@@ -736,7 +833,11 @@ async function chatCore(request, env, auth, json, deps, ctxOut) {
       const calls = consultas.map((c) => ({ id: c._call.id, type: 'function', function: { name: 'consultar', arguments: typeof c._call.arguments === 'string' ? c._call.arguments : JSON.stringify(c._call.arguments || {}) } }));
       const req2 = { model: DEEPSEEK_MODEL, messages: [...req.messages, { role: 'assistant', content: result.content || '', tool_calls: calls }, ...toolMsgs], thinking: { type: 'disabled' }, temperature: 0.2, max_tokens: 350, stream: false };
       bytes.push(payloadBytes(req2));
-      const second = await callDeepSeek(req2, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
+      // En partes: lo que se pintó de la primera llamada se borra (reset) y se pinta la explicación; si falla, queda el texto con números.
+      if (emit) emit.reset();
+      const second = emit ? await callDeepSeekStream(req2, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs, (t) => emit.push(t))
+        : await callDeepSeek(req2, env, deps.fetch || fetch, deps.timeoutMs || ASSISTANT_LIMITS.timeoutMs);
+      if (emit && !second.error) emit.flush();
       if (!second.error && second.content) reply = cleanText(second.content, 1200);
     }
   }

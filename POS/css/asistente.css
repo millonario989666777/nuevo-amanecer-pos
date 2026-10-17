@@ -359,3 +359,4 @@ body.dark .na-asst-quitar:disabled{border-color:#475569;color:#cbd5e1;background
 /* «Reintentar» tras un corte o un error: botón grande, nunca un «Pensando» sin fin */
 .na-asst-msg .na-asst-retry{display:block;margin-top:8px;min-height:44px;padding:0 18px;border:0;border-radius:12px;background:#0f766e;color:#fff;font-weight:800;font-size:15px;cursor:pointer}.na-asst-msg .na-asst-retry:disabled{opacity:.6}
 .na-asst-input .na-asst-photo[hidden]{display:none!important}
+.na-asst-msg .na-asst-incomplete{margin-top:6px;font-size:13px;font-weight:800;color:#475569}

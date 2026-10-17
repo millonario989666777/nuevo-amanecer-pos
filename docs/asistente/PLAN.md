@@ -109,6 +109,8 @@ Importante: DeepSeek procesa los datos en servidores en China. Por eso el protot
 1. **Tiempo de inactividad:** pedir de nuevo la sesión dueño (o cerrar el asistente) tras X minutos sin usar el teléfono, por si queda desbloqueado en el mostrador.
 2. **PIN para montos grandes:** volver a pedir el PIN solo cuando el cambio pase un tope (por ejemplo, compra mayor a S/ X o cambio de precio mayor a 50 %).
 
-### Siguiente paso: respuesta en streaming (para que Bot 3 la mida)
-- Hoy la respuesta llega entera (DeepSeek sin `stream`). Objetivo: **primera palabra en 1-2 s** mostrando el texto mientras llega (SSE desde el Worker), y las tarjetas al final, cuando el servidor ya las firmó.
-- No se implementó en esta ronda. Bot 3 debería medir antes el tiempo hasta la primera palabra y hasta la respuesta completa (390 en 4G lenta y 1280) para comparar después.
+### Respuesta en streaming (hecho el 17-10; falta que Bot 3 la mida con DeepSeek real)
+- El texto sale mientras llega (SSE desde el Worker, sin Durable Objects); las tarjetas llegan al final, ya validadas y firmadas. Detalle en CONTRATO.md, «Respuesta en partes».
+- Medido con DeepSeek de mentira (40 trozos cada 40 ms): primer texto antes de 0,7 s y respuesta completa a ~1,6 s. En el navegador (demostración): primera pintura a ~0,3 s.
+- Pendiente: medir con la clave real en un entorno de prueba (390 en 4G lenta y 1280): tiempo hasta la primera palabra y hasta el final.
+- El primer trozo cuenta el primer byte (el servidor manda `open` apenas pasan las puertas). Si el dueño quiere que «Reintentar» aparezca cuando no hay **texto** visible a los 10 s, hay que decidirlo: con consultas, DeepSeek puede tardar más en la primera palabra.

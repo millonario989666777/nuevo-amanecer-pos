@@ -62,7 +62,7 @@ test('red cortada: el pedido se corta con tiempo (nunca un «Pensando» sin fin)
   assert.ok(!/var ERRORS = \{/.test(UI), 'sin tabla de códigos propia en la UI');
   assert.match(UI, /function errMsg\(code, serverMsg, retryArgs\)[\s\S]{0,200}C\.friendlyError\(code, serverMsg\)/);
   assert.match(UI, /b\.textContent = 'Reintentar';[\s\S]{0,300}send\(retryArgs\[0\], retryArgs\[1\]\)/);
-  assert.match(UI, /catch \(e\) \{ if \(!panelEl\) return; thinking\.remove\(\); errMsg\(root\.navigator\.onLine === false \? 'offline' : e && e\.timeout \? 'timeout' : 'network', null, \[text, image\]\);/);
+  assert.match(UI, /catch \(e\) \{ if \(!panelEl\) return; if \(painter\) painter\.reset\(\); if \(bubble\) bubble\.remove\(\); thinking\.remove\(\); errMsg\(root\.navigator\.onLine === false \? 'offline' : e && e\.timeout \? 'timeout' : 'network', null, \[text, image\]\);/);
   assert.match(UI, /if \(!d\.ok\) \{ errMsg\(d\.error, null, \[text, image\]\);/);
   assert.match(UI, /errMsg\('offline', null, \[text, image, false\]\)/);
   assert.ok(!/addMsg\('a', [^)]*d\.error/.test(UI), 'nunca se muestra d.error tal cual');

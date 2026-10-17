@@ -194,6 +194,74 @@
     } catch (e) { if (timedOut || (e && e.name === 'AbortError')) { var t = new Error('timeout'); t.timeout = true; throw t; } throw e; }
     finally { clearTimeout(timer); }
   }
+  // ---------- Respuesta en partes (chat) ----------
+  // Tiempos (Bot 3): primer trozo ~10 s (si no llega nada, «Reintentar»); después, 30 s contados desde el ÚLTIMO trozo, no desde el inicio.
+  var STREAM = { firstMs: 10000, idleMs: 30000, paintMs: 100 };
+  // Lee «event: x / data: {...}» separados por línea en blanco. Un bloque a medias espera al siguiente trozo; un data roto se ignora.
+  function createSseParser(onEvent) {
+    var buf = '';
+    return { feed: function (chunk) {
+      buf = (buf + String(chunk || '')).replace(/\r\n/g, '\n'); var k;
+      while ((k = buf.indexOf('\n\n')) >= 0) {
+        var block = buf.slice(0, k), ev = 'message', data = ''; buf = buf.slice(k + 2);
+        block.split('\n').forEach(function (l) { if (l.indexOf('event:') === 0) ev = l.slice(6).trim(); else if (l.indexOf('data:') === 0) data += (data ? '\n' : '') + l.slice(5).replace(/^ /, ''); });
+        if (!data) continue; var j; try { j = JSON.parse(data); } catch (e) { continue; } onEvent(ev, j);
+      }
+    } };
+  }
+  // Pinta por tandas (cada ~100 ms con requestAnimationFrame), nunca letra por letra. finish() pinta lo que quede, sin perder ni repetir.
+  function createTextPainter(write, o) {
+    o = o || {}; var min = o.minMs == null ? STREAM.paintMs : o.minMs, now = o.now || function () { return Date.now(); };
+    var sched = o.schedule || function (cb, wait) { setTimeout(function () { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(cb); else cb(); }, wait); };
+    var pending = '', last = -Infinity, armed = false, paints = 0, gen = 0;
+    function flush(g) { if (g !== undefined && g !== gen) return; armed = false; if (!pending) return; var t = pending; pending = ''; last = now(); paints++; write(t); }
+    return {
+      push: function (t) { if (!t) return; pending += t; if (armed) return; armed = true; var g = gen; sched(function () { flush(g); }, Math.max(0, min - (now() - last))); },
+      finish: function () { flush(); },
+      reset: function () { gen++; pending = ''; armed = false; },
+      paints: function () { return paints; }
+    };
+  }
+  // Pide el chat en partes. Si el navegador o el servidor no lo soportan, vuelve el JSON de siempre (kind:'json').
+  // Resultado en partes: { kind:'stream', final, error, cut, timeout:'first'|'idle'|null, text } — las tarjetas SOLO salen de final.
+  async function streamChat(fetchImpl, url, init, o) {
+    o = o || {}; var firstMs = o.firstMs || STREAM.firstMs, idleMs = o.idleMs || STREAM.idleMs;
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, timer = null, timedOut = null, text = '', reader = null, giveUp = null;
+    var opts = Object.assign({}, init || {}); if (ctl) opts.signal = ctl.signal;
+    var res = { kind: 'stream', final: null, error: null, cut: false, timeout: null, text: '' };
+    function arm(ms, kind) { clearTimeout(timer); timer = setTimeout(function () { timedOut = kind; if (ctl) ctl.abort(); if (giveUp) giveUp(new Error('timeout')); if (reader) { try { reader.cancel().catch(function () {}); } catch (e) { /* ya cortado */ } } }, ms); }
+    arm(firstMs, 'first');
+    var r;
+    // Aunque el fetch no respete la señal, a los firstMs se deja de esperar.
+    try { r = await Promise.race([fetchImpl(url, opts), new Promise(function (_, rej) { giveUp = rej; })]); giveUp = null; }
+    catch (e) { clearTimeout(timer); var t = new Error(timedOut ? 'timeout' : 'network'); t.timeout = !!timedOut; t.stage = timedOut; throw t; }
+    var ct = String((r.headers && r.headers.get && r.headers.get('content-type')) || '');
+    if (!/text\/event-stream/.test(ct) || !r.body || typeof r.body.getReader !== 'function') {
+      // Respuesta JSON (puertas de rol, foto, cupo… o servidor sin partes): el tiempo sigue corriendo hasta tener el cuerpo.
+      try { var data = await r.json(); clearTimeout(timer); return { kind: 'json', status: r.status, ok: !!r.ok, data: data || {} }; }
+      catch (e2) { clearTimeout(timer); if (timedOut) { var t2 = new Error('timeout'); t2.timeout = true; t2.stage = timedOut; throw t2; } return { kind: 'json', status: r.status, ok: !!r.ok, data: {} }; }
+    }
+    reader = r.body.getReader(); var dec = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+    var parser = createSseParser(function (ev, d) {
+      if (ev === 'text') { if (d.reset) { text = ''; if (o.onReset) o.onReset(); } else if (typeof d.t === 'string') { text += d.t; if (o.onText) o.onText(d.t); } }
+      else if (ev === 'final') res.final = d; else if (ev === 'error') res.error = d;
+    });
+    // Cada trozo (incluido el «open» que el servidor manda enseguida) vuelve a armar el reloj: 30 s desde el último.
+    if (timedOut) { res.cut = true; res.timeout = timedOut; res.text = text; return res; }
+    try {
+      for (;;) {
+        var step = await reader.read();
+        if (step.done) break;
+        arm(idleMs, 'idle');
+        parser.feed(dec ? dec.decode(step.value, { stream: true }) : String(step.value));
+      }
+      if (dec) parser.feed(dec.decode());
+    } catch (e3) { /* corte de red o tiempo agotado: queda lo recibido */ }
+    clearTimeout(timer);
+    if (timedOut) res.timeout = timedOut;
+    res.cut = !res.final && !res.error; res.text = text;
+    return res;
+  }
   var TIMEOUTS = { chat: 30000, confirm: 12000, approval: 15000 };
   // Errores en palabras simples (pedido del dueño): la persona NUNCA ve un código (403, 409, 429, 503, assistant_off, forbidden_document…).
   // Cada código conocido tiene su frase; uno desconocido o «HTTP_xxx» cae en la frase general. retry=true: se muestra «Reintentar».
@@ -345,7 +413,7 @@
     return Math.max(0, over);
   }
 
-  var api = { friendlyError: friendlyError, looksTechnical: looksTechnical, FRIENDLY: FRIENDLY, padOverlap: padOverlap, tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
+  var api = { STREAM: STREAM, createSseParser: createSseParser, createTextPainter: createTextPainter, streamChat: streamChat, friendlyError: friendlyError, looksTechnical: looksTechnical, FRIENDLY: FRIENDLY, padOverlap: padOverlap, tracksStock: tracksStock, precheck: precheck, request: request, TIMEOUTS: TIMEOUTS, CONFIRM_ATTEMPTS: CONFIRM_ATTEMPTS, confirmFailureView: confirmFailureView, capContext: capContext, redactText: redactText, buildContext: buildContext, canExecute: canExecute, createGate: createGate, buildDocument: buildDocument, maskDoc: maskDoc, EXECUTORS: EXECUTORS, soles: soles, esc: esc };
   root.NA_ASISTENTE_CORE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

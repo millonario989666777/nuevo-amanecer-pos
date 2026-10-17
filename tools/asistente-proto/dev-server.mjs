@@ -53,6 +53,11 @@ http.createServer(async (req, res) => {
       const route = url.pathname === '/auth/assistant/chat' ? assistantChatRoute : assistantConfirmRoute;
       // En el Worker real el rol sale de la sesión (assistantRole); aquí se simula con el encabezado.
       const out = await route(request, env, { principalId: 'proto-device-' + role.split(':')[0], posRole: role === 'owner' || sinRol ? 'owner' : 'empleado' }, json, { store, reader, resolveRole: async () => role, verifyApproval: demoVerify });
+      // Respuesta en partes: se pasa cada trozo tal cual llega (igual que el Worker).
+      if (/text\/event-stream/.test(out.headers.get('content-type') || '') && out.body) {
+        res.writeHead(out.status, { 'content-type': out.headers.get('content-type'), 'cache-control': 'no-store' });
+        const rd = out.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; res.write(Buffer.from(value)); } res.end(); return;
+      }
       res.writeHead(out.status, { 'content-type': 'application/json' }); res.end(await out.text()); return;
     }
     // Aparatos de dueño (en memoria; en el Worker real: pos-owner-device.js detrás de ASSISTANT_OWNER_BOOTSTRAP=1).
