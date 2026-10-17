@@ -196,7 +196,8 @@ async function openFrequency(page: Page, width: number, dark = false, firstSaleP
 const kpiCases = [
   { width: 650, price: 2_166.10, total: 'S/ 2,226.10' },
   { width: 650, price: 1_234_507.89, total: 'S/ 1,234,567.89' },
-  ...[390, 768, 1366].map(width => ({ width, price: 2_226_040.10, total: 'S/ 2,226,100.10' })),
+  { width: 390, price: 1_234_507.89, total: 'S/ 1,234,567.89' },
+  ...[390, 768, 800, 900, 1366].map(width => ({ width, price: 2_226_040.10, total: 'S/ 2,226,100.10' })),
 ];
 for (const { width, price, total } of kpiCases) for (const dark of [false, true]) {
   test(`${width}px ${dark ? 'dark' : 'light'}: customer frequency KPIs with ${total} fit on one line`, async ({ page }) => {

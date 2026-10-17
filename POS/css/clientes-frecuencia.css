@@ -71,8 +71,8 @@ body.dark #pageClientesFrecuencia .cf-table tbody th { color: var(--cf-text); }
   #pageClientesFrecuencia .cf-controls button { grid-column: 1 / -1; }
   #pageClientesFrecuencia .cf-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
-/* 600-770 px: 2 columnas para conservar los importes en una sola línea. */
-@media (min-width: 600px) and (max-width: 770px) {
+/* 600-899 px: 2 columnas para conservar los importes en una sola línea (a 800 px, 4 columnas desbordan con 7 dígitos). */
+@media (min-width: 600px) and (max-width: 899px) {
   #pageClientesFrecuencia .cf-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1000px) {
