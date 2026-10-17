@@ -84,28 +84,72 @@ export function redactText(value) {
 // proveedor / precio de compra / margen / ganancia / utilidad / «lo compré a», «compramos a» / cost, cost is. Entre la palabra y el monto
 // puede haber hasta 60 caracteres de la misma frase (sin cruzar punto ni salto de línea). Tablas (markdown con | o separadas por
 // tabulador): si el encabezado de una columna es de costo, proveedor, margen, ganancia o utilidad, sus celdas se tapan.
-// En partes: desde una de esas palabras el texto espera hasta tener OWNER_HOLD (128) caracteres detrás, más que la coincidencia más
+// En partes: desde una de esas palabras el texto espera hasta tener OWNER_HOLD (160) caracteres detrás, más que la coincidencia más
 // larga; lo que empieza con el monto mide menos de 48 (la cola de siempre). Nunca sale a medias, corte donde sea.
 // Sin esas palabras el empleado recibe igual que antes, y el dueño no pasa por aquí (lo ve todo, a la misma velocidad).
 const NOT_LETTER = '(?![a-záéíóúñ])';
 // Frases compuestas del dueño como UNA sola pieza (así una palabra de corte dentro de ellas nunca las parte): «costo de venta»,
 // «precio de compra», «precio (al) proveedor», «el proveedor (nos) lo vende», «nos (lo) vende», «proveedor vende».
 const SUPPLIER_SELL = '(?:(?:el\\s+)?proveedor\\s+(?:nos\\s+)?(?:(?:se\\s+)?(?:lo|la|los|las)\\s+)?venden?|nos\\s+(?:(?:lo|la|los|las)\\s+)?venden?)';
-const OWNER_WORD = '(?:' + SUPPLIER_SELL + '|cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra|de\\s+ventas?))?|cto\\.?|precio\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|gan(?:aste|amos|é|ó|aron)|utilidad(?:es)?|inversi(?:ó|o)n(?:es)?|invert(?:í|i|imos|iste|ió|io|ieron))' + NOT_LETTER;
+const OWNER_WORD = '(?:' + SUPPLIER_SELL + '|cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|unit\\.?|por\\s+unidad|de\\s+compra|de\\s+ventas?))?|cto\\.?(?:\\s?unit\\.?)?|c\\.?\\s?unit\\.?|precio\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra)|(?:p|pr|prec)\\.?\\s?compra|m[áa]rgen(?:es)?|ganancias?|gan(?:aste|amos|é|ó|aron)|utilidad(?:es)?|inversi(?:ó|o)n(?:es)?|invert(?:í|i|imos|iste|ió|io|ieron))' + NOT_LETTER;
 const BUY_WORD = '(?:(?:lo|la|los|las)\\s+)?compr(?:é|e|amos|aron|ó)' + NOT_LETTER;
-const OWNER_AMOUNT = '(?:S\\/\\.?\\s?)?-?(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?:\\s?(?:%|por\\s?ciento|soles))?';
+// Monto (Bot 5): con S/ o PEN (o $) delante; o un número con decimales; o seguido de soles/sol/PEN/%. Un entero solo NO es monto.
+// Cantidad (se salta): número seguido de una unidad (unidades, caja, docena, kg, paquete, u, und…) o «x12».
+const UNIT = '(?:unidad(?:es)?|unid|unds?|uds?|u|cajas?|cjs?|docenas?|kg|kilos?|g|gr|gramos?|paquetes?|pqts?|piezas?|pzas?|frascos?|sobres?|bl[íi]sters?|tabletas?|pastillas?|bolsas?|litros?|lts?|l|ml|botellas?|latas?|packs?|cientos?)' + NOT_LETTER;
+const NUM = '(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?!\\d)';
+const CUR_TAIL = '(?:\\s?(?:soles|sol|pen)' + NOT_LETTER + ')?';
+const AMOUNT_Y = new RegExp('(?:(?:S\\/\\.?|PEN|US\\$|\\$)\\s?-?' + NUM + CUR_TAIL +
+  '|-?(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d{1,2})?|\\d{1,6}[.,]\\d{1,2})(?!\\d)(?!\\s?' + UNIT + ')(?:\\s?(?:soles|sol|pen|%|por\\s?ciento)' + NOT_LETTER + ')?' +
+  '|-?\\d{1,6}\\s?(?:soles|sol|pen|%|por\\s?ciento)' + NOT_LETTER + ')', 'iy');
+const QTY_Y = new RegExp('(?:\\d{1,4}(?:[.,]\\d{1,3})?\\s?' + UNIT + '|x\\s?\\d{1,4}(?!\\d))', 'iy');
+// Abreviaturas con punto que NO cierran la frase (aprox., unid., c/u., kg.…).
+const ABBR_Y = /(?:aprox|approx|aprx|unid|unds?|uds?|u|c\/u|pzas?|kg|grs?|g|ml|lts?|cjs?|cja|ej|etc|prom|aprox|sr|sra|dr|nro|n[°º])\./iy;
 // Entre la palabra y el monto no puede haber un cambio de idea («pero», «aunque», «sino», «mientras») ni un precio de VENTA de verdad:
 // «precio de venta», «P. venta», «PVP», «precio» suelto (no «precio de compra/proveedor»), «se vende» (no «el proveedor se lo vende»),
 // «vendemos», «vendo». Así «El costo no lo tengo, pero el precio de venta es S/ 2.50» deja ver el precio de venta, y las frases del
 // dueño de arriba (con «venta», «vende» o «precio» adentro) se reconocen enteras antes de mirar el corte.
 const SALE_STOP = '(?:pero|aunque|sino|mientras|pvp|vendemos|vendo)' + NOT_LETTER + '|p\\.?\\s?venta|precio(?!\\s+(?:de(?:l)?\\s+|al\\s+)?(?:proveedor|compra))|(?<!(?:proveedor|nos)\\s+)se\\s+vende';
-const OWNER_GAP = '(?:(?!' + SALE_STOP + ')[^\\d\\n.;])';
+const STOP_Y = new RegExp('(?:' + SALE_STOP + ')', 'iy');
+const isLetter = (c) => !!c && /[a-záéíóúñü]/i.test(c);
+const isDigit = (c) => c >= '0' && c <= '9';
+const at = (re, t, k) => { re.lastIndex = k; const m = re.exec(t); return m ? m[0].length : 0; };
+// Busca, desde el final de la palabra del dueño, el primer MONTO dentro de `maxGap` caracteres de la misma frase. Lineal (sin regex con
+// huecos que retroceden): se saltan cantidades, enteros sueltos y abreviaturas; un corte de venta, «.», «;», «!», «?» o salto de línea
+// termina la búsqueda. Devuelve el final del monto o -1. `lead`: el monto debe venir después de «a», «por» o «en» (compré a …).
+function amountEnd(t, p, maxGap, lead) {
+  const limit = Math.min(t.length, p + maxGap);
+  for (let k = p; k <= limit && k < t.length;) {
+    const c = t[k], wordStart = !isLetter(t[k - 1]);
+    if (wordStart && isLetter(c) && at(STOP_Y, t, k)) return -1;
+    if (isDigit(c) || c === 'S' || c === 's' || c === 'P' || c === 'p' || c === '$' || c === 'U' || c === '-') {
+      if (!isDigit(t[k - 1]) && !isLetter(t[k - 1])) {
+        const q = isDigit(c) ? at(QTY_Y, t, k) : 0; if (q) { k += q; continue; }
+        const a = at(AMOUNT_Y, t, k);
+        if (a) { if (lead && !/(?:^|[^a-záéíóúñ])(?:a|por|en)\s+$/i.test(t.slice(Math.max(0, k - 6), k))) return -1; return k + a; }
+      }
+      if (isDigit(c)) { while (k < t.length && isDigit(t[k])) k++; continue; } // entero suelto (cantidad, número de lote…): se salta
+    }
+    if (wordStart && isLetter(c)) { const ab = at(ABBR_Y, t, k); if (ab) { k += ab; continue; } }
+    if (c === 'x' || c === 'X') { const q = at(QTY_Y, t, k); if (q && wordStart) { k += q; continue; } }
+    if (c === '.' || c === ';' || c === '!' || c === '?' || c === '\n') return -1;
+    k++;
+  }
+  return -1;
+}
+function maskAfterWords(text, wordRe, maxGap, lead) {
+  let out = '', i = 0, m; wordRe.lastIndex = 0;
+  while ((m = wordRe.exec(text))) {
+    const end = amountEnd(text, m.index + m[0].length, maxGap, lead);
+    if (end < 0) continue;
+    out += text.slice(i, m.index) + OWNER_DATA_LABEL; i = end; wordRe.lastIndex = end;
+  }
+  return out + text.slice(i);
+}
+const OWNER_WORD_G = new RegExp('\\b' + OWNER_WORD, 'gi'), BUY_WORD_G = new RegExp('\\b' + BUY_WORD, 'gi');
 const OWNER_DATA = [
-  // primero las que empiezan con el monto (cortas), después «compré a … monto» y «palabra … monto»
-  new RegExp('(?:S\\/\\.?\\s?)\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
-  new RegExp('\\d{1,3}(?:[.,]\\d{1,2})?\\s?(?:%|por\\s?ciento)\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
-  new RegExp('\\b' + BUY_WORD + OWNER_GAP + '{0,40}?\\b(?:a|por|en)\\s+' + OWNER_AMOUNT, 'gi'),
-  new RegExp('\\b' + OWNER_WORD + OWNER_GAP + '{0,60}?' + OWNER_AMOUNT, 'gi')
+  // primero las que empiezan con el monto (cortas, menos de 48 caracteres); después «compré a … monto» y «palabra … monto» (amountEnd)
+  new RegExp('(?:(?:S\\/\\.?|PEN)\\s?\\d{1,6}(?:[.,]\\d{1,2})?|\\d{1,6}[.,]\\d{1,2})(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
+  new RegExp('\\d{1,3}(?:[.,]\\d{1,2})?\\s?(?:%|por\\s?ciento)\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi')
 ];
 export const OWNER_DATA_LABEL = '[dato del dueño]';
 // Encabezados del dueño, también abreviados: Costo, Costo unit., C. unit, Cto., P. compra, P.compra, P compra, Pr. compra, Prec. compra,
@@ -127,8 +171,13 @@ function redactOwnerTables(text) {
   }
   return lines.join('\n');
 }
-export function redactOwnerData(value) { let out = redactOwnerTables(String(value ?? '')); for (const re of OWNER_DATA) out = out.replace(re, OWNER_DATA_LABEL); return out; }
-export const OWNER_HOLD = 128;
+export function redactOwnerData(value) {
+  let out = redactOwnerTables(String(value ?? ''));
+  for (const re of OWNER_DATA) out = out.replace(re, OWNER_DATA_LABEL);
+  out = maskAfterWords(out, BUY_WORD_G, 40, true);
+  return maskAfterWords(out, OWNER_WORD_G, 60, false);
+}
+export const OWNER_HOLD = 160;
 const OWNER_WORD_RE = new RegExp('\\b(?:' + OWNER_WORD + '|' + BUY_WORD + ')', 'i');
 export function ownerHold(red) { const from = Math.max(0, red.length - OWNER_HOLD), m = OWNER_WORD_RE.exec(red.slice(from)); return m ? from + m.index : Infinity; }
 export function redactFor(role) { return role === 'owner' ? redactText : (v) => redactOwnerData(redactText(v)); }

@@ -318,3 +318,52 @@ for (const n of [1, 2, 47, 48, 49, 100]) {
     }
   });
 }
+
+// ---------- Bot 5 sobre 1400a7eb: P. compra fuera de tabla, cantidades en el hueco, abreviaturas con punto, montos sin S/ ----------
+const LEAKS4 = [
+  ['P. compra S/ 1.80 - PVP S/ 2.50', ['1.80'], ['PVP S/ 2.50']],
+  ['P compra 1.80, PVP 2.50', ['1.80'], ['PVP 2.50']],
+  ['P.compra: S/ 1.80', ['1.80'], []],
+  ['Pcompra S/ 1.80', ['1.80'], []],
+  ['Pr. compra S/ 1.80', ['1.80'], []],
+  ['Cto. unit. S/ 1.80', ['1.80'], []],
+  ['El costo de 2 unidades es S/ 3.60', ['3.60'], []],
+  ['El costo por caja de 12 es S/ 21.60', ['21.60'], []],
+  ['El costo de 1.5 kg es S/ 3', ['S/ 3'], []],
+  ['El costo de la caja x12 es S/ 21.60', ['21.60'], []],
+  ['El costo de 3 cajas de 12 u es S/ 64.80', ['64.80'], []],
+  ['El costo, aprox. S/ 1.80', ['1.80'], []],
+  ['El costo c/u. es S/ 1.80', ['1.80'], []],
+  ['El costo por unid. es S/ 1.80', ['1.80'], []],
+  ['el costo es 1.80', ['1.80'], []],
+  ['costo 1.80 soles', ['1.80'], []],
+  ['costo 1,80', ['1,80'], []],
+  ['costo 2 soles', ['2 soles'], []],
+  ['costo PEN 1.80', ['1.80'], []],
+  ['el costo es S/ 1.80, pero el precio de venta es S/ 2.50', ['1.80'], ['S/ 2.50']]
+];
+const KEEP4 = ['El costo es 2 y listo', 'El costo lo revisa el dueño. Hay 40 unidades.', 'Se vende a S/ 4.00 de precio.', 'El costo no lo sé. Son 2 cajas a S/ 5.00 de precio de venta.'];
+for (const n of [1, 2, 47, 48, 49, 100, 0]) {
+  test('6) ' + (n ? 'trozos de ' + n : 'texto completo') + ': P. compra fuera de tabla, cantidades en medio, «aprox.» y montos sin S/ se tapan; PVP y precio de venta visibles', () => {
+    for (const [txt, hide, show] of LEAKS4) {
+      const full = 'Arroz. ' + txt + '. Hay 40 unidades.';
+      const emp = n ? emitSplit(full, n, 'empleado:consultas') : redactOwnerData(redactText(full));
+      for (const h of hide) assert.ok(!emp.includes(h), 'salió ' + h + ' en «' + txt + '»: ' + emp);
+      for (const v of show) assert.ok(emp.includes(v), 'se tapó lo visible en «' + txt + '»: ' + emp);
+      assert.match(emp, /\[dato del dueño\]/);
+      assert.equal(emp, redactOwnerData(redactText(full)), 'sin perder ni repetir'); assert.ok(emp.endsWith('Hay 40 unidades.'));
+      assert.equal(n ? emitSplit(full, n, 'owner') : redactText(full), full, 'el dueño ve todo');
+    }
+    for (const txt of KEEP4) assert.equal(n ? emitSplit(txt, n, 'empleado:consultas') : redactOwnerData(txt), txt, 'no se tapa: ' + txt);
+  });
+}
+
+test('6) rendimiento: respuesta de 4 KB con muchas palabras del dueño y números, sin retroceso catastrófico', () => {
+  const unit = 'El costo de 2 unidades es S/ 3.60, aprox. 1.80 c/u; el margen es alto y el precio de venta es S/ 5.00. Costo costo costo 1 2 3 4 5 6 7 8 9 ';
+  let big = ''; while (big.length < 4096) big += unit;
+  const evil = ('costo ' + '1 '.repeat(30) + 'a').repeat(40).slice(0, 4096); // muchos enteros sueltos sin monto
+  const t0 = performance.now(); for (let i = 0; i < 20; i++) { redactOwnerData(big); redactOwnerData(evil); } const ms = (performance.now() - t0) / 20;
+  assert.ok(ms < 25, 'por respuesta: ' + ms.toFixed(2) + ' ms');
+  const t1 = performance.now(); emitSplit(big, 5, 'empleado:consultas'); const stream = performance.now() - t1;
+  assert.ok(stream < 2500, 'en partes de 5 caracteres (≈820 trozos): ' + stream.toFixed(0) + ' ms');
+});
