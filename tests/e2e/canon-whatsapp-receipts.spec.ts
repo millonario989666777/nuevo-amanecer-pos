@@ -29,7 +29,7 @@ for(const width of [320,360,390,430,768,1024,1366,1920]){
 test('PNG and PDF are real files; text targets saved client without sending automatically',async({page})=>{
   await boot(page);await receipt(page);
   await page.evaluate(()=>{const w=window as any;w.__shares=[];Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async(data:any)=>{const f=data.files[0];w.__shares.push({name:f.name,type:f.type,bytes:Array.from(new Uint8Array(await f.arrayBuffer()))});}});w.open=(url:string)=>{w.__opened=url;return{};};});
-  await expect(page.locator('#naReceiptFormat')).toHaveValue('text');
+  await expect(page.locator('#naReceiptFormat')).toHaveValue('image');
   await page.locator('#naReceiptFormat').selectOption('image');await expect(page.locator('#naReceiptSend')).toBeEnabled();await page.locator('#naReceiptSend').click();
   await page.waitForFunction(()=>(window as any).__shares.length>=1);
   let file=await page.evaluate(()=>(window as any).__shares[0]);
@@ -42,15 +42,15 @@ test('PNG and PDF are real files; text targets saved client without sending auto
   expect(url.searchParams.get('text')).toMatch(/^Hola María Pérez, gracias por tu compra\.\n\n```\n/);
 });
 test('one click sends the receipt to the saved number; Enter in the phone field does the same',async({page})=>{
-  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};});
-  await receipt(page);await expect(page.locator('#naReceiptFormat')).toHaveValue('text');
+  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};w.NAReceiptShare.setSettings({format:'text',ask:true});});
+  await receipt(page);await expect(page.locator('#naReceiptFormat')).toHaveValue('text');await expect(page.locator('#naReceiptSend')).toHaveText('Abrir WhatsApp');
   await page.locator('#naReceiptSend').click();
   expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(1);
   await page.locator('#naReceiptPhone').fill('987654322');await page.locator('#naReceiptPhone').press('Enter');
   const urls=await page.evaluate(()=>(window as any).__opened);expect(urls.length).toBe(2);expect(new URL(urls[1]).pathname).toBe('/51987654322');
 });
 test('without a saved number the phone field is focused and nothing opens until a valid one is typed',async({page})=>{
-  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};(w as any).NAReceiptShare.onSale({id:'V-NOPHONE',fecha:'2026-10-10',hora:'10:00',metodo:'efectivo',items:[{name:'Arroz',qty:1,precio:7}]},{nombre:'Luis'});});
+  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};w.NAReceiptShare.setSettings({format:'text',ask:true});(w as any).NAReceiptShare.onSale({id:'V-NOPHONE',fecha:'2026-10-10',hora:'10:00',metodo:'efectivo',items:[{name:'Arroz',qty:1,precio:7}]},{nombre:'Luis'});});
   await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(page.locator('#naReceiptPhone')).toBeFocused();
   await page.locator('#naReceiptPhone').press('Enter');expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(0);
   await page.locator('#naReceiptPhone').fill('987654321');await page.locator('#naReceiptPhone').press('Enter');
@@ -82,7 +82,7 @@ test('invalid WhatsApp recipient explains error, focuses field and never opens a
   await page.locator('#naReceiptFormat').selectOption('text');await expect(page.locator('#naReceiptSend')).toBeEnabled();
   await page.locator('#naReceiptPhone').fill('123');await page.locator('#naReceiptSend').click();
   expect(await page.evaluate(()=>(window as any).__opened)).toBeNull();
-  await expect(page.locator('#gToast')).toContainText('número de WhatsApp válido');
+  await expect(page.locator('#gToast')).toContainText('Escribe el número del cliente, por ejemplo 987 654 321');
   await expect(page.locator('#naReceiptPhone')).toBeFocused();
   await expect(page.locator('#naReceiptSend')).toBeEnabled();
 });
@@ -92,7 +92,7 @@ async function captureOpen(page:Page){await page.evaluate(()=>{const w=window as
 test.describe('Android: choose WhatsApp or WhatsApp Business',()=>{
   test.use({userAgent:ANDROID_UA});
   test('selector persists across reload and opens the intent with the right package',async({page})=>{
-    await boot(page);await captureOpen(page);await receipt(page);
+    await boot(page);await captureOpen(page);await page.evaluate(()=>(window as any).NAReceiptShare.setSettings({format:'text',ask:true}));await receipt(page);await expect(page.locator('#naReceiptShare label[for=naReceiptApp]')).toHaveText('Abrir con');
     const app=page.locator('#naReceiptApp');
     await expect(app).toBeVisible();await expect(app).toBeEnabled();await expect(app).toHaveValue('auto');
     await page.locator('#naReceiptSend').click();
@@ -109,7 +109,7 @@ test.describe('Android: choose WhatsApp or WhatsApp Business',()=>{
     await app.selectOption('business');
     await page.reload();await page.waitForFunction(()=>_naFreeSaleShortcutState.ready);
     expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings().app)).toBe('business');
-    await captureOpen(page);await receipt(page);await expect(page.locator('#naReceiptApp')).toHaveValue('business');
+    await captureOpen(page);await page.evaluate(()=>(window as any).NAReceiptShare.setSettings({format:'text',ask:true}));await receipt(page);await expect(page.locator('#naReceiptApp')).toHaveValue('business');
     await page.locator('#naReceiptSend').click();
     expect(((await page.evaluate(()=>(window as any).__opened)) as string[])[0]).toContain('package=com.whatsapp.w4b');
   });
@@ -142,4 +142,45 @@ test('desktop disables the selector and opens wa.me even with Business saved',as
 test.describe('iPhone',()=>{
   test.use({userAgent:IPHONE_UA});
   test('iOS disables the selector and opens wa.me even with Business saved',async({page})=>{await expectWaMe(page);});
+});
+
+test('with no saved configuration the receipt defaults to image via the share menu',async({page})=>{
+  await boot(page);
+  expect(await page.evaluate(()=>(window as any).NAReceiptShare.settings())).toEqual({format:'image',ask:true,app:'auto'});
+  await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};w.NAReceiptShare.onSale({id:'V-NOPHONE',fecha:'2026-10-10',hora:'10:00',metodo:'efectivo',items:[{name:'Arroz',qty:1,precio:7}]},{nombre:'Luis'});});
+  await expect(page.locator('#naReceiptSend')).toBeEnabled();
+  await expect(page.locator('#naReceiptFormat')).toHaveValue('image');
+  await expect(page.locator('#naReceiptSend')).toHaveText('Compartir');
+  await expect(page.locator('#naReceiptPhone')).not.toBeFocused();
+  await expect(page.locator('#naReceiptDownloadHint')).toBeHidden();
+  expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(0);
+});
+test('each user can choose their own default format in Configuración → Ticket',async({page})=>{
+  await boot(page);
+  await page.evaluate(()=>{const h=document.createElement('div');h.id='cfgHost';h.innerHTML=(window as any).NAReceiptUI.settingsHtml();document.body.append(h);});
+  await expect(page.locator('#cfgReceiptFormat')).toHaveValue('image');
+  await page.locator('#cfgReceiptFormat').selectOption('text');
+  await expect.poll(()=>page.evaluate(()=>(window as any).NAReceiptShare.settings().format)).toBe('text');
+  await receipt(page);await expect(page.locator('#naReceiptFormat')).toHaveValue('text');await expect(page.locator('#naReceiptSend')).toHaveText('Abrir WhatsApp');
+});
+test('Descargar comprobante downloads a real PNG, PDF and text file with a proper filename',async({page})=>{
+  await boot(page);await receipt(page);
+  const download=page.locator('#naReceiptDownload');
+  const grab=async()=>{const [d]=await Promise.all([page.waitForEvent('download'),download.click()]);const path=await d.path();const {readFileSync}=await import('fs');return {name:d.suggestedFilename(),bytes:readFileSync(path!)};};
+  await expect(download).toBeEnabled();await expect(page.locator('#naReceiptDownloadHint')).toBeHidden();
+  let f=await grab();expect(f.name).toBe('comprobante-V-TEST.png');expect([...f.bytes.slice(0,8)]).toEqual([137,80,78,71,13,10,26,10]);expect(f.bytes.length).toBeGreaterThan(500);
+  await page.locator('#naReceiptFormat').selectOption('pdf');await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(download).toBeEnabled();
+  f=await grab();expect(f.name).toBe('comprobante-V-TEST.pdf');expect(f.bytes.slice(0,8).toString('latin1')).toBe('%PDF-1.4');expect(f.bytes.slice(-6).toString('latin1')).toContain('%%EOF');
+  await page.locator('#naReceiptFormat').selectOption('text');await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(download).toBeEnabled();
+  await expect(page.locator('#naReceiptDownloadHint')).toHaveText('Úsalo si WhatsApp no abre');
+  f=await grab();expect(f.name).toBe('comprobante-V-TEST.txt');expect(f.bytes.toString('utf8')).toContain('Arroz');
+});
+test('download revokes its blob URL only after 120 s',async({page})=>{
+  await boot(page);
+  await page.evaluate(()=>{const w=window as any;w.__revokes=[];const orig=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=(u:string)=>{w.__revokes.push(u);orig(u);};w.__timeouts=[];const st=w.setTimeout.bind(w);w.setTimeout=(fn:any,ms:number,...a:any[])=>{w.__timeouts.push(ms);return st(fn,ms,...a);};});
+  await page.evaluate(()=>{(window as any).NAReceiptShare.onSale({id:'V-TEST',fecha:'2026-10-10',hora:'10:00',metodo:'efectivo',items:[{name:'Arroz',qty:2,precio:7}]},{nombre:'María',tel:'987654321'});});
+  await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(page.locator('#naReceiptDownload')).toBeEnabled();
+  await page.locator('#naReceiptFormat').selectOption('pdf');
+  await Promise.all([page.waitForEvent('download'),page.locator('#naReceiptDownload').click()]);
+  expect(await page.evaluate(()=>(window as any).__timeouts)).toContain(120000);
 });
