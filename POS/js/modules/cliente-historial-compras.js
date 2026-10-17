@@ -251,6 +251,8 @@
     // Nunca se contradicen: el Período mostrado se deduce de las fechas.
     // «Personalizado» elegido a mano se respeta hasta que se editen las fechas.
     if (period && from && to) period.value = page.dataset.chCustomPeriod === '1' ? 'custom' : periodFor(from.value, to.value);
+    var dateHint = page.querySelector('[data-ch-date-hint]');
+    if (dateHint) dateHint.hidden = !period || period.value !== 'all';
     var dates = dateRange(from ? from.value : '', to ? to.value : '');
     if (from) from.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');
     if (to) to.setAttribute('aria-invalid', dates.invalid ? 'true' : 'false');

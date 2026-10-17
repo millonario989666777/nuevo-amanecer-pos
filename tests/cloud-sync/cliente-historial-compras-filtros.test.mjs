@@ -175,7 +175,7 @@ test('empty date inputs default once to the last 30 Lima days', () => {
 });
 
 function screen({ role = 'owner', ventas = [], clientes = [{ id: 'c1', nombre: 'Cliente de prueba' }] } = {}) {
-  const keys = ['content', 'status', 'controls', 'search', 'customer', 'period', 'from', 'to', 'seller', 'export'];
+  const keys = ['content', 'status', 'controls', 'search', 'customer', 'period', 'from', 'to', 'date-hint', 'seller', 'export'];
   const nodes = Object.fromEntries(keys.map(key => {
     const node = new Node(); node.selector = '[data-ch-' + key + ']'; node.matches = s => s.split(/,\s*/).includes(node.selector);
     return [node.selector, node];
@@ -194,6 +194,30 @@ function screen({ role = 'owner', ventas = [], clientes = [{ id: 'c1', nombre: '
   return { ctx, nodes, page, change, csv: () => csv, clicks: () => clicks };
 }
 const daysAgo = n => new Date(Date.now() - 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+
+test('Sin límite de fechas is rendered below the dates and visible only for Todo, including when Personalizado has empty dates', () => {
+  const markup = readFileSync('POS/index.html', 'utf8');
+  assert.match(markup, /data-ch-to[^>]*>\s*<\/label>\s*<p class="ch-date-hint" data-ch-date-hint hidden>Sin límite de fechas<\/p>/);
+  const s = screen();
+  const hint = s.nodes['[data-ch-date-hint]'];
+  assert.equal(hint.hidden, true);
+  s.nodes['[data-ch-period]'].value = 'all'; s.change('period');
+  assert.equal(s.nodes['[data-ch-from]'].value, '');
+  assert.equal(s.nodes['[data-ch-to]'].value, '');
+  assert.equal(hint.hidden, false);
+  s.ctx.NA_CLIENTE_HISTORIAL.render();
+  assert.equal(hint.hidden, false);
+  s.nodes['[data-ch-period]'].value = 'custom'; s.change('period');
+  assert.equal(s.nodes['[data-ch-from]'].value, '');
+  assert.equal(s.nodes['[data-ch-to]'].value, '');
+  assert.equal(hint.hidden, true);
+  for (const value of ['30', '90', '365']) {
+    s.nodes['[data-ch-period]'].value = 'all'; s.change('period');
+    assert.equal(hint.hidden, false);
+    s.nodes['[data-ch-period]'].value = value; s.change('period');
+    assert.equal(hint.hidden, true);
+  }
+});
 
 test('Período is only a shortcut: it fills Desde/Hasta, a manual edit switches to Personalizado and Todo clears both', () => {
   const s = screen();
