@@ -49,10 +49,22 @@ test('WhatsApp text URL encodes receipt safely and rejects invalid phone',()=>{
   assert.equal(new URL(url).pathname,'/51987654321');
   assert.throws(()=>a.textUrl('123','x'));
 });
+test('WhatsApp message greets the customer and keeps the ticket monospaced',()=>{
+  const a=api();
+  const named=a.whatsappText({customerName:'María Pérez',text:'2 Arroz S/ 14.00\nTOTAL S/ 14.00'});
+  assert.equal(named,'Hola María Pérez, gracias por tu compra.\n\n```\n2 Arroz S/ 14.00\nTOTAL S/ 14.00\n```');
+  assert.match(a.whatsappText({customerName:'Sin cliente',text:'x'}),/^Gracias por tu compra\./);
+  assert.match(a.whatsappText({customerName:'Consumidor final',text:'x'}),/^Gracias por tu compra\./);
+  assert.equal(a.whatsappText({customerName:'Ana',text:'a```b'}).includes("a'''b"),true);
+  const url=a.textUrl('987654321',named);
+  assert.equal(new URL(url).searchParams.get('text'),named);
+});
 test('settings persist through reload and reject invalid format',()=>{
   const config={ticket:{}};
   const a=api({appConfig:config});
-  assert.equal(a.settings().format,'image');
+  assert.equal(a.settings().format,'text');
+  const saved=api({appConfig:{ticket:{shareFormat:'image'}}});
+  assert.equal(saved.settings().format,'image');
   a.setSettings({format:'pdf',ask:false});
   assert.equal(config.ticket.shareFormat,'pdf');
   const b=api({appConfig:JSON.parse(JSON.stringify(config))});

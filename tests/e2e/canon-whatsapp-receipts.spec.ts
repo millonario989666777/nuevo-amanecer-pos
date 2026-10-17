@@ -29,13 +29,32 @@ for(const width of [320,360,390,430,768,1024,1366,1920]){
 test('PNG and PDF are real files; text targets saved client without sending automatically',async({page})=>{
   await boot(page);await receipt(page);
   await page.evaluate(()=>{const w=window as any;w.__shares=[];Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async(data:any)=>{const f=data.files[0];w.__shares.push({name:f.name,type:f.type,bytes:Array.from(new Uint8Array(await f.arrayBuffer()))});}});w.open=(url:string)=>{w.__opened=url;return{};};});
-  await page.locator('#naReceiptSend').click();
+  await expect(page.locator('#naReceiptFormat')).toHaveValue('text');
+  await page.locator('#naReceiptFormat').selectOption('image');await expect(page.locator('#naReceiptSend')).toBeEnabled();await page.locator('#naReceiptSend').click();
+  await page.waitForFunction(()=>(window as any).__shares.length>=1);
   let file=await page.evaluate(()=>(window as any).__shares[0]);
   expect(file.type).toBe('image/png');expect(file.bytes.slice(0,8)).toEqual([137,80,78,71,13,10,26,10]);
   await page.locator('#naReceiptFormat').selectOption('pdf');await expect(page.locator('#naReceiptSend')).toBeEnabled();await page.locator('#naReceiptSend').click();
+  await page.waitForFunction(()=>(window as any).__shares.length>=2);
   file=await page.evaluate(()=>(window as any).__shares[1]);expect(file.type).toBe('application/pdf');expect(String.fromCharCode(...file.bytes.slice(0,8))).toBe('%PDF-1.4');
   await page.locator('#naReceiptFormat').selectOption('text');await expect(page.locator('#naReceiptSend')).toBeEnabled();await page.locator('#naReceiptSend').click();
   const url=new URL(await page.evaluate(()=>(window as any).__opened));expect(url.hostname).toBe('wa.me');expect(url.pathname).toBe('/51987654321');expect(url.searchParams.get('text')).toContain('Arroz');
+  expect(url.searchParams.get('text')).toMatch(/^Hola María Pérez, gracias por tu compra\.\n\n```\n/);
+});
+test('one click sends the receipt to the saved number; Enter in the phone field does the same',async({page})=>{
+  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};});
+  await receipt(page);await expect(page.locator('#naReceiptFormat')).toHaveValue('text');
+  await page.locator('#naReceiptSend').click();
+  expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(1);
+  await page.locator('#naReceiptPhone').fill('987654322');await page.locator('#naReceiptPhone').press('Enter');
+  const urls=await page.evaluate(()=>(window as any).__opened);expect(urls.length).toBe(2);expect(new URL(urls[1]).pathname).toBe('/51987654322');
+});
+test('without a saved number the phone field is focused and nothing opens until a valid one is typed',async({page})=>{
+  await boot(page);await page.evaluate(()=>{const w=window as any;w.__opened=[];w.open=(url:string)=>{w.__opened.push(url);return{};};(w as any).NAReceiptShare.onSale({id:'V-NOPHONE',fecha:'2026-10-10',hora:'10:00',metodo:'efectivo',items:[{name:'Arroz',qty:1,precio:7}]},{nombre:'Luis'});});
+  await expect(page.locator('#naReceiptSend')).toBeEnabled();await expect(page.locator('#naReceiptPhone')).toBeFocused();
+  await page.locator('#naReceiptPhone').press('Enter');expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(0);
+  await page.locator('#naReceiptPhone').fill('987654321');await page.locator('#naReceiptPhone').press('Enter');
+  expect(await page.evaluate(()=>(window as any).__opened.length)).toBe(1);
 });
 test('re-sharing a credit sale uses current associated balance',async({page})=>{
   await boot(page);await page.evaluate(()=>{ventas.push({id:'V-CREDIT-TEST',metodo:'credito',items:[{name:'Arroz',qty:2,precio:7}]});creditos.push({id:'C-TEST',ventaId:'V-CREDIT-TEST',monto:14,saldo:9});(window as any).NAReceiptShare.shareSale('V-CREDIT-TEST');});
