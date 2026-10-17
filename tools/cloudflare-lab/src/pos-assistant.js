@@ -80,22 +80,44 @@ export function redactText(value) {
   for (const [re, label] of PATTERNS) out = out.replace(re, label);
   return out;
 }
-// Bot 5: para un EMPLEADO, además se tapan datos del dueño con monto o porcentaje: costo / costo unitario / precio de proveedor /
-// precio de compra / margen / ganancia / utilidad. En partes: el texto no sale desde una de esas palabras hasta que quedan 72 caracteres
-// detrás (OWNER_HOLD), y las que empiezan con el monto miden menos de 48 (la cola de siempre): nunca sale a medias, corte donde sea.
-// El dueño los sigue viendo (y su texto sale igual de rápido que antes).
-const OWNER_WORD = '(?:costos?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|precio\\s+(?:de(?:l)?\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|utilidad(?:es)?)';
+// Bot 5: para un EMPLEADO, además se tapan datos del dueño con monto o porcentaje: costo / costó / costaron / costo unitario / precio de
+// proveedor / precio de compra / margen / ganancia / utilidad / «lo compré a», «compramos a» / cost, cost is. Entre la palabra y el monto
+// puede haber hasta 60 caracteres de la misma frase (sin cruzar punto ni salto de línea). Tablas (markdown con | o separadas por
+// tabulador): si el encabezado de una columna es de costo, proveedor, margen, ganancia o utilidad, sus celdas se tapan.
+// En partes: desde una de esas palabras el texto espera hasta tener OWNER_HOLD (128) caracteres detrás, más que la coincidencia más
+// larga; lo que empieza con el monto mide menos de 48 (la cola de siempre). Nunca sale a medias, corte donde sea.
+// Sin esas palabras el empleado recibe igual que antes, y el dueño no pasa por aquí (lo ve todo, a la misma velocidad).
+const NOT_LETTER = '(?![a-záéíóúñ])';
+const OWNER_WORD = '(?:cost(?:o|os|ó|aron|aba|aban|s)?(?:\\s+(?:unitario|por\\s+unidad|de\\s+compra))?|precio\\s+(?:de(?:l)?\\s+)?(?:proveedor|compra)|m[áa]rgen(?:es)?|ganancias?|utilidad(?:es)?)' + NOT_LETTER;
+const BUY_WORD = '(?:(?:lo|la|los|las)\\s+)?compr(?:é|e|amos|aron|ó)' + NOT_LETTER;
 const OWNER_AMOUNT = '(?:S\\/\\.?\\s?)?-?(?:\\d{1,3}(?:[.,]\\d{3})+|\\d{1,6})(?:[.,]\\d{1,2})?(?:\\s?(?:%|por\\s?ciento|soles))?';
 const OWNER_DATA = [
-  // primero las que empiezan con el monto (cortas), después «palabra … monto»
+  // primero las que empiezan con el monto (cortas), después «compré a … monto» y «palabra … monto»
   new RegExp('(?:S\\/\\.?\\s?)\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s?soles)?\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
   new RegExp('\\d{1,3}(?:[.,]\\d{1,2})?\\s?(?:%|por\\s?ciento)\\s+(?:de\\s+|en\\s+)?' + OWNER_WORD, 'gi'),
-  new RegExp('\\b' + OWNER_WORD + '[^\\d\\n.;]{0,20}?' + OWNER_AMOUNT, 'gi')
+  new RegExp('\\b' + BUY_WORD + '[^\\d\\n.;]{0,40}?\\b(?:a|por|en)\\s+' + OWNER_AMOUNT, 'gi'),
+  new RegExp('\\b' + OWNER_WORD + '[^\\d\\n.;]{0,60}?' + OWNER_AMOUNT, 'gi')
 ];
 export const OWNER_DATA_LABEL = '[dato del dueño]';
-export function redactOwnerData(value) { let out = String(value ?? ''); for (const re of OWNER_DATA) out = out.replace(re, OWNER_DATA_LABEL); return out; }
-export const OWNER_HOLD = 72;
-const OWNER_WORD_RE = new RegExp('\\b' + OWNER_WORD, 'i');
+const OWNER_HEADER = /cost|precio\s*(?:de\s*)?compra|proveedor|m[áa]rgen|ganancia|utilidad/i;
+// Tabla: una línea con | (o tabulador) y 2+ celdas cuyo encabezado nombra un dato del dueño; las filas siguientes de esa tabla llevan la
+// celda tapada (la fila separadora --- queda). Una celda a medio llegar ya sale tapada: lo de antes de la celda no cambia.
+function redactOwnerTables(text) {
+  const lines = text.split('\n'); let cols = null, sep = null;
+  for (let k = 0; k < lines.length; k++) {
+    const l = lines[k], d = l.includes('|') ? '|' : l.includes('\t') ? '\t' : null;
+    if (!d || d !== (sep || d)) { cols = null; sep = null; if (!d) continue; }
+    const cells = l.split(d);
+    if (!cols) { const idx = cells.map((c, n) => (OWNER_HEADER.test(c) ? n : -1)).filter((n) => n >= 0); if (idx.length && cells.filter((c) => c.trim()).length >= 2) { cols = idx; sep = d; } continue; }
+    let changed = false;
+    for (const n of cols) { if (n < cells.length && cells[n].trim() && !/^\s*:?-{2,}:?\s*$/.test(cells[n])) { cells[n] = (d === '|' ? ' ' : '') + OWNER_DATA_LABEL + (d === '|' ? ' ' : ''); changed = true; } }
+    if (changed) lines[k] = cells.join(d);
+  }
+  return lines.join('\n');
+}
+export function redactOwnerData(value) { let out = redactOwnerTables(String(value ?? '')); for (const re of OWNER_DATA) out = out.replace(re, OWNER_DATA_LABEL); return out; }
+export const OWNER_HOLD = 128;
+const OWNER_WORD_RE = new RegExp('\\b(?:' + OWNER_WORD + '|' + BUY_WORD + ')', 'i');
 export function ownerHold(red) { const from = Math.max(0, red.length - OWNER_HOLD), m = OWNER_WORD_RE.exec(red.slice(from)); return m ? from + m.index : Infinity; }
 export function redactFor(role) { return role === 'owner' ? redactText : (v) => redactOwnerData(redactText(v)); }
 function cleanText(value, max) {
